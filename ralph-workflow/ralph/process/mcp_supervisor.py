@@ -126,7 +126,6 @@ class McpSupervisor:
             restarted = self._bridge.check_health_and_restart_if_needed()
             if restarted and self._on_restart is not None:
                 self._on_restart(self._bridge.restart_count)
-            return restarted
         except McpServerError as exc:
             self._mcp_error = exc
             if self._on_error is not None:
@@ -137,6 +136,8 @@ class McpSupervisor:
                 exc,
             )
             raise
+        else:
+            return restarted
 
     def _interrupt_blocked_invocation(self, exc: McpServerError) -> None:
         logger.error(

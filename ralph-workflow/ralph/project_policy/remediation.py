@@ -101,7 +101,7 @@ def _read_retry_hint(workspace: Workspace, phase: str) -> str:
         return ""
     try:
         return workspace.read(path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return ""
 
 

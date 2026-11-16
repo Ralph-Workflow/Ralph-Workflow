@@ -121,7 +121,7 @@ if sys.platform.startswith("linux"):
         _raw_prctl: object = getattr(_libc, "prctl", None)
         if callable(_raw_prctl):
             _PRCTL_FN = cast("_Prctl", _raw_prctl)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         _PRCTL_FN = None
 
 
@@ -135,7 +135,7 @@ def _install_pdeathsig(signal_number: int = _SIGKILL) -> None:
         rc = _PRCTL_FN(_PR_SET_PDEATHSIG, signal_number)
         if rc != 0:
             os._exit(127)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return
     if os.getppid() != parent_before:
         os._exit(0)

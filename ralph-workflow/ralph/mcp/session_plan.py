@@ -104,7 +104,7 @@ def _resolve_opencode_identity(
 
     try:
         entry = get_model_by_id(model_id)
-    except Exception:
+    except (KeyError, ValueError, LookupError, AttributeError, TypeError, RuntimeError):
         return MultimodalModelIdentity(
             provider="unknown",
             model_id=model_id,

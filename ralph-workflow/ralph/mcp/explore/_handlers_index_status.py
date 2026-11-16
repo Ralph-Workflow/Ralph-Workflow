@@ -53,7 +53,11 @@ def handle_ralph_index_status(
             is_error=False,
         )
     cold_index_required = handle.generation == 0
-    payload = _build_status_payload(handle, workspace_root, cold_index_required)
+    payload = _build_status_payload(
+        handle,
+        workspace_root,
+        cold_index_required=cold_index_required,
+    )
     payload["enabled"] = True
     payload["workspace_awareness"] = awareness_for_workspace(workspace_root).snapshot()
     from ralph.mcp.explore.serving import serving_metadata
@@ -166,6 +170,7 @@ def _gitignore_child_rule_present(workspace_root: Path) -> bool:
 def _build_status_payload(
     handle: ExploreIndex,
     workspace_root: Path,
+    *,
     cold_index_required: bool,
 ) -> dict[str, object]:
     store = handle.store

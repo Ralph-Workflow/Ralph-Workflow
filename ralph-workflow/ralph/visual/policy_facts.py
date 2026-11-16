@@ -180,7 +180,7 @@ def validate_capture_command(command: str) -> None:
 
 def _extract_facts(policy_markdown: str) -> dict[str, str]:
     if not isinstance(policy_markdown, str):
-        raise ValueError("policy_markdown must be a string")
+        raise TypeError("policy_markdown must be a string")
     facts: dict[str, str] = {}
     for line in policy_markdown.splitlines():
         stripped = line.strip()

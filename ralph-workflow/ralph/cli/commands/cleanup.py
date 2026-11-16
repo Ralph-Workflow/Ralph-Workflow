@@ -11,6 +11,7 @@ from ralph.git.operations import find_repo_root
 
 
 def cleanup(
+    *,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="List stale namespaces without removing them"),

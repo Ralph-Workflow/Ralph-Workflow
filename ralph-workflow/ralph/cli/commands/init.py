@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -191,11 +192,9 @@ def init_command(
 
 def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> None:
     configured_target = "main"
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         configured_target = config.general.auto_integrate_target
-    except Exception:
-        pass
     _verdict, owner = target_worktree_lookup(target, configured_target)
     if owner is not None:
         display.emit_warning(
@@ -208,7 +207,7 @@ def _try_load_registry() -> AgentRegistry | None:
         cfg = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         registry_type = _load_agent_registry_factory()
         return registry_type.from_config(cfg)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.warning(
             "Could not load configured agents after setup: {}. "
             "Run `ralph --diagnose` to see the configuration problem and fix it.",
@@ -258,15 +257,16 @@ def _ensure_baseline_capabilities(
                             f"Skill auto-commit failed during --init (non-fatal): {result.error}. "
                             "Skill content is materialized; commit manually or re-run to retry."
                         )
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
                     display.emit_warning(
                         f"Skill auto-commit failed during --init (non-fatal): {exc}. "
                         "Skill content is materialized; commit manually or re-run to retry."
                     )
         display.emit_capability_summary(cap_state, workspace_root=target_root)
-        return cap_state, failures
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return CapabilityState(), []
+    else:
+        return cap_state, failures
 
 
 def _emit_agent_setup_status(

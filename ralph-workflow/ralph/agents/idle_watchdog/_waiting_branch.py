@@ -107,7 +107,7 @@ def _classify_quiet_state(
 ) -> AgentExecutionState:
     try:
         return classify_quiet()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return AgentExecutionState.WAITING_ON_CHILD
 
 

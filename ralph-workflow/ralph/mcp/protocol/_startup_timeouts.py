@@ -283,7 +283,7 @@ def record_stage_elapsed(
                 headroom_s=headroom_s,
                 timeout_s=mcp_overrun_diagnostic_timeout_seconds(),
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
             logger.warning("failed to record overrun to stage tracker: {exc}", exc=exc)
         return None
 

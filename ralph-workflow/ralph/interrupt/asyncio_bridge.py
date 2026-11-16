@@ -61,11 +61,11 @@ def install_signal_handlers(
     def _install_force_handlers() -> None:
         try:
             loop.add_signal_handler(signal.SIGINT, _second_sigint)
-        except Exception:
+        except (RuntimeError, ValueError, OSError, NotImplementedError):
             logger.debug("add_signal_handler SIGINT failed during escalation")
         try:
             loop.add_signal_handler(signal.SIGTERM, _second_sigint)
-        except Exception:
+        except (RuntimeError, ValueError, OSError, NotImplementedError):
             logger.debug("add_signal_handler SIGTERM failed during escalation")
 
     def _first_sigint() -> None:
@@ -109,11 +109,11 @@ def install_signal_handlers(
         teardown_state["done"] = True
         try:
             loop.remove_signal_handler(signal.SIGINT)
-        except Exception:
+        except (RuntimeError, ValueError, OSError, NotImplementedError):
             logger.debug("remove_signal_handler raised during teardown")
         try:
             loop.remove_signal_handler(signal.SIGTERM)
-        except Exception:
+        except (RuntimeError, ValueError, OSError, NotImplementedError):
             logger.debug("remove_signal_handler raised during teardown")
 
     return _teardown

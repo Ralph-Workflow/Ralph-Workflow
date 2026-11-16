@@ -529,7 +529,7 @@ class ParallelDisplay:
         state_changed = previous_token != state_token
         self._salience_last_token[role] = state_token
         pending = tuple(
-            RoleBid(other_role, False)
+            RoleBid(other_role, state_changed=False)
             for other_role, lit in self._salience_lit_event_roles.items()
             if lit and other_role != role
         )
@@ -1042,7 +1042,7 @@ class ParallelDisplay:
             kind="warning",
         )
 
-    def _update_counters(self, kind: str, is_new_block: bool) -> None:
+    def _update_counters(self, kind: str, *, is_new_block: bool) -> None:
         if kind == "text" and is_new_block:
             self._run_counters.content_blocks += 1
             if self._phase_counters is not None:
@@ -3350,7 +3350,7 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             try:
                 message = read_commit_message_artifact(workspace_root)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError):
                 message = None
             if message is None:
                 return

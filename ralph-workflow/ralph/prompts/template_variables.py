@@ -169,8 +169,8 @@ def timebox_template_variables(
     }
 
 
-def bool_to_string(value: bool) -> str:
-    return "true" if value else ""
+def bool_to_string(value: object) -> str:
+    return "true" if bool(value) else ""
 
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:

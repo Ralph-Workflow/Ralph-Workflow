@@ -126,7 +126,7 @@ def test_thread_safety(tmp_path: Path) -> None:
         try:
             for i in range(20):
                 log.append(f"line {i}")
-        except Exception as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=write_lines) for _ in range(5)]

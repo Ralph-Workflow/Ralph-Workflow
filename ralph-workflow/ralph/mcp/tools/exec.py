@@ -287,29 +287,29 @@ def _env_wrapped_segment(args: list[str]) -> tuple[str, list[str]] | None:
         return None
     index = 0
     while index < len(expanded):
-        token = expanded[index]
-        if _is_environment_assignment(token):
+        arg = expanded[index]
+        if _is_environment_assignment(arg):
             index += 1
             continue
-        if token == "--":
+        if arg == "--":
             index += 1
             while index < len(expanded) and _is_environment_assignment(expanded[index]):
                 index += 1
             break
-        if token in {"-u", "--unset", "-C", "--chdir"}:
+        if arg in {"-u", "--unset", "-C", "--chdir"}:
             if index + 1 >= len(expanded):
                 return None
             index += 2
             continue
-        if token.startswith(("--unset=", "--chdir=")) or (
-            token.startswith(("-u", "-C")) and len(token) > len("-u")
+        if arg.startswith(("--unset=", "--chdir=")) or (
+            arg.startswith(("-u", "-C")) and len(arg) > len("-u")
         ):
             index += 1
             continue
-        if token in {"-i", "--ignore-environment", "-0", "--null", "-v", "--debug"}:
+        if arg in {"-i", "--ignore-environment", "-0", "--null", "-v", "--debug"}:
             index += 1
             continue
-        if token.startswith("-"):
+        if arg.startswith("-"):
             return None
         break
     if index >= len(expanded):
@@ -321,17 +321,17 @@ def _expand_env_split_options(args: list[str]) -> list[str] | None:
     expanded = list(args)
     index = 0
     while index < len(expanded):
-        token = expanded[index]
+        arg = expanded[index]
         consumed = 0
         value: str | None = None
-        if token in {"-S", "--split-string"}:
+        if arg in {"-S", "--split-string"}:
             if index + 1 >= len(expanded):
                 return None
             value, consumed = expanded[index + 1], 2
-        elif token.startswith("--split-string="):
-            value, consumed = token.partition("=")[2], 1
-        elif token.startswith("-S") and token != "-S":
-            value, consumed = token[2:], 1
+        elif arg.startswith("--split-string="):
+            value, consumed = arg.partition("=")[2], 1
+        elif arg.startswith("-S") and arg != "-S":
+            value, consumed = arg[2:], 1
         if value is None:
             index += 1
             continue

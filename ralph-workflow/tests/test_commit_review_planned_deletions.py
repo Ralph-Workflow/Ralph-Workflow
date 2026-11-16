@@ -240,9 +240,14 @@ def test_tampered_receipt_authentication_or_path_yields_no_list(
     paths = [f"legacy/{index}.py" for index in range(4)]
     prepare_deletions(tmp_git_repo, paths)
     submit_plan(tmp_git_repo, plan(paths), "run-current")
+    query = (
+        "UPDATE receipts SET hmac = ? WHERE run_id = ? AND artifact_type = ?"
+        if field == "hmac"
+        else "UPDATE receipts SET submission_snapshot_path = ? WHERE run_id = ? AND artifact_type = ?"
+    )
     with sqlite3.connect(tmp_git_repo / ".agent/state.db") as connection:
         connection.execute(
-            f"UPDATE receipts SET {field} = ? WHERE run_id = ? AND artifact_type = ?",
+            query,
             (value, "run-current", "plan"),
         )
         connection.commit()

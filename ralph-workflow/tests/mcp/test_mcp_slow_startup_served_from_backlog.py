@@ -110,7 +110,7 @@ def test_slow_startup_is_served_from_backlog(tmp_path: Path) -> None:
     def _start() -> None:
         try:
             result.append(lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras))
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             result.append(exc)
         finally:
             done.set()
@@ -175,7 +175,7 @@ def test_slow_startup_preflight_succeeds(tmp_path: Path) -> None:
     def _start() -> None:
         try:
             result.append(lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras))
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             result.append(exc)
         finally:
             done.set()

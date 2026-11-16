@@ -94,5 +94,5 @@ def read_bounded_stderr(handle: object) -> str:
     try:
         stderr_pipe: object = getattr(handle, "stderr", None)
         return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError, UnicodeDecodeError):
         return ""

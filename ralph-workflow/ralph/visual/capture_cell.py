@@ -39,7 +39,7 @@ class CaptureCell:
         if not isinstance(self.target, str) or not self.target.strip():
             raise ValueError("CaptureCell.target must be a non-empty string")
         if not isinstance(self.viewport, Viewport):
-            raise ValueError("CaptureCell.viewport must be a Viewport instance")
+            raise TypeError("CaptureCell.viewport must be a Viewport instance")
         if not isinstance(self.theme, str) or not self.theme.strip():
             raise ValueError("CaptureCell.theme must be a non-empty string")
         if not isinstance(self.state, str) or not self.state.strip():

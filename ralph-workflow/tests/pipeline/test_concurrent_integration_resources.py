@@ -128,7 +128,7 @@ def test_two_worktrees_publish_shared_results_without_loss(
             barrier.wait(timeout=5)
             ledger.charge(signature, "repair", is_unknown=False)
             ledger.publish_rung_result(result_key, f"result:{signature}")
-        except BaseException as error:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as error:
             errors.append(error)
 
     key_a = shared_rung_result_key("target", "vendor-a", ("a.txt",))

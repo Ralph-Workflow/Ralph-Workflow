@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
+from git.exc import GitError
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
@@ -100,7 +101,7 @@ def _fast_branch_name(root: Path) -> str | None:
         pass
     try:
         return _repo(root).active_branch.name
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         return None
 
 
@@ -138,7 +139,7 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
         pass
     try:
         return _repo(root).rev_parse(ref_name).hexsha
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         return None
 
 
@@ -156,7 +157,7 @@ def _git(root: Path, *args: str) -> GitRunResult:
         try:
             content = _repo(root).commit(ref).tree[path].data_stream.read().decode("utf-8")
             return GitRunResult(args=args, stdout=content, stderr="", returncode=0)
-        except Exception:
+        except (GitError, OSError, ValueError, KeyError, AttributeError, UnicodeDecodeError):
             pass
     return run_git(
         args,

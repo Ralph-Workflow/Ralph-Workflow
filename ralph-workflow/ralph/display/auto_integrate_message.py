@@ -178,7 +178,7 @@ def integration_action_to_operation_display_state(
     return _ACTION_TO_DISPLAY_STATE.get(norm)
 
 
-def _is_diagnosis_state(action_or_state: object, is_diagnosis: bool) -> bool:
+def _is_diagnosis_state(action_or_state: object, *, is_diagnosis: bool) -> bool:
     if is_diagnosis:
         return True
     settled_last_outcome = _safe_attr(action_or_state, "last_outcome")
@@ -228,7 +228,7 @@ def format_integration_label(
 ) -> str:
     if action_or_state is None:
         return IntegrationDisplayLabel.INTERVENTION.value
-    if _is_diagnosis_state(action_or_state, is_diagnosis):
+    if _is_diagnosis_state(action_or_state, is_diagnosis=is_diagnosis):
         return IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value
 
     raw_disp = _safe_attr(action_or_state, "operation_display_state")
@@ -265,9 +265,10 @@ def _safe_attr(obj: object, name: str) -> object:
         return None
     try:
         val: object = object.__getattribute__(obj, name)
-        return val
     except AttributeError:
         return None
+    else:
+        return val
 
 
 def rebase_outcome_to_operation_display_state(

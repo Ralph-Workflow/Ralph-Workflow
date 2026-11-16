@@ -39,7 +39,7 @@ class JavaScriptGuidelines:
     secrets_checks: tuple[str, ...]
     api_design_checks: tuple[str, ...]
 
-    def __init__(self, frameworks: Iterable[str] = (), typescript: bool = False) -> None:
+    def __init__(self, frameworks: Iterable[str] = (), *, typescript: bool = False) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
         self.typescript = typescript

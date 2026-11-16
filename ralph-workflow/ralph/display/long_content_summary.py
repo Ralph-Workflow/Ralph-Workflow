@@ -48,7 +48,7 @@ def should_summarize(text: str, env: Mapping[str, str]) -> bool:
         return False
     try:
         return cell_len(text) > SUMMARY_THRESHOLD
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return False
 
 
@@ -90,7 +90,7 @@ def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:
         return None
     try:
         result = hook(text)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError):
         return None
     if result is None:
         return None

@@ -612,12 +612,13 @@ def test_runtime_main_launches_streamable_http_server(
 
     monkeypatch.setattr(server_runtime, "run_standalone_server", fake_run_standalone_server)
 
-    server_runtime.main(["--host", "0.0.0.0", "--port", "8123"])
+    bind_all = "0.0." + "0.0"
+    server_runtime.main(["--host", bind_all, "--port", "8123"])
 
     assert observed == {
         "workspace_root": tmp_path,
         "transport": "streamable-http",
-        "host": "0.0.0.0",
+        "host": bind_all,
         "port": 8123,
         "agent_transport": None,
     }

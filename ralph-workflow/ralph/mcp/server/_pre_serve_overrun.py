@@ -229,7 +229,15 @@ def log_and_record_stage(
                 )
             else:
                 error.append(exc)
-        except BaseException as exc:
+        except (
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+            SystemExit,
+            KeyboardInterrupt,
+        ) as exc:
             error.append(exc)
 
     stage_thread = threading.Thread(

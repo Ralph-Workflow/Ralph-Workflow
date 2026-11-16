@@ -285,7 +285,7 @@ def _platform_metadata() -> dict[str, str]:
         cpu_info = platform.processor()
         if isinstance(cpu_info, str) and cpu_info:
             cpu["processor"] = cpu_info
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         cpu["processor"] = "unknown"
     machine = platform.machine()
     if isinstance(machine, str) and machine:
@@ -565,11 +565,11 @@ def _parse_implementations(arg: str) -> list[str]:
         if stripped:
             parts.append(stripped)
     if not parts:
-        raise argparse.ArgumentTypeError("expected at least one implementation")
+        raise ValueError("expected at least one implementation")
     allowed = {"scalar", "accelerated", "auto"}
     for name in parts:
         if name not in allowed:
-            raise argparse.ArgumentTypeError(
+            raise ValueError(
                 f"unknown implementation: {name!r}; expected one of {sorted(allowed)}"
             )
     return parts

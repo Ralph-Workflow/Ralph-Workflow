@@ -1059,7 +1059,7 @@ def _terminate_and_reap(
                         grace_period_s=0.0,
                         issuer=ProcessTerminationIssuer.TEST_RUNNER,
                     )
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 print(
                     f"warning: shard terminate raised {type(exc).__name__}: {exc}",
                     file=sys.stderr,

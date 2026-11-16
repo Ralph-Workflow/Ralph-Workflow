@@ -31,7 +31,7 @@ _UNTRACKED_FOOTER_TEMPLATE: str = (
 )
 
 _NO_DIFF_SENTINEL: str = "(no diff available)"
-_REDACTED_SECRET_CHANGES: str = (
+_REDACTED_SENSITIVE_CHANGES: str = (
     "## Recognized secret changes\n"
     "[redacted: secret files will be removed from version control before commit]"
 )
@@ -137,17 +137,17 @@ def _secret_filtered_pending_diff(workspace_root: Path) -> tuple[str, bool]:
     return combined, tracked_secret_changes_present or untracked_secret_present
 
 
-def _with_secret_signal(diff: str, secret_work_present: bool) -> str:
+def _with_secret_signal(diff: str, *, secret_work_present: bool) -> str:
     if not secret_work_present:
         return diff
     if not diff:
-        return _REDACTED_SECRET_CHANGES
-    return f"{diff}\n\n{_REDACTED_SECRET_CHANGES}"
+        return _REDACTED_SENSITIVE_CHANGES
+    return f"{diff}\n\n{_REDACTED_SENSITIVE_CHANGES}"
 
 
 def commit_generation_diff(workspace_root: Path) -> str:
     diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
-    return _with_secret_signal(diff, secret_work_present)
+    return _with_secret_signal(diff, secret_work_present=secret_work_present)
 
 
 def commit_review_diff(workspace_root: Path, proposal_ref: str | None = None) -> str:
@@ -184,7 +184,10 @@ def commit_review_diff(workspace_root: Path, proposal_ref: str | None = None) ->
             if tracked:
                 return tracked
     diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
-    return _with_secret_signal(diff, secret_work_present) or _NO_DIFF_SENTINEL
+    return (
+        _with_secret_signal(diff, secret_work_present=secret_work_present)
+        or _NO_DIFF_SENTINEL
+    )
 
 
 __all__ = ["commit_generation_diff", "commit_review_diff"]

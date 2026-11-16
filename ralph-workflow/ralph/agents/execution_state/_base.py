@@ -88,27 +88,25 @@ class BaseExecutionStrategy:
     ) -> AgentExecutionState:
         del liveness_probe
         if self._registry is not None:
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError, AttributeError):
                 reg_snapshot = self._registry.snapshot("")
                 if reg_snapshot.active_count > 0:
                     return AgentExecutionState.WAITING_ON_CHILD
-            except Exception:
-                pass
             return AgentExecutionState.ACTIVE
         if self._subagent_pid_source is not None:
             try:
                 pids = self._subagent_pid_source.known_subagent_pids()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError):
                 pids = set()
             if pids:
                 return AgentExecutionState.WAITING_ON_CHILD
             return AgentExecutionState.ACTIVE
         if hasattr(handle, "has_live_descendants"):
-            try:
+            with contextlib.suppress(
+                OSError, RuntimeError, ValueError, AttributeError, StopIteration
+            ):
                 if bool(handle.has_live_descendants()):
                     return AgentExecutionState.WAITING_ON_CHILD
-            except Exception:
-                pass
         return AgentExecutionState.ACTIVE
 
     def classify_exit(

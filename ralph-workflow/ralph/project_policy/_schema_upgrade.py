@@ -177,7 +177,7 @@ def _ask(
 ) -> str:
     try:
         return select(question, choices, default)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("policy prompt failed (non-fatal): {}", exc)
         emit(fallback_notice)
         return default

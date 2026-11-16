@@ -33,7 +33,7 @@ def auto_commit_policy_changes(
         )
         if sha is not None:
             logger.debug("project-policy auto-commit created: {}", sha)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
 
 
@@ -57,7 +57,7 @@ def finalize_ready_state(
     pre_contents = capture_pre_write_contents(workspace_scope.root, [AGENTS_MD])
     try:
         policy_agents_md.condense_placeholder_block(workspace, assessment=assessment)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("AGENTS.md placeholder condense failed (non-fatal): {}", exc)
     try:
         result = policy_auto_commit.commit_policy_writes(
@@ -75,7 +75,7 @@ def finalize_ready_state(
             )
         elif result.status.value == "failed":
             logger.debug("project-policy auto-commit failed (non-fatal): {}", result.error)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("project-policy auto-commit failed (non-fatal): {}", exc)
     try:
         policy_cache.write_cache(
@@ -85,7 +85,7 @@ def finalize_ready_state(
             assessment=assessment,
             command_outcomes=command_outcomes,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("project-policy READY cache write failed (non-fatal): {}", exc)
 
 

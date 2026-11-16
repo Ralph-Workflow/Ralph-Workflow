@@ -94,7 +94,7 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_CONFIG_FILENAME
     source = _get_bundled_defaults_dir() / _GLOBAL_CONFIG_FILENAME
-    result = _copy_with_backup(source, target, force)
+    result = _copy_with_backup(source, target, force=force)
     if result.action == "skipped":
         migrated = _migrate_legacy_global_config(target)
         if migrated is not None:
@@ -117,7 +117,7 @@ def ensure_global_agents_config(
     return write_agents_with_backup(
         source,
         target,
-        force,
+        force=force,
         trigger="ralph --regenerate-config" if force else "ralph --init",
     )
 
@@ -129,7 +129,7 @@ def ensure_global_mcp_config(
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_MCP_FILENAME
     source = _get_bundled_defaults_dir() / "mcp.toml"
-    return _copy_with_backup(source, target, force)
+    return _copy_with_backup(source, target, force=force)
 
 
 def ensure_global_policy_configs(
@@ -141,7 +141,7 @@ def ensure_global_policy_configs(
         _copy_with_backup(
             _resolve_global_policy_source(global_dir, policy_filename, force=force),
             global_dir / _global_policy_target_name(policy_filename),
-            force,
+            force=force,
         )
         for policy_filename in _LOCAL_POLICY_FILENAMES
     ]
@@ -158,7 +158,7 @@ def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> Bootstr
     return _copy_with_backup(
         source,
         agent_dir / _LOCAL_CONFIG_FILENAME,
-        force,
+        force=force,
     )
 
 
@@ -175,14 +175,14 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
         _copy_with_backup(
             mcp_source,
             agent_dir / _LOCAL_MCP_FILENAME,
-            force,
+            force=force,
         )
     ]
     results.extend(
         _copy_with_backup(
             _resolve_global_policy_source(global_dir, policy_filename, force=False),
             agent_dir / policy_filename,
-            force,
+            force=force,
         )
         for policy_filename in _LOCAL_POLICY_FILENAMES
     )
@@ -305,7 +305,7 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
                 )
             elif result.status is ScopedCommitStatus.FAILED:
                 logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", result.error)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(".gitignore auto-seed commit failed (non-fatal): {}", exc)
     return appended
 
@@ -326,9 +326,9 @@ def _regenerate_existing_local_configs(
         },
     }
     return [
-        write_agents_with_backup(source, target, True, trigger="ralph --regenerate-config")
+        write_agents_with_backup(source, target, force=True, trigger="ralph --regenerate-config")
         if filename in _ADVANCED_LOCAL_POLICY_FILENAMES
-        else _copy_with_backup(source, target, True)
+        else _copy_with_backup(source, target, force=True)
         for filename, source in sources.items()
         if (target := agent_dir / filename).exists()
     ]
@@ -353,7 +353,7 @@ def regenerate_all(
     return results
 
 
-def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:
+def _copy_with_backup(source: Path, target: Path, *, force: bool) -> BootstrapResult:
     target.parent.mkdir(parents=True, exist_ok=True)
     pre_existed = target.exists()
 

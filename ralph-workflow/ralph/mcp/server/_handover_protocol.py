@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import http.client
 import json
 import os
 import socket
 import threading
 import time
-import urllib.request
+import urllib.parse
 from dataclasses import dataclass
-from typing import IO, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._http_tools_list import _LIFECYCLE_MAX_RESPONSE_BYTES
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -99,20 +101,26 @@ def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]
         "id": "1",
         "params": {},
     }
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
+    parsed = urllib.parse.urlsplit(endpoint)
+    conn_cls = (
+        http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    )
+    conn = conn_cls(parsed.hostname or "127.0.0.1", port=parsed.port, timeout=timeout)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    conn.request(
+        "POST",
+        path,
+        body=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
-        method="POST",
     )
-    response = cast(
-        "IO[bytes]",
-        urllib.request.urlopen(request, timeout=timeout),
-    )
+    response = conn.getresponse()
     try:
         raw = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES).decode("utf-8", errors="replace")
     finally:
         response.close()
+        conn.close()
     if not raw:
         raise ValueError(f"empty tools/list response from {endpoint}")
     data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]
@@ -121,13 +129,13 @@ def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]
     except json.JSONDecodeError as exc:
         raise ValueError(f"tools/list response from {endpoint} is not JSON") from exc
     if not isinstance(decoded, dict):
-        raise ValueError(f"tools/list response from {endpoint} is not a JSON-RPC envelope")
+        raise TypeError(f"tools/list response from {endpoint} is not a JSON-RPC envelope")
     result = cast("dict[str, object]", decoded).get("result")
     if not isinstance(result, dict):
-        raise ValueError(f"tools/list response from {endpoint} has no result object")
+        raise TypeError(f"tools/list response from {endpoint} has no result object")
     raw_tools = cast("dict[str, object]", result).get("tools")
     if not isinstance(raw_tools, list):
-        raise ValueError(f"tools/list response from {endpoint} has no tools array")
+        raise TypeError(f"tools/list response from {endpoint} has no tools array")
     return canonical_tool_entries(raw_tools)
 
 
@@ -144,12 +152,12 @@ def _resolve_raw_tools(mcp_server: object) -> list[object]:
         return tools_attr
     list_defs: object = getattr(registry, "list_definitions", None)
     if callable(list_defs):
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+        ):
             defs: object = list_defs()
             if isinstance(defs, list):
                 return defs
-        except Exception:
-            pass
     self_tools: object = getattr(mcp_server, "tools", None)
     if isinstance(self_tools, list):
         return self_tools
@@ -159,7 +167,9 @@ def _resolve_raw_tools(mcp_server: object) -> list[object]:
 def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
     handle_tools: object = getattr(mcp_server, "_handle_tools_list", None)
     if callable(handle_tools):
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+        ):
             req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=1)
             raw_res: object = handle_tools(req)
             if isinstance(raw_res, tuple) and len(raw_res) >= 1:
@@ -168,8 +178,6 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
                     tools_val: object = res_dict.get("tools")
                     if isinstance(tools_val, list):
                         return canonical_tool_entries(cast("list[object]", tools_val))
-        except Exception:
-            pass
 
     raw_tools = _resolve_raw_tools(mcp_server)
     if not raw_tools:

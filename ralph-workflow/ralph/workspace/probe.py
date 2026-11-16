@@ -185,7 +185,7 @@ def _collect_file_paths(workspace: Workspace, limit: int) -> list[str]:
     if isinstance(workspace, _HasIterFilesBounded):
         with suppress(Exception):
             return sorted(str(p) for p in workspace.iter_files_bounded("", limit=limit))
-    try:
+    with suppress(OSError, RuntimeError, ValueError, AttributeError):
         result: list[str] = []
         for item in workspace.iter_files(""):
             norm = _normalize_workspace_path(str(item))
@@ -195,8 +195,6 @@ def _collect_file_paths(workspace: Workspace, limit: int) -> list[str]:
             if len(result) >= limit:
                 break
         return sorted(result)
-    except Exception:
-        pass
     try:
         result = []
         for item in workspace.list_dir("."):
@@ -208,24 +206,27 @@ def _collect_file_paths(workspace: Workspace, limit: int) -> list[str]:
                 if len(result) >= limit:
                     break
         return sorted(result)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return []
 
 
 def _fingerprint_file(workspace: Workspace, path: str) -> str | None:
     try:
         st = workspace.stat(path)
-        if st.get("type") != "file":
-            return None
-        mtime = st.get("modified_unix")
-        size = st.get("size_bytes", 0)
-        if mtime is not None:
-            return f"{size}:{mtime}"
-        content = workspace.read(path)
-        digest = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
-        return f"{size}:{digest}"
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return None
+    if st.get("type") != "file":
+        return None
+    mtime = st.get("modified_unix")
+    size = st.get("size_bytes", 0)
+    if mtime is not None:
+        return f"{size}:{mtime}"
+    try:
+        content = workspace.read(path)
+    except (OSError, RuntimeError, ValueError, AttributeError):
+        return None
+    digest = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
+    return f"{size}:{digest}"
 
 
 def take_workspace_snapshot(

@@ -189,7 +189,7 @@ def test_concurrent_fanout_uses_barrier_for_wall_clock_proof() -> None:
                     _monotonic=clock,
                 )
             )
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             build_exception.append(exc)
 
     worker_thread = threading.Thread(target=run_build, daemon=True)

@@ -58,12 +58,12 @@ def _read_multimodal_sidecar(
         return None
     try:
         data: dict[str, object] = json.loads(sidecar.read_text(encoding="utf-8"))
-        artifacts = data.get("artifacts")
-        if isinstance(artifacts, list) and artifacts:
-            return cast("list[dict[str, object]]", artifacts)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
         return None
-    except Exception:
-        return None
+    artifacts = data.get("artifacts")
+    if isinstance(artifacts, list) and artifacts:
+        return cast("list[dict[str, object]]", artifacts)
+    return None
 
 
 def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:

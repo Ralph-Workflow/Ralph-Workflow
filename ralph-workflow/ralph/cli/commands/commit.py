@@ -12,6 +12,7 @@ from ralph.display.parallel_display import phase_style_for_phase, resolve_active
 from ralph.display.status_bar import StatusBarModel
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.commit_review import stage_commit_changes_safely
+from ralph.git.errors import GitOperationError
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -107,7 +108,7 @@ def commit_plumbing(
             None if opts.config_path is not None else resolve_workspace_scope(repo_root)
         )
         config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as e:
         display.emit_warning(f"Error loading config: {e}")
         return 1
 
@@ -233,7 +234,7 @@ def _apply_generated_commit(
         delete_commit_message_artifacts(repo_root)
         created_sha = commit_result.sha
         display.emit_status(f"Created commit: {created_sha[:8]}")
-    except Exception as e:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError) as e:
         display.emit_warning(f"Commit failed: {e}")
         return 1
     return 0

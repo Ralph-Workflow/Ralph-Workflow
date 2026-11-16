@@ -179,7 +179,7 @@ def _subagent_activity_observed(watchdog: _EvidenceSummaryWatchdog) -> bool | No
         channel = watchdog.last_evidence_summary(watchdog.clock.monotonic()).by_name(
             ChannelName.SUBAGENT_LIVENESS
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return None
     if channel is None:
         return None
@@ -218,7 +218,7 @@ def _record_watchdog_evidence(recorder: _TerminationRecorder, watchdog: object) 
     elapsed = _watchdog_elapsed_seconds(watchdog)
     recorder.record_elapsed_to_terminal(int(elapsed * 1000) if elapsed is not None else None)
     if _is_idle_watchdog(watchdog):
-        recorder.record_subagent_activity(_subagent_activity_observed(watchdog))
+        recorder.record_subagent_activity(observed=_subagent_activity_observed(watchdog))
 
 
 def _reclassify_supervisor_idle_fire(
@@ -253,7 +253,7 @@ def _has_live_session_orphan(handle: ManagedProcess) -> bool:
                 continue
             if info.get("status") != "zombie":
                 return True
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error):
         return False
     return False
 
@@ -374,7 +374,7 @@ def _record_broken_agent_termination(
     if recorder is None:
         return
     recorder.record_issuer(TerminationIssuer.SUPERVISOR_IDLE)
-    recorder.record_liveness(True)
+    recorder.record_liveness(observed=True)
     recorder.record_observed_returncode(returncode)
     _record_watchdog_evidence(recorder, watchdog)
 
@@ -394,10 +394,10 @@ def check_broken_agent_timer(
     liveness_observed = True
     try:
         process_alive = handle.poll() is None
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         process_alive = True
         liveness_observed = False
-    watchdog.record_process_liveness(process_alive, observed=liveness_observed)
+    watchdog.record_process_liveness(is_alive=process_alive, observed=liveness_observed)
     evidence = watchdog.circumstantial_evidence()
     if (
         elapsed_seconds > 0.0
@@ -731,6 +731,7 @@ class ProcessLineReader:
 
     def _probe_cpu_idle(
         self,
+        *,
         scoped_active: bool | None,
         alive_by: AliveBy | None,
     ) -> bool:
@@ -741,7 +742,9 @@ class ProcessLineReader:
         ):
             return False
         _now = self._clock.monotonic()
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error
+        ):
             root_pid = self._handle.pid
             try:
                 root_proc = psutil.Process(root_pid)
@@ -767,8 +770,6 @@ class ProcessLineReader:
             live_pids = set(child_pids)
             for stale_pid in list(self._cpu_baselines.keys() - live_pids):
                 self._cpu_baselines.pop(stale_pid, None)
-        except Exception:
-            pass
         return False
 
     def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
@@ -816,11 +817,11 @@ class ProcessLineReader:
                     scoped_count = desc_count
                     scoped_active = desc_count > 0
                     oldest_secs_from_legacy = desc_oldest
-                except Exception:
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                     logger.debug(
                         "corroborator: legacy descendant_snapshot fallback failed (suppressed)"
                     )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             logger.debug("corroborator: process monitor count failed (suppressed)")
             scoped_count = None
             scoped_active = None
@@ -837,12 +838,12 @@ class ProcessLineReader:
                 reg_snap = reg.snapshot(label_prefix or "")
                 verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
                 alive_by = verdict.alive_by
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
         elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
 
-        _cpu_idle = self._probe_cpu_idle(scoped_active, alive_by)
+        _cpu_idle = self._probe_cpu_idle(scoped_active=scoped_active, alive_by=alive_by)
         _log_stale = self._probe_log_growth(alive_by)
 
         if _cpu_idle or _log_stale:
@@ -914,7 +915,7 @@ class ProcessLineReader:
                     break
         except (UnicodeDecodeError, ValueError):
             return
-        except Exception:
+        except (OSError, RuntimeError, AttributeError, TypeError):
             logger.warning(
                 "stderr reader for {cmd} stopped early: {err}",
                 cmd=_agent_command_name(self._config),
@@ -973,7 +974,7 @@ class ProcessLineReader:
                 "output reader for {cmd} stopped at stream close",
                 cmd=_agent_command_name(self._config),
             )
-        except Exception:
+        except (OSError, RuntimeError, AttributeError, TypeError):
             logger.warning(
                 "output reader for {cmd} stopped early: {err}",
                 cmd=_agent_command_name(self._config),
@@ -1033,7 +1034,7 @@ class ProcessLineReader:
     def _classify_quiet(self) -> AgentExecutionState:
         try:
             return self._strategy.classify_quiet(self._handle, self._probe)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             if self._handle.poll() is not None:
                 logger.opt(exception=True).debug(
                     "idle watchdog: classify_quiet raised after exit; defaulting to ACTIVE"
@@ -1104,7 +1105,7 @@ class ProcessLineReader:
         if callable(snapshot_method):
             try:
                 snapshot_obj: dict[str, object] | None = snapshot_method(now=now)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 snapshot_obj = None
             if snapshot_obj:
                 merged_diag["watchdog_snapshot"] = snapshot_obj
@@ -1112,7 +1113,7 @@ class ProcessLineReader:
         if callable(repetition_diag_method):
             try:
                 repetition_diag: dict[str, str | int] | None = repetition_diag_method()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 repetition_diag = None
             if repetition_diag:
                 merged_diag.update(repetition_diag)
@@ -1704,7 +1705,7 @@ def _has_meaningful_output_from_reader(reader: object) -> bool | None:
         return None
     try:
         return bool(watchdog.has_meaningful_output())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return None
 
 
@@ -1721,7 +1722,7 @@ def collect_r7_diagnostic_fields(
     try:
         evidence_summary_obj = watchdog_for_diag.last_evidence_summary(diag_now)
         evidence_summary_str: str | None = str(evidence_summary_obj.to_dict_list())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         evidence_summary_str = None
     try:
         last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(now=diag_now).get(
@@ -1730,11 +1731,11 @@ def collect_r7_diagnostic_fields(
         last_tool_call_str: str | None = (
             str(last_tool_call_obj) if last_tool_call_obj is not None else None
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         last_tool_call_str = None
     try:
         elapsed_value: float | None = round(watchdog_for_diag.invocation_elapsed_seconds, 1)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         elapsed_value = None
     transcript_tail: tuple[str, ...] = tuple(list(parsed_output)[-10:])
     return (

@@ -20,8 +20,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
     SurfaceSpec(
         "welcome",
         "parallel_display",
-        True,
-        "frame: operator welcome",
+        frame_entitled=True,
+        format="frame: operator welcome",
         scene="first_screen",
         entry_points=("emit_welcome_banner",),
         production_entry_points=("ParallelDisplay.emit_welcome_banner",),
@@ -29,8 +29,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
     SurfaceSpec(
         "first_run",
         "parallel_display",
-        True,
-        "frame: first-run guidance",
+        frame_entitled=True,
+        format="frame: first-run guidance",
         scene="first_screen",
         entry_points=("emit_first_run_panel",),
         production_entry_points=("ParallelDisplay.emit_first_run_panel",),
@@ -38,8 +38,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
     SurfaceSpec(
         "run_open",
         "parallel_display",
-        True,
-        "frame: outcome-first run identity",
+        frame_entitled=True,
+        format="frame: outcome-first run identity",
         scene="first_screen",
         entry_points=("emit_run_start",),
         production_entry_points=("ParallelDisplay.emit_run_start",),
@@ -252,8 +252,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
     SurfaceSpec(
         "completion_success",
         "completion_summary",
-        True,
-        "frame: outcome, metrics, recovery",
+        frame_entitled=True,
+        format="frame: outcome, metrics, recovery",
         scene="closing_screen",
         entry_points=("emit_completion_summary_panel", "emit_run_end"),
         production_entry_points=(
@@ -264,8 +264,8 @@ SURFACE_CATALOG: Final[tuple[SurfaceSpec, ...]] = (
     SurfaceSpec(
         "completion_failure",
         "completion_summary",
-        True,
-        "frame: cause, metrics, recovery",
+        frame_entitled=True,
+        format="frame: cause, metrics, recovery",
         scene="failure",
         entry_points=("emit_completion_summary_panel",),
         production_entry_points=("ParallelDisplay.emit_completion_summary_panel",),

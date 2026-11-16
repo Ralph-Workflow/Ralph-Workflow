@@ -241,12 +241,12 @@ def _parse_raw_path_string(arg0: object) -> str | None:
     if isinstance(arg0, bytes):
         try:
             return os.fsdecode(arg0)
-        except Exception:
+        except (UnicodeDecodeError, TypeError, ValueError):
             return None
     if isinstance(arg0, os.PathLike):
         try:
             return os.fsdecode(arg0)
-        except Exception:
+        except (UnicodeDecodeError, TypeError, ValueError):
             return None
     return None
 
@@ -308,7 +308,7 @@ def _resolve_parent_directory(parent_str: str) -> str | None:
 def _resolve_fully(target_str: str) -> str | None:
     try:
         return str(Path(target_str).resolve())
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
 
 

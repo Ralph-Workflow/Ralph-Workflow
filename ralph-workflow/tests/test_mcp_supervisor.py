@@ -259,7 +259,7 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     def controlled_probe(endpoint: str, timeout: timedelta) -> None:
         del endpoint, timeout
         if probe_should_fail[0] and not restart_done[0]:
-            raise Exception("probe timed out")
+            raise RuntimeError("probe timed out")
 
     initial_process = FakeProcess(poll_result=None)
     inner = lifecycle.StandaloneMcpProcess(

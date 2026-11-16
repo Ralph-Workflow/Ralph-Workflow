@@ -13,6 +13,7 @@ from jinja2 import (
     TemplateError,
     TemplateNotFound,
     Undefined,
+    select_autoescape,
 )
 
 from ralph.prompts.template_rendering_error import TemplateRenderingError
@@ -52,7 +53,7 @@ class TemplateRenderer:
         strict_undefined = cast("type[Undefined]", StrictUndefined)
         self._environment = Environment(
             loader=DictLoader(templates),
-            autoescape=False,
+            autoescape=select_autoescape(["html", "xml"]),
             undefined=strict_undefined,
             keep_trailing_newline=True,
             cache_size=_MAX_COMPILED_TEMPLATES,

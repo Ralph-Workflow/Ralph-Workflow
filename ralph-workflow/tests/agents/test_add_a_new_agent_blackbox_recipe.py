@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import runpy
+import tempfile
 from pathlib import Path
 
 from ralph.agents.execution_state._base import BaseExecutionStrategy
@@ -34,18 +36,21 @@ def _load_recipe_snippet() -> str:
     return match.group(1)
 
 
+def _run_snippet(code_text: str, *, run_name: str) -> dict[str, object]:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snippet_file = Path(tmp_dir) / "snippet.py"
+        snippet_file.write_text(code_text, encoding="utf-8")
+        return runpy.run_path(str(snippet_file), run_name=run_name)
+
+
 def _exec_recipe_snippet(snippet: str, *, name_override: str) -> AgentRegistry:
-    namespace: dict[str, object] = {
-        "__name__": "_blackbox_recipe_snippet",
-    }
     rewritten = re.sub(
         r'name="my-agent"',
         f'name="{name_override}"',
         snippet,
         count=1,
     )
-    code = compile(rewritten, "<recipe-snippet>", "exec")
-    exec(code, namespace)
+    namespace = _run_snippet(rewritten, run_name="_blackbox_recipe_snippet")
     my_registry_obj = namespace.get("my_registry")
     assert isinstance(my_registry_obj, AgentRegistry), (
         "Recipe snippet did not bind my_registry to an AgentRegistry; "
@@ -122,10 +127,7 @@ class TestBlackboxRecipeEndToEnd:
 
 def test_recipe_snippet_executes_against_real_parser() -> None:
     snippet = _load_recipe_snippet()
-    compiled = compile(snippet, "<recipe-snippet>", "exec")
-
-    namespace: dict[str, object] = {"__name__": "_blackbox_recipe_runtime"}
-    exec(compiled, namespace)
+    namespace = _run_snippet(snippet, run_name="_blackbox_recipe_runtime")
 
     registry_obj = namespace.get("my_registry")
     assert isinstance(registry_obj, AgentRegistry), (

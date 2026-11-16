@@ -259,7 +259,7 @@ class TestPolicyAuditor:
             self._check_io_call(node, func_name)
             self._check_git_call(node, func_name)
             self._check_wall_clock_call(node, func_name)
-            self._check_blocking_wait_call(node, func_name, inside_wait_for)
+            self._check_blocking_wait_call(node, func_name, inside_wait_for=inside_wait_for)
 
     def _resolve_call_name(self, written_name: str | None) -> str | None:
         if written_name is None:
@@ -395,6 +395,7 @@ class TestPolicyAuditor:
         self,
         node: ast.Call,
         func_name: str | None,
+        *,
         inside_wait_for: bool,
     ) -> None:
         if func_name is None:

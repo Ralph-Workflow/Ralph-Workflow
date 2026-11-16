@@ -1086,7 +1086,7 @@ def _contains_node(outer: ast.AST, inner: ast.AST) -> bool:
 
 
 def _routes_to_owner(
-    calls: list[ast.Call], classified_before: bool, context: _OwnershipContext | None = None
+    calls: list[ast.Call], *, classified_before: bool, context: _OwnershipContext | None = None
 ) -> bool:
     classifiers = [call for call in calls if _is_classifier_call(call)]
     handles = [call for call in calls if _call_name(call) == "handle"]
@@ -1157,11 +1157,11 @@ def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
 
 
 def _execute_statement(
-    statement: ast.stmt, classified_before: bool, context: _OwnershipContext
+    statement: ast.stmt, *, classified_before: bool, context: _OwnershipContext
 ) -> set[tuple[bool, str]]:
     calls = _direct_calls(statement)
     classified = classified_before or any(_is_classifier_call(call) for call in calls)
-    if _routes_to_owner(calls, classified_before, context):
+    if _routes_to_owner(calls, classified_before=classified_before, context=context):
         return {(classified, _PATH_ROUTED)}
     if isinstance(statement, ast.Raise):
         return {(classified, _PATH_DELEGATED)}
@@ -1172,12 +1172,12 @@ def _execute_statement(
         return {(classified, _PATH_ACTIVE)}
     states: set[tuple[bool, str]] = set()
     for branch in branches:
-        states |= _block_states(branch, classified, context)
+        states |= _block_states(branch, classified=classified, context=context)
     return states
 
 
 def _block_states(
-    body: list[ast.stmt], classified: bool, context: _OwnershipContext
+    body: list[ast.stmt], *, classified: bool, context: _OwnershipContext
 ) -> set[tuple[bool, str]]:
     states: set[tuple[bool, str]] = {(classified, _PATH_ACTIVE)}
     for statement in body:
@@ -1186,13 +1186,13 @@ def _block_states(
             if state_outcome != _PATH_ACTIVE:
                 advanced.add((state_classified, state_outcome))
                 continue
-            advanced |= _execute_statement(statement, state_classified, context)
+            advanced |= _execute_statement(statement, classified_before=state_classified, context=context)
         states = advanced
     return states
 
 
 def _handler_outcomes(handler: ast.ExceptHandler, context: _OwnershipContext) -> set[str]:
-    states = _block_states(handler.body, False, context)
+    states = _block_states(handler.body, classified=False, context=context)
     return {_PATH_SWALLOWED if outcome == _PATH_ACTIVE else outcome for _, outcome in states}
 
 
@@ -1672,6 +1672,7 @@ def _ralph_authored_classifier_call_violation(
     node: ast.Call,
     entry: str,
     arg: ast.AST,
+    *,
     direct_prose: bool,
     tainted_field: str | None,
     tainted_name: str | None,
@@ -1763,11 +1764,11 @@ def _check_ralph_authored_classifier_inputs(
                 node,
                 entry,
                 arg,
-                direct_prose,
-                tainted_field,
-                tainted_name,
-                prose_returner,
-                rel_path,
+                direct_prose=direct_prose,
+                tainted_field=tainted_field,
+                tainted_name=tainted_name,
+                prose_returner=prose_returner,
+                rel_path=rel_path,
             )
         )
     return violations

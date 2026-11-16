@@ -211,7 +211,7 @@ def _is_cancelled(cancel: Callable[[], bool] | None) -> bool:
         return False
     try:
         return bool(cancel())
-    except Exception:
+    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError, OSError, TimeoutError):
         logger.debug("ralph_graph cancel callable raised; treating as not-cancelled", exc_info=True)
         return False
 

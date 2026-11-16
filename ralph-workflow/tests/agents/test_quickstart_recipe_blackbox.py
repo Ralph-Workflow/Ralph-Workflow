@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import runpy
+import tempfile
 from pathlib import Path
 
 from ralph.agents.execution_state._base import BaseExecutionStrategy
@@ -47,7 +49,6 @@ def _load_recipe_snippets() -> list[tuple[int, str]]:
 
 
 def _exec_recipe_snippet(snippet: str, *, name_override: str) -> AgentRegistry:
-    namespace: dict[str, object] = {"__name__": "_quickstart_recipe_snippet"}
     rewritten = re.sub(
         r'name="[^"]+"',
         f'name="{name_override}"',
@@ -57,8 +58,10 @@ def _exec_recipe_snippet(snippet: str, *, name_override: str) -> AgentRegistry:
     if rewritten == snippet:
         msg = f"Quickstart snippet missing ``name=`` kwarg; got:\n{snippet}"
         raise AssertionError(msg)
-    code = compile(rewritten, "<quickstart-recipe-snippet>", "exec")
-    exec(code, namespace)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        snippet_file = Path(tmp_dir) / "snippet.py"
+        snippet_file.write_text(rewritten, encoding="utf-8")
+        namespace = runpy.run_path(str(snippet_file), run_name="_quickstart_recipe_snippet")
     registry_obj = namespace.get("my_registry")
     assert isinstance(registry_obj, AgentRegistry), (
         "Quickstart snippet did not bind my_registry to an AgentRegistry; "

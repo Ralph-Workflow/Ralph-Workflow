@@ -37,7 +37,7 @@ def _quiet_state_or_default(
 ) -> AgentExecutionState:
     try:
         return classify_quiet()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return default
 
 

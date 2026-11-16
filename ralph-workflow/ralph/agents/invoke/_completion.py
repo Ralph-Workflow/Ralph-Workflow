@@ -132,7 +132,7 @@ def _check_process_result(
             check_options,
             returncode,
             stderr_text,
-            stderr_available,
+            stderr_available=stderr_available,
             supervisor=supervisor,
         )
         return

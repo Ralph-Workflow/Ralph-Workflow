@@ -182,12 +182,10 @@ class WorkspaceMonitor:
                 logger.warning(
                     "Workspace monitoring unavailable: predicted watch count exceeds host budget"
                 )
-                try:
+                with suppress(OSError, RuntimeError, ValueError, AttributeError):
                     from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 
                     record_host_contention_signal("watch_capacity_predicted")
-                except Exception:
-                    pass
                 return
             if not self._acquire_cross_process_watch_lock():
                 return
@@ -267,7 +265,7 @@ class WorkspaceMonitor:
             except OSError as exc:
                 failure.append(exc)
                 return False
-            except BaseException as exc:
+            except (RuntimeError, ValueError, TypeError, AttributeError, SystemExit, KeyboardInterrupt) as exc:
                 unexpected.append(exc)
                 return False
             return True
@@ -340,7 +338,7 @@ class WorkspaceMonitor:
                 else:
                     zero_arg = cast("Callable[[], None]", self._on_event)
                     zero_arg()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 logger.opt(exception=True).debug(
                     "workspace monitor: on_event callback raised (suppressed)"
                 )
@@ -429,7 +427,7 @@ class WorkspaceMonitor:
         def _stop() -> bool:
             try:
                 observer.stop()
-            except BaseException as exc:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, SystemExit, KeyboardInterrupt) as exc:
                 failed.append((type(exc), str(exc)))
                 return False
             return True

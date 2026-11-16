@@ -72,7 +72,7 @@ def _resolve_tree_sha_from_workspace(workspace: FsWorkspace) -> str | None:
             tree_sha = data.get("tree_sha")
             if isinstance(tree_sha, str) and tree_sha:
                 return tree_sha
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError):
             pass
 
     repo_path = Path(workspace.root)
@@ -90,7 +90,7 @@ def _resolve_tree_sha_from_workspace(workspace: FsWorkspace) -> str | None:
             auto_seed_default_gitignore(repo_path)
             auto_seed_default_git_exclude(repo_path)
             return seal_pending(repo_path, "run", 1).tree_sha
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
             pass
     return None
 

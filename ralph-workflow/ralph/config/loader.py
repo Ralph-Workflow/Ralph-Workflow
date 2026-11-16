@@ -479,7 +479,6 @@ def load_config(
     try:
         config = UnifiedConfig.model_validate(merged)
         logger.debug("Configuration validated successfully")
-        return config
     except ValidationError as exc:
         offending_path = _attribute_validation_error_to_layer(
             exc,
@@ -494,6 +493,8 @@ def load_config(
         )
         logger.error(format_config_validation_error(exc, offending_path))
         raise SystemExit(1) from exc
+    else:
+        return config
 
 
 def load_local_only(config_path: Path) -> UnifiedConfig:
@@ -511,10 +512,11 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
     _drop_cli_only_fields(data)
     try:
         config = UnifiedConfig.model_validate(data)
-        return config
     except ValidationError as exc:
         logger.error(format_config_validation_error(exc, config_path))
         raise SystemExit(1) from exc
+    else:
+        return config
 
 
 def _attribute_validation_error_to_layer(

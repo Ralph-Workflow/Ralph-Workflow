@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from git import GitCommandError, InvalidGitRepositoryError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import capture_pre_write_contents, snapshot_dirty_paths_strict
@@ -128,7 +128,7 @@ def _skill_sync_written_paths(
 def _worktree_modified_paths(workspace_root: Path, relative: str) -> frozenset[str]:
     try:
         repo = Repo(str(workspace_root), search_parent_directories=False)
-    except (InvalidGitRepositoryError, Exception):
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError):
         return frozenset()
     try:
         raw_output: object = repo.git.diff("--name-only", "--", relative)
@@ -391,9 +391,10 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
             + "\n",
             encoding="utf-8",
         )
-        return True
     except OSError:
         return False
+    else:
+        return True
 
 
 def install_project_baseline_skills(

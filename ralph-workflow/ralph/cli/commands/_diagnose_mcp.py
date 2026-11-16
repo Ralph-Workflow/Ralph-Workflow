@@ -110,7 +110,7 @@ def _render_custom_mcp_server_table(
         return True, ()
     try:
         report = validator(upstreams, strict=False)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         rows.append(
             ("(validator)", "-", _status_text("Error", str(exc), "theme.status.error"), "-", "-")
         )

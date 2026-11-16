@@ -22,7 +22,7 @@ class CaptureSet:
         if self.target != self.target.strip():
             raise ValueError("CaptureSet.target must not carry leading/trailing whitespace")
         if not isinstance(self.cells, tuple):
-            raise ValueError("CaptureSet.cells must be a tuple of CaptureCell instances")
+            raise TypeError("CaptureSet.cells must be a tuple of CaptureCell instances")
         if not self.cells:
             raise ValueError(
                 "CaptureSet.cells must contain at least one cell; "
@@ -32,7 +32,7 @@ class CaptureSet:
             raise ValueError("CaptureSet.run_id must be a non-empty string")
         for cell in self.cells:
             if not isinstance(cell, CaptureCell):
-                raise ValueError("CaptureSet.cells must contain only CaptureCell instances")
+                raise TypeError("CaptureSet.cells must contain only CaptureCell instances")
             if cell.target != self.target:
                 raise ValueError(
                     f"CaptureSet target mismatch: cell targets {cell.target!r} "

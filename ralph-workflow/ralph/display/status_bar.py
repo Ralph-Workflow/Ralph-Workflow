@@ -290,8 +290,8 @@ def _field_overhead_and_label_budgets(
     def _iter_width(
         outer_label: int,
         inner_label: int,
-        with_glyph: bool,
         *,
+        with_glyph: bool,
         include_outer: bool = True,
         include_inner: bool = True,
     ) -> int:
@@ -309,9 +309,9 @@ def _field_overhead_and_label_budgets(
     def _chrome(
         outer_label: int,
         inner_label: int,
+        *,
         with_marker: bool,
         with_glyph: bool,
-        *,
         include_outer: bool = True,
         include_inner: bool = True,
     ) -> int:
@@ -319,7 +319,7 @@ def _field_overhead_and_label_budgets(
         return ml + _iter_width(
             outer_label,
             inner_label,
-            with_glyph,
+            with_glyph=with_glyph,
             include_outer=include_outer,
             include_inner=include_inner,
         )
@@ -327,9 +327,9 @@ def _field_overhead_and_label_budgets(
     def _allocate(
         outer_label: int,
         inner_label: int,
+        *,
         with_marker: bool,
         with_glyph: bool,
-        *,
         include_outer: bool = True,
         include_inner: bool = True,
     ) -> _FieldBudgets | None:
@@ -356,8 +356,8 @@ def _field_overhead_and_label_budgets(
             - _chrome(
                 outer_label,
                 inner_label,
-                with_marker,
-                with_glyph,
+                with_marker=with_marker,
+                with_glyph=with_glyph,
                 include_outer=include_outer,
                 include_inner=include_inner,
             )
@@ -394,8 +394,8 @@ def _field_overhead_and_label_budgets(
             path_budget,
             outer_label if include_outer else 0,
             inner_label if include_inner else 0,
-            with_marker,
-            with_glyph,
+            render_marker=with_marker,
+            render_iter_glyph=with_glyph,
         )
 
     label_forms: tuple[tuple[int, int], ...] = (
@@ -427,8 +427,8 @@ def _field_overhead_and_label_budgets(
                     budget = _allocate(
                         outer_label,
                         inner_label,
-                        with_marker,
-                        with_glyph,
+                        with_marker=with_marker,
+                        with_glyph=with_glyph,
                         include_outer=include_outer,
                         include_inner=include_inner,
                     )
@@ -439,7 +439,7 @@ def _field_overhead_and_label_budgets(
         budget = _allocate(
             _OUTER_DEV_LABEL_MINIMAL_MAX_CHARS,
             _INNER_ANALYSIS_LABEL_MINIMAL_MAX_CHARS,
-            with_marker,
+            with_marker=with_marker,
             with_glyph=False,
             include_outer=False,
             include_inner=False,
@@ -452,8 +452,8 @@ def _field_overhead_and_label_budgets(
         0,
         0,
         0,
-        False,
-        False,
+        render_marker=False,
+        render_iter_glyph=False,
     )
 
 

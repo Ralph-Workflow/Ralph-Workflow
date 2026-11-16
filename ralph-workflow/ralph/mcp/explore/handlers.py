@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 import threading
@@ -97,13 +98,11 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
         store = ExploreStore(index_root)
         generation = 0
     elif persisted_structure is not None and persisted_structure != STRUCTURE_EXTRACTOR_VERSION:
-        try:
+        with contextlib.suppress(sqlite3.Error, OSError, RuntimeError):
             store._conn.execute("DELETE FROM spans")
             store._conn.execute("DELETE FROM symbols")
             store._conn.execute("DELETE FROM edges")
             store._conn.commit()
-        except Exception:
-            pass
     latest_row: sqlite3.Row | None = store.latest_job()
     raw_status: object = row_str(latest_row, "status") if latest_row is not None else ""
     last_status: str | None
@@ -151,7 +150,7 @@ def _arm_cancel_flag(
     registry: dict[str, bool],
     lock: threading.Lock,
     token: str,
-    initial: bool,
+    initial: object,
 ) -> Callable[[], bool]:
     with lock:
         registry[token] = bool(initial)

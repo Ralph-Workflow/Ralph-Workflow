@@ -117,7 +117,7 @@ def _file_blob_sha(abs_path: Path) -> str | None:
     except OSError:
         return None
     blob = b"blob " + str(len(content_bytes)).encode("ascii") + b"\x00" + content_bytes
-    return hashlib.sha1(blob).hexdigest()
+    return hashlib.sha1(blob, usedforsecurity=False).hexdigest()
 
 
 def _symlink_blob_sha(abs_path: Path) -> str | None:
@@ -130,7 +130,7 @@ def _symlink_blob_sha(abs_path: Path) -> str | None:
     except UnicodeEncodeError:
         return None
     blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
-    return hashlib.sha1(blob).hexdigest()
+    return hashlib.sha1(blob, usedforsecurity=False).hexdigest()
 
 
 def _git_blob_sha(repo: Repo, rel_path: str) -> str | None:
@@ -168,7 +168,7 @@ def capture_pre_write_contents(
     recorded: dict[str, str | None] = {}
     try:
         repo = Repo(Path(repo_root))
-    except (InvalidGitRepositoryError, Exception):
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError, RuntimeError, ValueError):
         for path in paths:
             recorded[path] = None
         return recorded
@@ -188,7 +188,6 @@ TargetCommitClass = Literal["tracked", "untracked_ignored", "untracked_new", "no
 def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass | None:
     try:
         route_git_method(repo, "ls_files", ("--error-unmatch", "--", rel_path))
-        return "tracked"
     except GitCommandError as exc:
         if exc.status != 1:
             logger.debug(
@@ -197,9 +196,10 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
                 exc.status,
             )
             return None
+    else:
+        return "tracked"
     try:
         route_git_method(repo, "check_ignore", ("--quiet", rel_path))
-        return "untracked_ignored"
     except GitCommandError as exc:
         if exc.status == 1:
             return "untracked_new"
@@ -208,7 +208,9 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
             rel_path,
             exc.status,
         )
-    return None
+        return None
+    else:
+        return "untracked_ignored"
 
 
 def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> TargetCommitClass:
@@ -258,7 +260,7 @@ def commit_deterministic_writes(
         repo_root_path = Path(repo_root)
         try:
             repo = Repo(repo_root_path)
-        except (InvalidGitRepositoryError, Exception):
+        except (InvalidGitRepositoryError, NoSuchPathError, OSError, RuntimeError, ValueError):
             logger.debug(
                 "commit_deterministic_writes: {} is not a git repo; skipping",
                 repo_root_path,
@@ -372,7 +374,7 @@ def commit_scoped_updates(
         repo_root_path = Path(repo_root)
         try:
             repo = Repo(repo_root_path)
-        except (InvalidGitRepositoryError, Exception):
+        except (InvalidGitRepositoryError, NoSuchPathError, OSError, RuntimeError, ValueError):
             logger.debug(
                 "commit_scoped_updates: {} is not a git repo; skipping auto-commit",
                 repo_root_path,

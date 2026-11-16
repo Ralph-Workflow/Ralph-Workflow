@@ -118,13 +118,13 @@ def emit(
     if main_listener is not None:
         try:
             main_listener(event)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             self._log.debug("idle watchdog: listener raised (suppressed)")
     if event.subagent_activity is not None:
         if subagent_listener is not None:
             try:
                 subagent_listener(event)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 self._log.debug(
                     "idle watchdog: default subagent activity listener raised (suppressed)"
                 )

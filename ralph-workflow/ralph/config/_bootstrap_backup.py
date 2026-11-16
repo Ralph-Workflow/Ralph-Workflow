@@ -50,7 +50,7 @@ def _get_bundled_defaults_dir() -> Path:
 
     policy_loader_file = _module_attr_or_none(loader_mod, "__file__")
     if not isinstance(policy_loader_file, str):
-        raise RuntimeError("Failed to resolve __file__ for ralph.policy.loader module")
+        raise TypeError("Failed to resolve __file__ for ralph.policy.loader module")
 
     bundled_defaults_dir = Path(policy_loader_file).resolve().parent / "defaults"
     if not bundled_defaults_dir.is_dir():
@@ -132,7 +132,7 @@ def _agents_config_alias_reason(target: Path) -> str | None:
 def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
     try:
         data = cast("Mapping[str, object]", load_toml(target))
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError):
         return []
     raw_drains_obj: object = data.get("agent_drains")
     if not isinstance(raw_drains_obj, Mapping):

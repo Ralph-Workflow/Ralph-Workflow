@@ -78,7 +78,7 @@ def test_an_overrun_swallowed_by_code_under_test_still_fails_the_phase() -> None
     ):
         try:
             _burn_main_thread_cpu(1.0)
-        except BaseException as exc:
+        except (budget_module.TestExecutionTimeoutError, KeyboardInterrupt, SystemExit) as exc:
             swallowed.append(type(exc).__name__)
     assert swallowed == ["TestExecutionTimeoutError"]
 

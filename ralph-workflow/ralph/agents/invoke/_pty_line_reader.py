@@ -390,6 +390,7 @@ class PtyLineReader:
 
     def _probe_cpu_idle(
         self,
+        *,
         scoped_active: bool | None,
         alive_by: AliveBy | None,
     ) -> bool:
@@ -409,7 +410,9 @@ class PtyLineReader:
             ):
                 return False
         _now = self._clock.monotonic()
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error
+        ):
             root_pid = self._handle.pid
             try:
                 root_proc = psutil.Process(root_pid)
@@ -435,8 +438,6 @@ class PtyLineReader:
             live_pids = set(child_pids)
             for stale_pid in list(self._cpu_baselines.keys() - live_pids):
                 self._cpu_baselines.pop(stale_pid, None)
-        except Exception:
-            pass
         return False
 
     def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
@@ -486,11 +487,11 @@ class PtyLineReader:
                     scoped_child_count = descendant_count
                     scoped_child_active = descendant_count > 0
                     oldest_child_seconds = descendant_oldest
-                except Exception:
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                     logger.debug(
                         "corroborator: PTY legacy descendant_snapshot fallback failed (suppressed)"
                     )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             logger.debug("corroborator: PTY process monitor count failed (suppressed)")
             scoped_child_count = None
             scoped_child_active = None
@@ -509,12 +510,12 @@ class PtyLineReader:
                     has_os_descendants=bool(scoped_child_active),
                 )
                 alive_by = verdict.alive_by
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                 logger.debug("corroborator: PTY registry snapshot failed (suppressed)")
         elif scoped_child_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
 
-        _cpu_idle = self._probe_cpu_idle(scoped_child_active, alive_by)
+        _cpu_idle = self._probe_cpu_idle(scoped_active=scoped_child_active, alive_by=alive_by)
         _log_stale = self._probe_log_growth(alive_by)
 
         if _cpu_idle or _log_stale:
@@ -600,7 +601,7 @@ class PtyLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(snapshot_line)
                     self._lines_event.set()
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
             logger.opt(exception=True).warning(
                 "PTY read thread for agent={} raised: {}", self._agent_name, exc
             )
@@ -914,7 +915,7 @@ class PtyLineReader:
     def _classify_quiet(self) -> AgentExecutionState:
         try:
             return self._strategy.classify_quiet(self._handle, self._probe)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             logger.opt(exception=True).debug(
                 "idle watchdog: classify_quiet raised for PTY runtime; "
                 "defaulting to WAITING_ON_CHILD"
@@ -983,7 +984,7 @@ class PtyLineReader:
         if callable(snapshot_method):
             try:
                 snapshot_obj: dict[str, object] | None = snapshot_method(now=now)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 snapshot_obj = None
             if snapshot_obj:
                 merged_diag["watchdog_snapshot"] = snapshot_obj
@@ -991,7 +992,7 @@ class PtyLineReader:
         if callable(repetition_diag_method):
             try:
                 repetition_diag: dict[str, str | int] | None = repetition_diag_method()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 repetition_diag = None
             if repetition_diag:
                 merged_diag.update(repetition_diag)
@@ -1154,6 +1155,7 @@ class PtyLineReader:
         self,
         readers: list[threading.Thread],
         unsubscribe: Callable[[], None],
+        *,
         interrupted: bool,
     ) -> None:
         self._monitor_stop.set()
@@ -1387,7 +1389,7 @@ class PtyLineReader:
             self._on_interrupt()
             raise
         finally:
-            self._teardown_read_loop(setup, interrupted[0])
+            self._teardown_read_loop(setup, interrupted=interrupted[0])
 
     def _run_read_loop(self, watchdog: IdleWatchdog) -> Iterator[str]:
         while True:
@@ -1498,7 +1500,7 @@ class PtyLineReader:
             self._remove_relay_sink = relay_register(_mcp_sink)
         return sink_token, subagent_token, _subagent_sink
 
-    def _teardown_read_loop(self, setup: _ReadLoopSetup, interrupted: bool) -> None:
+    def _teardown_read_loop(self, setup: _ReadLoopSetup, *, interrupted: bool) -> None:
         setup.watchdog.record_invocation_end()
         remove_relay_sink = cast(
             "Callable[[], None] | None", getattr(self, "_remove_relay_sink", None)
@@ -1512,7 +1514,7 @@ class PtyLineReader:
             self._monitor.set_on_event(None)
         lazy_tails_obj: object = getattr(self, "_subagent_tails", None)
         if isinstance(lazy_tails_obj, ClaudeSubagentTranscriptTails):
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError, RuntimeError, ValueError, AttributeError):
                 lazy_tails_obj.stop()
         self._cleanup(
             [
@@ -1522,7 +1524,7 @@ class PtyLineReader:
                 setup.completion_reader,
             ],
             setup.unsubscribe,
-            interrupted,
+            interrupted=interrupted,
         )
         if self._raw_overflow is not None:
             self._capture_abandoned_lines()

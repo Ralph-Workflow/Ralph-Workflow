@@ -388,7 +388,7 @@ def _fresh_theme(styles: Mapping[str, str]) -> Theme:
 
 
 def theme_for_background(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> Theme:
     if surface_hex is not None:
         return _fresh_theme(_build_theme_styles(_palette.resolve_palette(surface_hex)))
@@ -586,7 +586,7 @@ _PREVIEW_FOREGROUND_ON_UNKNOWN_BG: Final[str] = _palette.solve_dual_safe(
 
 
 def preview_foreground_for_background(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> str:
     if surface_hex is not None:
         return _preview_foreground_for_surface_cached(surface_hex)
@@ -598,7 +598,7 @@ def preview_foreground_for_background(
 
 
 def preview_background_for_background(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> str:
     if surface_hex is not None:
         return _palette.derive_preview_background(surface_hex)
@@ -618,7 +618,7 @@ _DIFF_REMOVED_FILL_ON_LIGHT_BG, _DIFF_ADDED_FILL_ON_LIGHT_BG = _derive_diff_fill
 
 
 def display_styles_for_background(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> Mapping[str, str]:
     if surface_hex is not None:
         return _build_display_styles(_palette.resolve_palette(surface_hex))
@@ -642,7 +642,7 @@ _diff_token_foregrounds_for_surface_cached = lru_cache(maxsize=8)(
 
 
 def diff_token_foregrounds(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> tuple[str, str]:
     if surface_hex is not None:
         return _diff_token_foregrounds_for_surface_cached(surface_hex)
@@ -657,7 +657,7 @@ def diff_token_foregrounds(
 
 
 def diff_fill_styles(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> tuple[str, str] | None:
     if surface_hex is not None:
         return _derive_diff_fills(surface_hex)
@@ -676,7 +676,7 @@ _syntax_theme_for_surface_cached = lru_cache(maxsize=8)(_syntax_theme_for_surfac
 
 
 def syntax_theme_for_background(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> SyntaxTheme:
     if surface_hex is not None:
         return _syntax_theme_for_surface_cached(surface_hex)
@@ -688,7 +688,7 @@ def syntax_theme_for_background(
 
 
 def pick_status_styles(
-    terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    terminal_bg_is_light: object | None, surface_hex: str | None = None
 ) -> dict[str, tuple[str, str, str]]:
     if surface_hex is not None:
         return _build_status_styles(_palette.resolve_palette(surface_hex))
@@ -702,7 +702,7 @@ def pick_status_styles(
 def _state_payload_for_background(
     state: str,
     *,
-    terminal_bg_is_light: bool | None,
+    terminal_bg_is_light: object | None,
 ) -> tuple[str, str, str]:
     table = pick_status_styles(terminal_bg_is_light)
     try:
@@ -714,7 +714,7 @@ def _state_payload_for_background(
 
 
 def status_styles_for_context(
-    terminal_bg_is_light: bool | None,
+    terminal_bg_is_light: object | None,
 ) -> dict[str, tuple[str, str, str]]:
     return pick_status_styles(terminal_bg_is_light)
 

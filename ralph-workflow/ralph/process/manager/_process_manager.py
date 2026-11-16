@@ -186,7 +186,7 @@ def _query_proc_status(proc: _PsutilProcessLike, mod: _PsutilModuleLike) -> str:
         return "no_such_process"
     except mod.AccessDenied:
         return "access_denied"
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return "unknown"
 
 
@@ -1055,7 +1055,7 @@ class ProcessManager:
         while not self._stop_event.wait(timeout=interval):
             try:
                 self._reconcile_stale_entries()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError):
                 logger.exception("ProcessManager zombie reaper iteration failed")
 
     def cleanup_orphans(
@@ -1944,7 +1944,7 @@ class ProcessManager:
                 status = "no_such_process"
             except mod.AccessDenied:
                 status = "access_denied"
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError):
                 status = "unknown"
 
         if not cmd:
@@ -2006,5 +2006,5 @@ class ProcessManager:
         for callback in list(self._listeners.values()):
             try:
                 callback(event)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, LookupError, AssertionError):
                 logger.exception("ProcessManager listener raised an exception")

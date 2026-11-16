@@ -34,8 +34,8 @@ def _build_markdown_palette(preview_surface: str | None) -> tuple[str, str, str,
 
 
 _PALETTES: dict[bool | None, tuple[str, str, str, str, str, str]] = {
-    False: _build_markdown_palette(preview_background_for_background(False)),
-    True: _build_markdown_palette(preview_background_for_background(True)),
+    False: _build_markdown_palette(preview_background_for_background(terminal_bg_is_light=False)),
+    True: _build_markdown_palette(preview_background_for_background(terminal_bg_is_light=True)),
     None: _build_markdown_palette(None),
 }
 
@@ -54,7 +54,7 @@ def _markdown_palette_for_surface_uncached(
 _markdown_palette_for_surface_cached = lru_cache(maxsize=8)(_markdown_palette_for_surface_uncached)
 
 
-def _styles(terminal_bg_is_light: bool | None, surface_hex: str | None = None) -> dict[str, str]:
+def _styles(*, terminal_bg_is_light: bool | None, surface_hex: str | None = None) -> dict[str, str]:
     default, accent, link, url, bullet, rule = (
         _markdown_palette_for_surface(surface_hex)
         if surface_hex is not None
@@ -84,5 +84,7 @@ def _styles(terminal_bg_is_light: bool | None, surface_hex: str | None = None) -
 def markdown_theme_context(
     console: Console, *, terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> Iterator[None]:
-    with console.use_theme(Theme(_styles(terminal_bg_is_light, surface_hex=surface_hex))):
+    with console.use_theme(
+        Theme(_styles(terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex))
+    ):
         yield

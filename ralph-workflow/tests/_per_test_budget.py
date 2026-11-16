@@ -39,7 +39,7 @@ def wall_hang_cap(budget_seconds: float) -> float:
 
 
 def validated_budget(value: object, *, source: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or type(value) not in (int, float):
         raise ValueError(f"{source} must be a number of seconds (got {value!r})")
     seconds = float(value)
     if not (math.isfinite(seconds) and seconds > 0):

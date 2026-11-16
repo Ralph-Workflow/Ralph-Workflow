@@ -215,7 +215,7 @@ class ClaudeSubagentTranscriptTails:
                 self._advance_all_tails()
                 if self._monitor_stop.wait(self._poll_interval):
                     break
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             return
 
     def _discover_new_files(self) -> None:
@@ -273,20 +273,20 @@ class ClaudeSubagentTranscriptTails:
         meta_dict: dict[str, object] | None,
     ) -> None:
         for raw_line in chunk.splitlines():
-            try:
+            with contextlib.suppress(
+                json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, KeyError
+            ):
                 events = parser.feed(raw_line)
-            except Exception:
-                continue
-            for event in events:
-                if event.kind == "session":
-                    continue
-                summary = _summarize_event(event, meta_dict, transcript_path)
-                if not summary:
-                    continue
-                try:
-                    self._subagent_sink(summary)
-                except Exception:
-                    continue
+                for event in events:
+                    if event.kind == "session":
+                        continue
+                    summary = _summarize_event(event, meta_dict, transcript_path)
+                    if not summary:
+                        continue
+                    with contextlib.suppress(
+                        OSError, RuntimeError, ValueError, TypeError, AttributeError
+                    ):
+                        self._subagent_sink(summary)
 
     def _emit_r7(
         self,
@@ -304,10 +304,8 @@ class ClaudeSubagentTranscriptTails:
             dispatch_tool_use_id=tool_use_id,
             dispatch_tool_name=tool_name,
         )
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             self._r7_sink(diag)
-        except Exception:
-            return
 
 
 def _default_clock() -> float:

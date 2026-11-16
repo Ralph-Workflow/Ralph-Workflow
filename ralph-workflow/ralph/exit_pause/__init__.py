@@ -92,7 +92,7 @@ def _detect_parent_on_windows() -> str | None:
         if parent is None:
             return None
         return parent.name()
-    except Exception:
+    except (psutil.Error, OSError):
         return None
 
 

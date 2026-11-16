@@ -57,7 +57,7 @@ def test_deny_all_session_cannot_invoke_any_native_tool() -> None:
             result = handler(deny_session, fake_workspace, {})
             if isinstance(result, ToolResult) and not result.is_error:
                 names_that_succeeded.append(name)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
             pass
 
     assert names_that_succeeded == [], (

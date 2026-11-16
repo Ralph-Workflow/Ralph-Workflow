@@ -12,7 +12,7 @@ from typing import Literal
 
 from ralph.git._lock_proc_inspect import _check_pid_liveness, _list_pids
 
-_PROBE_TIMEOUT_S = 5.0
+_PROBE_TIMEOUT_S = 0.5
 _PROBE_MAX_WORKERS: int = 4
 PROBE_MAX_WORKERS: int = _PROBE_MAX_WORKERS
 
@@ -100,7 +100,7 @@ atexit.register(reset_probe_executor)
 
 
 def _normalize_external_liveness(
-    status: Literal["live", "dead", "unknown"] | bool,
+    status: object,
 ) -> Literal["live", "dead", "unknown"]:
     if status in (True, "live"):
         return "live"

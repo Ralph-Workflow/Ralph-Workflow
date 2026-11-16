@@ -93,7 +93,7 @@ def _tty_fd() -> tuple[int, bool] | None:
             os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY),
             True,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return None
 
 
@@ -112,7 +112,7 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
     try:
         original = termios.tcgetattr(fd)
         set_global_snapshot(original)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         if close_fd:
             with contextlib.suppress(Exception):
                 os.close(fd)
@@ -124,7 +124,7 @@ def _probe(timeout: float) -> tuple[bool, str | None]:
             os.write(fd, _OSC11_QUERY.encode())
             reply = _read_reply(fd, timeout=timeout)
             parsed_color = parse_osc11_reply(reply)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return True, None
     finally:
         with contextlib.suppress(Exception):

@@ -48,7 +48,7 @@ def _validate_string_tuple(
 
 def _validate_viewports(viewports: object) -> None:
     if not isinstance(viewports, tuple):
-        raise ValueError("CaptureRequest.viewports must be a tuple of Viewport instances")
+        raise TypeError("CaptureRequest.viewports must be a tuple of Viewport instances")
     if len(viewports) < MIN_VIEWPORTS:
         raise ValueError(
             f"CaptureRequest must cover at least {MIN_VIEWPORTS} viewports "
@@ -56,15 +56,15 @@ def _validate_viewports(viewports: object) -> None:
         )
     for viewport in viewports:
         if not isinstance(viewport, Viewport):
-            raise ValueError("CaptureRequest.viewports must contain only Viewport instances")
+            raise TypeError("CaptureRequest.viewports must contain only Viewport instances")
 
 
 def _validate_matrix_cells(matrix: object) -> None:
     if not isinstance(matrix, tuple):
-        raise ValueError("CaptureRequest.matrix must be a tuple of CaptureCell instances")
+        raise TypeError("CaptureRequest.matrix must be a tuple of CaptureCell instances")
     for cell in matrix:
         if not isinstance(cell, CaptureCell):
-            raise ValueError("CaptureRequest.matrix must contain only CaptureCell instances")
+            raise TypeError("CaptureRequest.matrix must contain only CaptureCell instances")
 
 
 def _expected_matrix(

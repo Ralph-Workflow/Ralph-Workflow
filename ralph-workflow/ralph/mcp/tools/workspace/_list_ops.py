@@ -140,7 +140,7 @@ def _collect_matching_files(
 ) -> list[str]:
     try:
         all_files: list[str] = list(workspace.iter_files(base_path))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError, NotImplementedError):
         all_files = _collect_files_recursive(workspace, base_path)
 
     matches: list[str] = []

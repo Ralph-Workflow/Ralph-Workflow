@@ -91,7 +91,7 @@ class _PsutilProcessAdapter:
             str(key): int(value) for key, value in self.raw.info.items() if isinstance(value, int)
         }
 
-    def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]:
+    def children(self, *, recursive: bool = False) -> Sequence[_PsutilProcessLike]:
         return tuple(_PsutilProcessAdapter(proc) for proc in self.raw.children(recursive=recursive))
 
     def terminate(self) -> None:

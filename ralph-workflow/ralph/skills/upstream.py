@@ -187,7 +187,7 @@ def maybe_update_universal_skills(
 ) -> UpdateOutcome:
     try:
         return _run_update(enabled=enabled, now=now, http=http)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return UpdateOutcome(
             status="failed",
             error="unexpected-error",
@@ -479,7 +479,7 @@ def _parse_release_tag(body: bytes) -> tuple[str | None, str | None]:
 def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
     try:
         status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return (None, _transport_error_reason(exc, "release-api"))
     if status == HTTP_NOT_FOUND:
         return (None, NO_RELEASE_ERROR)
@@ -494,7 +494,7 @@ def _load_release_payload(
     archive_url = source.archive_url_template.format(tag=tag)
     try:
         status, body = http(archive_url, REQUEST_TIMEOUT_SECONDS)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return (None, _transport_error_reason(exc, "archive"))
     if status != HTTP_OK:
         return (None, f"archive-status-{status}")
@@ -502,7 +502,7 @@ def _load_release_payload(
         return (None, "archive-too-large")
     try:
         payload = extract_archive(body, _archive_limits(source))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return (None, str(exc))
     return (payload, None)
 

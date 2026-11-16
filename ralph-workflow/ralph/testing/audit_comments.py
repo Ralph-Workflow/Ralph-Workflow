@@ -232,7 +232,7 @@ def scan_python_source(text: str, path: str) -> list[Finding]:
     return findings
 
 
-def _starts_comment(text: str, index: int, yaml_style: bool, inline_hash: bool) -> bool:
+def _starts_comment(text: str, index: int, *, yaml_style: bool, inline_hash: bool) -> bool:
     if index == 0:
         return True
     previous = text[index - 1]
@@ -259,7 +259,7 @@ def _is_make_recipe_literal(text: str, index: int) -> bool:
 class _ScanState:
     __slots__ = ("line", "quote", "triple")
 
-    def __init__(self, line: int = 1, quote: str = "", triple: bool = False) -> None:
+    def __init__(self, line: int = 1, quote: str = "", *, triple: bool = False) -> None:
         self.line = line
         self.quote = quote
         self.triple = triple
@@ -368,7 +368,7 @@ def _scan_hash_comments(text: str, path: str, mode: str) -> list[Finding]:
             index = end + 1
             continue
         if char == "#":
-            if not _starts_comment(text, index, yaml_style, inline_hash):
+            if not _starts_comment(text, index, yaml_style=yaml_style, inline_hash=inline_hash):
                 index += 1
                 continue
             if inline_hash and mode == MODE_MAKE and _is_make_recipe_literal(text, index):
@@ -418,7 +418,7 @@ def _skip_quoted(text: str, index: int, quote: str) -> int:
     return length
 
 
-def _scan_c_style_comments(text: str, path: str, line_comments: bool) -> list[Finding]:
+def _scan_c_style_comments(text: str, path: str, *, line_comments: bool) -> list[Finding]:
     findings: list[Finding] = []
     line = 1
     index = 0
@@ -518,9 +518,9 @@ def scan_source(text: str, path: str, mode: str) -> list[Finding]:
     elif mode == MODE_YAML:
         findings = _scan_yaml_comments(text, path)
     elif mode == MODE_CSS:
-        findings = _scan_c_style_comments(text, path, False)
+        findings = _scan_c_style_comments(text, path, line_comments=False)
     elif mode == MODE_JS:
-        findings = _scan_c_style_comments(text, path, True)
+        findings = _scan_c_style_comments(text, path, line_comments=True)
     else:
         findings = _scan_hash_comments(text, path, mode)
     return findings

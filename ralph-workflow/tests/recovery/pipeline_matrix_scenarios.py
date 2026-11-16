@@ -580,7 +580,7 @@ def run_matrix_scenario(
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
         if not isinstance(target, InvokeAgentEffect):
-            raise AssertionError("matrix invocation requires an InvokeAgentEffect")
+            raise TypeError("matrix invocation requires an InvokeAgentEffect")
         effect = target
         script = scripts.pop(0)
         if script.agent != effect.agent_name:
@@ -588,7 +588,7 @@ def run_matrix_scenario(
         invocations.append(effect.agent_name)
         finalizer = kwargs["attempt_finalizer"]
         if not isinstance(finalizer, _AttemptFinalizer):
-            raise AssertionError("matrix invocation requires an attempt finalizer")
+            raise TypeError("matrix invocation requires an attempt finalizer")
         exc = _script_exception(script) if script.failed else None
         finalizer(
             AttemptFinalization(
@@ -653,14 +653,14 @@ def run_matrix_scenario_with_selection(
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
         if not isinstance(target, InvokeAgentEffect):
-            raise AssertionError("matrix invocation requires an InvokeAgentEffect")
+            raise TypeError("matrix invocation requires an InvokeAgentEffect")
         script = scripts.pop(0)
         if script.agent != target.agent_name:
             raise AssertionError(f"expected {script.agent}, got {target.agent_name}")
         invocations.append(target.agent_name)
         finalizer = kwargs["attempt_finalizer"]
         if not isinstance(finalizer, _AttemptFinalizer):
-            raise AssertionError("matrix invocation requires an attempt finalizer")
+            raise TypeError("matrix invocation requires an attempt finalizer")
         finalizer(
             AttemptFinalization(
                 1,
@@ -830,7 +830,7 @@ def _observe(
     ledger_snapshot = controller.ledger.snapshot()
     raw_entries = ledger_snapshot["entries"]
     if not isinstance(raw_entries, dict):
-        raise AssertionError("ledger snapshot entries must be a dictionary")
+        raise TypeError("ledger snapshot entries must be a dictionary")
     status = controller.ledger.status(PHASE, agent)
     waiting_payload = tuple(controller.waiting_state_payload(PHASE, list(AGENTS)))
     store_snap = controller.unavailability_store.snapshot()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -28,6 +29,7 @@ from ralph.config.loader import (
 from ralph.diagnostics.fs_health import FsHealth
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import resolve_active_display
+from ralph.git.errors import GitOperationError
 from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
 from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
@@ -124,11 +126,9 @@ def diagnose_command(
     prompt_exists = prompt_path.exists()
     prompt_has_sentinel = False
     if prompt_exists:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             sentinel = _load_starter_prompt_sentinel()
             prompt_has_sentinel = sentinel in prompt_path.read_text(encoding="utf-8")
-        except Exception:
-            pass
 
     next_steps = build_next_steps(
         validation_ok=validation_ok,
@@ -328,8 +328,6 @@ def _run_preflight_validation(
         rows.append(("Agent chains", Text("Satisfiable", style="theme.status.success"), "", "", ""))
         rows.append(("Recovery config", Text("Valid", style="theme.status.success"), "", "", ""))
         _emit_simple_table(display, "Pre-flight Validation", rows)
-        return True
-
     except PolicyValidationError as e:
         rows.append(
             (
@@ -342,10 +340,12 @@ def _run_preflight_validation(
         )
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return False
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         rows.append(("Pre-flight", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return False
+    else:
+        return True
 
 
 def _check_version(*, display: object, allow_network: bool) -> None:
@@ -354,7 +354,7 @@ def _check_version(*, display: object, allow_network: bool) -> None:
     rows: list[tuple[object, ...]] = []
     try:
         status = update_status(allow_network=allow_network)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return
 
     rows.append(("Installed version", status.current_version, "", "", ""))
@@ -397,7 +397,7 @@ def _check_git_repo(*, display: object) -> bool:
     try:
         repo_root = find_repo_root()
         rows.append(("Repository root", str(repo_root), "", "", ""))
-    except Exception as e:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError) as e:
         rows.append(
             (
                 "Repository",
@@ -428,7 +428,7 @@ def _check_git_repo(*, display: object) -> bool:
                     "",
                 )
             )
-    except Exception as e:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError) as e:
         rows.append(
             ("Working tree", _status_text("Error", str(e), "theme.status.error"), "", "", "")
         )
@@ -451,7 +451,7 @@ def _check_configuration(
     workspace_scope: WorkspaceScope | None = None
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         workspace_scope = None
 
     from ralph.config.bootstrap import collect_unreadable_config_files
@@ -481,7 +481,7 @@ def _check_configuration(
         rows.append(
             ("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled), "", "", "")
         )
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         load_ok = False
         rows.append(
             ("Config loaded", _status_text("Error", str(e), "theme.status.error"), "", "", "")
@@ -501,31 +501,23 @@ def _collect_unknown_field_rows(
     findings: list[tuple[str, str | None]] = []
 
     global_path = _global_config_path()
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         global_data = load_toml(global_path)
         findings.extend(_findings_with_path(global_data, global_path))
-    except Exception:
-        pass
 
     if config_path is not None:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             local_data = load_toml(config_path)
             findings.extend(_findings_with_path(local_data, config_path))
-        except Exception:
-            pass
     elif workspace_scope is not None:
         local_path = workspace_scope.local_config_path
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             local_data = load_toml(local_path)
             findings.extend(_findings_with_path(local_data, local_path))
-        except Exception:
-            pass
         for propagated_path in workspace_scope.propagated_config_paths:
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                 propagated_data = load_toml(propagated_path)
                 findings.extend(_findings_with_path(propagated_data, propagated_path))
-            except Exception:
-                pass
 
     for field_path, suggestion in findings:
         fix = (
@@ -624,7 +616,7 @@ def _check_agents_impl(
                     rows.append((name, config_cell, path_status, install_hint, config_hint))
                 else:
                     rows.append((name, config_cell, path_status, "", ""))
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         rows.append(("Agents", _status_text("Error", str(e), "theme.status.error"), "-", "", ""))
         _emit_simple_table(display, "Agents", rows)
         return True

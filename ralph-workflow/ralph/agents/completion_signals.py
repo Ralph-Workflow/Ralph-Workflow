@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 
 
-def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> Evidence:
+def _bool_evidence(*, value: bool, holding_detail: str, absent_detail: str) -> Evidence:
     if value:
         return Evidence(
             holds=True,
@@ -59,7 +59,7 @@ class CompletionSignals:
     def __post_init__(self) -> None:
         if not isinstance(self.required_artifact_present, Evidence):
             coerced = _bool_evidence(
-                bool(self.required_artifact_present),
+                value=bool(self.required_artifact_present),
                 holding_detail=(
                     "required artifact receipt present (graded at "
                     "WORKSPACE_EFFECT from legacy bool field; upgrade "
@@ -71,7 +71,7 @@ class CompletionSignals:
             object.__setattr__(self, "required_artifact_present", coerced)
         if not isinstance(self.completion_sentinel_present, Evidence):
             coerced = _bool_evidence(
-                bool(self.completion_sentinel_present),
+                value=bool(self.completion_sentinel_present),
                 holding_detail=(
                     "completion sentinel present (graded at "
                     "WORKSPACE_EFFECT from legacy bool field; upgrade "

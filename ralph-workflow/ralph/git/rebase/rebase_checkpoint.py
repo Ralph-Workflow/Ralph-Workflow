@@ -61,12 +61,12 @@ def _lock_path() -> Path:
 
 def _json_object(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
-        raise ValueError("Checkpoint payload must be a JSON object")
+        raise TypeError("Checkpoint payload must be a JSON object")
 
     payload: dict[str, object] = {}
     for key, item in value.items():
         if not isinstance(key, str):
-            raise ValueError("Checkpoint payload keys must be strings")
+            raise TypeError("Checkpoint payload keys must be strings")
         payload[key] = item
     return payload
 
@@ -163,21 +163,21 @@ class RebaseCheckpoint:
     def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
         phase_value = data.get("phase")
         if not isinstance(phase_value, str):
-            raise ValueError("Checkpoint phase must be a string")
+            raise TypeError("Checkpoint phase must be a string")
         try:
             phase = RebasePhase(phase_value)
         except ValueError as exc:
             raise ValueError(f"Unknown checkpoint phase: {phase_value!r}") from exc
         upstream = data.get("upstream_branch", "")
         if not isinstance(upstream, str):
-            raise ValueError("Checkpoint upstream_branch must be a string")
+            raise TypeError("Checkpoint upstream_branch must be a string")
         conflicts = _validated_string_list(data, "conflicted_files")
         resolved = _validated_string_list(data, "resolved_files")
         error_count = _validated_nonnegative_int(data, "error_count")
         phase_error_count = _validated_nonnegative_int(data, "phase_error_count")
         timestamp = data.get("timestamp")
         if not isinstance(timestamp, str):
-            raise ValueError("Checkpoint timestamp must be a string")
+            raise TypeError("Checkpoint timestamp must be a string")
         try:
             datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except ValueError as exc:
@@ -297,12 +297,13 @@ def load_rebase_checkpoint() -> RebaseCheckpoint | None:
         payload = _load_checkpoint_payload(path)
         checkpoint = RebaseCheckpoint.from_dict(payload)
         validate_checkpoint(checkpoint)
-        return checkpoint
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
         restored = restore_from_backup()
         if restored is not None:
             return restored
         raise
+    else:
+        return checkpoint
 
 
 def clear_rebase_checkpoint() -> None:

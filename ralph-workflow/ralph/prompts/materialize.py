@@ -312,9 +312,11 @@ def read_retry_hint(
     if not workspace.exists(source_path):
         return ""
     try:
-        return workspace.read(source_path)
-    except Exception:
+        content = workspace.read(source_path)
+    except (OSError, UnicodeDecodeError, ValueError, RuntimeError):
         return ""
+    else:
+        return content
 
 
 def _retry_hint_drain(phase: str, pipeline_policy: PipelinePolicy | None) -> str:
@@ -1343,7 +1345,7 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         try:
             repo = Repo(workspace_root)
             untracked = repo.git.ls_files("--others", "--exclude-standard").strip()
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             untracked = ""
         finally:
             close = cast("Callable[[], None] | None", getattr(repo, "close", None))

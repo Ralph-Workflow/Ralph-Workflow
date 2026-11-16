@@ -341,7 +341,7 @@ def drive_integration(
                 rebase_stop_resolver=counting,
             )
             error: str | None = None
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
             result = None
             error = f"{type(exc).__name__}: {exc}"
         finally:

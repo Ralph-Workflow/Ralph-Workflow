@@ -39,7 +39,7 @@ def _now_iso() -> str:
 def _get_ralph_version() -> str:
     try:
         return importlib.metadata.version("ralph-workflow")
-    except Exception:
+    except (importlib.metadata.PackageNotFoundError, OSError, ValueError):
         return ""
 
 
@@ -49,7 +49,7 @@ def _find_configured_docs_mcp_url(workspace_root: Path | None = None) -> str | N
             resolve_workspace_scope(workspace_root) if workspace_root else resolve_workspace_scope()
         )
         mcp_config = load_mcp_config(workspace_scope=scope)
-    except (McpConfigError, Exception):
+    except (McpConfigError, OSError, ValueError, RuntimeError):
         return None
     for server in mcp_config.mcp_servers.values():
         if server.url and is_supported_docs_mcp_url(server.url):
@@ -199,12 +199,12 @@ class SkillManager:
                             "Skill auto-commit during --force-init-skills failed (non-fatal): {}",
                             result.error,
                         )
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError) as exc:
                     _logger.warning(
                         "Skill auto-commit during --force-init-skills raised (non-fatal): {}",
                         exc,
                     )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             return self._load_state(), ["reinstall-exception"]
 
         merged_failures: list[str] = list(user_failures) + list(project_failures)

@@ -370,11 +370,12 @@ class RawOverflowLog:
                 if self._now() - self._last_flush >= self._flush_interval:
                     fh.flush()
                     self._last_flush = self._now()
-                return True
             except (OSError, PermissionError):
                 self._close_locked()
                 self._disabled = True
                 return False
+            else:
+                return True
 
     def flush(self) -> None:
         with self._lock:

@@ -70,6 +70,22 @@ def _capture_file_state(
     return True, backend.read_text(path, encoding="utf-8")
 
 
+_ROLLBACK_EXCEPTIONS = (
+    OSError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    AttributeError,
+    ExceptionGroup,
+)
+
+
+def _assert_canonical_write_matches(backend: FileBackend, path: Path, expected: str) -> None:
+    if backend.read_text(path, encoding="utf-8") != expected:
+        raise OSError(f"canonical artifact write was corrupt: {path}")
+
+
 def _restore_file_state(
     backend: FileBackend,
     path: Path,
@@ -161,7 +177,7 @@ def _rollback_submission(
     if handoff_path is not None and handoff_state is not None:
         try:
             _restore_file_state(backend, handoff_path, handoff_state)
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     if submission_snapshot_path_value is not None and submission_snapshot_state is not None:
         try:
@@ -170,11 +186,11 @@ def _rollback_submission(
                 submission_snapshot_path_value,
                 submission_snapshot_state,
             )
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     try:
         _restore_file_state(backend, artifact_path, artifact_state)
-    except Exception as exc:
+    except _ROLLBACK_EXCEPTIONS as exc:
         rollback_errors.append(exc)
     rollback_history_paths = set(history_paths)
     if history_dir is not None:
@@ -182,12 +198,12 @@ def _rollback_submission(
             rollback_history_paths.update(
                 set(backend.glob(history_dir, "*.md")) - history_paths_before
             )
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     for history_path in sorted(rollback_history_paths):
         try:
             backend.unlink(history_path, missing_ok=True)
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     if rollback_history_paths:
         try:
@@ -196,7 +212,7 @@ def _rollback_submission(
                 artifact_type,
                 backend=backend,
             )
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     if run_id is not None:
         try:
@@ -209,7 +225,7 @@ def _rollback_submission(
                 backend=backend,
                 preexisting=restorable_receipt_preexisting,
             )
-        except Exception as exc:
+        except _ROLLBACK_EXCEPTIONS as exc:
             rollback_errors.append(exc)
     if rollback_errors:
         raise ExceptionGroup(
@@ -314,8 +330,7 @@ def submit_artifact_canonical(
             encoding="utf-8",
             sync_directory=artifact_type == "plan",
         )
-        if backend.read_text(artifact_path, encoding="utf-8") != markdown:
-            raise OSError(f"canonical artifact write was corrupt: {artifact_path}")
+        _assert_canonical_write_matches(backend, artifact_path, markdown)
 
         _write_handoff(backend, handoff_path, markdown, artifact_type)
 
@@ -366,7 +381,7 @@ def submit_artifact_canonical(
                 submission_snapshot_path_value=snapshot_path,
                 submission_snapshot_state=snapshot_state,
             )
-        except Exception as rollback_error:
+        except _ROLLBACK_EXCEPTIONS as rollback_error:
             raise ExceptionGroup(
                 "Canonical artifact submission failed and rollback was incomplete",
                 [submission_error, rollback_error],

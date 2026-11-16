@@ -11,6 +11,7 @@ from typing import TextIO
 
 import pytest
 from git import Repo
+from git.exc import GitError
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushStatus
@@ -79,7 +80,7 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
         pass
     try:
         return _repo(root).commit(ref_name).hexsha
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         pass
     return None
 
@@ -89,7 +90,7 @@ def _write_local_config(repo_root: Path, key: str, value: str) -> bool:
         repo = _repo(repo_root)
         with repo.config_writer() as config:
             config.set_value("user", key.split(".", 1)[1], value)
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         return False
     return True
 

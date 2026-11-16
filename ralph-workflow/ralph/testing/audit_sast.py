@@ -153,12 +153,12 @@ def _parse_results(stdout: str, sources: Mapping[str, str]) -> list[SastFinding]
     decoded: object = json.loads(stdout)
     if not isinstance(decoded, dict):
         msg = "the Bandit report is not a JSON object"
-        raise RuntimeError(msg)
+        raise TypeError(msg)
     payload: dict[str, object] = decoded
     results = payload.get("results")
     if not isinstance(results, list):
         msg = "the Bandit report carries no 'results' list"
-        raise RuntimeError(msg)
+        raise TypeError(msg)
     findings: list[SastFinding] = []
     for item in results:
         if not isinstance(item, dict):

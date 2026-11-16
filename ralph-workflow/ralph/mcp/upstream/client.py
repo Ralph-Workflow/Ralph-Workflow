@@ -203,7 +203,7 @@ def _extract_data(block: Mapping[str, object]) -> bytes | None:
     if isinstance(data, str) and data:
         try:
             return base64.b64decode(data)
-        except Exception:
+        except (ValueError, TypeError):
             return None
     source = block.get("source")
     if isinstance(source, Mapping):
@@ -211,7 +211,7 @@ def _extract_data(block: Mapping[str, object]) -> bytes | None:
         if isinstance(src_data, str) and src_data:
             try:
                 return base64.b64decode(src_data)
-            except Exception:
+            except (ValueError, TypeError):
                 return None
     return None
 
@@ -283,7 +283,7 @@ def _normalize_media_block(
                 cache_path = write_durable_media_cache(_workspace, artifact_id, raw_bytes)
                 if cache_path:
                     byte_loader = _workspace_artifact_loader(_workspace, cache_path, "")
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError):
                 cache_path = ""
                 byte_loader = None
         entry = _session.media_manifest.add(
@@ -427,6 +427,32 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
     return _call
 
 
+_CALL_TIMEOUT_EXCEPTIONS = (
+    ArithmeticError,
+    AssertionError,
+    AttributeError,
+    BufferError,
+    EOFError,
+    ImportError,
+    LookupError,
+    MemoryError,
+    NameError,
+    OSError,
+    ReferenceError,
+    RuntimeError,
+    StopIteration,
+    SyntaxError,
+    SystemError,
+    TypeError,
+    UpstreamCallError,
+    ValueError,
+    Warning,
+    ExceptionGroup,
+    KeyboardInterrupt,
+    SystemExit,
+)
+
+
 def _with_call_timeout(
     caller: JsonRpcCaller, method: str, params: JsonObject, timeout_s: float
 ) -> JsonObject:
@@ -436,7 +462,7 @@ def _with_call_timeout(
     def _run() -> None:
         try:
             result["value"] = caller(method, params)
-        except BaseException as exc:
+        except _CALL_TIMEOUT_EXCEPTIONS as exc:
             result["error"] = exc
 
     thread = threading.Thread(target=_run, daemon=True)

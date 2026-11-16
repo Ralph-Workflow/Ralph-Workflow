@@ -263,7 +263,7 @@ def _sigcont_old_and_wait_for_recovery(
                 data = conn.recv(1024)
             if data == b"PONG_old\n":
                 return
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             time.sleep(0.02)
 
 

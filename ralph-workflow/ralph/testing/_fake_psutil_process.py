@@ -17,6 +17,7 @@ class FakePsutilProcess:
     def __init__(
         self,
         pid: int,
+        *,
         ppid: int = 0,
         _running: bool = True,
         _status: str = "sleeping",
@@ -56,7 +57,7 @@ class FakePsutilProcess:
     def create_time(self) -> float:
         return self._create_time
 
-    def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+    def children(self, *, recursive: bool = False) -> list[FakePsutilProcess]:
         return self._children
 
     def terminate(self) -> None:

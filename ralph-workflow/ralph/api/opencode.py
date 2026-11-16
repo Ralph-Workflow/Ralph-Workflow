@@ -85,7 +85,7 @@ def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
             if not isinstance(entry, dict):
                 msg = "Model catalog entries must be JSON objects"
                 logger.error(msg)
-                raise ValueError(msg)
+                raise TypeError(msg)
             parsed.append({str(key): value for key, value in entry.items()})
         return parsed
 
@@ -95,17 +95,17 @@ def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
             if not isinstance(provider_entry, dict):
                 msg = "Model catalog provider entries must be JSON objects"
                 logger.error(msg)
-                raise ValueError(msg)
+                raise TypeError(msg)
             models = provider_entry.get("models")
             if not isinstance(models, dict):
                 msg = "Model catalog provider entries must contain a models object"
                 logger.error(msg)
-                raise ValueError(msg)
+                raise TypeError(msg)
             for model_key, model_entry in models.items():
                 if not isinstance(model_entry, dict):
                     msg = "Model catalog model entries must be JSON objects"
                     logger.error(msg)
-                    raise ValueError(msg)
+                    raise TypeError(msg)
                 model_name = model_entry.get("name")
                 modalities = model_entry.get("modalities")
                 parsed.append(

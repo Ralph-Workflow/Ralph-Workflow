@@ -378,23 +378,23 @@ def _validate_report_with_cross_check(
 def _load_baseline_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
     raw_obj: object = json.loads(path.read_text())
     if not isinstance(raw_obj, dict):
-        raise ValueError(f"baseline JSON at {path} is not an object")
+        raise TypeError(f"baseline JSON at {path} is not an object")
     raw_dict: dict[object, object] = raw_obj
     metrics_obj: object = raw_dict.get("metrics")
     if not isinstance(metrics_obj, dict):
-        raise ValueError(f"baseline JSON at {path} is missing a 'metrics' object")
+        raise TypeError(f"baseline JSON at {path} is missing a 'metrics' object")
     metrics_dict: dict[object, object] = metrics_obj
     out: dict[str, dict[str, float]] = {}
     for workload_obj, workload_metrics in metrics_dict.items():
         if not isinstance(workload_metrics, dict):
-            raise ValueError(
+            raise TypeError(
                 f"baseline JSON workload {workload_obj!r} is not a metrics object",
             )
         workload_metrics_dict: dict[object, object] = workload_metrics
         workload_metrics_clean: dict[str, float] = {}
         for metric_obj, value in workload_metrics_dict.items():
             if not isinstance(value, (int, float)):
-                raise ValueError(
+                raise TypeError(
                     f"baseline JSON {workload_obj}.{metric_obj} is not numeric",
                 )
             workload_metrics_clean[str(metric_obj)] = float(value)
@@ -405,23 +405,23 @@ def _load_baseline_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
 def _load_targets_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
     raw_obj: object = json.loads(path.read_text())
     if not isinstance(raw_obj, dict):
-        raise ValueError(f"targets JSON at {path} is not an object")
+        raise TypeError(f"targets JSON at {path} is not an object")
     raw_dict: dict[object, object] = raw_obj
     metrics_obj: object = raw_dict.get("metrics")
     if not isinstance(metrics_obj, dict):
-        raise ValueError(f"targets JSON at {path} is missing a 'metrics' object")
+        raise TypeError(f"targets JSON at {path} is missing a 'metrics' object")
     metrics_dict: dict[object, object] = metrics_obj
     out: dict[str, dict[str, float]] = {}
     for workload_obj, workload_metrics in metrics_dict.items():
         if not isinstance(workload_metrics, dict):
-            raise ValueError(
+            raise TypeError(
                 f"targets JSON workload {workload_obj!r} is not a metrics object",
             )
         workload_metrics_dict: dict[object, object] = workload_metrics
         workload_metrics_clean: dict[str, float] = {}
         for metric_obj, value in workload_metrics_dict.items():
             if not isinstance(value, (int, float)):
-                raise ValueError(
+                raise TypeError(
                     f"targets JSON {workload_obj}.{metric_obj} is not numeric",
                 )
             workload_metrics_clean[str(metric_obj)] = float(value)

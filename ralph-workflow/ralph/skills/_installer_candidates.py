@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import GitCommandError, InvalidGitRepositoryError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import _git_blob_sha
@@ -73,7 +73,7 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
     try:
         try:
             repo_obj = Repo(str(workspace_root), search_parent_directories=False)
-        except (InvalidGitRepositoryError, Exception):
+        except (InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError):
             return _lexical_descendants(root, workspace_root)
         try:
             try:
@@ -131,7 +131,7 @@ def _diff_written_paths(
 ) -> list[str]:
     try:
         repo = Repo(workspace_root)
-    except (InvalidGitRepositoryError, Exception):
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError, ValueError):
         return []
     try:
         written: list[str] = []

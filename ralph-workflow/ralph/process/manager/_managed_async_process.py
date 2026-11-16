@@ -73,13 +73,10 @@ class ManagedAsyncProcess:
         self._manager.record_terminal_reason(self._record.pid, reason)
 
     async def wait(self) -> int:
-        try:
-            rc = await asyncio.wait_for(
-                self._proc.wait(),
-                timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
-            )
-        except TimeoutError:
-            raise
+        rc = await asyncio.wait_for(
+            self._proc.wait(),
+            timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
+        )
         if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
@@ -91,13 +88,10 @@ class ManagedAsyncProcess:
         return rc
 
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
-        try:
-            comm_result = await asyncio.wait_for(
-                self._proc.communicate(input),
-                timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
-            )
-        except TimeoutError:
-            raise
+        comm_result = await asyncio.wait_for(
+            self._proc.communicate(input),
+            timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
+        )
         rc: int | None = self._proc.returncode
         if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)

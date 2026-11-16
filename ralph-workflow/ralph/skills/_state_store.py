@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._capability_state import CapabilityState
@@ -23,9 +25,11 @@ def load_capability_state(path: Path | None = None) -> CapabilityState:
         return CapabilityState()
     try:
         text = resolved.read_text(encoding="utf-8")
-        return CapabilityState.model_validate_json(text)
-    except Exception:
+        state = CapabilityState.model_validate_json(text)
+    except (OSError, ValueError, ValidationError):
         return CapabilityState()
+    else:
+        return state
 
 
 def save_capability_state(

@@ -40,7 +40,7 @@ def test_concurrent_marking_and_snapshotting_never_corrupts_the_ledger() -> None
                 tracker.mark_unavailable("p", agent, UnavailabilityReason.PROCESS_EXITED)
                 clock.advance(10_000.0)
                 tracker.reset_backoff("p", agent)
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     def reader() -> None:
@@ -49,7 +49,7 @@ def test_concurrent_marking_and_snapshotting_never_corrupts_the_ledger() -> None
                 tracker.snapshot()
                 tracker.is_available("p", "agent-0-0")
                 tracker.earliest_unavailable_wait_ms("p", ["agent-0-0", "agent-1-1"])
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=writer, args=(i,)) for i in range(_WRITERS)]

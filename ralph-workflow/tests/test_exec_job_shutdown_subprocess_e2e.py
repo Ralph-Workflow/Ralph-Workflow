@@ -439,7 +439,7 @@ def _on_worker_thread(action: Callable[[], object]) -> object:
     def run() -> None:
         try:
             outcome["value"] = action()
-        except Exception as error:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as error:
             outcome["error"] = error
 
     worker = threading.Thread(target=run, name="supervised-spawn")

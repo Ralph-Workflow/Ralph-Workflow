@@ -55,7 +55,7 @@ def _build_agent_availability_content(
                 content.append(Text("Detected agents:", style="theme.banner.title"))
                 content.extend(avail_lines)
                 return content
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "Agent availability check failed (non-fatal): {}. "
                 "Falling back to the generic PATH hint; check the agent "

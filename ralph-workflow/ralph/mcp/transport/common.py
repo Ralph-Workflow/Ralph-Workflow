@@ -126,7 +126,7 @@ def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> 
     return result
 
 
-def _merge_opencode(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
+def _merge_opencode(current_config: dict[str, object], *, unsafe_mode: bool) -> dict[str, object]:
     ralph_opencode_mcp = cast("dict[str, object]", current_config.get("mcp", dict[str, object]()))
     ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
     if not unsafe_mode:
@@ -143,6 +143,7 @@ def _merge_opencode(current_config: dict[str, object], unsafe_mode: bool) -> dic
 def _merge_default(
     agent_name: str,
     current_config: dict[str, object],
+    *,
     unsafe_mode: bool,
     workspace_path: object = None,
 ) -> dict[str, object]:
@@ -174,8 +175,13 @@ def merge_existing_upstreams(
     workspace_path: object = None,
 ) -> dict[str, object]:
     if agent_name == "opencode":
-        return _merge_opencode(current_config, unsafe_mode)
-    return _merge_default(agent_name, current_config, unsafe_mode, workspace_path)
+        return _merge_opencode(current_config, unsafe_mode=unsafe_mode)
+    return _merge_default(
+        agent_name,
+        current_config,
+        unsafe_mode=unsafe_mode,
+        workspace_path=workspace_path,
+    )
 
 
 def _load_upstreams_for_agent(

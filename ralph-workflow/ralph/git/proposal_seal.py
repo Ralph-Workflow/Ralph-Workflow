@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from git import Repo
-from git.exc import GitCommandError
+from git.exc import GitCommandError, GitError
 from loguru import logger
 
 from ralph.checked_accessors import as_str
@@ -67,7 +67,7 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
                     )
                     tree_sha_obj = route_git_method(repo, "write_tree")
                     tree_sha = str(tree_sha_obj).strip()
-            except Exception as exc:
+            except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
                 raise ProposalSealError(f"Failed to seal tree into temporary index: {exc}") from exc
 
             commit_msg = f"proposal seal: {run_id}/{iteration}"
@@ -86,13 +86,13 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
                     commit_sha_obj = route_git_method(repo, "commit_tree", commit_args)
                 commit_sha = str(commit_sha_obj).strip()
                 route_git_method(repo, "update_ref", (ref, commit_sha))
-            except Exception as exc:
+            except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
                 raise ProposalSealError(f"Failed to create proposal commit/ref: {exc}") from exc
 
         return Seal(ref=ref, commit_sha=commit_sha, tree_sha=tree_sha)
 
 
-def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Seal | None:
+def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) -> Seal | None:
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
         if not force:
@@ -122,7 +122,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
                     )
                     tree_sha_obj = route_git_method(repo, "write_tree")
                     tree_sha = str(tree_sha_obj).strip()
-            except Exception as exc:
+            except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
                 raise ProposalSealError(f"Failed to seal baseline tree: {exc}") from exc
 
             commit_msg = f"baseline seal: {run_id}"
@@ -135,7 +135,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
                 commit_sha_obj = route_git_method(repo, "commit_tree", commit_args)
                 commit_sha = str(commit_sha_obj).strip()
                 route_git_method(repo, "update_ref", (ref, commit_sha))
-            except Exception as exc:
+            except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
                 raise ProposalSealError(f"Failed to create baseline commit/ref: {exc}") from exc
 
         return Seal(ref=ref, commit_sha=commit_sha, tree_sha=tree_sha)
@@ -157,8 +157,8 @@ def _collect_binary_paths(repo: Repo, base: str, ref: str) -> set[str]:
                 fields = record.split("\t")
                 if len(fields) >= _NUMSTAT_MIN_FIELDS and fields[0] == "-" and fields[1] == "-":
                     binary_paths.add(fields[_NUMSTAT_PATH_INDEX])
-    except Exception:
-        pass
+    except (GitCommandError, OSError, ValueError) as exc:
+        logger.debug("Failed collecting binary paths: {}", exc)
     return binary_paths
 
 
@@ -169,7 +169,7 @@ def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str] | None:
             "ls_tree",
             ("-r", "--name-only", "--full-tree", "-z", base),
         )
-    except Exception:
+    except (GitCommandError, OSError, ValueError):
         return None
     raw = str(raw_obj)
     return frozenset(path for path in raw.split("\0") if path)
@@ -179,13 +179,14 @@ def _read_bounded_blob_content(
     repo: Repo,
     blob_sha: str,
     size: int,
+    *,
     is_binary: bool,
 ) -> str | None:
     if not blob_sha or is_binary or size <= 0 or size > _MAX_CONTENT_SCAN_BYTES:
         return None
     try:
         raw_obj = route_git_method(repo, "cat_file", ("blob", blob_sha))
-    except Exception:
+    except (GitCommandError, OSError, ValueError):
         return None
     return str(raw_obj)
 
@@ -199,7 +200,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
                 "diff_tree",
                 ("-r", "-z", "--no-commit-id", base, ref),
             )
-        except Exception as exc:
+        except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
             raise ProposalSealError(
                 f"Failed to run diff-tree between {base} and {ref}: {exc}"
             ) from exc
@@ -245,7 +246,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
                     size_obj = route_git_method(repo, "cat_file", ("-s", new_sha))
                     size_str = str(size_obj).strip()
                     size = int(size_str)
-                except Exception:
+                except (GitCommandError, OSError, ValueError):
                     size = 0
 
             entries.append(
@@ -256,7 +257,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
                     new_mode=new_mode,
                     size=size,
                     is_binary=is_binary,
-                    content=_read_bounded_blob_content(repo, new_sha, size, is_binary),
+                    content=_read_bounded_blob_content(repo, new_sha, size, is_binary=is_binary),
                     base_tree_paths=base_tree_paths,
                 )
             )
@@ -285,7 +286,7 @@ def preflight(repo_root: Path | str, ref: str) -> None:
                 ) from exc
     except ProposalPreflightError:
         raise
-    except Exception as exc:
+    except (GitError, OSError, RuntimeError, ValueError) as exc:
         raise ProposalPreflightError(f"Repository access failed for {repo_root}: {exc}") from exc
 
 
@@ -382,7 +383,7 @@ def rollback(
 
         try:
             route_git_method(repo, "read_tree", ("--reset", "-u", target_ref))
-        except Exception as exc:
+        except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
             raise ProposalSealError(f"Failed to reset tree to {target_ref}: {exc}") from exc
 
         if step_hook is not None:
@@ -421,7 +422,7 @@ def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
         with _open_repo(repo_root) as repo:
             sha = _resolve_full_object_name(repo, proposal_ref)
             route_git_method(repo, "update_ref", (marker_ref, sha))
-    except Exception as exc:
+    except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "Could not mark the rejected proposal ref {ref}: {err}",
             ref=proposal_ref,

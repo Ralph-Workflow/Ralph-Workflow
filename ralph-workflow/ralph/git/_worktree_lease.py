@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import errno
 import os
 import sys
 import time
@@ -90,27 +89,26 @@ def decide_lease_steal(
 ) -> LeaseStealDecision:
     if liveness == "live":
         return LeaseStealDecision(
-            False,
-            "holder_alive",
-            "a live process still holds the lease; refusing to steal it",
+            allowed=False,
+            reason="holder_alive",
+            detail="a live process still holds the lease; refusing to steal it",
         )
     if liveness == "unknown":
         return LeaseStealDecision(
-            False,
-            "liveness_indeterminate",
-            "the holder liveness probe could not prove the holder is dead; "
-            "refusing to steal the lease",
+            allowed=False,
+            reason="liveness_indeterminate",
+            detail="the holder liveness probe could not prove the holder is dead; refusing to steal the lease",
         )
     if age_seconds > stale_seconds:
         return LeaseStealDecision(
-            True,
-            "holder_dead_and_stale",
-            "the holder is dead and the lease is older than the stale threshold",
+            allowed=True,
+            reason="holder_dead_and_stale",
+            detail="the holder is dead and the lease is older than the stale threshold",
         )
     return LeaseStealDecision(
-        True,
-        "holder_dead",
-        "the holder is dead; the lease is safe to reclaim",
+        allowed=True,
+        reason="holder_dead",
+        detail="the holder is dead; the lease is safe to reclaim",
     )
 
 
@@ -218,9 +216,9 @@ def reclaim_dead_lease(
     if record is None:
         return (
             LeaseStealDecision(
-                False,
-                "liveness_indeterminate",
-                "the lease lock-file disappeared before it could be inspected",
+                allowed=False,
+                reason="liveness_indeterminate",
+                detail="the lease lock-file disappeared before it could be inspected",
             ),
             None,
         )
@@ -275,10 +273,12 @@ def _takeover_lock_file(
         os.lseek(fd, 0, os.SEEK_SET)
         written = os.write(fd, payload)
         if written != len(payload):
-            msg = f"short write to lease file {lock_path!r}"
-            raise OSError(errno.EIO, msg, str(lock_path))
-        return fd
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            return None
     except OSError:
         with contextlib.suppress(OSError):
             os.close(fd)
         return None
+    else:
+        return fd

@@ -222,7 +222,7 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
     timestamp = now if now is not None else self._clock.monotonic()
     try:
         captures = self._process_monitor.discover_subagent_outputs()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         self._log.debug(
             "idle watchdog: process_monitor.discover_subagent_outputs raised (suppressed)"
         )
@@ -239,7 +239,7 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
             self._subagent_output_captures[worker_id] = fresh_capture
         try:
             lines = self._subagent_output_captures[worker_id].read_lines(worker_id)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             self._log.debug("idle watchdog: subagent output capture raised (suppressed)")
             continue
         if lines:
@@ -307,6 +307,7 @@ def channel_summary(
     now: float,
     kind_breakdown: dict[str, int] | None,
     alive_by: AliveBy | None = None,
+    *,
     can_defer_override: bool | None = None,
 ) -> ChannelEvidenceSummary:
     age: float | None = None if last_at is None else max(0.0, now - last_at)

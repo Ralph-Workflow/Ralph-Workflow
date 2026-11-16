@@ -123,8 +123,11 @@ def test_transport_regression_client_disconnect_does_not_emit_crash_traceback(
 ) -> None:
     server = _Server(_Mcp(_StreamingProbeSession()))
 
-    try:
+    def _raise_disconnect() -> None:
         raise ConnectionResetError(54, "Connection reset by peer")
+
+    try:
+        _raise_disconnect()
     except ConnectionResetError:
         server.handle_error((object(), ("127.0.0.1", 12345)), ("127.0.0.1", 12345))
 
@@ -134,8 +137,11 @@ def test_transport_regression_client_disconnect_does_not_emit_crash_traceback(
 def test_unexpected_transport_error_still_emits_traceback(capsys) -> None:
     server = _Server(_Mcp(_StreamingProbeSession()))
 
-    try:
+    def _raise_runtime() -> None:
         raise RuntimeError("unexpected handler failure")
+
+    try:
+        _raise_runtime()
     except RuntimeError:
         server.handle_error((object(), ("127.0.0.1", 12345)), ("127.0.0.1", 12345))
 

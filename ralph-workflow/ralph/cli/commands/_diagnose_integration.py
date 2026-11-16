@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import observe_unmerged_paths
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline.auto_integrate_record import read_record
@@ -118,14 +120,14 @@ def _lifecycle_rows(view: IntegrationLifecycleView) -> list[tuple[object, ...]]:
 def _read_durable_record(workspace_root: Path) -> IntegrationRecord | None:
     try:
         return read_record(workspace_root)
-    except Exception:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
 
 
 def _read_checkpoint_state(workspace_root: Path) -> PipelineState | None:
     try:
         return load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
-    except Exception:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
 
 
@@ -167,14 +169,13 @@ def _worktree_risk(observation: Observation) -> tuple[str, ...]:
 def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleView | None:
     try:
         observation = observe_integration(workspace_root)
-    except Exception:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
     record = _read_durable_record(workspace_root)
     state = _read_checkpoint_state(workspace_root)
-    try:
+    unmerged_observation = None
+    with contextlib.suppress(GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         unmerged_observation = observe_unmerged_paths(workspace_root)
-    except Exception:
-        unmerged_observation = None
     unmerged_paths = (
         tuple(unmerged_observation.paths)
         if unmerged_observation is not None and unmerged_observation.query_ok

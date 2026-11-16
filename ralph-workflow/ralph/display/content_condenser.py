@@ -110,7 +110,7 @@ def _extract_tail(text: str, tail_cells: int) -> str:
 
 
 def _return_result(
-    visible: str, condensed: bool, options: CondenseOptions, original: str
+    visible: str, *, condensed: bool, options: CondenseOptions, original: str
 ) -> _CondensedResult:
     if options.summary:
         summary_line, ai_summary_line = _build_summaries(original, options.env)
@@ -125,7 +125,7 @@ def _condense_head_only(text: str, options: CondenseOptions) -> _CondensedResult
     visible = head + _truncation_suffix(
         options.overflow_ref, total_chars=total_bytes, hidden_lines=hidden_lines
     )
-    return _return_result(visible, True, options, text)
+    return _return_result(visible, condensed=True, options=options, original=text)
 
 
 def _condense_head_and_tail(text: str, total: int, options: CondenseOptions) -> _CondensedResult:
@@ -148,7 +148,7 @@ def _condense_head_and_tail(text: str, total: int, options: CondenseOptions) -> 
         )
         + tail
     )
-    return _return_result(visible, True, options, text)
+    return _return_result(visible, condensed=True, options=options, original=text)
 
 
 def condense_content(
@@ -158,15 +158,15 @@ def condense_content(
 ) -> tuple[str, bool] | tuple[str, bool, str | None, str | None]:
     opts = options if options is not None else CondenseOptions()
     if not text:
-        return _return_result("", False, opts, "")
+        return _return_result("", condensed=False, options=opts, original="")
 
     try:
         total = cell_len(text)
-    except Exception:
-        return _return_result(text, False, opts, text)
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
+        return _return_result(text, condensed=False, options=opts, original=text)
 
     if total <= opts.soft_limit:
-        return _return_result(text, False, opts, text)
+        return _return_result(text, condensed=False, options=opts, original=text)
 
     if total <= opts.hard_limit:
         return _condense_head_only(text, opts)

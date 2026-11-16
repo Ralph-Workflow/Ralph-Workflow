@@ -419,9 +419,9 @@ def test_e32_production_bridge_client_timeout_surfaces_typed_network_error(
                 )
                 _ = tiny_conn.getresponse().read()
             finally:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError, RuntimeError, ValueError):
                     tiny_conn.close()
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             client_error = exc
 
         assert client_error is not None, (

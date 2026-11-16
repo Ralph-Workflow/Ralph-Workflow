@@ -90,8 +90,8 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             return
         try:
             result = probe()
-        except Exception as exc:
-            metrics.record_health_probe_outcome(False)
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+            metrics.record_health_probe_outcome(success=False)
             self._write_json(
                 {"status": "unhealthy", "reason": type(exc).__name__},
                 503,

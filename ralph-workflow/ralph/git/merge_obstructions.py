@@ -16,7 +16,7 @@ def ancestry_state(repo_root: Path | str, ancestor: str, descendant: str) -> boo
             cwd=Path(repo_root),
             label="git-is-ancestor",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         logger.warning("ancestry query {} -> {} failed: {}", ancestor, descendant, exc)
         return None
     if result.returncode == 0:

@@ -5,7 +5,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath
 from typing import TYPE_CHECKING, Protocol, cast
 
-from git import InvalidGitRepositoryError, Repo
+from git import GitError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
 from ralph.git.git_command_queue import route_git_method
@@ -150,7 +150,7 @@ def untrack_engine_internal_files(
     repo_root_path = Path(repo_root)
     try:
         repo = Repo(repo_root_path)
-    except (InvalidGitRepositoryError, Exception):
+    except (InvalidGitRepositoryError, NoSuchPathError, OSError, RuntimeError, ValueError):
         logger.debug(
             "untrack_engine_internal_files: cannot open repo at {}; skipping pre-emptive untrack",
             repo_root_path,
@@ -187,7 +187,7 @@ def untrack_engine_internal_files(
                     "Pre-emptively untracked tracked engine-internal file: {}",
                     entry_path_str,
                 )
-            except Exception as exc:
+            except (GitError, OSError, RuntimeError, ValueError) as exc:
                 logger.warning(
                     "Pre-emptive git rm --cached failed for {} (continuing batch): {}",
                     entry_path_str,

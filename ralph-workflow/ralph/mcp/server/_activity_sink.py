@@ -26,7 +26,7 @@ def invoke_active_sink(tool_name: str) -> None:
         return
     try:
         sink(tool_name)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
         return
 
 
@@ -53,5 +53,5 @@ def invoke_subagent_sink(line: str) -> None:
         return
     try:
         sink(line)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
         return

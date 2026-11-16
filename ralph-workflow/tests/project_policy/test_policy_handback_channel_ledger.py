@@ -138,7 +138,7 @@ def _probe_console_live(console: Console) -> str:
     try:
         with Live("", console=console, transient=False):
             pass
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         return f"error: {type(exc).__name__}: {exc}"
     return "ok"
 

@@ -293,9 +293,10 @@ def _dispatch_git_method(
     except AttributeError as exc:
         queue.record_outcome("error")
         raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
+    if not _is_git_method(method):
+        queue.record_outcome("error")
+        raise TypeError(f"repo.git attribute {method_name!r} is not callable")
     try:
-        if not _is_git_method(method):
-            raise TypeError(f"repo.git attribute {method_name!r} is not callable")
         result = method(*args, **call_kwargs)
     except GitCommandError as exc:
         queue.record_outcome(_classify_exception(exc), outcome=classify_git_exception(exc))

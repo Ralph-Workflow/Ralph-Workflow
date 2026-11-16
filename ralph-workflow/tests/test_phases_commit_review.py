@@ -101,7 +101,7 @@ def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
             auto_seed_default_gitignore(repo_path)
             auto_seed_default_git_exclude(repo_path)
             return _pending_tree_sha(repo_path)
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
             return None
 
     try:
@@ -124,7 +124,7 @@ def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
             auto_seed_default_gitignore(temp_repo)
             auto_seed_default_git_exclude(temp_repo)
             return _pending_tree_sha(temp_repo)
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
         return None
 
 

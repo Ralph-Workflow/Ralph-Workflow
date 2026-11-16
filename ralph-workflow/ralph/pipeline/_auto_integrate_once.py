@@ -194,121 +194,118 @@ def _integrate_once_owned(
         attempt_record.owning_worktree or str(root),
     )
     owns_resolution = False
-    try:
-        rebase_result = _ai._run_rebase_or_merge(
-            root,
-            target,
-            conflict_resolver,
-            prefer_merge=prefer_merge,
-            rebase_stop_resolver=rebase_stop_resolver,
-            display=display,
-            conflict_resolution_config=config.conflict_resolution,
-            git_ops=current_git_ops() if current_git_ops() is not default_git_ops() else None,
-            agent_runner=current_agent_runner(),
-        )
-        if rebase_result.short_circuit is not None:
-            if not rebase_result.short_circuit.recovery_record_retained:
-                _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
-            return record_refresh(rebase_result.short_circuit, refresh), False
-
-        feature_sha = _ai._read_post_integration_head_sha_probe(root, target)
-        if feature_sha is None:
+    rebase_result = _ai._run_rebase_or_merge(
+        root,
+        target,
+        conflict_resolver,
+        prefer_merge=prefer_merge,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
+        conflict_resolution_config=config.conflict_resolution,
+        git_ops=current_git_ops() if current_git_ops() is not default_git_ops() else None,
+        agent_runner=current_agent_runner(),
+    )
+    if rebase_result.short_circuit is not None:
+        if not rebase_result.short_circuit.recovery_record_retained:
             _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
-            return record_refresh(
-                _record_skip(reason="post-integration HEAD read failed", target=target),
-                refresh,
-            ), False
+        return record_refresh(rebase_result.short_circuit, refresh), False
 
-        _ai.post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
-        _ai._write_record_probe(
-            root,
-            complete_commit(attempt_record, integrated_feature_sha=feature_sha).record,
+    feature_sha = _ai._read_post_integration_head_sha_probe(root, target)
+    if feature_sha is None:
+        _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
+        return record_refresh(
+            _record_skip(reason="post-integration HEAD read failed", target=target),
+            refresh,
+        ), False
+
+    _ai.post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
+    _ai._write_record_probe(
+        root,
+        complete_commit(attempt_record, integrated_feature_sha=feature_sha).record,
+    )
+
+    refresh_outcome = refresh
+    from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
+
+    reclaim_target_worktree = reclaim_target_worktree_enabled(config)
+    reclamation: ReclaimResult | None = None
+
+    def remember_reclamation(result: ReclaimResult) -> None:
+        nonlocal reclamation
+        reclamation = result
+
+    raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
+        root,
+        target,
+        feature_sha,
+        reclaim_target_worktree=reclaim_target_worktree,
+        on_reclaimed=remember_reclamation,
+    )
+    ff_status = _parse_ff_status(raw_ff_outcome)
+    ok, skip_reason = ff_status.ok, ff_status.skip_reason
+
+    _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
+    if ok:
+        _ai._delete_rebase_backup_ref(root, backup_ref)
+    if ok:
+        _ai._clear_record(root)
+
+    record = _ai._record_rebase_outcome(
+        rebase_outcome=rebase_result.rebase_outcome,
+        merge_attempted=rebase_result.merge_attempted,
+        merge_outcome=rebase_result.merge_outcome,
+        target=target,
+    ).model_copy(
+        update={
+            "last_refresh": refresh_outcome,
+            "reclaimed_worktree_path": (
+                reclamation.worktree_path if reclamation is not None else None
+            ),
+            "reclaim_snapshot_ref": reclamation.snapshot_ref
+            if reclamation is not None
+            else None,
+            "reclaim_discarded_path_count": (
+                reclamation.discarded_path_count if reclamation is not None else 0
+            ),
+        }
+    )
+    if not ok:
+        terminal_emitter.critical(
+            "CRITICAL: feature {} did NOT land on '{}': {}; committed work remains on the feature",
+            feature_sha,
+            target,
+            skip_reason,
         )
-
-        refresh_outcome = refresh
-        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
-
-        reclaim_target_worktree = reclaim_target_worktree_enabled(config)
-        reclamation: ReclaimResult | None = None
-
-        def remember_reclamation(result: ReclaimResult) -> None:
-            nonlocal reclamation
-            reclamation = result
-
-        raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
+        record = with_skip_reason(
+            record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
+            rebase_result.skip_reason,
+        )
+        return record, is_retryable_fast_forward_failure(raw_ff_outcome)
+    record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
+    if publish:
+        record = _ai.reconcile_remote_publication(
+            config,
             root,
             target,
-            feature_sha,
-            reclaim_target_worktree=reclaim_target_worktree,
-            on_reclaimed=remember_reclamation,
+            rebase_stop_resolver=rebase_stop_resolver,
+            source_state=record,
         )
-        ff_status = _parse_ff_status(raw_ff_outcome)
-        ok, skip_reason = ff_status.ok, ff_status.skip_reason
-
-        _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
-        if ok:
-            _ai._delete_rebase_backup_ref(root, backup_ref)
-        if ok:
-            _ai._clear_record(root)
-
-        record = _ai._record_rebase_outcome(
-            rebase_outcome=rebase_result.rebase_outcome,
-            merge_attempted=rebase_result.merge_attempted,
-            merge_outcome=rebase_result.merge_outcome,
-            target=target,
-        ).model_copy(
-            update={
-                "last_refresh": refresh_outcome,
-                "reclaimed_worktree_path": (
-                    reclamation.worktree_path if reclamation is not None else None
-                ),
-                "reclaim_snapshot_ref": reclamation.snapshot_ref
-                if reclamation is not None
-                else None,
-                "reclaim_discarded_path_count": (
-                    reclamation.discarded_path_count if reclamation is not None else 0
-                ),
-            }
-        )
-        if not ok:
-            terminal_emitter.critical(
-                "CRITICAL: feature {} did NOT land on '{}': {}; committed work remains on the feature",
-                feature_sha,
-                target,
-                skip_reason,
-            )
-            record = with_skip_reason(
-                record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
-                rebase_result.skip_reason,
-            )
-            return record, is_retryable_fast_forward_failure(raw_ff_outcome)
-        record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
-        if publish:
-            record = _ai.reconcile_remote_publication(
+        if record.last_push_status == "non_fast_forward":
+            record = reconcile_after_rejected_push(
                 config,
                 root,
                 target,
+                record,
                 rebase_stop_resolver=rebase_stop_resolver,
-                source_state=record,
-            )
-            if record.last_push_status == "non_fast_forward":
-                record = reconcile_after_rejected_push(
+                reintegrate=lambda: _reintegrate_after_remote_reconcile(
                     config,
                     root,
                     target,
-                    record,
+                    conflict_resolver,
+                    refresh=refresh_outcome,
                     rebase_stop_resolver=rebase_stop_resolver,
-                    reintegrate=lambda: _reintegrate_after_remote_reconcile(
-                        config,
-                        root,
-                        target,
-                        conflict_resolver,
-                        refresh=refresh_outcome,
-                        rebase_stop_resolver=rebase_stop_resolver,
-                        display=display,
-                    ),
-                )
-        record = with_skip_reason(record, rebase_result.skip_reason)
-        return record, False
-    except BaseException:
-        raise
+                    display=display,
+                ),
+            )
+    record = with_skip_reason(record, rebase_result.skip_reason)
+    return record, False

@@ -38,7 +38,7 @@ def _linux_inotify_pressure() -> dict[str, object]:
 def _macos_maxfiles_pressure() -> dict[str, object]:
     try:
         proc = subprocess.run(
-            ["sysctl", "-n", "kern.maxfiles"],
+            ["/usr/sbin/sysctl", "-n", "kern.maxfiles"],
             capture_output=True,
             text=True,
             timeout=2,

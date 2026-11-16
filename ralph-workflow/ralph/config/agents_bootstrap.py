@@ -83,12 +83,12 @@ def _commit_config_write(target: Path, plan: _ConfigCommitPlan) -> None:
             )
         elif result.status is ScopedCommitStatus.FAILED:
             logger.warning("config bootstrap commit failed (non-fatal): {}", result.error)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("config bootstrap commit failed (non-fatal): {}", exc)
 
 
 def write_agents_with_backup(
-    source: Path, target: Path, force: bool, *, trigger: str | None = None
+    source: Path, target: Path, *, force: bool, trigger: str | None = None
 ) -> BootstrapResult:
     target.parent.mkdir(parents=True, exist_ok=True)
     pre_existed = target.exists()

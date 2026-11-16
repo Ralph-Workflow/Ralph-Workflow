@@ -99,7 +99,7 @@ def _strip_ansi(value: object) -> str:
         return ""
     try:
         return strip_terminal_control(str(value))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return ""
 
 
@@ -127,16 +127,14 @@ def _to_hh_mm_ss(timestamp: object) -> str:
         return "??:??:??"
     try:
         text = str(timestamp)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return "??:??:??"
-    try:
+    with contextlib.suppress(IndexError, ValueError):
         head = text.split("T", 1)[1] if "T" in text else text
         time_part = head.split("+", 1)[0].split("-", 1)[0].split("Z", 1)[0]
         hh_mm_ss = time_part[:_HHMMSS_LEN]
         if len(hh_mm_ss) == _HHMMSS_LEN and hh_mm_ss[2] == ":" and hh_mm_ss[5] == ":":
             return hh_mm_ss
-    except Exception:
-        pass
     return "??:??:??"
 
 

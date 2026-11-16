@@ -92,7 +92,7 @@ def _write_completion_sentinel(
         try:
             sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
             sentinel_abspath = workspace.absolute_path(sentinel_relpath)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             sentinel_abspath = f".agent/completion_seen_{run_id}.json"
         _write_fn(sentinel_abspath, payload)
         return True

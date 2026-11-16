@@ -319,7 +319,7 @@ async def _cancel_task(task: asyncio.Task[object] | None) -> None:
 def _verified_session_pgid(pid: int) -> int | None:
     try:
         return verified_child_session_pgid(pid)
-    except Exception:
+    except (OSError, ProcessLookupError, PermissionError, ValueError, RuntimeError):
         return None
 
 

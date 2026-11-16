@@ -66,6 +66,7 @@ def _tail_items(
     workspace_root: Path | None,
     pipeline_policy: PipelinePolicy | None,
     dropped_count: int,
+    *,
     include_context_sections: bool,
     style: str,
 ) -> list[Text | Rule]:
@@ -83,6 +84,7 @@ def _tail_items(
 def _plan_section(
     snapshot: PipelineSnapshot,
     pipeline_policy: PipelinePolicy | None,
+    *,
     include_context_sections: bool,
     style: str,
 ) -> list[Text | Rule]:
@@ -220,7 +222,12 @@ def render_completion_summary_group(
         )
 
     renderables.extend(
-        _plan_section(snapshot, options.pipeline_policy, options.include_context_sections, style)
+        _plan_section(
+            snapshot,
+            options.pipeline_policy,
+            include_context_sections=options.include_context_sections,
+            style=style,
+        )
     )
     renderables.append(Rule("Metrics", style=style))
     renderables.append(
@@ -254,8 +261,8 @@ def render_completion_summary_group(
             options.workspace_root,
             options.pipeline_policy,
             options.dropped_count,
-            options.include_context_sections,
-            style,
+            include_context_sections=options.include_context_sections,
+            style=style,
         )
     )
     renderables.append(Rule(style=style))

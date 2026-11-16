@@ -199,7 +199,7 @@ def _target_names(target: ast.expr) -> list[str]:
     return []
 
 
-def _resolve_relative(module: str, is_package: bool, level: int, name: str | None) -> str:
+def _resolve_relative(module: str, *, is_package: bool, level: int, name: str | None) -> str:
     package_parts = module.split(".") if is_package else module.split(".")[:-1]
     base = package_parts[: len(package_parts) - (level - 1)]
     return ".".join([*base, name] if name else base)
@@ -221,6 +221,7 @@ class _OpCollector:
     def __init__(
         self,
         module: str,
+        *,
         is_package: bool,
         ops: list[_Op] | None = None,
         guarded: bool = False,
@@ -312,7 +313,7 @@ class _OpCollector:
             return
         body = _OpCollector(
             self.module,
-            self.is_package,
+            is_package=self.is_package,
             guarded=self.guarded,
             attribute_guarded=self.attribute_guarded,
             functions=dict(self.functions),
@@ -359,7 +360,7 @@ class _OpCollector:
     def class_body(self, node: ast.ClassDef) -> None:
         body = _OpCollector(
             self.module,
-            self.is_package,
+            is_package=self.is_package,
             guarded=self.guarded,
             attribute_guarded=self.attribute_guarded,
             functions=dict(self.functions),
@@ -401,7 +402,7 @@ class _OpCollector:
 
     def from_import(self, node: ast.ImportFrom) -> None:
         if node.level:
-            target = _resolve_relative(self.module, self.is_package, node.level, node.module)
+            target = _resolve_relative(self.module, is_package=self.is_package, level=node.level, name=node.module)
         else:
             target = node.module or ""
         if target == "__future__":
@@ -421,7 +422,7 @@ def collect_ops(source: str, module: str, *, is_package: bool, label: str) -> tu
         tree = ast.parse(source, filename=label)
     except SyntaxError as exc:
         raise AuditParseError(label, exc) from exc
-    collector = _OpCollector(module, is_package)
+    collector = _OpCollector(module, is_package=is_package)
     collector.statements(tree.body)
     return tuple(collector.ops)
 

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from http.client import HTTPResponse
+from typing import cast
 
 CLA_CHECKBOX_LABEL = (
     "I have read and agree to the Contributor License Agreement in CLA.md, including "
@@ -43,23 +42,23 @@ def evaluate_body(body: str | None) -> ClaCheckResult:
 
     if not body:
         return ClaCheckResult(
-            False, "Add the CLA agreement checkbox to the pull request description."
+            ok=False, message="Add the CLA agreement checkbox to the pull request description."
         )
     if _CHECKED_CLA_PATTERN.search(body):
-        return ClaCheckResult(True, "CLA agreement checkbox is checked.")
+        return ClaCheckResult(ok=True, message="CLA agreement checkbox is checked.")
     if _UNCHECKED_CLA_PATTERN.search(body):
-        return ClaCheckResult(False, "Check the CLA agreement box in the pull request description.")
-    return ClaCheckResult(False, "Add the CLA agreement checkbox to the pull request description.")
+        return ClaCheckResult(ok=False, message="Check the CLA agreement box in the pull request description.")
+    return ClaCheckResult(ok=False, message="Add the CLA agreement checkbox to the pull request description.")
 
 
 def evaluate_github_event(*, event_name: str | None, event: Mapping[str, object]) -> ClaCheckResult:
 
     if event_name != "pull_request":
-        return ClaCheckResult(True, "CLA check skipped for non-pull-request event.")
+        return ClaCheckResult(ok=True, message="CLA check skipped for non-pull-request event.")
 
     pull_request = event.get("pull_request")
     if not isinstance(pull_request, Mapping):
-        return ClaCheckResult(False, "Could not load pull request body for CLA verification.")
+        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
 
     body = pull_request.get("body")
     return evaluate_body(body if isinstance(body, str) else None)
@@ -72,7 +71,7 @@ def evaluate_codeberg_environment(
 ) -> ClaCheckResult:
 
     if env.get("CI_PIPELINE_EVENT") not in _CODEBERG_PULL_REQUEST_EVENTS:
-        return ClaCheckResult(True, "CLA check skipped for non-pull-request event.")
+        return ClaCheckResult(ok=True, message="CLA check skipped for non-pull-request event.")
 
     injected_body = env.get("RALPH_CLA_PR_BODY")
     if injected_body is not None:
@@ -80,17 +79,17 @@ def evaluate_codeberg_environment(
 
     api_url = _codeberg_pull_api_url_from_env(env)
     if api_url is None:
-        return ClaCheckResult(False, "Could not load pull request body for CLA verification.")
+        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
 
     try:
         payload = (fetch_json or _fetch_json)(api_url)
-    except (OSError, ValueError, urllib.error.URLError) as exc:
+    except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException) as exc:
         return ClaCheckResult(
-            False, f"Could not load pull request body for CLA verification: {exc}"
+            ok=False, message=f"Could not load pull request body for CLA verification: {exc}"
         )
 
     if not isinstance(payload, Mapping):
-        return ClaCheckResult(False, "Could not load pull request body for CLA verification.")
+        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
     body = payload.get("body")
     return evaluate_body(body if isinstance(body, str) else None)
 
@@ -102,7 +101,7 @@ def evaluate_current_environment() -> ClaCheckResult:
         try:
             event = _read_json_file(Path(github_event_path))
         except (OSError, ValueError) as exc:
-            return ClaCheckResult(False, f"Could not load GitHub event payload: {exc}")
+            return ClaCheckResult(ok=False, message=f"Could not load GitHub event payload: {exc}")
         return evaluate_github_event(event_name=os.environ.get("GITHUB_EVENT_NAME"), event=event)
 
     return evaluate_codeberg_environment(os.environ)
@@ -136,21 +135,26 @@ def _codeberg_pull_api_url_from_env(env: Mapping[str, str]) -> str | None:
 
 
 def _fetch_json(url: str) -> object:
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    response = cast(
-        "HTTPResponse",
-        urllib.request.urlopen(request, timeout=_NETWORK_TIMEOUT_SECONDS),
-    )
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https":
+        msg = "Only https URLs are supported"
+        raise ValueError(msg)
+    conn = http.client.HTTPSConnection(parsed.netloc, timeout=_NETWORK_TIMEOUT_SECONDS)
     try:
+        path = parsed.path
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        conn.request("GET", path, headers={"Accept": "application/json"})
+        response = conn.getresponse()
         return cast("object", json.loads(response.read().decode("utf-8")))
     finally:
-        response.close()
+        conn.close()
 
 
 def _read_json_file(path: Path) -> Mapping[str, object]:
     payload = cast("object", json.loads(path.read_text(encoding="utf-8")))
     if not isinstance(payload, Mapping):
-        raise ValueError("event payload is not a JSON object")
+        raise TypeError("event payload is not a JSON object")
     return payload
 
 

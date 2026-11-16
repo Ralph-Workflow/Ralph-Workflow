@@ -71,7 +71,7 @@ REGISTRY: dict[str, SideEffectContract] = {
 
 
 def get_contract(tool_name: str) -> SideEffectContract:
-    return REGISTRY.get(tool_name, SideEffectContract(tool_name, "unknown", False))
+    return REGISTRY.get(tool_name, _contract(tool_name, "unknown"))
 
 
 def register(tool_name: str, classification: SideEffectClassification) -> SideEffectContract:

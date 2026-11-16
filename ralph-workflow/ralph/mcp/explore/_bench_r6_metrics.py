@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import sys
@@ -328,7 +329,7 @@ def _rebuild_index(workspace: Path, index_dir: Path) -> float:
             reindex(store, workspace, options=ReindexOptions(mode="full", timeout_ms=120_000))
         finally:
             store.close()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         shutil.rmtree(index_dir, ignore_errors=True)
         store = ExploreStore(index_dir)
         try:
@@ -376,9 +377,8 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
     recovery_f5 = _rebuild_index(workspace, index_dir)
     interrupt = ExploreStore(index_dir)
     try:
-        reindex(interrupt, workspace, options=ReindexOptions(mode="full", timeout_ms=1))
-    except Exception:
-        pass
+        with contextlib.suppress(OSError, RuntimeError, ValueError, TimeoutError):
+            reindex(interrupt, workspace, options=ReindexOptions(mode="full", timeout_ms=1))
     finally:
         interrupt.close()
     recovery_f6 = _rebuild_index(workspace, index_dir)
@@ -487,13 +487,11 @@ def capture_baseline(
     target_workloads = set(workloads) if workloads is not None else set(_R6_3_WORKLOADS)
     existing: dict[str, object] = {}
     if output_path.is_file():
-        try:
+        with contextlib.suppress(OSError, ValueError, TypeError, json.JSONDecodeError, KeyError):
             raw_loaded: object = json.loads(output_path.read_text())
             if isinstance(raw_loaded, dict):
                 raw_dict: dict[object, object] = raw_loaded
                 existing = {str(k): v for k, v in raw_dict.items()}
-        except Exception:
-            pass
 
     existing_metrics: dict[str, object] = {}
     raw_m = existing.get("metrics")

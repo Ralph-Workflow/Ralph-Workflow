@@ -57,7 +57,7 @@ def test_real_child_stage_file_attributed_via_explicit_spawn_id(
     try:
         returncode = proc.wait(timeout=30)
         stderr = b""
-    except Exception:
+    except (TimeoutError, OSError, RuntimeError, ValueError):
         proc.kill(issuer=ProcessTerminationIssuer.OPERATOR)
         returncode = -1
         stderr = b"timeout"

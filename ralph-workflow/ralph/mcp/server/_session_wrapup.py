@@ -33,8 +33,8 @@ def session_warning_fired() -> bool:
 
 
 @contextmanager
-def session_warning_scope(before_warning: bool) -> Iterator[None]:
-    token = _SESSION_BEFORE_WARNING.set(before_warning)
+def session_warning_scope(before_warning: object) -> Iterator[None]:
+    token = _SESSION_BEFORE_WARNING.set(bool(before_warning))
     try:
         yield
     finally:

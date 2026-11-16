@@ -62,7 +62,7 @@ _EMPHASIS_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:\*\*|__)\S")
 _LOCATION_CUE: Final[str] = "in this directory"
 
 
-class _ArchiveRejectedError(Exception):
+class _ArchiveRejectedError(ValueError):
     pass
 
 
@@ -135,7 +135,7 @@ def extract_archive(body: bytes, limits: _ArchiveLimits) -> dict[str, _SkillPayl
                 )
                 extracted += size
                 payloads[skill] = payload
-    except tarfile.TarError as exc:
+    except (tarfile.TarError, EOFError, OSError) as exc:
         raise _ArchiveRejectedError(f"the archive could not be read: {type(exc).__name__}") from exc
     if not payloads:
         raise _ArchiveRejectedError("the archive carries no universal skill directory")
@@ -539,9 +539,10 @@ def restore_backup(backup: Path, live: Path) -> None:
         return
     try:
         backup.replace(live)
-        return
     except OSError:
         pass
+    else:
+        return
     try:
         shutil.copytree(backup, live)
     except OSError:

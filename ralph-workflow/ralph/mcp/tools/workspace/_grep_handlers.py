@@ -86,7 +86,7 @@ def _freshness_for_grep(
         generation_int = 0
     try:
         dirty = list(store.peek_dirty_paths())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, sqlite3.Error):
         dirty = []
     return {
         **meta,
@@ -129,7 +129,7 @@ def _indexed_committed_generation(store: ExploreStore | None) -> int:
         return 0
     try:
         raw = store.get_setting("current_generation")
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, sqlite3.Error):
         return 0
     if isinstance(raw, str) and raw.isdigit():
         return int(raw)
@@ -264,7 +264,7 @@ def _collect_files_for_grep(workspace: Workspace, normalized: str) -> list[str]:
         if workspace.stat(normalized).get("type") != "dir":
             return [normalized]
         return list(workspace.iter_files(normalized))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return _collect_files_recursive(workspace, normalized)
 
 
@@ -278,7 +278,7 @@ def _search_file_content(
 ) -> list[dict[str, object]] | None:
     try:
         file_stat = workspace.stat(file_path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return None
 
     if file_stat.get("type") == "dir":
@@ -289,7 +289,7 @@ def _search_file_content(
 
     try:
         content = workspace.read(file_path)
-    except (UnicodeDecodeError, Exception):
+    except (UnicodeDecodeError, OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return None
 
     lines = content.splitlines(keepends=True)

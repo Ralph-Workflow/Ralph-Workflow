@@ -521,7 +521,7 @@ def test_concurrent_readers_during_shutdown() -> None:
                         ProcessStatus.KILLED,
                         ProcessStatus.FAILED,
                     )
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, AssertionError, OSError, RuntimeError, ValueError, TypeError) as exc:
                 errors.append(exc)
 
     t = threading.Thread(target=reader_loop, daemon=True)
@@ -582,11 +582,14 @@ def test_cleanup_after_abnormal_exit() -> None:
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
 
+    def _crash() -> None:
+        raise RuntimeError("simulated agent crash")
+
     cleanup_occurred = False
     try:
         try:
             with handle:
-                raise RuntimeError("simulated agent crash")
+                _crash()
         except RuntimeError:
             cleanup_occurred = True
     finally:

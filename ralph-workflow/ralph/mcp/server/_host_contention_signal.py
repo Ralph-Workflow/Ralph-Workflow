@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from datetime import timedelta
@@ -26,12 +27,12 @@ def record_d_state(
     _now: Callable[[], float] | None = None,
 ) -> None:
     if psutil is not None:
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError
+        ):
             status = psutil.Process(pid).status()
             if status.startswith("D") or status == "disk-sleep":
                 record_host_contention_signal(f"d_state:{status}", _now=_now)
-        except Exception:
-            pass
 
 
 def record_sigkill_survivor(
@@ -40,12 +41,12 @@ def record_sigkill_survivor(
     _now: Callable[[], float] | None = None,
 ) -> None:
     if psutil is not None:
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError
+        ):
             status = psutil.Process(pid).status()
             if status in ("disk-sleep", "zombie"):
                 record_host_contention_signal(f"sigkill_survivor:{status}", _now=_now)
-        except Exception:
-            pass
 
 
 def record_psi_pressure(
@@ -54,7 +55,9 @@ def record_psi_pressure(
 ) -> None:
     psi_types = ("cpu", "io", "memory")
     for name in psi_types:
-        try:
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError
+        ):
             path = Path(f"/proc/pressure/{name}")
             with path.open(encoding="utf-8") as fh:
                 for line in fh:
@@ -69,8 +72,6 @@ def record_psi_pressure(
                                         f"psi_pressure:{name}:{avg10}", _now=_now
                                     )
                         break
-        except Exception:
-            pass
 
 
 def record_supervisor_tick_lateness(

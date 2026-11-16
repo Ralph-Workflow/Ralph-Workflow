@@ -244,10 +244,10 @@ def _issue_wedged_inflight_request(
             headers={"Content-Type": "application/json"},
         )
         _ = conn.getresponse().read()
-    except Exception as exc:
+    except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
         errors.append(exc)
     finally:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError):
             conn.close()
         done.set()
 

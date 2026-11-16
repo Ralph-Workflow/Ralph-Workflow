@@ -241,7 +241,7 @@ class DefaultProcessTeardown:
             return self._record_lookup(host_pid)
         manager_module: object = import_module("ralph.process.manager")
         if not isinstance(manager_module, _ProcessManagerModule):
-            raise RuntimeError("process manager module does not expose get_process_manager")
+            raise TypeError("process manager module does not expose get_process_manager")
         return manager_module.get_process_manager().get_record(host_pid)
 
     def _record_teardown(
@@ -253,7 +253,7 @@ class DefaultProcessTeardown:
     ) -> None:
         manager_module: object = import_module("ralph.process.manager")
         if not isinstance(manager_module, _ProcessManagerModule):
-            raise RuntimeError("process manager module does not expose get_process_manager")
+            raise TypeError("process manager module does not expose get_process_manager")
         manager = manager_module.get_process_manager()
         if manager.get_record(host_pid) is None:
             return

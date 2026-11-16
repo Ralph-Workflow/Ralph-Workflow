@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import runpy
 import shlex
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ from ralph import install
 pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
-def _run_launcher_entry(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+def _run_launcher_entry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, str]:
     seen: dict[str, str] = {}
 
     def recording_app() -> None:
@@ -25,20 +26,23 @@ def _run_launcher_entry(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     launcher = install.render_dev_launcher(Path("/snapshot"), "/tools/uv")
     argv = shlex.split(launcher[launcher.index("exec ") :])
     entry = argv[argv.index("-c") + 1]
+    entry_file = tmp_path / "_launcher_entry.py"
+    entry_file.write_text(entry, encoding="utf-8")
     with pytest.raises(SystemExit) as exit_info:
-        exec(compile(entry, "<launcher-entry>", "exec"), dict[str, object](__name__="__main__"))
+        runpy.run_path(str(entry_file), run_name="__main__")
     assert exit_info.value.code == 0
     return seen
 
 
 def test_launcher_entry_hides_the_runtime_virtualenv_from_the_run(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     runtime_bin = Path(sys.prefix) / "bin"
     monkeypatch.setenv("VIRTUAL_ENV", sys.prefix)
     monkeypatch.setenv("PATH", os.pathsep.join((str(runtime_bin), "/usr/local/bin", "/usr/bin")))
 
-    seen = _run_launcher_entry(monkeypatch)
+    seen = _run_launcher_entry(monkeypatch, tmp_path)
 
     assert "VIRTUAL_ENV" not in seen
     assert seen["PATH"] == os.pathsep.join(("/usr/local/bin", "/usr/bin"))
@@ -55,7 +59,7 @@ def test_launcher_entry_keeps_a_virtualenv_that_is_not_the_runtime(
     monkeypatch.setenv("VIRTUAL_ENV", str(project_env))
     monkeypatch.setenv("PATH", path)
 
-    seen = _run_launcher_entry(monkeypatch)
+    seen = _run_launcher_entry(monkeypatch, tmp_path)
 
     assert seen["VIRTUAL_ENV"] == str(project_env)
     assert seen["PATH"] == path

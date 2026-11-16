@@ -215,7 +215,7 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     def _runner() -> None:
         try:
             reader._transcript_thread()
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             captured["exc"] = exc
 
     thread = threading.Thread(target=_runner, daemon=True)

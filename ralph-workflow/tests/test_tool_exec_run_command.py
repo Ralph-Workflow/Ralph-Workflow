@@ -187,7 +187,7 @@ def test_run_command_concurrent_calls_both_succeed(tmp_path: Path) -> None:
             results.append(
                 run_command("echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner_first))
             )
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     def invoke_second() -> None:
@@ -197,7 +197,7 @@ def test_run_command_concurrent_calls_both_succeed(tmp_path: Path) -> None:
                     "echo", [], workspace, 1000, deps=ExecRunDeps(runner=fake_runner_second)
                 )
             )
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     t1 = threading.Thread(target=invoke_first)

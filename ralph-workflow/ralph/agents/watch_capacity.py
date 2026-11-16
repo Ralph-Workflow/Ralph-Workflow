@@ -87,7 +87,7 @@ def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: f
     def _run_probe() -> None:
         try:
             publication.put(probe())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
             logger.opt(exception=True).debug("workspace watch capacity probe failed")
             publication.put(_ProbeFailed())
 

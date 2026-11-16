@@ -74,7 +74,7 @@ def _refresh_cache(deps: UpdateCheckDeps, path: Path, now: float) -> None:
         latest = deps.fetch_latest()
         if latest is not None:
             deps.save_state(path, VersionCheckState(last_checked=now, latest_version=latest))
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return
 
 
@@ -96,7 +96,7 @@ def maybe_render_update_nag(
         if latest is None or not resolved.is_newer(resolved.current_version, latest):
             return
         _render_nag(display_context, resolved.current_version, latest, resolved.detect_install())
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return
 
 
@@ -106,7 +106,7 @@ def update_status(
     resolved = deps if deps is not None else default_deps()
     install = resolved.detect_install()
     if resolved.is_disabled(resolved.environ):
-        return UpdateStatus(resolved.current_version, None, False, install, disabled=True)
+        return UpdateStatus(resolved.current_version, None, update_available=False, install=install, disabled=True)
     path = resolved.cache_path(resolved.environ)
     state = resolved.load_state(path)
     now = resolved.now()

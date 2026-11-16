@@ -410,11 +410,11 @@ def _scenario_concurrent(
                 if run_id not in locked:
                     errors.append(f"{run_id} not in prune_lock_run_ids result: {locked}")
                 stop_barrier.wait(timeout=5.0)
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 errors.append(repr(exc))
             finally:
                 if m is not None:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError):
                         m.stop()
 
         threads = [

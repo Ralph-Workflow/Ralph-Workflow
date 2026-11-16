@@ -112,38 +112,36 @@ def _collect_media_entries_from_index(
 ) -> OrderedDict[str, MultimodalSidecarEntry]:
     try:
         raw = workspace.read(path)
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError, RuntimeError):
         return entries
     try:
         data: dict[str, object] = json.loads(raw)
-        artifacts = data.get("artifacts")
-        if not isinstance(artifacts, list):
-            return entries
-        for item in artifacts:
-            if not isinstance(item, dict):
-                continue
-            try:
-                entry = MultimodalSidecarEntry(
-                    artifact_id=str(item.get("artifact_id", "")),
-                    uri=str(item.get("uri", "")),
-                    mime_type=str(item.get("mime_type", "")),
-                    title=str(item.get("title", "")),
-                    modality=str(item.get("modality", "")),
-                    delivery=str(item.get("delivery", "resource_reference_replay")),
-                    reason=str(item.get("reason", "")),
-                    source_path=str(item.get("source_path", "")),
-                    cache_path=str(item.get("cache_path", "")),
-                    source_uri=str(item.get("source_uri", "")),
-                    block_type=str(item.get("block_type", "")),
-                    failure_kind=str(item.get("failure_kind", "")),
-                    identity_key=str(item.get("identity_key", "")),
-                )
-            except Exception:
-                continue
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError):
+        return entries
+    artifacts = data.get("artifacts")
+    if not isinstance(artifacts, list):
+        return entries
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        with suppress(TypeError, ValueError):
+            entry = MultimodalSidecarEntry(
+                artifact_id=str(item.get("artifact_id", "")),
+                uri=str(item.get("uri", "")),
+                mime_type=str(item.get("mime_type", "")),
+                title=str(item.get("title", "")),
+                modality=str(item.get("modality", "")),
+                delivery=str(item.get("delivery", "resource_reference_replay")),
+                reason=str(item.get("reason", "")),
+                source_path=str(item.get("source_path", "")),
+                cache_path=str(item.get("cache_path", "")),
+                source_uri=str(item.get("source_uri", "")),
+                block_type=str(item.get("block_type", "")),
+                failure_kind=str(item.get("failure_kind", "")),
+                identity_key=str(item.get("identity_key", "")),
+            )
             entries[_sidecar_entry_identity(entry)] = entry
-        return entries
-    except Exception:
-        return entries
+    return entries
 
 
 def dump_rendered_prompt(

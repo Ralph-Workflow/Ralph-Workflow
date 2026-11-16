@@ -75,7 +75,7 @@ def _run_concurrent_writers(
         try:
             start.wait(timeout=10)
             result = write_agents_toml(target, text, trigger="concurrency-proof")
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             with guard:
                 failures.append(exc)
             return
@@ -157,7 +157,7 @@ def test_concurrent_writers_in_one_directory_use_distinct_temp_names(
         try:
             start.wait(timeout=10)
             write_agents_toml(target, text, trigger="concurrency-proof")
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             with guard:
                 failures.append(exc)
 

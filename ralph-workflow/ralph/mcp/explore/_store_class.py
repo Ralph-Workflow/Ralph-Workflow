@@ -579,9 +579,14 @@ class ExploreStore(
             yield _row_to_edge(edge_row)
 
     def count_structure_rows(self) -> dict[str, int]:
+        queries = {
+            "spans": "SELECT COUNT(*) FROM spans",
+            "symbols": "SELECT COUNT(*) FROM symbols",
+            "edges": "SELECT COUNT(*) FROM edges",
+        }
         counts: dict[str, int] = {}
-        for table in ("spans", "symbols", "edges"):
-            cur = self._conn.execute(f"SELECT COUNT(*) FROM {table}")
+        for table, sql in queries.items():
+            cur = self._conn.execute(sql)
             row: sqlite3.Row | None = cur.fetchone()
             counts[table] = _row_int_opt(row, 0) if row is not None else 0
         return counts

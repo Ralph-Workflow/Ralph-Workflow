@@ -255,6 +255,31 @@ def _log_unreached_servers_on_expiry(
             )
 
 
+_PROBE_RESULT_EXCEPTIONS = (
+    concurrent.futures.CancelledError,
+    concurrent.futures.TimeoutError,
+    ArithmeticError,
+    AssertionError,
+    AttributeError,
+    BufferError,
+    EOFError,
+    ImportError,
+    LookupError,
+    MemoryError,
+    NameError,
+    OSError,
+    ReferenceError,
+    RuntimeError,
+    StopIteration,
+    SyntaxError,
+    SystemError,
+    TypeError,
+    ValueError,
+    Warning,
+    ExceptionGroup,
+)
+
+
 class UpstreamRegistry:
     def __init__(
         self,
@@ -341,7 +366,7 @@ class UpstreamRegistry:
                 pending.discard(future)
                 try:
                     server, server_kind, client, tools, error, probe_elapsed_ms = future.result()
-                except Exception as exc:
+                except _PROBE_RESULT_EXCEPTIONS as exc:
                     error = exc
                     client = None
                     tools = None

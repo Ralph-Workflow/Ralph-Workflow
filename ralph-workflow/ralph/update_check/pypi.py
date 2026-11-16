@@ -44,7 +44,7 @@ def fetch_latest_version(client: _HttpClient, *, url: str = PYPI_JSON_URL) -> st
         response = client.get(url)
         response.raise_for_status()
         return latest_version_from_payload(response.json())
-    except Exception:
+    except (httpx.HTTPError, ValueError, OSError):
         return None
 
 
@@ -54,5 +54,5 @@ def fetch_latest_version_over_network(
     try:
         with httpx.Client(timeout=timeout) as client:
             return fetch_latest_version(client, url=url)
-    except Exception:
+    except (httpx.HTTPError, ValueError, OSError):
         return None

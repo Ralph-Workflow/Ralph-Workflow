@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
@@ -170,7 +172,7 @@ class ActivityRouter:
                 if self._on_event is not None:
                     self._on_event(unit_id, kind, event.content, raw_reference, out.metadata or {})
                 self._dispatch_subagent_progress(parser, out, unit_id, raw_reference)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as exc:
             if self._raw_overflow_callback is not None:
                 with contextlib.suppress(Exception):
                     self._raw_overflow_callback(unit_id, raw_line)
@@ -207,7 +209,7 @@ class ActivityRouter:
                 "Callable[[AgentOutputLine, Callable[[str], None]], None]",
                 emit_hook,
             )(out, captured.append)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             return
         if not captured:
             return
@@ -216,8 +218,8 @@ class ActivityRouter:
             from ralph.mcp.server._activity_sink import invoke_subagent_sink
 
             invoke_subagent_sink(summary)
-        except Exception:
-            pass
+        except (ImportError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.debug("Failed invoking subagent sink: {}", exc)
         if self._on_event is not None:
             with contextlib.suppress(Exception):
                 self._on_event(

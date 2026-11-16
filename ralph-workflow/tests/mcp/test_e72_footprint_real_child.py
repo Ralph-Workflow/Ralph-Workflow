@@ -68,9 +68,10 @@ def _alive(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except (ProcessLookupError, PermissionError, OSError):
         return False
+    else:
+        return True
 
 
 def _running(pid: int) -> bool:
@@ -190,7 +191,7 @@ def _wait_for_endpoint_serving(endpoint: str, *, timeout_s: float) -> None:
             names = http_tools_list_names(endpoint, timeout=0.5)
             if isinstance(names, list) and names:
                 return
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError):
             pass
         time.sleep(0.02)
     raise AssertionError(

@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from ralph.config._config_filenames import (
     _GLOBAL_AGENTS_FILENAME,
     _GLOBAL_ARTIFACTS_FILENAME,
@@ -62,7 +64,7 @@ def collect_unreadable_config_files(
     for path, kind in candidates:
         try:
             resolved = path.resolve()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             resolved = path
         if resolved in seen:
             continue
@@ -138,7 +140,7 @@ def _gather_candidate_config_paths(
     if scope is None and config_path is None:
         try:
             scope = resolve_workspace_scope()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             scope = None
 
     support_files: tuple[tuple[str, str], ...] = (
@@ -223,7 +225,7 @@ def _validate_config_file_schema(
             cleaned = _convert_legacy_config(data)
             _drop_cli_only_fields(cleaned)
             UnifiedConfig.model_validate(cleaned)
-    except (Exception, SystemExit) as exc:
+    except (ValidationError, ValueError, TypeError, AttributeError, OSError, SystemExit) as exc:
         return exc
     return None
 

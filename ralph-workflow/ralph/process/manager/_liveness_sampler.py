@@ -20,7 +20,7 @@ class _LivenessProc(Protocol):
     @property
     def pid(self) -> int: ...
 
-    def children(self, recursive: bool = False) -> Sequence[_LivenessProc]: ...
+    def children(self, *, recursive: bool = False) -> Sequence[_LivenessProc]: ...
 
     def cpu_times(self) -> object: ...
 
@@ -70,7 +70,7 @@ class _PsutilProcessAdapter:
     def pid(self) -> int:
         return self._proc.pid
 
-    def children(self, recursive: bool = False) -> Sequence[LivenessProc]:
+    def children(self, *, recursive: bool = False) -> Sequence[LivenessProc]:
         try:
             raw_children = self._proc.children(recursive=recursive)
         except TypeError:
@@ -152,11 +152,12 @@ def _collect_tree(
         children_seq = root.children(recursive=True)
         children = list(children_seq)
         child_pids: set[int] = {c.pid for c in children}
-        return [root, *children], child_pids
     except TypeError:
         pass
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return [root], None
+    else:
+        return [root, *children], child_pids
 
     try:
         procs: list[_LivenessProc] = [root]
@@ -169,9 +170,10 @@ def _collect_tree(
                     child_pids_set.add(c.pid)
                     procs.append(c)
                     queue.append(c)
-        return procs, child_pids_set
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return [root], None
+    else:
+        return procs, child_pids_set
 
 
 def _compute_output_novelty(
@@ -217,7 +219,7 @@ def _sum_cpu_seconds(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_cpu_seconds(p.cpu_times())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -227,7 +229,7 @@ def _sum_io_bytes(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_io_bytes(p.io_counters())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -237,7 +239,7 @@ def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_voluntary_ctx(p.num_ctx_switches())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -294,7 +296,7 @@ class TreeSampler:
                 c_time = float(root.create_time())
                 if 0.0 <= c_time <= now:
                     tree_created = c_time
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError):
                 tree_created = None
         if tree_created is not None:
             self._start_time = tree_created
@@ -397,7 +399,7 @@ class TreeSampler:
 
         try:
             root: _LivenessProc | None = self._psutil_module.Process(root_pid)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             root = None
 
         self._determine_start_time(root, now)

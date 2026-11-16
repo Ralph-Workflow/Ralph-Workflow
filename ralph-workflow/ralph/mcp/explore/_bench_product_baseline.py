@@ -49,7 +49,7 @@ def load_product_baseline_limits(path: str) -> Mapping[str, object]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid product-baseline limits file {path}: {exc}") from exc
     if not isinstance(raw, dict):
-        raise ValueError(f"product-baseline limits must be a JSON object: {path}")
+        raise TypeError(f"product-baseline limits must be a JSON object: {path}")
     return raw
 
 

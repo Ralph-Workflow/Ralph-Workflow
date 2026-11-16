@@ -34,11 +34,11 @@ def decode_json_object(raw: bytes, *, label: str) -> dict[str, object]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"malformed {label} JSON") from exc
     if not isinstance(decoded, dict):
-        raise ValueError(f"{label} must be an object")
+        raise TypeError(f"{label} must be an object")
     payload: dict[str, object] = {}
     for key, item in decoded.items():
         if not isinstance(key, str):
-            raise ValueError(f"{label} keys must be strings")
+            raise TypeError(f"{label} keys must be strings")
         payload[key] = cast("object", item)
     return payload
 

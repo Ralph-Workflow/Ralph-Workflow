@@ -250,7 +250,7 @@ def _render_targets(context: TemplateContext) -> tuple[_RenderTarget, ...]:
 
 
 def _referenced_variable_names(sources: dict[str, str]) -> set[str]:
-    environment = Environment()
+    environment = Environment(autoescape=True)
     names: set[str] = set()
     for source in sources.values():
         names |= meta.find_undeclared_variables(environment.parse(source))
@@ -273,7 +273,7 @@ def _loaded_names(node: nodes.Node) -> set[str]:
 def _conditional_variable_groups(
     sources: dict[str, str],
 ) -> tuple[frozenset[str], ...]:
-    environment = Environment()
+    environment = Environment(autoescape=True)
     groups: set[frozenset[str]] = set()
     for source in sources.values():
         parsed = environment.parse(source)

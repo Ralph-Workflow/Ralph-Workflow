@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -73,7 +74,7 @@ def resolve_agent_skill_roots(
             roots.append(entry.resolve())
 
     if workspace_root is not None:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError):
             for p_entry in project_sibling_skill_roots(workspace_root):
                 entry_agent = p_entry.agent.lower()
                 if (
@@ -87,8 +88,6 @@ def resolve_agent_skill_roots(
                     roots.append(p_entry.resolve(workspace_root))
             if agent_key == "opencode" or agent_key.startswith("opencode"):
                 roots.append(project_skill_root(workspace_root))
-        except Exception:
-            pass
 
     seen: set[Path] = set()
     unique_roots: list[Path] = []

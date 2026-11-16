@@ -50,13 +50,13 @@ class Region:
 
     def __post_init__(self) -> None:
         if not isinstance(self.x, int) or isinstance(self.x, bool):
-            raise ValueError(f"Region.x must be int, got {type(self.x).__name__}")
+            raise TypeError(f"Region.x must be int, got {type(self.x).__name__}")
         if not isinstance(self.y, int) or isinstance(self.y, bool):
-            raise ValueError(f"Region.y must be int, got {type(self.y).__name__}")
+            raise TypeError(f"Region.y must be int, got {type(self.y).__name__}")
         if not isinstance(self.w, int) or isinstance(self.w, bool):
-            raise ValueError(f"Region.w must be int, got {type(self.w).__name__}")
+            raise TypeError(f"Region.w must be int, got {type(self.w).__name__}")
         if not isinstance(self.h, int) or isinstance(self.h, bool):
-            raise ValueError(f"Region.h must be int, got {type(self.h).__name__}")
+            raise TypeError(f"Region.h must be int, got {type(self.h).__name__}")
         if self.x < 0:
             raise ValueError(f"Region.x must be >= 0, got {self.x}")
         if self.y < 0:
@@ -96,7 +96,7 @@ class _VisualFinding:
         if not isinstance(self.capture_id, str) or not self.capture_id.strip():
             raise ValueError("VisualFinding.capture_id must be a non-empty string")
         if not isinstance(self.region, Region):
-            raise ValueError("VisualFinding.region must be a Region instance")
+            raise TypeError("VisualFinding.region must be a Region instance")
         if self.dimension not in VISUAL_DIMENSIONS:
             raise ValueError(
                 f"VisualFinding.dimension must be one of {list(VISUAL_DIMENSIONS)}; "

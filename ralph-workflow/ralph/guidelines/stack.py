@@ -8,7 +8,7 @@ from ralph.guidelines._detected_stack import DetectedStack
 from ralph.guidelines._detected_stack_like import _DetectedStackLike
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Iterable, Sequence
     from types import ModuleType
     from typing import Protocol
 
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
     class _HandlerCallable(Protocol):
         def __call__(self, *args: object, **kwargs: object) -> GuidelineSource: ...
+
+    class _LanguageHandler(Protocol):
+        def __call__(
+            self, frameworks: Iterable[str], *, typescript: bool = False
+        ) -> GuidelineSource: ...
 
     class _StackDetector(Protocol):
         def __call__(self, workspace: Workspace, root: str) -> object: ...
@@ -184,17 +189,17 @@ def _language_group(language: str) -> str:
     return language
 
 
-def _rust_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _rust_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     rust_guidelines = _load_guideline_class("ralph.guidelines.rust", "RustGuidelines")
     return rust_guidelines()
 
 
-def _python_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _python_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     python_guidelines = _load_guideline_class("ralph.guidelines.python", "PythonGuidelines")
     return python_guidelines(frameworks=_frameworks_for_language("Python", frameworks))
 
 
-def _javascript_handler(frameworks: Iterable[str], typescript: bool) -> GuidelineSource:
+def _javascript_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     javascript_guidelines = _load_guideline_class(
         "ralph.guidelines.javascript",
         "JavaScriptGuidelines",
@@ -205,27 +210,27 @@ def _javascript_handler(frameworks: Iterable[str], typescript: bool) -> Guidelin
     )
 
 
-def _go_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _go_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     go_guidelines = _load_guideline_class("ralph.guidelines.go", "GoGuidelines")
     return go_guidelines(frameworks=_frameworks_for_language("Go", frameworks))
 
 
-def _java_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _java_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     java_guidelines = _load_guideline_class("ralph.guidelines.java", "JavaGuidelines")
     return java_guidelines(frameworks=_frameworks_for_language("Java", frameworks))
 
 
-def _php_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _php_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     php_guidelines = _load_guideline_class("ralph.guidelines.php", "PHPGuidelines")
     return php_guidelines(frameworks=_frameworks_for_language("PHP", frameworks))
 
 
-def _ruby_handler(frameworks: Iterable[str], _: bool) -> GuidelineSource:
+def _ruby_handler(frameworks: Iterable[str], *, typescript: bool = False) -> GuidelineSource:
     ruby_guidelines = _load_guideline_class("ralph.guidelines.ruby", "RubyGuidelines")
     return ruby_guidelines(frameworks=_frameworks_for_language("Ruby", frameworks))
 
 
-LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], GuidelineSource]] = {
+LANGUAGE_HANDLERS: dict[str, _LanguageHandler] = {
     "Rust": _rust_handler,
     "Python": _python_handler,
     "JavaScript": _javascript_handler,
@@ -303,7 +308,7 @@ def get_stack_guidelines(workspace: Workspace, root: str = "") -> StackGuideline
         if not handler:
             continue
         frameworks = _frameworks_for_language(key, stack.frameworks)
-        guidelines.merge_from(handler(frameworks, typescript_enabled))
+        guidelines.merge_from(handler(frameworks, typescript=typescript_enabled))
         processed.add(key)
 
     return guidelines

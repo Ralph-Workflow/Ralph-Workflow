@@ -118,7 +118,7 @@ def _agy_ctx(tmp_path: Path, cli_log_path: Path) -> SimpleNamespace:
 def _reader_error(reader: ProcessLineReader | PtyLineReader) -> BaseException | None:
     try:
         list(reader.read_lines())
-    except BaseException as exc:
+    except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
         return exc
     return None
 

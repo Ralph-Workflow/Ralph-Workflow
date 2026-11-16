@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -110,9 +111,10 @@ _sleep_fn: Callable[[float], None] = time.sleep
 
 
 def _probe_lsof_fuser(lock: Path, timeout: float) -> Literal["live", "dead", "unknown"]:
+    lsof_bin = shutil.which("lsof") or "/usr/bin/lsof"
     try:
         result = subprocess.run(
-            ["lsof", "-F", "pL", str(lock)],
+            [lsof_bin, "-F", "pL", str(lock)],
             timeout=timeout,
             capture_output=True,
             check=False,
@@ -124,9 +126,10 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> Literal["live", "dead", "un
     except (OSError, subprocess.TimeoutExpired, PermissionError):
         pass
 
+    fuser_bin = shutil.which("fuser") or "/usr/bin/fuser"
     try:
         result = subprocess.run(
-            ["fuser", str(lock)],
+            [fuser_bin, str(lock)],
             timeout=timeout,
             capture_output=True,
             check=False,
@@ -241,7 +244,7 @@ def _lock_has_no_live_holder(
         with suppress(AttributeError):
             future.cancel()
         return "unknown"
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError, LookupError) as exc:
         logger.warning(
             "Lock liveness probe returning 'unknown' for {}: probe raised "
             "{}: {}; refusing to unlink without proven negative liveness",
@@ -398,12 +401,13 @@ def _reap_stale_lock(
                 lock_path,
             )
             return False
+    except OSError:
+        return False
+    else:
         logger.warning(
             "Recovered stale git lock for {} by removing {} (liveness=dead)", operation, lock_path
         )
         return True
-    except OSError:
-        return False
 
 
 def reap_stale_locks(
@@ -481,9 +485,10 @@ def _lock_holder_is_waitable(lock_path: Path) -> bool:
 def _find_lock_holder(lock_path: Path) -> str:
     if not lock_path.exists():
         return "unknown"
+    lsof_bin = shutil.which("lsof") or "/usr/bin/lsof"
     try:
         result = subprocess.run(
-            ["lsof", "-F", "p", str(lock_path)],
+            [lsof_bin, "-F", "p", str(lock_path)],
             timeout=_PROBE_TIMEOUT_S,
             capture_output=True,
             text=True,
@@ -496,9 +501,10 @@ def _find_lock_holder(lock_path: Path) -> str:
     except (OSError, subprocess.TimeoutExpired, PermissionError):
         pass
 
+    fuser_bin = shutil.which("fuser") or "/usr/bin/fuser"
     try:
         result = subprocess.run(
-            ["fuser", str(lock_path)],
+            [fuser_bin, str(lock_path)],
             timeout=_PROBE_TIMEOUT_S,
             capture_output=True,
             text=True,

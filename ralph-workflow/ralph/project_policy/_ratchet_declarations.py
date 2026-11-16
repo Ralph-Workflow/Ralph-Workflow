@@ -105,12 +105,12 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
             lines,
             index,
             total,
-            in_comment,
-            control_re,
-            phrase_re,
-            sentence_has_phrase,
-            sentence_token_id,
-            out,
+            in_comment=in_comment,
+            control_re=control_re,
+            phrase_re=phrase_re,
+            sentence_has_phrase=sentence_has_phrase,
+            sentence_token_id=sentence_token_id,
+            out=out,
         )
     flush()
     return out
@@ -121,6 +121,7 @@ def _scan_body_line(
     lines: list[str],
     index: int,
     total: int,
+    *,
     in_comment: bool,
     control_re: re.Pattern[str],
     phrase_re: re.Pattern[str],
@@ -157,7 +158,14 @@ def _scan_body_line(
         sentence_token_id = ""
         return sentence_has_phrase, sentence_token_id, out
     if line_has_phrase and not sentence_token_id:
-        token = _find_ratchet_control_token(lines, index, total, control_re, in_comment, stripped)
+        token = _find_ratchet_control_token(
+            lines,
+            index,
+            total,
+            control_re,
+            initial_in_comment=in_comment,
+            ratchet_line=stripped,
+        )
         if token:
             sentence_token_id = token
     return sentence_has_phrase, sentence_token_id, out
@@ -168,6 +176,7 @@ def _find_ratchet_control_token(
     index: int,
     total: int,
     control_re: re.Pattern[str],
+    *,
     initial_in_comment: bool,
     ratchet_line: str,
 ) -> str:

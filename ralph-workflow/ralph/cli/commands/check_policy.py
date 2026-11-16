@@ -73,11 +73,11 @@ def check_policy_command(
                 effective = counter_overrides.get(name, cfg.default_max)
                 display.emit_status(f"    {name}: {effective}")
 
-        return 0
-
     except PolicyValidationError as exc:
         display.emit_warning(f"Policy validation error: {exc}")
         return 2
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         display.emit_warning(f"Error loading policy: {exc}")
         return 1
+    else:
+        return 0

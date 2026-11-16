@@ -139,7 +139,7 @@ def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: path
                 res = sup._do_check_once()
                 with lock:
                     results.append(res)
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 with lock:
                     errors.append(exc)
 
@@ -202,7 +202,7 @@ def test_e42_dead_child_seen_by_both_supervisors_is_replaced_once(
         def run_check(name: str) -> None:
             try:
                 results[name] = bridge.check_health_and_restart_if_needed()
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 errors.append(exc)
             finally:
                 if name == "second":
@@ -282,14 +282,14 @@ def test_e27_single_candidate_during_startup_serialization(
         def do_supervisor_check() -> None:
             try:
                 bridge.check_health_and_restart_if_needed()
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 with lock:
                     errors.append(exc)
 
         def do_reset_registry() -> None:
             try:
                 bridge.reset_tool_registry()
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 with lock:
                     errors.append(exc)
 

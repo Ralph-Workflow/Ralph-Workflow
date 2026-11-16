@@ -88,7 +88,7 @@ def reduce_oversized_inline_prompt(
     module = import_module("ralph.agents.invoke._command_builders")
     func: object = getattr(module, "materialize_argv_prompt", None)
     if not isinstance(func, _PromptMaterializer):
-        raise RuntimeError("prompt materializer is unavailable")
+        raise TypeError("prompt materializer is unavailable")
     replacement = func(prompt, cwd)
     reduced = list(command)
     reduced[prompt_index] = replacement

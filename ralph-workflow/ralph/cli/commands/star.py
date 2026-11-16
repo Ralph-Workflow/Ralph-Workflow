@@ -16,6 +16,7 @@ STAR_MESSAGE = (
 
 
 def star(
+    *,
     no_browser: Annotated[
         bool,
         typer.Option("--no-browser", help="Print the link without opening a browser"),
@@ -34,7 +35,7 @@ def star(
         try:
             webbrowser.open(GITHUB_REPOSITORY_URL)
             display.emit_status("   → Opened in browser. Click ⭐ to star!")
-        except Exception:
+        except (webbrowser.Error, OSError, RuntimeError):
             display.emit_status("   (browser could not be opened — copy the link above)")
     else:
         display.emit_status("   (use without --no-browser to open in your browser)")

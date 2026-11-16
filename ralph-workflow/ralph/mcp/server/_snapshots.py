@@ -92,11 +92,11 @@ def compute_effective_config_fingerprint(workspace_root: Path) -> str | None:
     try:
         scope = WorkspaceScope(workspace_root)
         cfg: McpConfig = load_mcp_config(workspace_scope=scope)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
     try:
         canonical = cfg.model_dump_json()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -525,8 +525,8 @@ def _check_conditional_domain(
     workspace: Workspace,
     domain: str,
     filename: str,
-    required: bool,
     *,
+    required: bool,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
     path = f"{markers.CANONICAL_DIR}{filename}"
@@ -757,7 +757,7 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
                 workspace,
                 domain,
                 filename,
-                required,
+                required=required,
                 known_enforcers=known_enforcers,
             )
         )

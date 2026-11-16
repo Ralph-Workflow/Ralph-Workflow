@@ -69,9 +69,10 @@ def _git_binary_identity_uncached() -> tuple[int, int] | None:
         return None
     try:
         st = Path(git_binary).stat()
-        return (st.st_dev, st.st_ino)
     except OSError:
         return None
+    else:
+        return (st.st_dev, st.st_ino)
 
 
 _git_binary_identity = functools.lru_cache(maxsize=1)(_git_binary_identity_uncached)
@@ -170,20 +171,23 @@ def _pid_holds_lock_fd(
     lock_ident: tuple[int, int] | None = None,
 ) -> Literal["live", "not_live", "unknown"]:
     try:
-        for fd_link in (pid_dir / "fd").iterdir():
-            try:
-                if _fd_is_lock(fd_link, lock_resolved, lock_ident):
-                    return "live"
-            except OSError as e:
-                if _is_unreadable_os_error(e):
-                    return "unknown"
-        return "not_live"
+        fd_links = list((pid_dir / "fd").iterdir())
     except OSError as e:
         if _is_unreadable_os_error(e):
             return "unknown"
         if _is_dead_process_os_error(e):
             return "not_live"
         return "unknown"
+    for fd_link in fd_links:
+        try:
+            is_lock = _fd_is_lock(fd_link, lock_resolved, lock_ident)
+        except OSError as e:
+            if _is_unreadable_os_error(e):
+                return "unknown"
+        else:
+            if is_lock:
+                return "live"
+    return "not_live"
 
 
 def _pid_in_repo_cwd(
@@ -196,29 +200,29 @@ def _pid_in_repo_cwd(
         if not (cwd_link.is_symlink() or cwd_link.exists()):
             return "not_in_repo"
         cwd_target = cwd_link.readlink()
-        try:
-            cwd_resolved = cwd_target.resolve()
-        except OSError:
-            cwd_resolved = cwd_target
-        if (
-            bool({cwd_target, cwd_resolved} & (live_cwds | {common_worktrees_dir}))
-            or str(cwd_target).startswith(str(common_worktrees_dir) + "/")
-            or str(cwd_resolved).startswith(str(common_worktrees_dir) + "/")
-            or any(
-                str(cwd_resolved).startswith(str(cwd) + "/")
-                or str(cwd_target).startswith(str(cwd) + "/")
-                for cwd in (live_cwds | {common_worktrees_dir})
-                if cwd != common_worktrees_dir
-            )
-        ):
-            return "in_repo"
-        return "not_in_repo"
     except OSError as e:
         if _is_unreadable_os_error(e):
             return "unknown"
         if _is_dead_process_os_error(e):
             return "not_in_repo"
         return "unknown"
+    try:
+        cwd_resolved = cwd_target.resolve()
+    except OSError:
+        cwd_resolved = cwd_target
+    if (
+        bool({cwd_target, cwd_resolved} & (live_cwds | {common_worktrees_dir}))
+        or str(cwd_target).startswith(str(common_worktrees_dir) + "/")
+        or str(cwd_resolved).startswith(str(common_worktrees_dir) + "/")
+        or any(
+            str(cwd_resolved).startswith(str(cwd) + "/")
+            or str(cwd_target).startswith(str(cwd) + "/")
+            for cwd in (live_cwds | {common_worktrees_dir})
+            if cwd != common_worktrees_dir
+        )
+    ):
+        return "in_repo"
+    return "not_in_repo"
 
 
 def _resolve_environ_gitdir(pid_dir: Path, raw_val: bytes) -> tuple[Path | None, bool]:

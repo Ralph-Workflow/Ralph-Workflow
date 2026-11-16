@@ -311,12 +311,13 @@ class _ProcessOutput:
     def __next__(self) -> str:
         try:
             line = next(self._lines)
-            if self._clock is not None:
-                self._clock.advance(3.0)
-            return line
         except StopIteration:
             self.exhausted = True
             raise
+        else:
+            if self._clock is not None:
+                self._clock.advance(3.0)
+            return line
 
 
 class _ExitedHandle(ManagedProcess):
@@ -445,7 +446,7 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
     reader_failure: BaseException | None = None
     try:
         list(reader.read_lines())
-    except BaseException as exc:
+    except (AttemptEnded, SystemExit, KeyboardInterrupt, OSError, RuntimeError, ValueError) as exc:
         reader_failure = exc
     handle.observe_exit()
     if shape.supervisor_timing == "after-reader":
@@ -462,7 +463,7 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
                 shlex.split(_COMMANDS[parser_key])[0],
                 termination_recorder=reader.termination_recorder,
             )
-        except BaseException as exc:
+        except (AttemptEnded, SystemExit, KeyboardInterrupt, OSError, RuntimeError, ValueError) as exc:
             completion_failure = exc
     failure = reader_failure if reader_failure is not None else completion_failure
     facts = (

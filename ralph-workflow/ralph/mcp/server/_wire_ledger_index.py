@@ -56,12 +56,12 @@ class WireLedgerIndex:
             if newline:
                 lines = consumed.split(b"\n")
                 for line in lines:
-                    self._head, self._intact, call = self._step(line, self._head, self._intact)
+                    self._head, self._intact, call = self._step(line, self._head, intact=self._intact)
                     if call is not None:
                         self._calls.append(call)
                 self._offset += len(consumed) + 1
                 self._tail_line = lines[-1] + b"\n"
-            _, intact, call = self._step(partial, self._head, self._intact)
+            _, intact, call = self._step(partial, self._head, intact=self._intact)
             calls = tuple(self._calls)
             return intact, (*calls, call) if call is not None else calls
 
@@ -96,7 +96,7 @@ class WireLedgerIndex:
         self._calls = []
 
     def _step(
-        self, line: bytes, head: str, intact: bool
+        self, line: bytes, head: str, *, intact: bool
     ) -> tuple[str, bool, dict[str, object] | None]:
         if not intact:
             return head, False, None

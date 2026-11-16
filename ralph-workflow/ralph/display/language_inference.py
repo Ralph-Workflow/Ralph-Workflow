@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from functools import lru_cache
 from pathlib import PurePath
 from typing import Final
 
 from pygments.lexers import get_lexer_for_filename, guess_lexer
+from pygments.util import ClassNotFound
 
 _SUFFIXES: Final[dict[str, str]] = {
     ".d.ts": "typescript",
@@ -219,17 +221,13 @@ def _infer_uncached(filename: str, prefix: str) -> str:
     if not lexer:
         lexer = _sniff(prefix)
     if not lexer:
-        try:
+        with contextlib.suppress(ClassNotFound, OSError, ValueError, TypeError, AttributeError):
             filename_lexer = get_lexer_for_filename(filename)
             lexer = filename_lexer.aliases[0] if filename_lexer.aliases else ""
-        except Exception:
-            pass
     if not lexer and prefix:
-        try:
+        with contextlib.suppress(ClassNotFound, OSError, ValueError, TypeError, AttributeError):
             guessed_lexer = guess_lexer(prefix)
             lexer = guessed_lexer.aliases[0] if guessed_lexer.aliases else ""
-        except Exception:
-            pass
     return lexer or "text"
 
 
@@ -239,7 +237,7 @@ _cached_infer = lru_cache(maxsize=512)(_infer_uncached)
 def lexer_for_path(path: str | None, content: str = "") -> str:
     try:
         return _cached_infer(path or "", content[:4096])
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return "text"
 
 

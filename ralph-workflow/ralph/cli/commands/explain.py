@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -109,13 +110,11 @@ def _load_policy_validation_error_type() -> type[Exception]:
 
 
 def _resolve_policy_dir() -> tuple[Path, bool]:
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError):
         scope = _load_resolve_workspace_scope()()
         policy_dir = scope.resolve_agent_file("pipeline.toml").parent
         if policy_dir.is_dir() and any(policy_dir.glob("*.toml")):
             return policy_dir, False
-    except Exception:
-        pass
     return _BUNDLED_DEFAULTS_DIR, True
 
 
@@ -155,13 +154,14 @@ def explain_command(
         display.emit_status(render_explanation_ascii(explanation))
         display.emit_status("")
         display.emit_status(render_explanation_text(explanation))
-        return 0
     except policy_validation_error_type as exc:
         display.emit_warning(f"Policy validation error: {exc}")
         return 2
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         display.emit_warning(f"Error loading policy: {exc}")
         return 1
+    else:
+        return 0
 
 
 def _load_make_display_context() -> _MakeDisplayContextFn:

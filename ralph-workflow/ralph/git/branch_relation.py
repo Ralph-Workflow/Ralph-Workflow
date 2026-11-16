@@ -39,7 +39,7 @@ def _operation_in_flight(root: Path) -> bool:
         return rebase_module.rebase_in_progress(root) or merge_module.merge_state(root) != (
             merge_module.MERGE_STATE_NONE
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as exc:
         logger.warning("operation-in-flight probe for {} failed: {}", root, exc)
         return True
 

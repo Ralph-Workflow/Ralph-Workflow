@@ -55,7 +55,7 @@ def load_fixtures(directory: Path | None = None) -> tuple[dict[str, object], ...
     for path in sorted(root.glob("*.json")):
         decoded: object = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(decoded, dict):
-            raise ValueError(f"corpus fixture must be a JSON object: {path}")
+            raise TypeError(f"corpus fixture must be a JSON object: {path}")
         payloads.append({str(key): value for key, value in decoded.items()})
     return tuple(payloads)
 

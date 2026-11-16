@@ -119,7 +119,7 @@ def handle_ralph_reindex(
             cancel=cancel_callable,
         )
     except Exception as exc:
-        logger.exception("ralph_reindex crashed: %s", exc)
+        logger.exception("ralph_reindex crashed")
         return ToolResult(
             content=[
                 ToolContent.text_content(

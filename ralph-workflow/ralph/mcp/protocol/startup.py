@@ -172,13 +172,14 @@ def run_preflight_loop(
 
         try:
             attempt(remaining)
-            return
         except PermanentPreflightError:
             raise
         except RetryablePreflightError as exc:
             last_error = str(exc)
             delay = _retry_poll_delay(start, timeout, monotonic_fn=monotonic_fn)
             sleep_fn(delay.total_seconds())
+        else:
+            return
 
 
 def preflight_tcp_attempt(

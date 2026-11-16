@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import termios
@@ -62,15 +63,16 @@ def get_global_snapshot() -> TermiosModes | None:
 
 
 def snapshot_terminal_modes(fd: int | None = None) -> TermiosModes | None:
+    target_fd = _resolve_fd(fd)
+    if target_fd is None:
+        return None
     try:
-        target_fd = _resolve_fd(fd)
-        if target_fd is None:
-            return None
         modes: TermiosModes = termios.tcgetattr(target_fd)
+    except (termios.error, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+        return None
+    else:
         _STATE.saved_modes = modes
         return modes
-    except Exception:
-        return None
 
 
 def restore_terminal_modes(
@@ -80,14 +82,15 @@ def restore_terminal_modes(
     target_modes = modes if modes is not None else _STATE.saved_modes
     if target_modes is None:
         return False
-    try:
-        target_fd = _resolve_fd(fd)
-        if target_fd is None:
-            return False
-        termios.tcsetattr(target_fd, termios.TCSANOW, target_modes)
-        return True
-    except Exception:
+    target_fd = _resolve_fd(fd)
+    if target_fd is None:
         return False
+    try:
+        termios.tcsetattr(target_fd, termios.TCSANOW, target_modes)
+    except (termios.error, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+        return False
+    else:
+        return True
 
 
 def restore_terminal(
@@ -95,49 +98,41 @@ def restore_terminal(
     stream: TextIO | object | None = None,
     modes: TermiosModes | None = None,
 ) -> None:
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
         target_stream, close_stream = (
             (stream, False) if stream is not None else _default_tty_stream()
         )
         is_tty = False
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             if isinstance(target_stream, _IsATty):
                 is_tty = bool(target_stream.isatty())
-        except Exception:
-            is_tty = False
 
         if is_tty:
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 if terminal_understands_vt() and isinstance(target_stream, _Writable):
                     target_stream.write(terminal_restore_sequence())
                 if isinstance(target_stream, _Flushable):
                     target_stream.flush()
-            except Exception:
-                pass
 
         target_fd = _fd_of(target_stream)
         restore_terminal_modes(fd=target_fd, modes=modes)
         _STATE.restored = True
         if close_stream and isinstance(target_stream, _Closeable):
             target_stream.close()
-    except Exception:
-        pass
 
 
 def _default_tty_stream() -> tuple[TextIO | object | None, bool]:
     for candidate in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             if isinstance(candidate, _IsATty) and candidate.isatty():
                 return candidate, False
-        except Exception:
-            pass
     try:
         fd = os.open("/dev/tty", os.O_WRONLY | os.O_NOCTTY)
         return (
             os.fdopen(fd, "w"),
             True,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return None, False
 
 
@@ -154,20 +149,16 @@ def _resolve_fd(fd: int | None) -> int | None:
 def _fd_of(obj: object) -> int | None:
     if isinstance(obj, int):
         return obj
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
         if isinstance(obj, _HasFileno):
             fn = obj.fileno()
             if isinstance(fn, int):
                 return fn
-    except Exception:
-        pass
     return None
 
 
 def _is_atty_fd(fd: int) -> bool:
-    try:
+    with contextlib.suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
         if hasattr(os, "isatty"):
             return os.isatty(fd)
-    except Exception:
-        pass
     return False

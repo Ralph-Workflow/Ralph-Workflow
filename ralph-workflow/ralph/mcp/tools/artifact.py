@@ -74,7 +74,7 @@ def _resolve_history_enabled(artifact_type: str, workspace_root: Path, drain: st
             and phase.artifact_history.enabled
             for phase in policy.pipeline.phases.values()
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return False
 
 

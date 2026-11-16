@@ -104,7 +104,7 @@ def _remote_ref_sha(repo_root: Path, remote: str, branch: str) -> str | None:
             label=f"git-ls-remote-{remote}",
             options=GitRunOptions(timeout=REF_QUERY_TIMEOUT_SECONDS),
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         logger.debug("auto_integrate_push: `git ls-remote` could not be launched: {}", exc)
         return None
     if result.returncode != 0:
@@ -134,7 +134,7 @@ def _push_to_remote(
             label=f"git-push-to-{remote}",
             options=GitRunOptions(timeout=timeout_seconds),
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         return False, f"{type(exc).__name__}: {exc}"
     return result.returncode == 0, " ".join((result.stderr or result.stdout or "").splitlines())
 

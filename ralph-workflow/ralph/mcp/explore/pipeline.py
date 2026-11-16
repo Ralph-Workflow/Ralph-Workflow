@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+import sqlite3
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -81,7 +83,7 @@ def reindex(
         return _finalize_with_recovery(
             store, state, workspace_root, now_fn=now_fn, status="cancelled"
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error, TimeoutError) as exc:
         return _finalize_with_recovery(
             store,
             state,
@@ -114,7 +116,7 @@ def _finalize_with_recovery(
             error_summary=error_summary,
         )
     if finalized.status == "timed_out" and finalized.generation == 0:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error):
             from ralph.mcp.explore.recovery import enqueue_recovery
 
             enqueue_recovery(
@@ -122,8 +124,6 @@ def _finalize_with_recovery(
                 "timeout_exceeded",
                 message=f"timed-out cold reindex job={state.job_id}",
             )
-        except Exception:
-            pass
     return finalized
 
 

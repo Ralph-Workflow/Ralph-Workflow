@@ -30,7 +30,7 @@ class McpMetrics:
         with self._lock:
             self.terminal_frame_emissions += 1
 
-    def record_health_probe_outcome(self, success: bool) -> None:
+    def record_health_probe_outcome(self, success: object) -> None:
         with self._lock:
             if success:
                 self.health_probe_outcomes["success"] = (

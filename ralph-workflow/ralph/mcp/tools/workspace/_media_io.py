@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from collections import OrderedDict
 from collections.abc import Iterator
@@ -112,7 +113,7 @@ def write_durable_media_cache(
             max_total_bytes=MEDIA_CACHE_MAX_TOTAL_BYTES,
             keep_paths=(abs_path,),
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return ""
     return cache_path
 
@@ -123,7 +124,7 @@ def _entry_has_available_cache(workspace: Workspace, entry: dict[str, str]) -> b
         return True
     try:
         return workspace.is_file(cache_path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return False
 
 
@@ -141,13 +142,13 @@ def _persist_media_registry_entry(
     path = media_registry_path()
     artifact_id = entry["artifact_id"]
     run_prune = _advance_media_prune_counter(workspace)
-    try:
+    with contextlib.suppress(TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError):
         artifacts: list[dict[str, str]] = []
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
             raw_artifacts = data.get("artifacts", [])
             artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
-        except Exception:
+        except (TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError):
             artifacts = []
         if run_prune:
             artifacts = _drop_evicted_cache_entries(workspace, artifacts)
@@ -158,8 +159,6 @@ def _persist_media_registry_entry(
             "artifacts": artifacts,
         }
         workspace.write(path, json.dumps(payload, indent=2))
-    except Exception:
-        pass
 
 
 def _load_persisted_registry_entry(
@@ -167,7 +166,9 @@ def _load_persisted_registry_entry(
     artifact_id: str,
 ) -> dict[str, str] | None:
     path = media_registry_path()
-    try:
+    with contextlib.suppress(
+        OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError
+    ):
         data: dict[str, object] = json.loads(workspace.read(path))
         raw_artifacts = data.get("artifacts", [])
         artifacts: list[dict[str, str]] = (
@@ -176,8 +177,6 @@ def _load_persisted_registry_entry(
         for entry in artifacts:
             if entry.get("artifact_id") == artifact_id:
                 return entry
-    except Exception:
-        pass
     return None
 
 
@@ -187,15 +186,11 @@ def _load_artifact_bytes(
     source_path: str,
 ) -> bytes | None:
     if cache_path:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError):
             return DEFAULT_FILE_BACKEND.read_bytes(Path(workspace.absolute_path(cache_path)))
-        except Exception:
-            pass
     if source_path:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError):
             return DEFAULT_FILE_BACKEND.read_bytes(Path(workspace.absolute_path(source_path)))
-        except Exception:
-            pass
     return None
 
 
@@ -225,14 +220,14 @@ def _persist_media_session_entry(
         "identity_key": meta.get("identity_key", ""),
     }
     run_prune = _advance_media_prune_counter(workspace)
-    try:
+    with contextlib.suppress(TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError):
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
             raw_artifacts = data.get("artifacts", [])
             artifacts: list[dict[str, str]] = (
                 list(raw_artifacts) if isinstance(raw_artifacts, list) else []
             )
-        except Exception:
+        except (TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError):
             artifacts = []
         if run_prune:
             artifacts = _drop_evicted_cache_entries(workspace, artifacts)
@@ -249,6 +244,4 @@ def _persist_media_session_entry(
             "artifacts": list(ordered.values()),
         }
         workspace.write(path, json.dumps(payload, indent=2))
-    except Exception:
-        pass
     _persist_media_registry_entry(workspace, new_entry)

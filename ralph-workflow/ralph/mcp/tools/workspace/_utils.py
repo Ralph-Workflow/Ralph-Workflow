@@ -98,7 +98,7 @@ def list_dir_entries(workspace: Workspace, path: str) -> list[str]:
 
 
 def is_parallel_worker(session: object) -> bool:
-    flag = _attribute_value(session, "is_parallel_worker", False)
+    flag = _attribute_value(session, "is_parallel_worker", default=False)
     if callable(flag):
         try:
             executable = cast("Callable[[], object]", flag)

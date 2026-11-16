@@ -653,7 +653,7 @@ def _write_review_artifact(
             auto_seed_default_gitignore(repo_root)
             auto_seed_default_git_exclude(repo_root)
             resolved_tree_sha = seal_pending(repo_root, "run", 1).tree_sha
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
             resolved_tree_sha = None
 
     lines = ["---", "type: commit_review", f"verdict: {verdict}"]

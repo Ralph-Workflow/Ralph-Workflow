@@ -31,7 +31,7 @@ class TestInstallSigwinchRefresher:
         def install_from_thread() -> None:
             try:
                 install_sigwinch_refresher(ctx_holder)
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 result[0] = exc
 
         thread = threading.Thread(target=install_from_thread)

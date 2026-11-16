@@ -304,5 +304,5 @@ def supervisor_restart(root: Path) -> dict[str, object]:
     )
     payload = json.loads(completed.stdout)
     if not isinstance(payload, dict):
-        raise AssertionError("restart probe returned a non-object payload")
+        raise TypeError("restart probe returned a non-object payload")
     return payload

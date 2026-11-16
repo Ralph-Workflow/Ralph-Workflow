@@ -47,9 +47,10 @@ class FsWorkspace:
         for allowed_root in self._allowed_roots:
             try:
                 candidate.relative_to(allowed_root)
-                return candidate
             except ValueError:
                 continue
+            else:
+                return candidate
         msg = f"Path '{path}' resolves outside workspace root"
         raise ValueError(msg)
 

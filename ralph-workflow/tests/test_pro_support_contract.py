@@ -371,12 +371,16 @@ class _RecordingHeartbeat:
 
 
 def _seed_pro_workspace(
-    tmp_path: Path, *, run_id: str = "contract-run", token: str = "contract-tok"
+    tmp_path: Path, *, run_id: str = "contract-run", token: str | None = None
 ) -> None:
     (tmp_path / "PROMPT.md").write_text("# contract\n", encoding="utf-8")
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir(exist_ok=True)
-    payload = {"runId": run_id, "port": 7432, "heartbeatToken": token}
+    payload = {
+        "runId": run_id,
+        "port": 7432,
+        "heartbeatToken": token if token is not None else "contract-tok",
+    }
     (marker_dir / "run.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
@@ -641,6 +645,7 @@ def test_section_7_heartbeat_adopts_late_marker(
     run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     runner_module = importlib.import_module("ralph.pipeline.runner")
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
+    monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: None)
     _seed_pro_workspace(tmp_path, run_id="late", token="late-tok")
 
     state_in = PipelineState(phase="complete")

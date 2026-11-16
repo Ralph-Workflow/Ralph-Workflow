@@ -20,6 +20,7 @@ class PtyProcess:
         master_fd: int,
         slave_fd: int,
         _returncode: int | None = None,
+        *,
         _closed: bool = False,
     ) -> None:
         self.pid = pid
@@ -56,10 +57,7 @@ class PtyProcess:
         if self._returncode is not None:
             return self._returncode
         if timeout is None:
-            try:
-                _pid, status = os.waitpid(self.pid, 0)
-            except ChildProcessError:
-                raise
+            _pid, status = os.waitpid(self.pid, 0)
             self._returncode = _status_to_returncode(status)
             return self._returncode
 

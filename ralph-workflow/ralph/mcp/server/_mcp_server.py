@@ -30,6 +30,7 @@ from ralph.mcp.server._session_wrapup import (
 )
 from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
 from ralph.mcp.tools._exec_resource_uri import parse_exec_uri
+from ralph.mcp.tools.bridge import ToolBridgeError
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
@@ -164,7 +165,7 @@ class McpServer:
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         try:
             return self._dispatch_request(request, state)
-        except Exception as exc:
+        except (ToolBridgeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
             logger.error("MCP request handler crashed for method={}: {}", request.method, exc)
             metrics = self._metrics if self._metrics is not None else get_default_metrics()
             metrics.record_post_header_failure(
@@ -604,7 +605,7 @@ class McpServer:
                 content=[ToolContent.text_content(str(exc))],
                 is_error=True,
             )
-        except Exception as exc:
+        except (ToolBridgeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
@@ -646,7 +647,7 @@ class McpServer:
             except ActivityRelayError as exc:
                 self._activity_relay_error = str(exc)
                 raise
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                 logger.opt(exception=True).debug(
                     "MCP server: per-server activity sink raised (suppressed)"
                 )

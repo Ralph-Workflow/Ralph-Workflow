@@ -60,6 +60,31 @@ class _ReadableWorkspace(Protocol):
     def read(self, path: str) -> str: ...
 
 
+_WORKER_READ_EXCEPTIONS = (
+    ArithmeticError,
+    AssertionError,
+    AttributeError,
+    BufferError,
+    EOFError,
+    ImportError,
+    LookupError,
+    MemoryError,
+    NameError,
+    OSError,
+    ReferenceError,
+    RuntimeError,
+    StopIteration,
+    SyntaxError,
+    SystemError,
+    TypeError,
+    ValueError,
+    Warning,
+    ExceptionGroup,
+    KeyboardInterrupt,
+    SystemExit,
+)
+
+
 def _read_workspace_policy(
     workspace: object,
     *,
@@ -79,7 +104,7 @@ def _read_workspace_policy(
     def _worker() -> None:
         try:
             result.append(readable.read(DESIGN_SYSTEM_POLICY_RELPATH))
-        except BaseException as exc:
+        except _WORKER_READ_EXCEPTIONS as exc:
             error.append(exc)
         finally:
             done.set()

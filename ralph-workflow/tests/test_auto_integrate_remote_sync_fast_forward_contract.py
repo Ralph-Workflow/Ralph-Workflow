@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from git import Commit, Repo, Tree
+from git.exc import GitError
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
@@ -49,7 +50,7 @@ def _repo(path: Path) -> Repo | None:
         return cached
     try:
         repo = Repo(path)
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         return None
     _REPO_CACHE[path] = repo
     return repo
@@ -58,11 +59,11 @@ def _repo(path: Path) -> Repo | None:
 def _refreshed_repo(path: Path) -> Repo | None:
     stale = _REPO_CACHE.pop(path, None)
     if stale is not None:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(GitError, OSError, ValueError):
             stale.close()
     try:
         repo = Repo(path)
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         return None
     _REPO_CACHE[path] = repo
     return repo
@@ -90,7 +91,7 @@ def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
                 value = "\n".join(remote.name for remote in repo.remotes)
             else:
                 return None
-        except Exception:
+        except (GitError, OSError, ValueError, KeyError, AttributeError):
             continue
         return value
     return None
@@ -199,7 +200,7 @@ def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
     assert git_repo is not None
     try:
         return git_repo.is_ancestor(git_repo.commit(ancestor), git_repo.commit(descendant))
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError):
         result = subprocess.run(
             ("git", "merge-base", "--is-ancestor", ancestor, descendant),
             cwd=str(repo),

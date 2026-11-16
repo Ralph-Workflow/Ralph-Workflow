@@ -94,9 +94,9 @@ class SalienceAllocator:
                 decisions[bid.role] = AllocationDecision(
                     bid.role,
                     tier,
-                    True,
-                    "non-accent tier: always painted at its own budget",
-                    self._frame_index,
+                    lit=True,
+                    reason="non-accent tier: always painted at its own budget",
+                    frame_index=self._frame_index,
                 )
                 continue
             if tier is FrequencyTier.ALARM:
@@ -106,7 +106,11 @@ class SalienceAllocator:
 
         for bid in alarm_bids:
             decisions[bid.role] = AllocationDecision(
-                bid.role, FrequencyTier.ALARM, True, "alarm: exempt", self._frame_index
+                bid.role,
+                FrequencyTier.ALARM,
+                lit=True,
+                reason="alarm: exempt",
+                frame_index=self._frame_index,
             )
             self._steady_frames[bid.role] = 0
             self._was_lit[bid.role] = True
@@ -138,13 +142,21 @@ class SalienceAllocator:
         for bid in lit_bids:
             reason = "state change" if bid.state_changed else "budget slot"
             decisions[bid.role] = AllocationDecision(
-                bid.role, FrequencyTier.EVENT, True, reason, self._frame_index
+                bid.role,
+                FrequencyTier.EVENT,
+                lit=True,
+                reason=reason,
+                frame_index=self._frame_index,
             )
             self._was_lit[bid.role] = True
 
         for bid in evicted_bids:
             decisions[bid.role] = AllocationDecision(
-                bid.role, FrequencyTier.EVENT, False, "budget exhausted: evicted", self._frame_index
+                bid.role,
+                FrequencyTier.EVENT,
+                lit=False,
+                reason="budget exhausted: evicted",
+                frame_index=self._frame_index,
             )
             self._was_lit[bid.role] = False
 
@@ -156,7 +168,11 @@ class SalienceAllocator:
                 else "demoted: one-way until state change"
             )
             decisions[bid.role] = AllocationDecision(
-                bid.role, FrequencyTier.EVENT, False, reason, self._frame_index
+                bid.role,
+                FrequencyTier.EVENT,
+                lit=False,
+                reason=reason,
+                frame_index=self._frame_index,
             )
             self._was_lit[bid.role] = False
 

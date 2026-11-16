@@ -85,7 +85,7 @@ def _run_thread_capturing_exception(
     def _runner() -> None:
         try:
             reader._transcript_thread()
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             captured["exc"] = exc
 
     thread = threading.Thread(target=_runner, daemon=True)

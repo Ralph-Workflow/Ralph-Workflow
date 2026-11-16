@@ -148,11 +148,16 @@ class _BackgroundAwareCodeBlock(CodeBlock):
         background = candidate if isinstance(candidate, bool) else None
         surface_candidate = cast("object", getattr(markdown, "surface_hex", None))
         surface_hex = surface_candidate if isinstance(surface_candidate, str) else None
-        return cls(node_info.partition(" ")[0] or "text", background, surface_hex)
+        return cls(
+            node_info.partition(" ")[0] or "text",
+            terminal_bg_is_light=background,
+            surface_hex=surface_hex,
+        )
 
     def __init__(
         self,
         lexer_name: str,
+        *,
         terminal_bg_is_light: bool | None,
         surface_hex: str | None = None,
     ) -> None:
@@ -429,7 +434,7 @@ def _build_search_result_preview(
         )
         if pattern and (start := safe.find(pattern)) >= 0:
             marker_style = _diff_marker_style(
-                False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+                removed=False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
             )
             syntax.stylize_range(
                 f"bold {marker_style}",
@@ -464,10 +469,10 @@ def _build_edit_preview(
     lexer_name = "markdown" if path is None else lexer_for_path(path or "")
     is_markdown = _is_markdown_lexer(lexer_name)
     old_style = _diff_marker_style(
-        True, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+        removed=True, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
     )
     new_style = _diff_marker_style(
-        False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
+        removed=False, terminal_bg_is_light=terminal_bg_is_light, surface_hex=surface_hex
     )
     old_fill, new_fill = diff_fills or (None, None)
     safe_edits = [

@@ -150,7 +150,7 @@ def _default_is_tty() -> bool:
     try:
         stdin_tty: bool = sys.stdin.isatty()
         stdout_tty: bool = sys.stdout.isatty()
-    except Exception:
+    except (OSError, ValueError, AttributeError):
         return False
     return stdin_tty and stdout_tty
 
@@ -166,7 +166,7 @@ def _ask(
 ) -> str:
     try:
         return select(question, choices, default)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("policy prompt failed (non-fatal): {}", exc)
         emit(fallback_notice)
         return default
@@ -264,7 +264,7 @@ def _build_pipeline_deps_for_remediation(
             policy_bundle=load_result.policy_bundle,
             pro_hooks=None,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("Could not build pipeline deps for remediation: {}", exc)
         return None
 
@@ -338,7 +338,7 @@ def _make_production_invoke_agent(
                     run_id=load_result.run_id,
                     policy_bundle=load_result.policy_bundle,
                 )
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError) as exc:
                 logger.warning(
                     "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                 )
@@ -424,7 +424,7 @@ def _capture_pipeline_state() -> Iterator[None]:
     finally:
         try:
             _restore_pipeline_capture(snapshot)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, AttributeError) as exc:
             logger.debug("capture-restore failed (non-fatal): {}", exc)
 
 
@@ -444,7 +444,7 @@ def _build_workspace(
 def _snapshot_working_tree(workspace_scope: WorkspaceScope) -> frozenset[str]:
     try:
         return list_dirty_paths(workspace_scope.root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("working-tree snapshot failed (non-fatal): {}", exc)
         return frozenset()
 
@@ -616,7 +616,7 @@ def run_project_policy_readiness(
             working_tree_snapshot=working_tree_snapshot,
             commit_policy_updates=commit_policy_updates,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.opt(exception=True).warning(
             "project-policy preflight crashed ({}); continuing to the "
             "development run without a ready policy.",
@@ -673,7 +673,7 @@ def _emit_and_push_readiness_assessment(
                 assessment,
                 run_started_monotonic=run_started_monotonic,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, AttributeError) as exc:
             logger.debug(
                 "readiness-assessment status-bar push failed (non-fatal): {}",
                 exc,
@@ -687,7 +687,7 @@ def _emit_safely(
 ) -> None:
     try:
         _build_emit(display_context, emit_factory)(message)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.debug("policy failure could not be displayed: {}", exc)
 
 

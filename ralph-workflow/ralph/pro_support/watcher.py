@@ -157,7 +157,7 @@ class ProMarkerWatcher:
         while not self._stop_event.is_set():
             try:
                 payload = self._loader()
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError) as exc:
                 logger.debug("Pro marker loader raised: %s", exc)
                 payload = None
             if payload is not None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from ._event_classification import is_lifecycle_kind
@@ -61,10 +62,8 @@ class ClaudeInteractiveParser:
             return
         if len(summary) > _MAX_SUMMARY_LENGTH:
             summary = summary[:_MAX_SUMMARY_LENGTH]
-        try:
+        with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             sink(summary)
-        except Exception:
-            return
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         for raw in lines:

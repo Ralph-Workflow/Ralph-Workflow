@@ -259,9 +259,9 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                     resp = conn.getresponse()
                     _ = resp.read()
                 finally:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(OSError, RuntimeError, ValueError):
                         conn.close()
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 severed_error.append(exc)
 
         t = threading.Thread(target=_do_non_idempotent_request)
@@ -717,9 +717,9 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
                     resp = conn.getresponse()
                     _ = resp.read()
                 finally:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(OSError, RuntimeError, ValueError):
                         conn.close()
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
                 inflight_errors.append(exc)
             finally:
                 inflight_completed.set()

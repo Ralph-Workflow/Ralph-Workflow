@@ -83,7 +83,7 @@ class _BoundedSdkCall:
                 thread_name_prefix="mcp-websearch-sdk",
             )
 
-    def shutdown(self, wait: bool = True) -> None:
+    def shutdown(self, *, wait: bool = True) -> None:
         with self._lock:
             executor = self._executor
             self._executor = None
@@ -136,7 +136,7 @@ def reset_default() -> None:
     _default_call.reset()
 
 
-def shutdown(wait: bool = True) -> None:
+def shutdown(*, wait: bool = True) -> None:
     _default_call.shutdown(wait=wait)
 
 

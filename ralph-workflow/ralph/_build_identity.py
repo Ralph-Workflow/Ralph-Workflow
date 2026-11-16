@@ -16,7 +16,7 @@ def _source_commit_uncached() -> str:
         return BUILD_SOURCE_COMMIT[:_COMMIT_LENGTH]
     try:
         sha = get_head_sha(Path(__file__).resolve().parents[2])
-    except Exception:
+    except (OSError, ValueError, RuntimeError):
         return _UNKNOWN_COMMIT
     if not sha:
         return _UNKNOWN_COMMIT

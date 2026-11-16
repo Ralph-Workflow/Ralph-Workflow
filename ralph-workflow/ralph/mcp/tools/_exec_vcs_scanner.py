@@ -107,22 +107,22 @@ def _scan_diff_flags_for_writes(args_text: str) -> str | None:
             pos += 1
         if pos >= length:
             return None
-        token_end = pos
-        while token_end < length and not args_text[token_end].isspace():
-            token_end += 1
-        token = args_text[pos:token_end]
-        pos = token_end
+        arg_end = pos
+        while arg_end < length and not args_text[arg_end].isspace():
+            arg_end += 1
+        flag_arg = args_text[pos:arg_end]
+        pos = arg_end
         for prefix in _GIT_DIFF_OUTPUT_FLAGS:
             if prefix == "--output" and (
-                token == "--output" or "--output=" in token or token.startswith("--output ")
+                flag_arg == "--output" or "--output=" in flag_arg or flag_arg.startswith("--output ")
             ):
-                return token
+                return flag_arg
             if prefix == "-o" and (
-                token == "-o" or token.startswith("-o=") or token.startswith("-o ")
+                flag_arg == "-o" or flag_arg.startswith("-o=") or flag_arg.startswith("-o ")
             ):
-                return token
+                return flag_arg
         for bad in _GIT_DIFF_EXTERNAL_HELPER_FLAGS:
-            if bad in token:
+            if bad in flag_arg:
                 return bad
     return None
 

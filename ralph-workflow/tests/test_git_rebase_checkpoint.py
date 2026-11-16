@@ -94,7 +94,7 @@ def test_save_checkpoint_uses_unique_temp_files_per_writer(
     def worker(checkpoint: RebaseCheckpoint) -> None:
         try:
             save_rebase_checkpoint(checkpoint)
-        except BaseException as exc:
+        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
             errors.append(exc)
 
     threads = [threading.Thread(target=worker, args=(checkpoint,)) for checkpoint in checkpoints]

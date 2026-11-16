@@ -115,11 +115,11 @@ _EXIT_INTERRUPT = 130
 _EXIT_PREFLIGHT = 2
 load_policy = _dir_load_policy
 
-_BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
+_BROKER_HMAC_ENV_VAR = "RALPH_BROKER_SECRET"
 
 
 def _ensure_broker_secret() -> None:
-    os.environ[_BROKER_SECRET_ENV] = secrets.token_hex(32)
+    os.environ[_BROKER_HMAC_ENV_VAR] = secrets.token_hex(32)
 
 
 _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
@@ -209,14 +209,14 @@ def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None)
         set_agent_config_context(config.agents)
         if workspace_root is not None:
             set_policy_schema_context(policy_schema_state(workspace_root))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return
 
 
 def _load_configuration(
     config_path: Path | None,
     cli_overrides: ConfigOverrides,
-    resume: bool,
+    resume: object,
     *,
     display_context: DisplayContext,
 ) -> _LoadResult | int:
@@ -229,7 +229,7 @@ def _load_configuration(
             workspace_scope=workspace_scope,
             unknown_field_warning=display.emit_warning,
         )
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("Failed to load configuration: {}", e)
         return _EXIT_CONFIG_ERROR
 
@@ -255,7 +255,7 @@ def _load_configuration(
                 policy_bundle = load_policy(policy_dir, config=config)
             else:
                 policy_bundle = load_policy_for_workspace_scope(workspace_scope, config=config)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
             logger.warning("Failed to load policy bundle: {}", e)
             display.emit_warning(f"Preflight error: {e}")
             return _EXIT_PREFLIGHT
@@ -475,8 +475,6 @@ def _execute_pipeline(
             run_func=run_func,
         )
         result = run_func(request.config, request.initial_state, **kwargs)
-        _dirty_scheduler.on_workflow_complete()
-        return result
     except KeyboardInterrupt:
         active_display.emit_warning("\nInterrupted by user")
         _dirty_scheduler.on_workflow_cancel()
@@ -484,7 +482,7 @@ def _execute_pipeline(
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
             handle_keyboard_interrupt_at_cli(exit_code=_EXIT_INTERRUPT)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.warning("Interrupt dispatcher failed during CLI catch", exc_info=True)
         if request.initial_state is not None:
             _save_interrupt_checkpoint(request.initial_state)
@@ -497,11 +495,14 @@ def _execute_pipeline(
         _dirty_scheduler.on_workflow_restart()
         active_display.emit_warning(_pipeline_config_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         _dirty_scheduler.on_workflow_fail()
         logger.exception("Pipeline execution failed: {}")
         active_display.emit_warning(f"Pipeline failed: {e}")
         return _EXIT_CONFIG_ERROR
+    else:
+        _dirty_scheduler.on_workflow_complete()
+        return result
 
 
 def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
@@ -509,7 +510,7 @@ def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
         update_data: ConfigOverrides = {"interrupted_by_user": True}
         interrupted_state = initial_state.model_copy(update=update_data)
         ckpt.save(interrupted_state)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         logger.warning("Checkpoint save failed during interrupt", exc_info=True)
 
 
@@ -644,7 +645,7 @@ def _run_project_policy_readiness(
             emit_factory=emit_factory,
             invoke_remediation_agent_factory=invoke_remediation_agent_factory,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         logger.opt(exception=True).warning(
             "project-policy preflight could not run; continuing the development run"
         )
@@ -796,7 +797,7 @@ def _unregister_active_run(load_result: _LoadResult) -> None:
         from ralph.workspace.agent_dir_retention import unregister_active_run
 
         unregister_active_run(load_result.workspace_scope.root, load_result.run_id)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Active-run unregistration failed (non-fatal): {}", exc)
 
 

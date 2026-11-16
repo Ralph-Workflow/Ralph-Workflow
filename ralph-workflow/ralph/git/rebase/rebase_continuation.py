@@ -267,7 +267,6 @@ def _continue_rebase_once(repo_root: Path | str, *, skip_empty: bool = True) -> 
                     label="git-rebase:continue",
                     options=GitRunOptions(env=scrub_git_env(_git_env()), check=True),
                 )
-                return
             except subprocess.CalledProcessError as next_exc:
                 raw_next_stderr: object = next_exc.stderr
                 raw_next_stdout: object = next_exc.stdout
@@ -280,6 +279,8 @@ def _continue_rebase_once(repo_root: Path | str, *, skip_empty: bool = True) -> 
                     ) from next_exc
                 if not rebase_in_progress_at(repo_root):
                     return
+            else:
+                return
 
         raise RebaseContinuationError(
             "Failed to continue rebase: empty commit skip limit exceeded"

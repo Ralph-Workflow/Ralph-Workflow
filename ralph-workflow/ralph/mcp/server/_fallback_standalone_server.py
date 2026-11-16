@@ -121,7 +121,7 @@ class _FallbackStandaloneServer:
                 broker_fingerprint=broker_fp,
                 effective_config_fingerprint=config_fp,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.opt(exception=True).warning("Failed to start private readiness listener")
 
     def _setup_handover_pause(self, httpd: _FallbackHttpServer, stop_event: Event | None) -> None:
@@ -138,7 +138,7 @@ class _FallbackStandaloneServer:
                         ack_path = pause_path.with_name(pause_path.name + ".ack")
                         ack_path.write_text("ACK\n", encoding="utf-8")
                         logger.info("Retiring MCP server acknowledged handover pause")
-                    except Exception:
+                    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                         logger.opt(exception=True).warning("Handover pause acknowledgement failed")
                     break
                 time.sleep(0.005)

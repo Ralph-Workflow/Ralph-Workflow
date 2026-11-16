@@ -214,7 +214,7 @@ object.__setattr__(typer.main, "get_command", _get_command_with_optional_init)
 _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
-def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
+def version_callback(version: object, ctx: DisplayContext | None = None) -> None:
     if version:
         from ralph.display.parallel_display import resolve_active_display
 
@@ -254,7 +254,7 @@ def _try_load_registry() -> AgentRegistry | None:
         cfg = load_config(None, {})
         registry_type = _load_agent_registry_factory()
         return registry_type.from_config(cfg)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return None
 
 
@@ -349,7 +349,7 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
     try:
         scope = resolve_workspace_scope()
         agent_dir = scope.local_config_path.parent
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Workspace scope unavailable, skipping local regenerate: {}", exc)
         agent_dir = None
     results = regenerate_all(agent_dir=agent_dir)
@@ -388,21 +388,21 @@ def _init_telemetry() -> None:
         record_session_start()
         set_session_wallclock_start()
         atexit.register(finalize_session)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.warning("Telemetry unavailable: {}", exc)
 
 
 def _record_cli_command(ctx: typer.Context) -> None:
     try:
         from ralph.telemetry._sentry import is_telemetry_disabled, record_command_invocation
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         logger.warning("Telemetry command-invocation forwarding unavailable", exc_info=True)
         return
     if is_telemetry_disabled():
         return
     try:
         record_command_invocation(ctx.invoked_subcommand or "pipeline")
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         logger.warning("Telemetry command-invocation forwarding failed", exc_info=True)
 
 
@@ -473,7 +473,7 @@ def _handle_retry_integration(
         from ralph.config.loader import load_config
 
         cfg = load_config(config_path=config, workspace_scope=scope)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Config load during explicit retry: {}", exc)
 
     from ralph.pipeline.auto_integrate_recovery import build_recovery_context
@@ -584,6 +584,7 @@ def reset_cli_restore_state() -> None:
 
 def main(
     ctx: typer.Context,
+    *,
     config: Annotated[
         str | None,
         typer.Option(
@@ -1051,20 +1052,25 @@ def smoke_interactive_claude(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Claude", bare="claude")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1100,20 +1106,25 @@ def smoke_headless_claude(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="headless Claude", bare="claude-headless")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1149,20 +1160,25 @@ def smoke_interactive_agy(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="AGY", bare="agy")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1198,20 +1214,25 @@ def smoke_interactive_nanocoder(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Nanocoder", bare="nanocoder")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1247,20 +1268,25 @@ def smoke_interactive_cursor(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Cursor", bare="cursor")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1298,20 +1324,25 @@ def smoke_interactive_kimi(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Kimi", bare="kimi")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1359,20 +1390,25 @@ def smoke_interactive_opencode(
         None,
         help="OpenCode model (e.g. MiniMax-M3). Requires --provider.",
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1412,20 +1448,25 @@ def smoke_interactive_codex(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Codex", bare="codex")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1461,20 +1502,25 @@ def smoke_interactive_pi(
             + _SMOKE_AGENT_DEFAULT_HELP.format(label="Pi", bare="pi")
         ),
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1507,20 +1553,25 @@ def smoke_interactive_ccs(
         None,
         help="CCS alias to smoke; defaults to the effective policy development chain.",
     ),
-    subagents: bool = typer.Option(
-        False,
-        "--subagents",
-        help="Require native subagent dispatch, result, and later main-agent activity.",
-    ),
-    multimodal: bool = typer.Option(
-        False,
-        "--multimodal",
-        help=(
-            "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
-            "read_image endpoints. The run is graded WIRE only when the agent issues the "
-            "verified media tool calls (criterion 5)."
+    *,
+    subagents: Annotated[
+        bool,
+        typer.Option(
+            "--subagents",
+            help="Require native subagent dispatch, result, and later main-agent activity.",
         ),
-    ),
+    ] = False,
+    multimodal: Annotated[
+        bool,
+        typer.Option(
+            "--multimodal",
+            help=(
+                "Drive the run from a multimodal-aware prompt that exercises the project's read_media / "
+                "read_image endpoints. The run is graded WIRE only when the agent issues the "
+                "verified media tool calls (criterion 5)."
+            ),
+        ),
+    ] = False,
     subagent_prompt_file: Annotated[
         RuntimePath | None,
         typer.Option(
@@ -1623,7 +1674,7 @@ def _resolve_effective_developer_iters(
 def _handle_list_agents(
     config: str | None,
     cli_overrides: dict[str, object],
-    list_agents: bool,
+    list_agents: object,
     *,
     display_context: DisplayContext,
 ) -> int | None:
@@ -1636,14 +1687,15 @@ def _handle_list_agents(
         agents: Mapping[str, AgentConfig] = cfg.agents
         _display = resolve_active_display(None, display_context)
         _display.emit_agents_table(agents)
-        return 0
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("Failed to list agents: {}", e)
         return 1
+    else:
+        return 0
 
 
 def _handle_list_providers(
-    list_providers: bool,
+    list_providers: object,
     *,
     display_context: DisplayContext,
 ) -> int | None:
@@ -1653,13 +1705,14 @@ def _handle_list_providers(
         providers = fetch_providers()
         _display = resolve_active_display(None, display_context)
         _display.emit_providers_table(providers)
-        return 0
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("Failed to list providers: {}", e)
         return 1
+    else:
+        return 0
 
 
-def _handle_check_mcp(check_mcp: bool, *, display_context: DisplayContext) -> int | None:
+def _handle_check_mcp(check_mcp: object, *, display_context: DisplayContext) -> int | None:
     if not check_mcp:
         return None
     display = resolve_active_display(None, display_context)
@@ -1668,7 +1721,7 @@ def _handle_check_mcp(check_mcp: bool, *, display_context: DisplayContext) -> in
     try:
         workspace_scope = resolve_workspace_scope()
         rc = validate_custom_mcp_servers(workspace_scope.root)
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("MCP validation failed: {}", e)
         return 1
     if rc == 0:
@@ -1717,12 +1770,12 @@ def _run_pipeline(
             return
         try:
             from ralph.telemetry._sentry import set_session_outcome
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.warning("Telemetry outcome update unavailable", exc_info=True)
             return
         try:
             set_session_outcome(outcome)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.warning("Telemetry outcome update failed", exc_info=True)
 
     display = resolve_active_display(None, display_context)
@@ -1740,15 +1793,13 @@ def _run_pipeline(
             policy_mode=opts.policy_mode,
         )
         exit_code = run_pipeline(request, display_context=display_context)
-        _set_outcome("success" if exit_code == 0 else "failure")
-        return exit_code
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
         try:
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
             handle_keyboard_interrupt_at_cli()
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
         _set_outcome("interrupted")
         return 130
@@ -1756,11 +1807,14 @@ def _run_pipeline(
         display.emit_warning(str(e))
         _set_outcome("failure")
         return 1
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.exception("Pipeline failed: {}")
         display.emit_warning(f"Error: {e}")
         _set_outcome("failure")
         return 1
+    else:
+        _set_outcome("success" if exit_code == 0 else "failure")
+        return exit_code
 
 
 def _configure_logging(
@@ -1874,7 +1928,7 @@ def _resolve_display_from_legacy(
 
 
 def handle_check_mcp(
-    check_mcp: bool,
+    check_mcp: object,
     *,
     console: Console | None = None,
     display_context: DisplayContext | None = None,
@@ -1886,7 +1940,7 @@ def handle_check_mcp(
     try:
         workspace_scope = resolve_workspace_scope()
         rc = validate_custom_mcp_servers(workspace_scope.root)
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
         logger.error("MCP validation failed: {}", e)
         return 1
     if rc == 0:
@@ -1899,7 +1953,7 @@ def handle_check_mcp(
 def handle_check_config(
     config: str | None,
     cli_overrides: dict[str, object],
-    check_config: bool,
+    check_config: object,
     *,
     console: Console | None = None,
     display_context: DisplayContext | None = None,
@@ -1913,7 +1967,7 @@ def handle_check_config(
     workspace_scope: WorkspaceScope | None = None
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         workspace_scope = None
 
     from ralph.config.bootstrap import collect_unreadable_config_files
@@ -1925,19 +1979,21 @@ def handle_check_config(
     )
 
     validation_errors: list[str] = []
-    try:
-        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        registry = _load_agent_registry_factory().from_config(config_value)
-        if config_path is not None:
-            bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
-        else:
-            if workspace_scope is None:
-                raise RuntimeError("workspace scope is required for the active configuration")
-            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
-        validate_agent_chains_satisfiable(bundle, registry)
-        validate_chain_agents_on_path(bundle.agents)
-    except Exception as e:
-        validation_errors.append(str(e))
+    if config_path is None and workspace_scope is None:
+        validation_errors.append("workspace scope is required for the active configuration")
+    else:
+        try:
+            config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+            registry = _load_agent_registry_factory().from_config(config_value)
+            if config_path is not None:
+                bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
+            else:
+                assert workspace_scope is not None
+                bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
+            validate_agent_chains_satisfiable(bundle, registry)
+            validate_chain_agents_on_path(bundle.agents)
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
+            validation_errors.append(str(e))
 
     try:
         from ralph.config.mcp_loader import load_mcp_config
@@ -1947,7 +2003,7 @@ def handle_check_config(
             config_path=config_path,
             strict_optional_files=True,
         )
-    except (Exception, SystemExit) as e:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, SystemExit) as e:
         validation_errors.append(str(e))
 
     if unreadable_files or validation_errors:

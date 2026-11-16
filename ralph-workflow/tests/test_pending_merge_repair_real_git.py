@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
+from git.exc import GitError
 from rich.console import Console
 
 from ralph.config.models import UnifiedConfig
@@ -59,18 +60,18 @@ def _git(root: Path, *args: str) -> GitRunResult:
     if args == ("write-tree",):
         try:
             tree = _repo(root).index.write_tree()
-        except Exception:
+        except (GitError, OSError, ValueError, KeyError, AttributeError):
             return _base_git(root, *args)
         return GitRunResult(args=("git", *args), stdout=tree.hexsha + "\n", stderr="", returncode=0)
     if len(args) == 2 and args[0] == "add":
         try:
             _repo(root).index.add([args[1]])
-        except Exception:
+        except (GitError, OSError, ValueError, KeyError, AttributeError):
             return _base_git(root, *args)
         return GitRunResult(args=("git", *args), stdout="", stderr="", returncode=0)
     try:
         result = _read_git_object(root, args)
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError, AttributeError, UnicodeDecodeError):
         result = None
     if result is not None:
         return result

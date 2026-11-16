@@ -39,14 +39,14 @@ def _active_maintenance() -> dict[str, object]:
         from ralph.workspace.agent_dir_retention import process_retention_coordinator
 
         retention_passes = process_retention_coordinator().passes
-    except Exception:
+    except (ImportError, AttributeError, RuntimeError):
         retention_passes = 0
     dirty_pending = False
     try:
         from ralph.mcp.explore.dirty_paths import _dirty_scheduler
 
         dirty_pending = _dirty_scheduler.has_pending
-    except Exception:
+    except (ImportError, AttributeError, RuntimeError):
         dirty_pending = False
     return {
         "retention_passes": retention_passes,

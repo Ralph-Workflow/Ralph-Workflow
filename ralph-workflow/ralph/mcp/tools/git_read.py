@@ -340,7 +340,7 @@ def _resolve_compact_status_index(
             continue
         try:
             handle = resolve_explore_index(candidate)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             handle = None
         if handle is not None:
             break
@@ -383,7 +383,7 @@ def _compute_compact_status_meta(
             if isinstance(current_generation_raw, str) and current_generation_raw.isdigit()
             else 0
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return result
     if current_generation <= 0:
         result["index_status"] = "stale"
@@ -391,13 +391,13 @@ def _compute_compact_status_meta(
         return result
     try:
         dirty_paths = list(store.peek_dirty_paths())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         result["index_status"] = "unavailable"
         result["fallback_reason"] = "dirty_paths_read_failed"
         return result
     try:
         has_deleted = bool(store.has_deleted_files())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         result["index_status"] = "unavailable"
         result["fallback_reason"] = "deleted_files_read_failed"
         return result
@@ -413,7 +413,7 @@ def _compute_compact_status_meta(
             continue
         try:
             symbols = store.find_symbols(path=path_value)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             symbols = []
         if not symbols:
             continue
@@ -691,7 +691,7 @@ def _collect_git_diff_capped(
                     max_bytes,
                 )
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
             failure.append(exc)
 
     reader = threading.Thread(target=_read_stdout, name="git-diff-stdout", daemon=True)
@@ -713,7 +713,7 @@ def _collect_git_diff_capped(
         stderr_drain.join(timeout=max(deadline - time.monotonic(), 0.0))
     _terminate_git_diff_proc(proc, timeout=max(deadline - time.monotonic(), 0.1))
     return (
-        _decode_git_diff_capped(b"".join(chunks), truncated),
+        _decode_git_diff_capped(b"".join(chunks), truncated=truncated),
         truncated,
     )
 
@@ -764,7 +764,7 @@ def _terminate_git_diff_proc(proc: ManagedProcess, *, timeout: float) -> None:
         proc.communicate_and_cleanup(timeout=timeout)
 
 
-def _decode_git_diff_capped(encoded: bytes, truncated: bool) -> str:
+def _decode_git_diff_capped(encoded: bytes, *, truncated: bool) -> str:
     if truncated and len(encoded) > 0:
         while len(encoded) > 0:
             try:

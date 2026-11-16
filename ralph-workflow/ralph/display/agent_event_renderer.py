@@ -54,6 +54,7 @@ def _state_payload(state: str) -> tuple[str, str, str]:
 
 def _state_payload_for_context(
     state: str,
+    *,
     terminal_bg_is_light: bool | None,
     surface_hex: str | None = None,
 ) -> tuple[str, str, str]:
@@ -207,7 +208,7 @@ def _render_text_event(
         style_name = "running"
     style, icon, label = _state_payload_for_context(
         style_name,
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
@@ -231,7 +232,7 @@ def _render_status_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "info",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
@@ -255,7 +256,7 @@ def _render_tool_use_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "running",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     raw_name = _normalized_event_content(event) or "tool"
@@ -281,6 +282,7 @@ def _append_tool_result_body(
     body_style: str,
     tool_name: str,
     ctx: DisplayContext | None,
+    *,
     escape_body: bool,
 ) -> None:
     body = strip_duplicate_tool_prefix(body, tool_name)
@@ -298,7 +300,7 @@ def _render_tool_result_event(
     state = "error" if is_error else "success"
     style, icon, label = _state_payload_for_context(
         state,
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     raw_body = _normalized_event_content(event)
@@ -333,7 +335,9 @@ def _render_tool_result_event(
         text.append(escape(target) if escape_body else target, style="theme.text.muted")
         text.append(" ", style=style)
     body_style = "theme.display.agent_text" if not is_error else style
-    _append_tool_result_body(text, body, unit_id, body_style, tool_ref, ctx, escape_body)
+    _append_tool_result_body(
+        text, body, unit_id, body_style, tool_ref, ctx, escape_body=escape_body
+    )
     return text
 
 
@@ -346,7 +350,7 @@ def _render_error_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "error",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _normalized_event_content(event) or "unknown error"
@@ -365,7 +369,7 @@ def _render_lifecycle_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "info",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
@@ -386,7 +390,7 @@ def _render_progress_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "running",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _format_body_with_unit(_normalized_event_content(event), unit_id)
@@ -405,7 +409,7 @@ def _render_heartbeat_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "info",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _format_body_with_unit(_normalized_event_content(event) or "alive", unit_id)
@@ -426,7 +430,7 @@ def _render_unknown_event(
 ) -> Text:
     style, icon, label = _state_payload_for_context(
         "info",
-        ctx.terminal_background_is_light if ctx is not None else None,
+        terminal_bg_is_light=ctx.terminal_background_is_light if ctx is not None else None,
         surface_hex=ctx.terminal_background_hex if ctx is not None else None,
     )
     body = _normalized_event_content(event)

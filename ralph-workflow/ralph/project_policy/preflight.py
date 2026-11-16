@@ -154,7 +154,7 @@ def _commit_preflight_writes(
                 "project-policy preflight auto-commit failed (non-fatal): {}",
                 str(result.error) if result.error is not None else "<no error detail>",
             )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("project-policy preflight auto-commit failed (non-fatal): {}", exc)
 
 

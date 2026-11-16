@@ -604,7 +604,7 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
         del endpoint, timeout
-        raise Exception("probe timed out")
+        raise RuntimeError("probe timed out")
 
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
@@ -625,7 +625,7 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
         del endpoint, timeout
-        raise Exception("connection refused")
+        raise RuntimeError("connection refused")
 
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
@@ -654,7 +654,7 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
         del endpoint, timeout
-        raise Exception("request timed out")
+        raise RuntimeError("request timed out")
 
     new_inner = _make_standalone(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(

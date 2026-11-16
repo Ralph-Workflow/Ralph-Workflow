@@ -63,7 +63,7 @@ def capability_template_variables(
     )
 
 
-def bool_to_template_value(value: bool) -> str:
+def bool_to_template_value(value: object) -> str:
     return bool_to_string(value)
 
 

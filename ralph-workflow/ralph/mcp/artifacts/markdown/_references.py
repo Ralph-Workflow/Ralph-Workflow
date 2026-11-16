@@ -118,8 +118,8 @@ def validate_acyclic_dependencies(
     consumer: str | None = None,
 ) -> list[Diagnostic]:
     graph = {
-        _required_id(identifier, case_sensitive): tuple(
-            _required_id(dependency, case_sensitive) for dependency in values
+        _required_id(identifier, case_sensitive=case_sensitive): tuple(
+            _required_id(dependency, case_sensitive=case_sensitive) for dependency in values
         )
         for identifier, values in dependencies.items()
     }
@@ -157,7 +157,7 @@ def validate_acyclic_dependencies(
     return diagnostics
 
 
-def _required_id(identifier: str, case_sensitive: bool) -> str:
+def _required_id(identifier: str, *, case_sensitive: bool) -> str:
     key = normalize_id(identifier, case_sensitive=case_sensitive)
     if key is None:
         return identifier

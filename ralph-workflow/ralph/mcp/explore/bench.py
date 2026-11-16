@@ -111,7 +111,7 @@ def derive_visible_catalog(
         cfg = cast("McpConfig", mcp_config)
     try:
         specs = _bridge_tool_specs(cfg)
-    except Exception:
+    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError, OSError):
         from ralph.mcp.tools.names import RalphToolName
 
         return tuple(
@@ -133,7 +133,7 @@ def _registered_tool_definitions() -> tuple[object, ...]:
 
     try:
         return tuple(spec.metadata.definition for spec in _bridge_tool_specs(McpConfig()))
-    except Exception:
+    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError, OSError):
         return derive_visible_catalog()
 
 

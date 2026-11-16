@@ -218,7 +218,7 @@ class ActivityRelay:
 def _parse_event(raw: bytes) -> dict[str, object]:
     try:
         return decode_json_object(raw, label="relay event")
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise ActivityRelayError(str(exc)) from exc
 
 

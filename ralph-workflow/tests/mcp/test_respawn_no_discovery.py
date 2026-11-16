@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import json
 import socket
 import threading
@@ -190,7 +191,7 @@ class _FakeMcpUpstreamServer:
                 ]
                 client.sendall("\r\n".join(response_lines).encode() + body_bytes)
 
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             pass
 
     def stop(self) -> None:
@@ -236,14 +237,23 @@ def _fetch_endpoint_tool_names(endpoint: str, *, timeout: float = 5.0) -> list[s
         "params": {},
     }
     body = json.dumps(request_payload).encode("utf-8")
-    req = urllib.request.Request(
-        endpoint,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    parsed = urllib.parse.urlparse(endpoint)
+    conn = http.client.HTTPConnection(
+        parsed.hostname or "127.0.0.1",
+        parsed.port or 80,
+        timeout=timeout,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    try:
+        conn.request(
+            "POST",
+            parsed.path,
+            body=body,
+            headers={"Content-Type": "application/json"},
+        )
+        response = conn.getresponse()
         raw = response.read(1024 * 1024).decode("utf-8", errors="replace")
+    finally:
+        conn.close()
     if not raw:
         return []
     data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]

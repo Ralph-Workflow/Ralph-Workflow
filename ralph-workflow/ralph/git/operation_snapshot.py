@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from git import GitError
+
 from ralph.git import subprocess_runner
 from ralph.git._operation_state import OperationState
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import (
     observe_branch_sha,
     observe_unmerged_paths,
@@ -147,7 +150,7 @@ def _read_index_tree(root: Path, *, query_ok: bool, has_unmerged: bool) -> str |
             cwd=root,
             label="operation-snapshot:index-tree",
         )
-    except Exception:
+    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
         return None
     if result.returncode != 0:
         return None
@@ -164,11 +167,11 @@ def observe_operation_snapshot(
     paths = tuple(sorted(set(observed_unmerged.paths)))
     try:
         gitdir, _commondir = _resolve_gitdir_paths(root)
-    except (OSError, ValueError):
+    except (GitError, GitOperationError, OSError, ValueError):
         gitdir = None
     try:
         head_sha = get_head_sha(root)
-    except Exception:
+    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
         head_sha = None
     target_tip = observe_branch_sha(root, target)[0] if target is not None else None
     merge_head = _read_marker(gitdir, "MERGE_HEAD") if gitdir is not None else None
@@ -183,7 +186,7 @@ def observe_operation_snapshot(
     )
     try:
         marker_paths = tuple(staged_conflict_marker_paths(root))
-    except Exception:
+    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
         marker_paths = ("<staged-marker-query-failed>",)
     return OperationSnapshot(
         unmerged_paths=paths,

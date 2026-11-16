@@ -466,7 +466,7 @@ class PipelineSubscriber:
         if self._watchdog_attention_sink is not None:
             try:
                 self._watchdog_attention_sink(sink_value)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as exc:
                 _logger.warning(
                     f"watchdog attention sink raised: snapshot path remains intact ({exc!r})"
                 )
@@ -678,7 +678,7 @@ class PipelineSubscriber:
         if self._on_snapshot is not None:
             try:
                 self._on_snapshot(snapshot)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as exc:
                 logger.bind(event="subscriber_callback_error").error(
                     "callback failed: {err}", err=exc
                 )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import suppress
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
@@ -445,11 +446,9 @@ def _os_descendant_state(
     default: AgentExecutionState,
 ) -> AgentExecutionState:
     if hasattr(handle, "has_live_descendants"):
-        try:
+        with suppress(OSError, RuntimeError, ValueError, AttributeError, StopIteration):
             if bool(handle.has_live_descendants()):
                 return AgentExecutionState.WAITING_ON_CHILD
-        except Exception:
-            pass
     return default
 
 
@@ -457,18 +456,15 @@ def _probe_check_quiet(
     liveness_probe: LivenessProbe,
     probe_prefix: str,
 ) -> tuple[AgentExecutionState | None, bool]:
-    try:
+    with suppress(OSError, RuntimeError, ValueError, AttributeError):
         snap = liveness_probe.child_snapshot(probe_prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
         return None, snap.has_process
-    except Exception:
-        try:
-            if bool(liveness_probe.any_agent_active(probe_prefix)):
-                return AgentExecutionState.WAITING_ON_CHILD, False
-        except Exception:
-            pass
+    with suppress(OSError, RuntimeError, ValueError, AttributeError):
+        if bool(liveness_probe.any_agent_active(probe_prefix)):
+            return AgentExecutionState.WAITING_ON_CHILD, False
     return None, False
 
 
@@ -478,7 +474,7 @@ def _registry_check_for_exit(
 ) -> tuple[AgentExecutionState | None, bool]:
     scope_prefix = label_prefix if label_prefix is not None else ""
     had_scoped_records = registry.has_records(scope_prefix)
-    try:
+    with suppress(OSError, RuntimeError, ValueError, AttributeError):
         reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
@@ -486,8 +482,6 @@ def _registry_check_for_exit(
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
         return None, had_scoped_records
-    except Exception:
-        pass
     return None, False
 
 
@@ -496,19 +490,16 @@ def _probe_check_exit(
     label_prefix: str | None,
 ) -> tuple[AgentExecutionState | None, bool]:
     prefix = label_prefix if label_prefix is not None else ""
-    try:
+    with suppress(OSError, RuntimeError, ValueError, AttributeError):
         snap = liveness_probe.child_snapshot(prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
         return None, snap.has_process
-    except Exception:
-        if label_prefix is not None:
-            try:
-                if bool(liveness_probe.any_agent_active(label_prefix)):
-                    return AgentExecutionState.WAITING_ON_CHILD, False
-            except Exception:
-                pass
+    if label_prefix is not None:
+        with suppress(OSError, RuntimeError, ValueError, AttributeError):
+            if bool(liveness_probe.any_agent_active(label_prefix)):
+                return AgentExecutionState.WAITING_ON_CHILD, False
     return None, False
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -609,10 +610,13 @@ def test_acceptance_scenario_3_cooldown_entry_point_bounded_retry(
     action_before_deadline = next_integration_action(state.rebase, clock=clock.monotonic)
     assert action_before_deadline == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
+    def _simulate_crash(msg: str) -> None:
+        raise SimulatedCrashError(msg)
+
     crashed = False
     try:
         clock.advance(deadline + 1.0)
-        raise SimulatedCrashError("simulated crash inside cooldown boundary")
+        _simulate_crash("simulated crash inside cooldown boundary")
     except SimulatedCrashError:
         crashed = True
     assert crashed
@@ -630,10 +634,8 @@ def test_acceptance_scenario_3_cooldown_entry_point_bounded_retry(
     assert next_integration_action(undated.rebase, clock=FakeClock(start=0.0).monotonic) == (
         IntegrationAction.REQUIRE_INTERVENTION
     )
-    try:
-        raise SimulatedCrashError("simulated crash on deadline-less cooldown")
-    except SimulatedCrashError:
-        pass
+    with contextlib.suppress(SimulatedCrashError):
+        _simulate_crash("simulated crash on deadline-less cooldown")
     reloaded = checkpoint.load()
     assert reloaded is not None
     assert next_integration_action(reloaded.rebase, clock=FakeClock(start=0.0).monotonic) == (

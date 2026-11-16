@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from configparser import Error as ConfigParserError
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -240,7 +241,15 @@ def _check_sparse_checkout_state(repo: Repo) -> None:
 def _read_config_value(reader: GitConfigParser, section: str, key: str) -> str | None:
     try:
         value = reader.get_value(section, key)
-    except Exception:
+    except (
+        ConfigParserError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        KeyError,
+    ):
         return None
     if not value:
         return None

@@ -84,9 +84,13 @@ def delete_commit_message_artifacts(
         backend.unlink(artifact_path)
 
 
+class CommitMessagePayloadTypeError(TypeError, ValueError):
+    pass
+
+
 def normalize_commit_message_content(content: dict[str, object]) -> dict[str, object]:
     if not isinstance(content, dict):
-        raise ValueError("commit_message content must be a dictionary")
+        raise CommitMessagePayloadTypeError("commit_message content must be a dictionary")
 
     kind = _required_string_field(content, "type")
     if kind == _COMMIT_KIND:
@@ -251,7 +255,7 @@ def _optional_string_list(content: dict[str, object], field: str) -> list[str] |
     if value is None:
         return None
     if not isinstance(value, list):
-        raise ValueError(f"commit_message field '{field}' must be an array of strings")
+        raise CommitMessagePayloadTypeError(f"commit_message field '{field}' must be an array of strings")
 
     normalized: list[str] = []
     for item in value:
@@ -266,12 +270,12 @@ def _optional_excluded_files(content: dict[str, object]) -> list[dict[str, objec
     if value is None:
         return None
     if not isinstance(value, list):
-        raise ValueError("commit_message field 'excluded_files' must be an array")
+        raise CommitMessagePayloadTypeError("commit_message field 'excluded_files' must be an array")
 
     normalized: list[dict[str, object]] = []
     for item in value:
         if not isinstance(item, dict):
-            raise ValueError("commit_message 'excluded_files' entries must be objects")
+            raise CommitMessagePayloadTypeError("commit_message 'excluded_files' entries must be objects")
         path = _required_string_field(item, "path")
         reason = _required_string_field(item, "reason")
         if reason not in _EXCLUDED_FILE_REASONS:

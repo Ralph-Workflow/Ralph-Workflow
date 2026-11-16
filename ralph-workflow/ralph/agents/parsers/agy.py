@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from pygments.lexers import get_lexer_by_name
+from pygments.util import ClassNotFound
 
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -37,7 +38,7 @@ def _fence_language(content: str) -> str | None:
     if info:
         try:
             lexer = get_lexer_by_name(info)
-        except Exception:
+        except (ClassNotFound, LookupError, ValueError, TypeError):
             return info.lower()
         return lexer.aliases[0] if lexer.aliases else info.lower()
     return lexer_for_path(None, content)

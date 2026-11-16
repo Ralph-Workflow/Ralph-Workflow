@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
@@ -283,10 +284,10 @@ class IdleWatchdog:
     def is_stalled(self) -> bool:
         return self._stall_active
 
-    def set_stall_state(self, active: bool, *, now: float, idle_elapsed: float) -> None:
-        self._set_stall(active, now=now, idle_elapsed=idle_elapsed)
+    def set_stall_state(self, *, active: bool, now: float, idle_elapsed: float) -> None:
+        self._set_stall(active=active, now=now, idle_elapsed=idle_elapsed)
 
-    def _set_stall(self, active: bool, *, now: float, idle_elapsed: float) -> None:
+    def _set_stall(self, *, active: bool, now: float, idle_elapsed: float) -> None:
         if active == self._stall_active:
             return
         self._stall_active = active
@@ -441,8 +442,8 @@ class IdleWatchdog:
     def record_invocation_end(self) -> None:
         activity_record_invocation_end(self)
 
-    def set_is_waiting_state(self, is_waiting_state: bool) -> None:
-        self._is_waiting_state = is_waiting_state
+    def set_is_waiting_state(self, is_waiting_state: object) -> None:
+        self._is_waiting_state = bool(is_waiting_state)
 
     def set_connectivity_state_provider(
         self,
@@ -455,7 +456,7 @@ class IdleWatchdog:
             return None
         try:
             return self._connectivity_state_provider()
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             self._log.debug("idle watchdog: connectivity provider raised (suppressed)")
             return None
 
@@ -547,7 +548,7 @@ class IdleWatchdog:
             elapsed_seconds=self.invocation_elapsed_seconds,
         )
 
-    def record_process_liveness(self, is_alive: bool, *, observed: bool = True) -> None:
+    def record_process_liveness(self, *, is_alive: bool, observed: bool = True) -> None:
         self._process_alive = is_alive
         if not observed:
             return
@@ -733,11 +734,9 @@ class IdleWatchdog:
             getter: Callable[[], int] | None = getattr(monitor, getter_name, None)
             if getter is None:
                 continue
-            try:
+            with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 result: int = getter()
                 return int(result)
-            except Exception:
-                continue
         return 0
 
     @staticmethod
@@ -748,6 +747,7 @@ class IdleWatchdog:
         now: float,
         kind_breakdown: dict[str, int] | None,
         alive_by: AliveBy | None = None,
+        *,
         can_defer_override: bool | None = None,
     ) -> ChannelEvidenceSummary:
         return channel_summary(
@@ -800,7 +800,7 @@ class IdleWatchdog:
             return CorroborationSnapshot()
         try:
             snapshot = cast("object", self._corroborator())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             self._log.debug("idle watchdog: corroborator raised (suppressed)")
             return CorroborationSnapshot()
         if not isinstance(snapshot, CorroborationSnapshot):

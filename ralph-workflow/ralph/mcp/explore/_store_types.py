@@ -353,7 +353,7 @@ def real_clock_seconds() -> float:
 
 def normalize_index_path(path: str) -> str:
     if not isinstance(path, str):
-        raise ValueError(f"normalize_index_path: path must be a str, got {type(path).__name__}")
+        raise TypeError(f"normalize_index_path: path must be a str, got {type(path).__name__}")
     from ralph.mcp.tools.workspace._utils import normalize_relative_path
 
     if path.startswith("/"):

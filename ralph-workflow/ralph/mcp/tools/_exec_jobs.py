@@ -104,7 +104,7 @@ class _PsutilLivenessProc:
     def pid(self) -> int:
         return self._proc.pid
 
-    def children(self, recursive: bool = False) -> Sequence[_LivenessProc]:
+    def children(self, *, recursive: bool = False) -> Sequence[_LivenessProc]:
         return [_PsutilLivenessProc(c) for c in self._proc.children(recursive=recursive)]
 
     def cpu_times(self) -> object:
@@ -355,7 +355,7 @@ class ExecJobRegistry:
             sub_payload["progressToken"] = sub.progress_token
             try:
                 sub.sink(sub_payload)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
                 self.unsubscribe_progress(sub.request_id)
 
     def _teardown_progress_for_job(self, job_id: str) -> None:
@@ -507,7 +507,7 @@ class ExecJobRegistry:
 
         self._dispatch_progress_for_job(job)
 
-    def _read_stream(self, job: _ActiveJob, stream: IO[bytes] | None, is_stdout: bool) -> None:
+    def _read_stream(self, job: _ActiveJob, stream: IO[bytes] | None, is_stdout: bool = True) -> None:
         if stream is None:
             return
         buffer_line = bytearray()
@@ -519,7 +519,7 @@ class ExecJobRegistry:
                         if isinstance(stream, io.BufferedIOBase)
                         else stream.read(8192)
                     )
-                except Exception:
+                except (OSError, ValueError, TypeError):
                     break
                 if not chunk:
                     break
@@ -552,7 +552,7 @@ class ExecJobRegistry:
         while job.running and not job.done_event.is_set():
             try:
                 rc = handle.poll()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 rc = None
             if rc is not None:
                 self._mark_finished(job, returncode=rc)
@@ -627,10 +627,12 @@ class ExecJobRegistry:
 
         active.reader_threads = (
             self._spawn_daemon(
-                partial(self._read_stream, active, handle.stdout, True), f"job-stdout-{job_id}"
+                partial(self._read_stream, active, handle.stdout, is_stdout=True),
+                f"job-stdout-{job_id}",
             ),
             self._spawn_daemon(
-                partial(self._read_stream, active, handle.stderr, False), f"job-stderr-{job_id}"
+                partial(self._read_stream, active, handle.stderr, is_stdout=False),
+                f"job-stderr-{job_id}",
             ),
         )
 

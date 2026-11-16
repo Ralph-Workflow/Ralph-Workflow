@@ -106,9 +106,9 @@ def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedE
 
 def _build_console(
     resolved_env: _ResolvedEnv,
+    *,
     terminal_bg_is_light: bool | None,
     surface_hex: str | None = None,
-    *,
     output_stream: TextIO | None = None,
 ) -> Console:
     if resolved_env.no_color:
@@ -327,7 +327,7 @@ def make_display_context(
         injected_console = False
         resolved_console = _build_console(
             resolved_env,
-            resolved_background,
+            terminal_bg_is_light=resolved_background,
             surface_hex=resolved_background_hex,
             output_stream=sys.stdout if output_stream is None else output_stream,
         )
@@ -437,7 +437,7 @@ def install_sigwinch_refresher(
             ctx_holder[0] = refreshed
             if on_refresh is not None:
                 on_refresh(refreshed)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             return
         finally:
             refresh_in_progress = False

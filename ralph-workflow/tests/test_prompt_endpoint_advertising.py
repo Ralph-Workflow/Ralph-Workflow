@@ -221,7 +221,7 @@ def _render_drain_template(template_stem: str, drain: SessionDrain) -> str:
     context = TemplateContext.default()
     template = context.registry.get_template(template_stem + ".jinja")
 
-    env = Environment()
+    env = Environment(autoescape=True)
     referenced: set[str] = set()
     for path in sorted(Path(packaged_template_root()).glob("*.jinja")):
         referenced |= meta.find_undeclared_variables(env.parse(path.read_text()))

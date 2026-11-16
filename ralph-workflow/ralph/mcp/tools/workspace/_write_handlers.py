@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -428,7 +429,7 @@ def handle_edit_file(
                         }
                     if target_path is not None:
                         preview_payload["impact_preview_path"] = str(target_path)
-                except Exception as exc:
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
                     preview_payload["impact_preview_unavailable"] = True
                     preview_payload["impact_preview_unavailable_reason"] = (
                         f"impact_query_failed:{type(exc).__name__}"
@@ -458,7 +459,7 @@ def handle_edit_file(
             Path(str(workspace_root_obj)) if isinstance(workspace_root_obj, (str, Path)) else None
         )
         if edit_store_obj is not None and workspace_root_path is not None:
-            try:
+            with contextlib.suppress(Exception):
                 from ralph.mcp.explore.pipeline import (
                     DEFAULT_TIMEOUT_MS,
                     ReindexOptions,
@@ -474,8 +475,6 @@ def handle_edit_file(
                         path_scope=(normalized,),
                     ),
                 )
-            except Exception:
-                pass
     freshness = _freshness_payload(session, paths=[normalized])
     payload = _with_freshness(
         {
@@ -501,7 +500,7 @@ def handle_edit_file(
 def _hash_file_text(workspace: Workspace, normalized: str) -> str | None:
     try:
         content = workspace.read(normalized)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return None
     return sha256_text(content)
 

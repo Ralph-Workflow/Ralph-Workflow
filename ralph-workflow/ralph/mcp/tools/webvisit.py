@@ -81,7 +81,7 @@ def handle_visit_url(
             base_url=outcome.effective_url,
             with_links=with_links,
         )
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError, AttributeError, RuntimeError, OSError) as exc:
         logger.warning("visit_url extraction failed: {exc}", exc=exc)
         err_payload: dict[str, object] = {"status": "unsupported_content", "error": str(exc)}
         return ToolResult(

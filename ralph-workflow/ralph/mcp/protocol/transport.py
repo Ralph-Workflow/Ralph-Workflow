@@ -59,6 +59,9 @@ if TYPE_CHECKING:
         def join(self, timeout: float | None = None) -> None: ...
         def is_alive(self) -> bool: ...
 
+    class ThreadFactory(Protocol):
+        def __call__(self, target: Callable[[], None], daemon: bool = False) -> ThreadLike: ...
+
 
 class StdioTransport:
     def __init__(
@@ -69,12 +72,12 @@ class StdioTransport:
         process_factory: (
             Callable[[list[str], str | None], ProcessLike | ManagedProcess] | None
         ) = None,
-        thread_factory: Callable[[Callable[[], None], bool], ThreadLike] | None = None,
+        thread_factory: ThreadFactory | None = None,
     ) -> None:
         self._command = command
         self._cwd = cwd
         self._process_factory = process_factory or _default_process_factory
-        self._thread_factory = thread_factory or _default_thread_factory
+        self._thread_factory: ThreadFactory = thread_factory or _default_thread_factory
         self._process: ProcessLike | ManagedProcess | None = None
         self._send_queue: Queue[str | dict[str, object]] = Queue()
         self._recv_queue: Queue[MCPMessage] = Queue()
@@ -198,7 +201,7 @@ class StdioTransport:
             if thread is not None:
                 try:
                     thread.join(timeout=_CLOSE_THREAD_JOIN_SECONDS)
-                except Exception:
+                except (RuntimeError, OSError, AttributeError):
                     logger.warning(
                         "Failed to join {} during stdio transport close",
                         thread_attr,
@@ -206,7 +209,7 @@ class StdioTransport:
                     continue
                 try:
                     still_alive = thread.is_alive()
-                except Exception:
+                except (RuntimeError, OSError, AttributeError):
                     logger.warning(
                         "Failed to read is_alive() on {} during stdio transport close",
                         thread_attr,
@@ -241,7 +244,9 @@ def _default_process_factory(
     )
 
 
-def _default_thread_factory(target: Callable[[], None], daemon: bool) -> threading.Thread:
+def _default_thread_factory(
+    target: Callable[[], None], daemon: bool = False
+) -> threading.Thread:
     return threading.Thread(
         target=target,
         daemon=daemon,

@@ -272,7 +272,6 @@ def _iter_with_direct_mcp_recovery(
                     if on_session_observed is not None:
                         on_session_observed(observed_session_id)
                 yield line
-            return
         except McpServerError:
             raise
         except Exception as exc:
@@ -294,6 +293,8 @@ def _iter_with_direct_mcp_recovery(
                 max_retries=max_retries,
             )
             retries_used += 1
+        else:
+            return
 
 
 def run_with_direct_mcp_recovery[T](

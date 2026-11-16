@@ -88,13 +88,13 @@ class _PsutilModule(Protocol):
 def _psutil_pid_cpu_time(pid: int) -> float:
     try:
         psutil = cast("_PsutilModule", importlib.import_module("psutil"))
-    except Exception:
+    except (ImportError, AttributeError, OSError):
         return 0.0
     try:
         proc = psutil.Process(pid)
         cpu = proc.cpu_times().user + proc.cpu_times().system
         return float(cpu)
-    except Exception:
+    except (OSError, AttributeError, RuntimeError, ValueError):
         return 0.0
 
 
@@ -115,7 +115,7 @@ def _matched_active_records(
 ) -> list[ProcessRecord] | None:
     try:
         active = list(process_manager.list_active())
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
     return [
         record
@@ -222,13 +222,13 @@ class InterruptDispatcher:
             try:
                 if not self.process_manager.list_active():
                     return
-            except Exception:
+            except (OSError, RuntimeError, ValueError):
                 return
             remaining = max(deadline - self.clock(), 0.0)
             self.sleep(min(self.poll_interval_s, remaining))
         try:
             active = self.process_manager.list_active()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return
         if active:
             self.force_exit(bridge_pgids=[r.pgid for r in active])
@@ -350,7 +350,7 @@ def run_shutdown_block(
     del join_timeout_s
     try:
         dispatcher.begin_interrupt(grace_period_s=grace_period_s, block=True)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         logger.warning(error_log_message)
 
 

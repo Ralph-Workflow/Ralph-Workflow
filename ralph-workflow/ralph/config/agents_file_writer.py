@@ -158,11 +158,12 @@ def _publish_backup(
             staged.flush()
         identity = _file_identity(staging)
         staging.replace(bak_path)
-        return identity
     except BaseException:
         with contextlib.suppress(OSError):
             staging.unlink(missing_ok=True)
         raise
+    else:
+        return identity
 
 
 def _rollback_backup(

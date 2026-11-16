@@ -167,7 +167,7 @@ def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
     if start is None:
         try:
             candidate = resolve_pro_workspace()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             candidate = Path.cwd()
     else:
         candidate = Path(start)

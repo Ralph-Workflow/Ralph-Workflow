@@ -187,7 +187,7 @@ class AttemptSupervisor:
             return
         if attempt_issuer is not None:
             self._recorder.record_issuer(attempt_issuer)
-        self._recorder.record_liveness(_issuer_mapping.liveness_for(observation))
+        self._recorder.record_liveness(observed=_issuer_mapping.liveness_for(observation))
 
     def _record_terminal_reason(self, reason: str | None) -> None:
         if reason is None:

@@ -50,7 +50,6 @@ def _is_access_denied_error(psutil_mod: _PsutilModuleLike, exc: BaseException) -
 def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> LivenessResult:
     try:
         exists = psutil_mod.pid_exists(pid)
-        return LivenessResult.ALIVE if exists else LivenessResult.GONE
     except BaseException as exc:
         if _is_gone_error(psutil_mod, exc):
             return LivenessResult.GONE
@@ -59,6 +58,8 @@ def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> Live
         if isinstance(exc, (OSError, RuntimeError, TypeError, ValueError)):
             return LivenessResult.UNKNOWN
         raise
+    else:
+        return LivenessResult.ALIVE if exists else LivenessResult.GONE
 
 
 def verify_process_liveness(

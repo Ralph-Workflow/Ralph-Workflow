@@ -26,8 +26,9 @@ def repo_root(start: Path) -> Path | None:
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
+    git_bin = shutil.which("git") or "/usr/bin/git"
     return subprocess.run(
-        ["git", *args],
+        [git_bin, *args],
         cwd=cwd,
         capture_output=True,
         timeout=GIT_TIMEOUT_SECONDS,

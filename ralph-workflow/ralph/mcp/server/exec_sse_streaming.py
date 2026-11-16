@@ -182,7 +182,18 @@ def exec_sse_streaming_post(
                 body["error"] = response.error
             _locked_write(f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode())
             get_default_metrics().record_terminal_frame(request.method)
-    except Exception as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+        IndexError,
+        TimeoutError,
+        LookupError,
+        ArithmeticError,
+    ) as exc:
         error_body: dict[str, object] = {
             "jsonrpc": "2.0",
             "id": request.msg_id,

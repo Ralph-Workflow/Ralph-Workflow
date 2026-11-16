@@ -63,10 +63,7 @@ class ManagedPtyProcess:
         return rc
 
     def wait(self, timeout: float | None = None) -> int:
-        try:
-            rc = self._proc.wait(timeout=timeout)
-        except TimeoutError:
-            raise
+        rc = self._proc.wait(timeout=timeout)
         if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc

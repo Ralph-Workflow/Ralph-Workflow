@@ -446,7 +446,7 @@ _AUDIT_FINGERPRINT_CACHE: dict[tuple[str, str], list[ActivityAwareWatchdogViolat
 def _compute_fingerprint(package_root: Path) -> str | None:
     if not package_root.is_dir():
         return None
-    hasher = hashlib.sha1()
+    hasher = hashlib.sha1(usedforsecurity=False)
     for parent, dirs, files in os.walk(package_root):
         dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
         for name in files:
@@ -467,7 +467,7 @@ def _compute_fingerprint(package_root: Path) -> str | None:
             hasher.update(b"\x00")
             hasher.update(str(mtime).encode("utf-8"))
             hasher.update(b"\x00")
-            hasher.update(hashlib.sha1(content).digest())
+            hasher.update(hashlib.sha1(content, usedforsecurity=False).digest())
             hasher.update(b"\n")
     return hasher.hexdigest()
 

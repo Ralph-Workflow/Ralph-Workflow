@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 from contextlib import nullcontext
 from importlib import import_module
 from pathlib import Path
@@ -125,7 +126,6 @@ def test_install_metadata_serializes_hostile_path_and_omits_invalid_commit(tmp_p
         installed_at="2026-08-02T12:00:00+00:00",
     )
 
-    namespace: dict[str, str] = {}
-    exec(build_meta.read_text(encoding="utf-8"), namespace)
+    namespace = runpy.run_path(str(build_meta))
     assert namespace["BUILD_SOURCE_COMMIT"] == ""
     assert namespace["BUILD_SOURCE_PATH"] == 'checkout "quoted"\n$(not-shell)'

@@ -22,7 +22,7 @@ _ELISION_STYLE: Final[str] = "theme.display.elision"
 
 
 def _diff_marker_style(
-    removed: bool, *, terminal_bg_is_light: bool | None, surface_hex: str | None = None
+    *, removed: bool, terminal_bg_is_light: bool | None, surface_hex: str | None = None
 ) -> str:
     old_style, new_style = diff_token_foregrounds(terminal_bg_is_light, surface_hex=surface_hex)
     return old_style if removed else new_style
@@ -94,9 +94,7 @@ def highlight_code_spans(
 
     try:
         lexer = get_lexer_by_name(language)
-    except ClassNotFound:
-        return []
-    except Exception:
+    except (ClassNotFound, OSError, ValueError, TypeError, AttributeError):
         return []
     try:
         theme = syntax_theme_for_background(terminal_bg_is_light, surface_hex=surface_hex)
@@ -116,6 +114,7 @@ def highlight_code_spans(
                         )
                     )
             offset = end
-        return spans
-    except Exception:
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
         return []
+    else:
+        return spans

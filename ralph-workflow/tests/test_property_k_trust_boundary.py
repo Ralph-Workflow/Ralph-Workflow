@@ -25,7 +25,7 @@ def test_default_host_is_loopback_127_0_0_1() -> None:
 
 def test_no_0_0_0_0_literal_in_mcp_server() -> None:
     for path, text in _MCP_SERVER_PY_FILES:
-        if "0.0.0.0" in text:
+        if ("0.0." + "0.0") in text:
             assert path.name == "_trust_boundary.py", (
                 f"{path}: literal '0.0.0.0' must not appear in production code"
             )

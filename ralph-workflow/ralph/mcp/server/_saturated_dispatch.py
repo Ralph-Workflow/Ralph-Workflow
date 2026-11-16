@@ -121,7 +121,7 @@ class _SaturatedDispatch:
             self._inflight = 0
             self._generation += 1
 
-    def shutdown(self, wait: bool = True) -> None:
+    def shutdown(self, *, wait: bool = True) -> None:
         with self._lock:
             executor = self._executor
             self._executor = None
@@ -173,7 +173,7 @@ def reset_default() -> None:
     _default_dispatch.reset()
 
 
-def shutdown(wait: bool = True) -> None:
+def shutdown(*, wait: bool = True) -> None:
     _default_dispatch.shutdown(wait=wait)
 
 

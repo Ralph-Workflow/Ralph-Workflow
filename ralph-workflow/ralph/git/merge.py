@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -124,7 +125,7 @@ def conflict_marker_sizes(repo_root: Path | str, paths: Sequence[str]) -> dict[s
             path, _attribute, value = fields[index], fields[index + 1], fields[index + 2]
             if value.isdigit():
                 sizes[path] = int(value)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError) as exc:
         logger.debug("git: could not read conflict-marker-size: {}", exc)
     return sizes
 
@@ -303,7 +304,7 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
             cwd=repo_root_path,
             label="git-unmerged-paths",
         )
-    except Exception as exc:
+    except (subprocess.SubprocessError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         logger.debug("git: unmerged-path query failed in {}: {}", repo_root_path, exc)
         return UnmergedPathsObservation(query_ok=False)
     if result.returncode != 0:

@@ -158,7 +158,7 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 def _render_example_body(body: str) -> str:
     strict_undefined = cast("type[Undefined]", StrictUndefined)
     environment = Environment(
-        autoescape=False,
+        autoescape=True,
         undefined=strict_undefined,
         keep_trailing_newline=True,
     )

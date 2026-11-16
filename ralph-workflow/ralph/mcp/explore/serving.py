@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import sqlite3
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
@@ -66,17 +67,17 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     store: ExploreStore = handle.store
     try:
         dirty_paths = list(store.peek_dirty_paths())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         dirty_paths = []
     try:
         deleted_count = int(store.count_deleted_files())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         deleted_count = 0
     stale_paths_count = len(dirty_paths) + deleted_count
     last_refresh_age: float | None = None
     try:
         latest = store.latest_job()
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         latest = None
     finished_at: float | None = None
     if latest is not None:
@@ -114,7 +115,7 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     if stale_paths_count > 0:
         try:
             total = int(store.count_files())
-        except Exception:
+        except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             total = 0
         if total > 0:
             share = stale_paths_count / max(1, total)
@@ -162,11 +163,11 @@ def staleness_probe(
     store: ExploreStore = handle.store
     try:
         dirty_paths = list(store.peek_dirty_paths())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         dirty_paths = []
     try:
         deleted_count = int(store.count_deleted_files())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         deleted_count = 0
     stale_paths_count = len(dirty_paths) + deleted_count
 
@@ -184,7 +185,7 @@ def staleness_probe(
             current_paths = [rel for rel, _size, _mtime in current_manifest]
             try:
                 persisted = store.bulk_size_mtime_for_paths(current_paths)
-            except Exception:
+            except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                 persisted = {}
             for rel, size, mtime_ns in current_manifest:
                 row_tuple = persisted.get(rel)
@@ -194,7 +195,7 @@ def staleness_probe(
                 row_size, row_mtime = row_tuple
                 if row_size != size or row_mtime != mtime_ns:
                     manifest_drift_paths += 1
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         manifest_drift_paths = 0
 
     if stale_paths_count == 0 and manifest_drift_paths == 0:
@@ -208,7 +209,7 @@ def staleness_probe(
         }
     try:
         total_files = int(store.count_files())
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         total_files = 0
     effective_stale = stale_paths_count + manifest_drift_paths
     stale_share: float = (effective_stale / max(1, total_files)) if total_files else 1.0

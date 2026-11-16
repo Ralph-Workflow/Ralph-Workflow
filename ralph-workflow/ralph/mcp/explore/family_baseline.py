@@ -15,7 +15,11 @@ class FamilyBaselineFlow:
     name: str
     current_operation_script: tuple[str, ...]
     counters: AuditCounters
-    catalog_token_evidence: str
+    catalog_metric_evidence: str
+
+    @property
+    def catalog_token_evidence(self) -> str:
+        return self.catalog_metric_evidence
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -25,9 +29,9 @@ class FamilyBaselineFlow:
                 f"FamilyBaselineFlow({self.family!r}): "
                 "current_operation_script must list at least one tool"
             )
-        if not self.catalog_token_evidence.strip():
+        if not self.catalog_metric_evidence.strip():
             raise ValueError(
-                f"FamilyBaselineFlow({self.family!r}): catalog_token_evidence must be non-empty"
+                f"FamilyBaselineFlow({self.family!r}): catalog_metric_evidence must be non-empty"
             )
 
 
@@ -47,7 +51,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "search_files + grep_files + read_file schema tokens (Phase 0): "
             "~480 transcript tokens, ~3 KB returned bytes per scripted call."
         ),
@@ -66,7 +70,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "list_directory + list_directory_recursive schema tokens (Phase 0): "
             "~352 transcript tokens, ~2.4 KB returned bytes per scripted call."
         ),
@@ -86,7 +90,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "search_files + grep_files + read_file schema tokens (Phase 0): "
             "~480 transcript tokens, ~3 KB returned bytes per scripted call. "
             "The search family baseline is the same shape as read; the "
@@ -108,7 +112,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "read_file + edit_file + read_file schema tokens (Phase 0): "
             "~320 transcript tokens, ~1.5 KB returned bytes per scripted call."
         ),
@@ -127,7 +131,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "git_status + git_diff schema tokens (Phase 0): "
             "~192 transcript tokens, ~768 returned bytes per scripted call."
         ),
@@ -146,7 +150,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "read_file + ralph_submit_md_artifact schema tokens (Phase 0): "
             "~376 transcript tokens, ~1 KB returned bytes per scripted call."
         ),
@@ -162,7 +166,7 @@ _FAMILY_BASELINE_FLOWS: tuple[FamilyBaselineFlow, ...] = (
             evidence_recall=1.0,
             evidence_precision=1.0,
         ),
-        catalog_token_evidence=(
+        catalog_metric_evidence=(
             "exec schema tokens (Phase 0): "
             "~192 transcript tokens, ~768 returned bytes per scripted call. "
             "The summary mode is a backward-compatible add_argument on the "

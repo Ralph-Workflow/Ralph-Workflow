@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -444,7 +445,7 @@ def _re_extract_path(
                 error_summary=None,
             )
         )
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError):
         logger.warning("content_cache write failed for %s", relative_path)
 
 

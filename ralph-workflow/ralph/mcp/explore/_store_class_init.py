@@ -37,7 +37,6 @@ class _InitializeMethods:
                 if self._schema_version_matches():
                     return
                 self._initialize_with_bounded_retry()
-                return
             except sqlite3.OperationalError as exc:
                 msg = str(exc).lower()
                 if "locked" not in msg and "busy" not in msg and "disk i/o error" not in msg:
@@ -56,6 +55,8 @@ class _InitializeMethods:
                     self._conn.row_factory = sqlite3.Row
                 time.sleep(backoff)
                 backoff *= 2
+            else:
+                return
 
     def _migrate_schema(self) -> None:
         cur = self._conn.execute("SELECT value FROM settings WHERE key = 'schema_version'")
@@ -121,7 +122,6 @@ class _InitializeMethods:
                     for stmt in _DDL:
                         cur.execute(stmt)
                 self._migrate_schema()
-                return
             except sqlite3.OperationalError as exc:
                 msg = str(exc).lower()
                 if "locked" not in msg and "busy" not in msg:
@@ -131,3 +131,5 @@ class _InitializeMethods:
                     raise
                 time.sleep(backoff)
                 backoff *= 2
+            else:
+                return

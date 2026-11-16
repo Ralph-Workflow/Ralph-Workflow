@@ -41,7 +41,7 @@ def _build_agent_registry(config: UnifiedConfig) -> AgentRegistry:
     registry_factory = _module_namespace(_AGENT_REGISTRY_MODULE).get("AgentRegistry")
     if not isinstance(registry_factory, _AgentRegistryFactory):
         msg = f"{_AGENT_REGISTRY_MODULE}.AgentRegistry is unavailable"
-        raise RuntimeError(msg)
+        raise TypeError(msg)
     return registry_factory.from_config(config)
 
 
@@ -49,7 +49,7 @@ def _resolve_effective_session_mcp_plan(root: Path) -> EffectiveSessionMcpPlan:
     resolver = _module_namespace(_SESSION_PLAN_MODULE).get("resolve_effective_session_mcp_plan")
     if not isinstance(resolver, _SessionPlanResolver):
         msg = f"{_SESSION_PLAN_MODULE}.resolve_effective_session_mcp_plan is unavailable"
-        raise RuntimeError(msg)
+        raise TypeError(msg)
     return resolver(root)
 
 
@@ -154,7 +154,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
                     file_layers,
                     None,
                 )
-            except Exception:
+            except (AttributeError, ValueError, TypeError, KeyError):
                 file_path = local_path
         fix_str = f"fix {file_path} then run ralph --check-config"
         emit_config_failure_warning(

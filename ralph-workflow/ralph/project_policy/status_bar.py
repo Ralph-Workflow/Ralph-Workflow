@@ -52,7 +52,7 @@ def push_readiness_assessment_status_bar(
         )
         if update is not None:
             update(model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("readiness assessment status-bar push failed (non-fatal): {}", exc)
 
 
@@ -82,7 +82,7 @@ def push_remediation_status_bar(
         update = cast("Callable[[object], None] | None", update_raw)
         if update is not None:
             update(model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
 
 
@@ -105,20 +105,21 @@ def push_resumed_pipeline_status_bar(
         )
         if update is not None:
             update(model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("resumed pipeline status-bar push failed (non-fatal): {}", exc)
 
 
 def capture_status_bar_model(display: object) -> object | None:
+    status_bar: object = getattr(display, "status_bar", None)
+    if status_bar is None:
+        return None
     try:
-        status_bar: object = getattr(display, "status_bar", None)
-        if status_bar is None:
-            return None
         model: object | None = getattr(status_bar, "last_model", None)
-        return model
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar capture failed (non-fatal): {}", exc)
         return None
+    else:
+        return model
 
 
 def restore_status_bar(display: object, model: object | None) -> None:
@@ -131,7 +132,7 @@ def restore_status_bar(display: object, model: object | None) -> None:
         )
         if update is not None:
             update(model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar restore failed (non-fatal): {}", exc)
 
 
@@ -156,7 +157,7 @@ def clear_remediation_status_bar(
         )
         if update is not None:
             update(model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar clear failed (non-fatal): {}", exc)
 
 

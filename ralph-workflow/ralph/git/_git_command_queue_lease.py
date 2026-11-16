@@ -96,10 +96,11 @@ def _acquire_lock_file(
         os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC,
         0o600,
     )
+    if not take_lease_flock(fd):
+        _discard_created_lock_file(fd, lock_path)
+        msg = f"could not lock the newly created lease file {lock_path!r}"
+        raise OSError(errno.EAGAIN, msg, str(lock_path))
     try:
-        if not take_lease_flock(fd):
-            msg = f"could not lock the newly created lease file {lock_path!r}"
-            raise OSError(errno.EAGAIN, msg, str(lock_path))
         written = os.write(fd, payload)
     except OSError:
         _discard_created_lock_file(fd, lock_path)

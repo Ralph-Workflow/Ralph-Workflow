@@ -74,7 +74,7 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
         except Exception:
             try:
                 bridge.shutdown()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
                 _log.debug(
                     "MCP factory: bridge.shutdown raised during post-startup "
                     "failure recovery (suppressed)",

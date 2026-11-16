@@ -78,7 +78,7 @@ class OpenCodeSubagentSessionProbe:
             return 0
         try:
             parts = self._source.fetch(parent_id, self._since_ms)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             logger.debug("opencode subagent probe: store read failed (suppressed)")
             return 0
         forwarded = 0
@@ -103,7 +103,7 @@ class OpenCodeSubagentSessionProbe:
         self._closed = True
         try:
             self._source.close()
-        except Exception:
+        except (OSError, RuntimeError, ValueError, AttributeError):
             logger.debug("opencode subagent probe: source close failed (suppressed)")
 
     def _remember_seen(self, key: tuple[str, int]) -> None:
@@ -127,11 +127,11 @@ class OpenCodeSubagentSessionProbe:
     def _forward(self, child_session_id: str, summary: str) -> None:
         try:
             self._child_progress_sink(child_session_id)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             logger.debug("opencode subagent probe: child progress sink raised (suppressed)")
         try:
             self._subagent_sink(summary)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             logger.debug("opencode subagent probe: subagent sink raised (suppressed)")
 
     def _maybe_log_status(self, now: float) -> None:

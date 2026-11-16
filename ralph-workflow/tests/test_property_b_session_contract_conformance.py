@@ -59,7 +59,7 @@ def test_every_mcp_session_member_is_callable_on_file_backed_session(
     for name in _all_mcp_session_members():
         try:
             _ = getattr(session, name)
-        except Exception as exc:
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
             missing.append(f"{name}: {type(exc).__name__}: {exc}")
     assert not missing, f"FileBackedSession unreachable members: {missing}"
 

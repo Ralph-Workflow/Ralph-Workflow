@@ -78,7 +78,7 @@ def record(root: Path, stage: str, *, timeout_s: float | None = None) -> None:
     def _worker() -> None:
         try:
             _do_record(root, stage)
-        except BaseException as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             error.append(exc)
 
     thread = threading.Thread(
@@ -143,14 +143,12 @@ def record_overrun(
     eff_timeout_s = timeout_s if timeout_s is not None else _DEFAULT_DIAGNOSTIC_TIMEOUT_S
 
     def _write_record() -> None:
-        try:
+        with contextlib.suppress(OSError, RuntimeError, ValueError):
             overruns_path.parent.mkdir(parents=True, exist_ok=True)
             with overruns_path.open("a", encoding="utf-8") as f:
                 f.write(line)
                 f.flush()
                 os.fsync(f.fileno())
-        except BaseException:
-            pass
 
     diag_thread = threading.Thread(
         target=_write_record,

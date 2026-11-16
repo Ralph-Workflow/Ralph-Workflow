@@ -69,6 +69,10 @@ class _CompletionExitSentReader(Protocol):
     def completion_exit_sent(self) -> bool: ...
 
 
+def _raise_idle_stream_timeout(timeout_seconds: float, reason: WatchdogFireReason) -> None:
+    raise _IdleStreamTimeoutError(timeout_seconds, reason)
+
+
 @runtime_checkable
 class _ClosableIterator(Protocol):
     def close(self) -> None: ...
@@ -195,7 +199,7 @@ def run_pty_and_read_lines(
                     outcome = supervisor.act(PostExitHangObserved(verdict))
                     if outcome is None:
                         return None
-                    raise _IdleStreamTimeoutError(
+                    _raise_idle_stream_timeout(
                         ctx.policy.process_exit_wait_seconds,
                         WatchdogFireReason.PROCESS_EXIT_HANG,
                     )
@@ -203,7 +207,7 @@ def run_pty_and_read_lines(
             session_resume_safe = _is_resumable_fire_reason(exc.reason)
             if supervisor.winner is None:
                 termination.record_issuer(termination_issuer_for_fire_reason(exc.reason))
-                termination.record_liveness(True)
+                termination.record_liveness(observed=True)
             timeout_error = AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,

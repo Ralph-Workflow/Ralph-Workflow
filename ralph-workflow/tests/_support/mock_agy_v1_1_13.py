@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -27,14 +29,23 @@ _MCP_TIMEOUT_SECONDS = 10
 
 
 def _mcp_post(endpoint: str, payload: dict[str, object]) -> dict[str, object] | None:
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
-        method="POST",
+    parsed = urllib.parse.urlparse(endpoint)
+    conn = http.client.HTTPConnection(
+        parsed.hostname or "127.0.0.1",
+        parsed.port or 80,
+        timeout=_MCP_TIMEOUT_SECONDS,
     )
-    with urllib.request.urlopen(request, timeout=_MCP_TIMEOUT_SECONDS) as response:
+    try:
+        conn.request(
+            "POST",
+            parsed.path,
+            body=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        )
+        response = conn.getresponse()
         body = response.read().decode("utf-8")
+    finally:
+        conn.close()
     for part in body.splitlines():
         if part.startswith("data: "):
             try:

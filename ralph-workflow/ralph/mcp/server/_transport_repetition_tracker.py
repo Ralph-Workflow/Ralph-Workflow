@@ -110,13 +110,14 @@ def _acquire_state_lock(handle: IO[str], timeout: float) -> bool:
     while True:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return True
         except BlockingIOError:
             if _time.monotonic() >= deadline:
                 return False
             _time.sleep(0.01)
         except OSError:
             return False
+        else:
+            return True
 
 
 def _release_state_lock(handle: IO[str]) -> None:

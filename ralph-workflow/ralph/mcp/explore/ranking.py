@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
@@ -295,7 +296,7 @@ def score_grep_match(
     graph_neighbor_bonus = 0
     graph_component_bonus = 0
     if store is not None and chunk_id:
-        try:
+        with contextlib.suppress(sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, IndexError, AttributeError, TypeError):
             ctx = _compute_grep_context(
                 store,
                 chunk_id=chunk_id,
@@ -307,8 +308,6 @@ def score_grep_match(
             comment_doc_bonus = ctx[2]
             graph_neighbor_bonus = ctx[3]
             graph_component_bonus = ctx[4]
-        except Exception:
-            pass
 
     if definition_bonus:
         score += GREP_DEFINITION_BONUS
@@ -376,7 +375,7 @@ def _compute_grep_context(
             "SELECT path, start_line, end_line FROM chunks WHERE chunk_id = ?",
             (chunk_id,),
         ).fetchone()
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError):
         chunk_row = None
     if chunk_row is not None:
         chunk_path = _row_str(chunk_row, 0)
@@ -393,7 +392,7 @@ def _compute_grep_context(
                     "AND sp.start_line <= ? AND sp.end_line >= ?",
                     (path, end_line, start_line),
                 ).fetchall()
-            except Exception:
+            except (sqlite3.Error, OSError, RuntimeError):
                 rows = []
             for row in rows:
                 kind = _row_str(row, 2)
@@ -415,7 +414,7 @@ def _compute_grep_context(
                 "LIMIT 1",
                 (path, graph_target, graph_target),
             ).fetchone()
-        except Exception:
+        except (sqlite3.Error, OSError, RuntimeError):
             neighbor_row = None
         if neighbor_row is not None:
             graph_neighbor_bonus = 1
@@ -428,7 +427,7 @@ def _compute_grep_context(
                 "LIMIT 1",
                 (path,),
             ).fetchone()
-        except Exception:
+        except (sqlite3.Error, OSError, RuntimeError):
             component_row = None
         if component_row is not None:
             graph_component_bonus = 1
@@ -444,7 +443,7 @@ def _compute_grep_context(
 def _row_str(row: sqlite3.Row, index: int) -> str:
     try:
         v: object = row[index]
-    except Exception:
+    except (IndexError, KeyError, TypeError):
         return ""
     if v is None:
         return ""
@@ -454,7 +453,7 @@ def _row_str(row: sqlite3.Row, index: int) -> str:
 def _row_int(row: sqlite3.Row, index: int) -> int:
     try:
         v: object = row[index]
-    except Exception:
+    except (IndexError, KeyError, TypeError):
         return 0
     if v is None:
         return 0

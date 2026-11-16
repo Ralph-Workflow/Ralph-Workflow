@@ -310,7 +310,7 @@ def compute_matrix_key(
     parts: list[str] = []
     for viewport in viewports:
         if not isinstance(viewport, Viewport):
-            raise ValueError("compute_matrix_key viewports must be Viewport instances")
+            raise TypeError("compute_matrix_key viewports must be Viewport instances")
         parts.append(f"vp={viewport.name}{_MATRIX_KEY_SEP}{viewport.width}x{viewport.height}")
     for theme in themes:
         if not isinstance(theme, str) or not theme:

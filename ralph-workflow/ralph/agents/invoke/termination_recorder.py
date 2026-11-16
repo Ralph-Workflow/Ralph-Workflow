@@ -121,7 +121,7 @@ def observed_returncode(handle: object) -> int | None:
         return None
     try:
         returncode = poll()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
         return None
     if isinstance(returncode, bool) or not isinstance(returncode, int):
         return None
@@ -169,11 +169,11 @@ class TerminationRecorder:
         self.record_issuer(TerminationIssuer.POST_EXIT_WATCHDOG)
         self._liveness_observed = True
 
-    def record_liveness(self, observed: bool | None) -> None:
+    def record_liveness(self, *, observed: bool | None) -> None:
         if observed is not None and self._liveness_observed is None:
             self._liveness_observed = observed
 
-    def record_subagent_activity(self, observed: bool | None) -> None:
+    def record_subagent_activity(self, *, observed: bool | None) -> None:
         if observed is not None and self._subagent_activity_observed is None:
             self._subagent_activity_observed = observed
 

@@ -25,11 +25,11 @@ class MediaConfig(RalphBaseModel):
 
     @field_validator("enabled", mode="after")
     @classmethod
-    def _coerce_enabled_to_true(cls, value: bool) -> bool:
+    def _coerce_enabled_to_true(cls, value: object) -> bool:
         if value is False:
             _MEDIA_LOGGER.warning(_ENABLED_IGNORED_WARNING)
             return True
-        return value
+        return bool(value)
 
 
 __all__ = ["MediaConfig"]

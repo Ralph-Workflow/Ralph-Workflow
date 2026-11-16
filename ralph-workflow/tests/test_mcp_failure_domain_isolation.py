@@ -33,8 +33,9 @@ def test_unscoped_reset_is_rejected() -> None:
 
 
 def test_unscoped_reset_export_is_removed() -> None:
-    with pytest.raises(ImportError):
-        exec("from ralph.pipeline.session_bridge import reset_tool_registry_callback")
+    import ralph.pipeline.session_bridge as bridge_mod
+
+    assert not hasattr(bridge_mod, "reset_tool_registry_callback")
 
 
 def test_reset_is_coalesced_while_another_scope_is_active() -> None:

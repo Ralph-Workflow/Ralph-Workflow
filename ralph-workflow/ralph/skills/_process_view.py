@@ -54,7 +54,7 @@ def _is_valid_managed_skill(skills_dir: Path, name: str) -> bool:
         return False
     try:
         raw_marker = cast("object", json.loads(marker_file.read_text(encoding="utf-8")))
-    except Exception:
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return False
     if not isinstance(raw_marker, dict):
         return False

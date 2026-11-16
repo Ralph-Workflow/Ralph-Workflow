@@ -138,8 +138,8 @@ def _handle_non_zero_returncode(
     check_options: CompletionCheckOptions | None,
     returncode: int,
     stderr_text: str,
-    stderr_available: bool,
     *,
+    stderr_available: bool,
     supervisor: AttemptSupervisor,
 ) -> None:
     issuer_method = cast(
@@ -223,7 +223,7 @@ def _record_exit_termination(
     recorder.record_observed_returncode(observed_returncode(handle))
     recorder.record_reported_returncode(returncode)
     recorder.record_issuer(TerminationIssuer.AGENT_EXIT)
-    recorder.record_liveness(False)
+    recorder.record_liveness(observed=False)
 
 
 __all__ = [

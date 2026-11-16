@@ -55,7 +55,7 @@ def load_evaluation_cases(path: Path) -> tuple[EvaluationCase, ...]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot load evaluation cases from {path}") from exc
     if not isinstance(raw_cases, list):
-        raise ValueError("evaluation cases must be a JSON array")
+        raise TypeError("evaluation cases must be a JSON array")
 
     cases: list[EvaluationCase] = []
     case_ids: set[str] = set()
@@ -91,7 +91,7 @@ def _parse_case(raw_case: object) -> EvaluationCase:
         or not isinstance(request, str)
         or not isinstance(plan_or_policy, str)
     ):
-        raise ValueError("evaluation case text fields must be strings")
+        raise TypeError("evaluation case text fields must be strings")
     if not case_id or not _safe_relative_path(case_id):
         raise ValueError("evaluation case ID must be a safe non-empty relative name")
     if _PHASES.get(template_name) != artifact_type or expected_artifact_type != artifact_type:
@@ -123,7 +123,7 @@ def _parse_case(raw_case: object) -> EvaluationCase:
 
 def _parse_workspace_files(value: object) -> dict[str, str]:
     if not isinstance(value, dict):
-        raise ValueError("evaluation case workspace_files must map safe relative paths to strings")
+        raise TypeError("evaluation case workspace_files must map safe relative paths to strings")
     parsed: dict[str, str] = {}
     for path, content in value.items():
         if (

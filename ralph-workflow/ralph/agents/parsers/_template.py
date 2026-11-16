@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import suppress
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, ClassVar, cast
 
@@ -154,10 +155,8 @@ class ParserTemplateBase:
         summary = _sanitize_parser_subagent_summary(summary)
         if not summary:
             return
-        try:
+        with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             sink(summary)
-        except Exception:
-            return
 
     def parse_json_line(self, line: str) -> AgentOutputLine | None:
         stripped = line.strip()

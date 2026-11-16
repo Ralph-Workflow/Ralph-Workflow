@@ -343,7 +343,7 @@ def test_every_combination_has_exactly_one_defined_action() -> None:
             try:
                 repeated = decide(context)
                 by_value = decide(twin_context)
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
                 report.add(
                     _Gap(
                         "total",
@@ -499,7 +499,7 @@ def test_escalation_ladder_advances_monotonically_and_never_wraps() -> None:
         for attempt in range(steps):
             try:
                 action = decide(DecisionContext(observation=observation, attempts=state))
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
                 report.add(
                     _Gap(
                         "total",

@@ -102,7 +102,7 @@ def _freshness_for_read(session: object) -> dict[str, object]:
         generation_int = 0
     try:
         dirty = list(store.peek_dirty_paths())
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         dirty = []
     meta = serving_metadata(session, index_used=True, fallback_reason=None)
     return {
@@ -141,7 +141,7 @@ def _hash_file(workspace: Workspace, path: str) -> str | None:
 
     try:
         content = workspace.read(path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return None
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -911,7 +911,7 @@ def _read_multiple_item(
             content, _meta = workspace.read_lines(normalized, start=line_start, end=line_end)
         else:
             content = workspace.read(normalized)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         return {"path": path, "error": str(exc), "is_error": True}
     if per_item_max_bytes:
         content = content[:per_item_max_bytes]
@@ -941,7 +941,7 @@ def handle_stat(
     normalized = normalize_relative_path(path)
     try:
         stat_result = workspace.stat(normalized)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         raise ToolError(f"Failed to stat '{path}': {exc}") from exc
     return ToolResult(content=[ToolContent.text_content(_tool_json(stat_result))], is_error=False)
 
@@ -954,7 +954,7 @@ def handle_list_allowed_roots(
     require_capability(session, WORKSPACE_READ_CAPABILITY, "List allowed roots")
     try:
         roots = workspace.allowed_roots()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         raise ToolError(f"Failed to list allowed roots: {exc}") from exc
     payload = _tool_json({"allowed_roots": roots})
     return ToolResult(content=[ToolContent.text_content(payload)], is_error=False)
@@ -1193,7 +1193,7 @@ def _build_directory_tree(
     entries: list[dict[str, object]] = []
     try:
         dir_entries = workspace.list_dir(normalized)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         dir_entries = []
 
     for entry in sorted(dir_entries):
@@ -1246,7 +1246,7 @@ def handle_directory_tree(
             tree_obj: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
             raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
         tree_dict: dict[str, object] = tree_obj if isinstance(tree_obj, dict) else {}
         return ToolResult(
@@ -1283,7 +1283,7 @@ def handle_directory_tree(
             tree_obj2: object = _build_directory_tree(
                 workspace, path, 0, max_depth, exclude_patterns
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
             raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
         tree_dict2: dict[str, object] = tree_obj2 if isinstance(tree_obj2, dict) else {}
         if view == "raw":
@@ -1303,7 +1303,7 @@ def handle_directory_tree(
 
     try:
         tree_raw: object = _build_directory_tree(workspace, path, 0, max_depth, exclude_patterns)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
     tree: dict[str, object] = tree_raw if isinstance(tree_raw, dict) else {}
     tree["path"] = path
@@ -1537,7 +1537,7 @@ def handle_search_files(
                 from ralph.mcp.tools.git_read import run_git_command_lenient
 
                 git_result = run_git_command_lenient(workspace, ["status", "--porcelain"])
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                 git_result = None
             stdout = (
                 git_result.stdout.decode("utf-8", errors="replace")

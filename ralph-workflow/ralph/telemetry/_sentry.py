@@ -236,7 +236,7 @@ def is_telemetry_active() -> bool:
 def _sentry_environment() -> str:
     try:
         platform = current_platform()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, AttributeError):
         return "default"
     return "ci" if platform.environment.ci else "default"
 
@@ -428,7 +428,7 @@ def init_sentry(user_id: str, session_id: str) -> None:
 
 
 def set_environment_context() -> None:
-    try:
+    with contextlib.suppress(RuntimeError, ValueError, AttributeError, OSError):
         platform = current_platform()
         python_info = PythonVersionInfo.from_sys(sys)
         runtime_env = detect_runtime_environment()
@@ -448,8 +448,6 @@ def set_environment_context() -> None:
             "package_manager": platform.package_manager,
         }
         sentry_sdk.set_context("runtime", runtime_payload)
-    except Exception:
-        pass
 
 
 def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
@@ -473,7 +471,7 @@ def set_policy_schema_context(state: str) -> None:
 def _python_version() -> str | None:
     try:
         info = PythonVersionInfo.from_sys(sys)
-    except Exception:
+    except (AttributeError, ValueError, TypeError):
         return None
     return f"{info.major}.{info.minor}.{info.micro}"
 
@@ -674,7 +672,7 @@ def finalize_session(
     ended_at_utc = end_dt if end_dt is not None else datetime.now(UTC)
     _STATE.finalized = True
 
-    try:
+    with contextlib.suppress(RuntimeError, ValueError, AttributeError, OSError):
         session_payload: dict[str, object] = {
             "duration_s": duration,
             "started_monotonic_s": started,
@@ -718,8 +716,6 @@ def finalize_session(
             transaction.finish()
         sentry_sdk.end_session()
         flush_telemetry(flush_timeout)
-    except Exception:
-        pass
     _STATE.phase_stats.clear()
     _STATE.agent_stats.clear()
     _STATE.transaction = None

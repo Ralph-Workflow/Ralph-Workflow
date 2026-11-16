@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
+from ralph.git.errors import GitOperationError
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -48,7 +50,7 @@ def sync_shipped_skills(
     target_root = workspace_root or Path.cwd()
     try:
         update_available = dependencies.skill_manager_factory().check_skills_for_updates()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         dependencies.emit_warning(
             f"User-global skill update check failed (non-fatal): {exc}. Run `ralph --force-init-skills` to repair, or `ralph --diagnose` for details."
         )
@@ -114,14 +116,14 @@ def sync_shipped_skills(
                                 "left for the agent flow",
                                 len(result.skipped_paths),
                             )
-        except Exception as exc:
+        except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
             logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
             dependencies.emit_warning(
                 f"Project-scope skill install failed (non-fatal): {exc}. "
                 "The run continues with the new skill content uncommitted; "
                 "commit manually or re-run to retry."
             )
-    except Exception as exc:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         dependencies.emit_warning(
             f"Skill auto-commit failed (non-fatal): {exc}. The run continues with the new skill content uncommitted; commit manually or re-run to retry."
@@ -140,7 +142,7 @@ def _auto_seed_project_ignores(target_root: Path, emit_warning: Callable[[str], 
 
         auto_seed_default_gitignore(target_root)
         auto_seed_default_git_exclude(target_root)
-    except Exception as exc:
+    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         emit_warning(
             f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
         )
@@ -149,11 +151,11 @@ def _auto_seed_project_ignores(target_root: Path, emit_warning: Callable[[str], 
 def _run_user_global_skill_stages(emit_warning: Callable[[str], None]) -> None:
     try:
         _run_user_global_skill_migration(emit_warning)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("User-global skill migration failed (non-fatal): {}", exc)
     try:
         _run_universal_skill_update(emit_warning)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Universal skill update failed (non-fatal): {}", exc)
 
 
@@ -165,7 +167,7 @@ def _run_user_global_skill_migration(emit_warning: Callable[[str], None]) -> Non
         from ralph.skills._prune import _prune_user_global_skill_roots
 
         failures = _prune_user_global_skill_roots()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("User-global skill migration failed (non-fatal): {}", exc)
         emit_warning(
             f"User-global skill migration failed (non-fatal): {exc}. "
@@ -184,7 +186,7 @@ def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
         from ralph.skills.gating import universal_skill_updates_enabled
 
         enabled = universal_skill_updates_enabled(os.environ)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Universal skill update gate failed (non-fatal): {}", exc)
         return
     if not enabled:
@@ -197,7 +199,7 @@ def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
             daemon=True,
         )
         thread.start()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Universal skill update could not start (non-fatal): {}", exc)
         emit_warning(f"Universal skill update could not start (non-fatal): {exc}.")
 
@@ -213,7 +215,7 @@ def _universal_skill_update_worker(emit_warning: Callable[[str], None]) -> None:
             now=datetime.now(UTC),
             http=upstream.default_http_client(),
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Universal skill update failed (non-fatal): {}", exc)
         emit_warning(f"Universal skill update failed (non-fatal): {exc}.")
         return
@@ -249,7 +251,7 @@ def run_start_retention_sweep(
         )
         if removed:
             logger.debug("Retention sweep removed {} stale .agent entries", removed)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         emit_warning(
             f"Retention sweep failed (non-fatal): {exc}. The run continues without cleanup; check .agent/ permissions."
         )
@@ -258,5 +260,5 @@ def run_start_retention_sweep(
             from ralph.workspace.agent_dir_retention import register_active_run
 
             register_active_run(target_root, keep_run_id)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
             logger.debug("Active-run registration failed (non-fatal): {}", exc)

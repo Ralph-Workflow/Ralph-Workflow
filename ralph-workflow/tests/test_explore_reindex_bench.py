@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -218,7 +219,7 @@ def test_parse_implementations_rejects_unknown_name() -> None:
         _parse_implementations("scalar,nope")
     except SystemExit:
         return
-    except Exception as exc:
+    except (argparse.ArgumentError, ValueError) as exc:
         assert "unknown implementation" in str(exc)
         return
     raise AssertionError("expected argparse to reject unknown implementation")

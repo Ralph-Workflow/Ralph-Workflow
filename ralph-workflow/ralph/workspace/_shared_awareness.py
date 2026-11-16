@@ -47,7 +47,7 @@ def _document_str_list(document: dict[str, object], key: str) -> list[str]:
     return []
 
 
-def _document_bool(document: dict[str, object], key: str, default: bool = False) -> bool:
+def _document_bool(document: dict[str, object], key: str, *, default: bool = False) -> bool:
     value = document.get(key, default)
     if isinstance(value, bool):
         return value

@@ -180,7 +180,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
                 running_verdict = classify_child_snapshot(running_snapshot)
                 if running_verdict.deferral_allowed:
                     return AgentExecutionState.WAITING_ON_CHILD
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError, AttributeError):
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)
                 if verdict.all_children_terminal or (
@@ -189,8 +189,6 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
                     return AgentExecutionState.ACTIVE
                 if verdict.deferral_allowed:
                     return AgentExecutionState.WAITING_ON_CHILD
-            except Exception:
-                pass
 
         probe_state, probe_stale = _probe_check_quiet(liveness_probe, probe_prefix)
         if probe_state is not None:

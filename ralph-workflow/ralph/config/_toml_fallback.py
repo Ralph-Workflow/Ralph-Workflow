@@ -229,13 +229,14 @@ def load_optional_toml[T](
     try:
         text = raw_bytes.decode("utf-8")
         data: dict[str, object] = tomllib.loads(text)
-        return data
     except (ValueError, UnicodeDecodeError) as exc:
         if strict:
             _attach_config_parse_error(exc, path_obj)
             raise
         _emit_fallback_warning(path_obj, exc, kind=kind, raw_bytes=raw_bytes)
         return default_factory() if default_factory is not None else {}
+    else:
+        return data
 
 
 def validate_or_default[DataT, T](
