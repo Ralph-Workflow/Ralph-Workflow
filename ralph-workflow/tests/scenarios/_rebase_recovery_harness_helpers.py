@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from tests._scenario_display import ScenarioDisplay
+    from tests.scenarios._outcome_ledger import OutcomeLedger
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -308,6 +309,46 @@ def supervisor_restart(root: Path) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise TypeError("restart probe returned a non-object payload")
     return payload
+
+
+EMPTY_OUTCOME_LEDGER: str = "{}"
+
+
+def record_outcome(
+    ledger: OutcomeLedger,
+    head: str,
+    target: str,
+    anchors: tuple[str, ...],
+    trees: tuple[str, ...],
+) -> str:
+    verdict = key_landed_outcome(head, target, anchors, trees)
+    ledger.put("landed-verdict", verdict)
+    return verdict
+
+
+def key_landed_outcome(
+    head: str, target: str, anchors: tuple[str, ...], trees: tuple[str, ...]
+) -> str:
+    anchor_ancestors = ", ".join(anchors)
+    tree_matches = ", ".join(trees)
+    if (
+        head == target
+        or any(anchor == head for anchor in anchors)
+        or any(tree == head for tree in trees)
+    ):
+        return "landed"
+    return f"not-landed head={head} target={target} anchors=({anchor_ancestors}) trees=({tree_matches})"
+
+
+def outcome_entry(ledger: OutcomeLedger, key: str) -> str:
+    return ledger.read(key)
+
+
+def driver_session_outcome(session: ResolutionSession) -> str:
+    outcome = getattr(session, "last_resolution_outcome", None)
+    if outcome is None:
+        raise AssertionError("resolution session has no terminal outcome recorded")
+    return type(outcome).__name__
 
 
 def paused_three_commit_first_stop_rebase(root: Path) -> None:

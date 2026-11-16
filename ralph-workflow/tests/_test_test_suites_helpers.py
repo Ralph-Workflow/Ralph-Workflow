@@ -140,6 +140,7 @@ EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_commit_review_reject_citation_gate.py",
     "tests/test_commit_review_tripwires.py",
     "tests/test_commit_detached_head_recovery.py",
+    "tests/test_conflict_resolution_phase_parity.py",
     "tests/test_commit_executor.py",
     "tests/test_git_proposal_seal.py",
     "tests/integration/test_commit_review_gate_e2e.py",
