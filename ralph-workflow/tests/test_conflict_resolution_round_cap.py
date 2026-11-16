@@ -12,6 +12,8 @@ from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_ou
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
+from ralph.recovery.controller import RecoveryController
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import _install_seams, _policy_bundle
 
 if TYPE_CHECKING:
@@ -37,6 +39,11 @@ class _CooldownClock(FakeClock):
         return self.monotonic()
 
 
+def _shared_session(clock: FakeClock, *, cycle_cap: int = 3) -> ResolutionSession:
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock, cycle_cap=cycle_cap))
+    return ResolutionSession(recovery_controller=controller)
+
+
 def test_round_cap_regression_session_cap_cannot_override_configured_cap(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -45,7 +52,14 @@ def test_round_cap_regression_session_cap_cannot_override_configured_cap(
     config = UnifiedConfig.model_validate(
         {"general": {}, "conflict_resolution": {"max_rounds_per_stop": configured_cap}}
     )
-    session = ResolutionSession(max_rounds_per_stop=configured_cap + 11)
+    clock = _CooldownClock()
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, cycle_cap=configured_cap + 11)
+    )
+    session = ResolutionSession(
+        max_rounds_per_stop=configured_cap + 11,
+        recovery_controller=controller,
+    )
     display = _StatusDisplay()
     invoked_rounds: list[int] = []
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
@@ -54,7 +68,7 @@ def test_round_cap_regression_session_cap_cannot_override_configured_cap(
         surviving_per_round=[("src/alpha.py",)] * (configured_cap + 2),
     )
 
-    token = install_executors(clock=_CooldownClock())
+    token = install_executors(clock=clock)
     try:
         outcome = run_conflict_resolution_outcome(
             root=tmp_path,
@@ -106,7 +120,11 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
     config = UnifiedConfig.model_validate(
         {"general": {}, "conflict_resolution": {"max_rounds_per_stop": cap}}
     )
-    session = ResolutionSession(max_rounds_per_stop=cap)
+    clock = _CooldownClock()
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, cycle_cap=cap)
+    )
+    session = ResolutionSession(max_rounds_per_stop=cap, recovery_controller=controller)
     display = _StatusDisplay()
     invoked_rounds: list[int] = []
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: candidates)
@@ -115,7 +133,7 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
         surviving_per_round=[("src/alpha.py",)] * (cap + 2),
     )
 
-    token = install_executors(clock=_CooldownClock())
+    token = install_executors(clock=clock)
     try:
         outcome = run_conflict_resolution_outcome(
             root=tmp_path,

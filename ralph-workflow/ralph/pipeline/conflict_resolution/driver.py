@@ -74,6 +74,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
     resolution_outcome as _verdict_resolution_outcome,
 )
 from ralph.pipeline.conflict_resolution.session import (
+    RecoveryControllerUnavailableError,
     ResolutionSession,
     begin_resolution_stop,
     classify_failed_resolution_attempt,
@@ -601,6 +602,66 @@ def _status_scope(status: IntegrationStatus) -> str:
     return f"{status.summary}; path reasons: {details}" if details else status.summary
 
 
+def _bootstrap_resolution_session(
+    session: ResolutionSession,
+    *,
+    policy_bundle: PolicyBundle,
+    pipeline_deps: PipelineDeps | None,
+    config: UnifiedConfig,
+    effective_scope: WorkspaceScope,
+    invoke: ResolutionInvoker | None,
+    display: ParallelDisplay | None,
+) -> bool:
+    if pipeline_deps is not None and session.unavailability_store is None:
+        store: object = getattr(pipeline_deps, "unavailability_store", None)
+        from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
+
+        if isinstance(store, UnavailabilityStore):
+            session.unavailability_store = store
+    if invoke is not None and session.probe_runner is None:
+        from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
+
+        session.probe_runner = fail_open_dead_agent_probe_runner()
+    try:
+        ensure_session_controller(
+            session, policy_bundle, pipeline_deps=pipeline_deps, config=config
+        )
+    except RecoveryControllerUnavailableError as exc:
+        session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
+        session.exhaustion_reason = str(exc)
+        emit_conflict_phase_line(display, f"conflict resolution blocked: {exc}")
+        return True
+    if session.workspace is None:
+        ws_obj: object = getattr(effective_scope, "workspace", None)
+        from ralph.workspace.protocol import Workspace
+
+        if isinstance(ws_obj, Workspace):
+            session.workspace = ws_obj
+        else:
+            ws_root: object = getattr(effective_scope, "root", None)
+            from pathlib import Path
+
+            if isinstance(ws_root, Path):
+                from ralph.workspace.fs import FsWorkspace
+
+                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
+                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
+                session.workspace = FsWorkspace(
+                    ws_root,
+                    allowed_roots=allowed,
+                )
+    if session.workspace_probe is None:
+        rc = session.recovery_controller
+        if rc is not None and rc.workspace_probe is not None:
+            session.workspace_probe = rc.workspace_probe
+        else:
+            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
+
+            session.workspace_probe = DefaultWorkspaceChangeProbe()
+    return False
+
+
 def _run_rounds(
     *,
     root: Path,
@@ -634,44 +695,17 @@ def _run_rounds(
     )
     is_rotation = bool(strategy_history)
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
-    if pipeline_deps is not None and session.unavailability_store is None:
-        store: object = getattr(pipeline_deps, "unavailability_store", None)
-        from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
-
-        if isinstance(store, UnavailabilityStore):
-            session.unavailability_store = store
-    if invoke is not None and session.probe_runner is None:
-        from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
-
-        session.probe_runner = fail_open_dead_agent_probe_runner()
-    ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
-    if session.workspace is None:
-        ws_obj: object = getattr(effective_scope, "workspace", None)
-        from ralph.workspace.protocol import Workspace
-
-        if isinstance(ws_obj, Workspace):
-            session.workspace = ws_obj
-        else:
-            ws_root: object = getattr(effective_scope, "root", None)
-            from pathlib import Path
-
-            if isinstance(ws_root, Path):
-                from ralph.workspace.fs import FsWorkspace
-
-                allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
-                allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
-                session.workspace = FsWorkspace(
-                    ws_root,
-                    allowed_roots=allowed,
-                )
-    if session.workspace_probe is None:
-        rc = session.recovery_controller
-        if rc is not None and rc.workspace_probe is not None:
-            session.workspace_probe = rc.workspace_probe
-        else:
-            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
-
-            session.workspace_probe = DefaultWorkspaceChangeProbe()
+    blocked = _bootstrap_resolution_session(
+        session,
+        policy_bundle=policy_bundle,
+        pipeline_deps=pipeline_deps,
+        config=config,
+        effective_scope=effective_scope,
+        invoke=invoke,
+        display=display,
+    )
+    if blocked:
+        return False
     prepared, early, decision_paths, integration_status = _prepare_conflicted_paths(
         root, stop, session, display, active_observer
     )
