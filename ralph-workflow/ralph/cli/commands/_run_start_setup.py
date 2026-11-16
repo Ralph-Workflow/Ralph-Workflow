@@ -116,14 +116,30 @@ def sync_shipped_skills(
                                 "left for the agent flow",
                                 len(result.skipped_paths),
                             )
-        except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+        except (
+            GitOperationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ) as exc:
             logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
             dependencies.emit_warning(
                 f"Project-scope skill install failed (non-fatal): {exc}. "
                 "The run continues with the new skill content uncommitted; "
                 "commit manually or re-run to retry."
             )
-    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+    except (
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+    ) as exc:
         logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
         dependencies.emit_warning(
             f"Skill auto-commit failed (non-fatal): {exc}. The run continues with the new skill content uncommitted; commit manually or re-run to retry."
@@ -142,7 +158,15 @@ def _auto_seed_project_ignores(target_root: Path, emit_warning: Callable[[str], 
 
         auto_seed_default_gitignore(target_root)
         auto_seed_default_git_exclude(target_root)
-    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+    except (
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+    ) as exc:
         emit_warning(
             f"Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {exc}. Re-run `ralph` or check file permissions on .gitignore and .git/info/exclude."
         )

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.invoke._process_reader import ProcessLineReader
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     import pytest
 
 
-class _WouldBlockError(Exception):
+class _WouldBlockError(BlockingIOError):
     pass
 
 
@@ -118,7 +119,15 @@ def _agy_ctx(tmp_path: Path, cli_log_path: Path) -> SimpleNamespace:
 def _reader_error(reader: ProcessLineReader | PtyLineReader) -> BaseException | None:
     try:
         list(reader.read_lines())
-    except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
+    except (
+        AgentInvocationError,
+        KeyboardInterrupt,
+        SystemExit,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+    ) as exc:
         return exc
     return None
 

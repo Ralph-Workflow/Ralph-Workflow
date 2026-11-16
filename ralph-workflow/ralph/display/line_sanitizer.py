@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-from rich.errors import MarkupError
 from rich.text import Text
 
 _TERMINAL_ESCAPE_RE = re.compile(
@@ -31,7 +30,7 @@ def strip_markup_safe(text: str) -> str:
         return strip_terminal_control(text)
     try:
         plain = Text.from_markup(text).plain
-    except (MarkupError, OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError):
+    except Exception:
         plain = text
     return strip_terminal_control(plain)
 

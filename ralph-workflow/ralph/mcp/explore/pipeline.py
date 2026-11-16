@@ -83,7 +83,16 @@ def reindex(
         return _finalize_with_recovery(
             store, state, workspace_root, now_fn=now_fn, status="cancelled"
         )
-    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error, TimeoutError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+        sqlite3.Error,
+        TimeoutError,
+    ) as exc:
         return _finalize_with_recovery(
             store,
             state,
@@ -116,7 +125,9 @@ def _finalize_with_recovery(
             error_summary=error_summary,
         )
     if finalized.status == "timed_out" and finalized.generation == 0:
-        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error):
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error
+        ):
             from ralph.mcp.explore.recovery import enqueue_recovery
 
             enqueue_recovery(

@@ -569,9 +569,7 @@ def _parse_implementations(arg: str) -> list[str]:
     allowed = {"scalar", "accelerated", "auto"}
     for name in parts:
         if name not in allowed:
-            raise ValueError(
-                f"unknown implementation: {name!r}; expected one of {sorted(allowed)}"
-            )
+            raise ValueError(f"unknown implementation: {name!r}; expected one of {sorted(allowed)}")
     return parts
 
 

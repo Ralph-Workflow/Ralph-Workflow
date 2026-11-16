@@ -142,13 +142,23 @@ def _persist_media_registry_entry(
     path = media_registry_path()
     artifact_id = entry["artifact_id"]
     run_prune = _advance_media_prune_counter(workspace)
-    with contextlib.suppress(TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError):
+    with contextlib.suppress(
+        TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError
+    ):
         artifacts: list[dict[str, str]] = []
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
             raw_artifacts = data.get("artifacts", [])
             artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
-        except (TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError):
+        except (
+            TypeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            json.JSONDecodeError,
+        ):
             artifacts = []
         if run_prune:
             artifacts = _drop_evicted_cache_entries(workspace, artifacts)
@@ -220,14 +230,24 @@ def _persist_media_session_entry(
         "identity_key": meta.get("identity_key", ""),
     }
     run_prune = _advance_media_prune_counter(workspace)
-    with contextlib.suppress(TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError):
+    with contextlib.suppress(
+        TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError
+    ):
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
             raw_artifacts = data.get("artifacts", [])
             artifacts: list[dict[str, str]] = (
                 list(raw_artifacts) if isinstance(raw_artifacts, list) else []
             )
-        except (TypeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, json.JSONDecodeError):
+        except (
+            TypeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            json.JSONDecodeError,
+        ):
             artifacts = []
         if run_prune:
             artifacts = _drop_evicted_cache_entries(workspace, artifacts)

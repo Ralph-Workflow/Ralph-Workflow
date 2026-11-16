@@ -53,7 +53,9 @@ class TemplateRenderer:
         strict_undefined = cast("type[Undefined]", StrictUndefined)
         self._environment = Environment(
             loader=DictLoader(templates),
-            autoescape=select_autoescape(["html", "xml"]),
+            autoescape=select_autoescape(
+                enabled_extensions=(), default_for_string=False, default=False
+            ),
             undefined=strict_undefined,
             keep_trailing_newline=True,
             cache_size=_MAX_COMPILED_TEMPLATES,

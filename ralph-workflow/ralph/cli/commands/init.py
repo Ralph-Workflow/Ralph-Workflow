@@ -192,7 +192,9 @@ def init_command(
 
 def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> None:
     configured_target = "main"
-    with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    with contextlib.suppress(
+        OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+    ):
         config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         configured_target = config.general.auto_integrate_target
     _verdict, owner = target_worktree_lookup(target, configured_target)
@@ -257,7 +259,14 @@ def _ensure_baseline_capabilities(
                             f"Skill auto-commit failed during --init (non-fatal): {result.error}. "
                             "Skill content is materialized; commit manually or re-run to retry."
                         )
-                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    KeyError,
+                    AttributeError,
+                    TypeError,
+                ) as exc:
                     display.emit_warning(
                         f"Skill auto-commit failed during --init (non-fatal): {exc}. "
                         "Skill content is materialized; commit manually or re-run to retry."

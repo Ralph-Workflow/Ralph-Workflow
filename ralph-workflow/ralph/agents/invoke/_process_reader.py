@@ -14,6 +14,7 @@ from typing import IO, TYPE_CHECKING, Protocol, TextIO, TypeGuard, cast, runtime
 
 import psutil
 from loguru import logger
+from psutil import Error as PsutilError
 from tqdm import tqdm
 
 from ralph.agents._agy_upstream_diagnostic import (
@@ -253,7 +254,7 @@ def _has_live_session_orphan(handle: ManagedProcess) -> bool:
                 continue
             if info.get("status") != "zombie":
                 return True
-    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error):
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, PsutilError):
         return False
     return False
 
@@ -743,7 +744,7 @@ class ProcessLineReader:
             return False
         _now = self._clock.monotonic()
         with contextlib.suppress(
-            OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, PsutilError
         ):
             root_pid = self._handle.pid
             try:
@@ -817,11 +818,11 @@ class ProcessLineReader:
                     scoped_count = desc_count
                     scoped_active = desc_count > 0
                     oldest_secs_from_legacy = desc_oldest
-                except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                     logger.debug(
                         "corroborator: legacy descendant_snapshot fallback failed (suppressed)"
                     )
-        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.debug("corroborator: process monitor count failed (suppressed)")
             scoped_count = None
             scoped_active = None

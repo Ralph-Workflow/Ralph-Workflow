@@ -296,7 +296,16 @@ def score_grep_match(
     graph_neighbor_bonus = 0
     graph_component_bonus = 0
     if store is not None and chunk_id:
-        with contextlib.suppress(sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, IndexError, AttributeError, TypeError):
+        with contextlib.suppress(
+            sqlite3.Error,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            IndexError,
+            AttributeError,
+            TypeError,
+        ):
             ctx = _compute_grep_context(
                 store,
                 chunk_id=chunk_id,

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
+from psutil import Error as PsutilError
+
 from ralph.process.manager._liveness_assessor import LivenessConfig, LivenessWindow
 
 if TYPE_CHECKING:
@@ -154,7 +156,7 @@ def _collect_tree(
         child_pids: set[int] = {c.pid for c in children}
     except TypeError:
         pass
-    except (OSError, RuntimeError, ValueError, AttributeError):
+    except (PsutilError, OSError, RuntimeError, ValueError, AttributeError):
         return [root], None
     else:
         return [root, *children], child_pids
@@ -170,7 +172,7 @@ def _collect_tree(
                     child_pids_set.add(c.pid)
                     procs.append(c)
                     queue.append(c)
-    except (OSError, RuntimeError, ValueError, AttributeError):
+    except (PsutilError, OSError, RuntimeError, ValueError, AttributeError):
         return [root], None
     else:
         return procs, child_pids_set
@@ -219,7 +221,7 @@ def _sum_cpu_seconds(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_cpu_seconds(p.cpu_times())
-        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
+        except (PsutilError, OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -229,7 +231,7 @@ def _sum_io_bytes(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_io_bytes(p.io_counters())
-        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
+        except (PsutilError, OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -239,7 +241,7 @@ def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
     for p in procs:
         try:
             total += _extract_voluntary_ctx(p.num_ctx_switches())
-        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
+        except (PsutilError, OSError, RuntimeError, ValueError, AttributeError, TypeError):
             return None, False
     return total, True
 
@@ -296,7 +298,7 @@ class TreeSampler:
                 c_time = float(root.create_time())
                 if 0.0 <= c_time <= now:
                     tree_created = c_time
-            except (OSError, RuntimeError, ValueError, AttributeError):
+            except (PsutilError, OSError, RuntimeError, ValueError, AttributeError):
                 tree_created = None
         if tree_created is not None:
             self._start_time = tree_created
@@ -399,7 +401,7 @@ class TreeSampler:
 
         try:
             root: _LivenessProc | None = self._psutil_module.Process(root_pid)
-        except (OSError, RuntimeError, ValueError, AttributeError):
+        except (PsutilError, OSError, RuntimeError, ValueError, AttributeError):
             root = None
 
         self._determine_start_time(root, now)

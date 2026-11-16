@@ -61,7 +61,7 @@ def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:
             show_description=True,
             instruction="(use the arrow keys, then Enter)",
         ).ask()
-    except (OSError, RuntimeError, ValueError) as exc:
+    except (AttributeError, EOFError, OSError, RuntimeError, ValueError) as exc:
         logger.debug("policy selection prompt failed (non-fatal): {}", exc)
         return default
     if isinstance(answer, str):

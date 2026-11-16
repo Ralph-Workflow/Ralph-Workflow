@@ -165,7 +165,15 @@ class McpServer:
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         try:
             return self._dispatch_request(request, state)
-        except (ToolBridgeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+        except (
+            ToolBridgeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ) as exc:
             logger.error("MCP request handler crashed for method={}: {}", request.method, exc)
             metrics = self._metrics if self._metrics is not None else get_default_metrics()
             metrics.record_post_header_failure(
@@ -605,7 +613,15 @@ class McpServer:
                 content=[ToolContent.text_content(str(exc))],
                 is_error=True,
             )
-        except (ToolBridgeError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+        except (
+            ToolBridgeError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ) as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 

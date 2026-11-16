@@ -17,6 +17,8 @@ from typing import Final
 if sys.platform != "win32":
     import fcntl
 
+import httpx
+
 from ralph.checked_accessors import as_mapping, as_str_dict, optional_str
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.skills._agent_paths import (
@@ -479,7 +481,14 @@ def _parse_release_tag(body: bytes) -> tuple[str | None, str | None]:
 def _fetch_release_tag(http: HttpClient, source: UpstreamSource) -> tuple[str | None, str | None]:
     try:
         status, body = http(source.api_url, REQUEST_TIMEOUT_SECONDS)
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (
+        httpx.HTTPError,
+        UpstreamTransportError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         return (None, _transport_error_reason(exc, "release-api"))
     if status == HTTP_NOT_FOUND:
         return (None, NO_RELEASE_ERROR)
@@ -494,7 +503,14 @@ def _load_release_payload(
     archive_url = source.archive_url_template.format(tag=tag)
     try:
         status, body = http(archive_url, REQUEST_TIMEOUT_SECONDS)
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (
+        httpx.HTTPError,
+        UpstreamTransportError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         return (None, _transport_error_reason(exc, "archive"))
     if status != HTTP_OK:
         return (None, f"archive-status-{status}")

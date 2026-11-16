@@ -244,9 +244,7 @@ def _default_process_factory(
     )
 
 
-def _default_thread_factory(
-    target: Callable[[], None], daemon: bool = False
-) -> threading.Thread:
+def _default_thread_factory(target: Callable[[], None], daemon: bool = False) -> threading.Thread:
     return threading.Thread(
         target=target,
         daemon=daemon,

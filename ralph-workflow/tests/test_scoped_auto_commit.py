@@ -124,7 +124,9 @@ def test_git_blob_sha_returns_sentinel_for_symlink_leaf_under_symlink_ancestor(
         assert _git_blob_sha(repo, "sibling/alias") == _ANCESTOR_SYMLINK_DIRTY
         target_bytes = str(canonical).encode("utf-8")
         blob = b"blob " + str(len(target_bytes)).encode("ascii") + b"\x00" + target_bytes
-        assert _git_blob_sha(repo, "sibling") == hashlib.sha1(blob, usedforsecurity=False).hexdigest()
+        assert (
+            _git_blob_sha(repo, "sibling") == hashlib.sha1(blob, usedforsecurity=False).hexdigest()
+        )
     finally:
         repo.close()
 

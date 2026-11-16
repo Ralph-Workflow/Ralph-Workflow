@@ -150,7 +150,15 @@ def _read_index_tree(root: Path, *, query_ok: bool, has_unmerged: bool) -> str |
             cwd=root,
             label="operation-snapshot:index-tree",
         )
-    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+    except (
+        GitError,
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
         return None
     if result.returncode != 0:
         return None
@@ -171,7 +179,15 @@ def observe_operation_snapshot(
         gitdir = None
     try:
         head_sha = get_head_sha(root)
-    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+    except (
+        GitError,
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
         head_sha = None
     target_tip = observe_branch_sha(root, target)[0] if target is not None else None
     merge_head = _read_marker(gitdir, "MERGE_HEAD") if gitdir is not None else None
@@ -186,7 +202,15 @@ def observe_operation_snapshot(
     )
     try:
         marker_paths = tuple(staged_conflict_marker_paths(root))
-    except (GitError, GitOperationError, OSError, RuntimeError, ValueError, TypeError, AttributeError):
+    except (
+        GitError,
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ):
         marker_paths = ("<staged-marker-query-failed>",)
     return OperationSnapshot(
         unmerged_paths=paths,

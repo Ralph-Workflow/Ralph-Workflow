@@ -114,7 +114,9 @@ def _scan_diff_flags_for_writes(args_text: str) -> str | None:
         pos = arg_end
         for prefix in _GIT_DIFF_OUTPUT_FLAGS:
             if prefix == "--output" and (
-                flag_arg == "--output" or "--output=" in flag_arg or flag_arg.startswith("--output ")
+                flag_arg == "--output"
+                or "--output=" in flag_arg
+                or flag_arg.startswith("--output ")
             ):
                 return flag_arg
             if prefix == "-o" and (

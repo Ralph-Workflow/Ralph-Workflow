@@ -402,7 +402,9 @@ class _OpCollector:
 
     def from_import(self, node: ast.ImportFrom) -> None:
         if node.level:
-            target = _resolve_relative(self.module, is_package=self.is_package, level=node.level, name=node.module)
+            target = _resolve_relative(
+                self.module, is_package=self.is_package, level=node.level, name=node.module
+            )
         else:
             target = node.module or ""
         if target == "__future__":

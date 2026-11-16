@@ -120,14 +120,30 @@ def _lifecycle_rows(view: IntegrationLifecycleView) -> list[tuple[object, ...]]:
 def _read_durable_record(workspace_root: Path) -> IntegrationRecord | None:
     try:
         return read_record(workspace_root)
-    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    except (
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+    ):
         return None
 
 
 def _read_checkpoint_state(workspace_root: Path) -> PipelineState | None:
     try:
         return load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
-    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    except (
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+    ):
         return None
 
 
@@ -169,12 +185,22 @@ def _worktree_risk(observation: Observation) -> tuple[str, ...]:
 def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleView | None:
     try:
         observation = observe_integration(workspace_root)
-    except (GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    except (
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+    ):
         return None
     record = _read_durable_record(workspace_root)
     state = _read_checkpoint_state(workspace_root)
     unmerged_observation = None
-    with contextlib.suppress(GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    with contextlib.suppress(
+        GitOperationError, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+    ):
         unmerged_observation = observe_unmerged_paths(workspace_root)
     unmerged_paths = (
         tuple(unmerged_observation.paths)

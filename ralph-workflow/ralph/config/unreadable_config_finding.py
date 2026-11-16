@@ -22,6 +22,7 @@ from ralph.config._toml_fallback import (
     effective_fix_hint,
     emit_config_failure_warning,
 )
+from ralph.policy.validation._policy_validation_error import PolicyValidationError
 from ralph.project_policy.markers import PORTFOLIO_PATH
 
 if TYPE_CHECKING:
@@ -225,7 +226,15 @@ def _validate_config_file_schema(
             cleaned = _convert_legacy_config(data)
             _drop_cli_only_fields(cleaned)
             UnifiedConfig.model_validate(cleaned)
-    except (ValidationError, ValueError, TypeError, AttributeError, OSError, SystemExit) as exc:
+    except (
+        PolicyValidationError,
+        ValidationError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        OSError,
+        SystemExit,
+    ) as exc:
         return exc
     return None
 

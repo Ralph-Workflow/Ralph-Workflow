@@ -115,7 +115,15 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     if stale_paths_count > 0:
         try:
             total = int(store.count_files())
-        except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        except (
+            sqlite3.Error,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ):
             total = 0
         if total > 0:
             share = stale_paths_count / max(1, total)
@@ -185,7 +193,15 @@ def staleness_probe(
             current_paths = [rel for rel, _size, _mtime in current_manifest]
             try:
                 persisted = store.bulk_size_mtime_for_paths(current_paths)
-            except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+            except (
+                sqlite3.Error,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                TypeError,
+            ):
                 persisted = {}
             for rel, size, mtime_ns in current_manifest:
                 row_tuple = persisted.get(rel)

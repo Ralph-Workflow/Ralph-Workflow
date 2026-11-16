@@ -304,7 +304,14 @@ def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
             cwd=repo_root_path,
             label="git-unmerged-paths",
         )
-    except (subprocess.SubprocessError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+    except (
+        subprocess.SubprocessError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as exc:
         logger.debug("git: unmerged-path query failed in {}: {}", repo_root_path, exc)
         return UnmergedPathsObservation(query_ok=False)
     if result.returncode != 0:

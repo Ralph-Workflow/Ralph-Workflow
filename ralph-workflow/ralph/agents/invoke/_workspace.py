@@ -265,7 +265,14 @@ class WorkspaceMonitor:
             except OSError as exc:
                 failure.append(exc)
                 return False
-            except (RuntimeError, ValueError, TypeError, AttributeError, SystemExit, KeyboardInterrupt) as exc:
+            except (
+                RuntimeError,
+                ValueError,
+                TypeError,
+                AttributeError,
+                SystemExit,
+                KeyboardInterrupt,
+            ) as exc:
                 unexpected.append(exc)
                 return False
             return True
@@ -427,7 +434,15 @@ class WorkspaceMonitor:
         def _stop() -> bool:
             try:
                 observer.stop()
-            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, SystemExit, KeyboardInterrupt) as exc:
+            except (
+                RuntimeError,
+                OSError,
+                ValueError,
+                TypeError,
+                AttributeError,
+                SystemExit,
+                KeyboardInterrupt,
+            ) as exc:
                 failed.append((type(exc), str(exc)))
                 return False
             return True

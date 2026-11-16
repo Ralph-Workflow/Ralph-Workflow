@@ -1186,7 +1186,9 @@ def _block_states(
             if state_outcome != _PATH_ACTIVE:
                 advanced.add((state_classified, state_outcome))
                 continue
-            advanced |= _execute_statement(statement, classified_before=state_classified, context=context)
+            advanced |= _execute_statement(
+                statement, classified_before=state_classified, context=context
+            )
         states = advanced
     return states
 

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 import psutil
 from loguru import logger
+from psutil import Error as PsutilError
 
 from ralph.agents._agy_upstream_diagnostic import (
     agy_cli_log_start_offset,
@@ -411,7 +412,7 @@ class PtyLineReader:
                 return False
         _now = self._clock.monotonic()
         with contextlib.suppress(
-            OSError, RuntimeError, ValueError, KeyError, AttributeError, psutil.Error
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, PsutilError
         ):
             root_pid = self._handle.pid
             try:
@@ -487,11 +488,11 @@ class PtyLineReader:
                     scoped_child_count = descendant_count
                     scoped_child_active = descendant_count > 0
                     oldest_child_seconds = descendant_oldest
-                except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
+                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                     logger.debug(
                         "corroborator: PTY legacy descendant_snapshot fallback failed (suppressed)"
                     )
-        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.debug("corroborator: PTY process monitor count failed (suppressed)")
             scoped_child_count = None
             scoped_child_active = None

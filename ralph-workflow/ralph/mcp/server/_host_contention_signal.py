@@ -6,6 +6,8 @@ from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 
+from psutil import Error as PsutilError
+
 from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 from ralph.process.manager._process_manager_runtime import load_psutil_module
 
@@ -28,7 +30,12 @@ def record_d_state(
 ) -> None:
     if psutil is not None:
         with contextlib.suppress(
-            OSError, RuntimeError, ValueError, KeyError, AttributeError
+            PsutilError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
         ):
             status = psutil.Process(pid).status()
             if status.startswith("D") or status == "disk-sleep":
@@ -42,7 +49,12 @@ def record_sigkill_survivor(
 ) -> None:
     if psutil is not None:
         with contextlib.suppress(
-            OSError, RuntimeError, ValueError, KeyError, AttributeError
+            PsutilError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
         ):
             status = psutil.Process(pid).status()
             if status in ("disk-sleep", "zombie"):
@@ -55,9 +67,7 @@ def record_psi_pressure(
 ) -> None:
     psi_types = ("cpu", "io", "memory")
     for name in psi_types:
-        with contextlib.suppress(
-            OSError, RuntimeError, ValueError, KeyError, AttributeError
-        ):
+        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError):
             path = Path(f"/proc/pressure/{name}")
             with path.open(encoding="utf-8") as fh:
                 for line in fh:

@@ -52,7 +52,11 @@ from ralph.display.terminal_restore import (
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import load_policy_for_config_dir, load_policy_for_workspace_scope
-from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
+from ralph.policy.validation import (
+    PolicyValidationError,
+    validate_agent_chains_satisfiable,
+    validate_chain_agents_on_path,
+)
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.visual.judgement_tier import run_on_demand_judgement
@@ -1992,7 +1996,15 @@ def handle_check_config(
                 bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
             validate_agent_chains_satisfiable(bundle, registry)
             validate_chain_agents_on_path(bundle.agents)
-        except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as e:
+        except (
+            PolicyValidationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ) as e:
             validation_errors.append(str(e))
 
     try:
@@ -2003,7 +2015,15 @@ def handle_check_config(
             config_path=config_path,
             strict_optional_files=True,
         )
-    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, SystemExit) as e:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+        SystemExit,
+    ) as e:
         validation_errors.append(str(e))
 
     if unreadable_files or validation_errors:

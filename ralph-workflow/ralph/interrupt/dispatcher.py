@@ -82,6 +82,7 @@ class _PsutilProcess(Protocol):
 
 
 class _PsutilModule(Protocol):
+    Error: type[Exception]
     Process: Callable[[int], _PsutilProcess]
 
 
@@ -94,7 +95,7 @@ def _psutil_pid_cpu_time(pid: int) -> float:
         proc = psutil.Process(pid)
         cpu = proc.cpu_times().user + proc.cpu_times().system
         return float(cpu)
-    except (OSError, AttributeError, RuntimeError, ValueError):
+    except (psutil.Error, OSError, AttributeError, RuntimeError, ValueError):
         return 0.0
 
 

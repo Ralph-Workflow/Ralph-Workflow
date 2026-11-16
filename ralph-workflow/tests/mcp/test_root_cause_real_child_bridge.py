@@ -279,7 +279,14 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
                         burst_results.append(True)
                     else:
                         burst_results.append(False)
-                except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
+                except (
+                    KeyboardInterrupt,
+                    SystemExit,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    TypeError,
+                ) as exc:
                     burst_errors.append(exc)
                 time.sleep(0.015)
 

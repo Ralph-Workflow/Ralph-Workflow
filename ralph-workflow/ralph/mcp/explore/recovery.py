@@ -322,7 +322,15 @@ def run_recovery_action(
             raw_committed = ""
             try:
                 raw_committed = store.get_setting("current_generation") or "0"
-            except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+            except (
+                sqlite3.Error,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                TypeError,
+            ):
                 raw_committed = "0"
             try:
                 committed = int(raw_committed)
@@ -356,7 +364,16 @@ def run_recovery_action(
                 "rebuild_status": status,
                 "rebuild_wall_seconds": elapsed,
             }
-        except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, TimeoutError) as exc:
+        except (
+            sqlite3.Error,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+            TimeoutError,
+        ) as exc:
             scheduler.record_failure(code=code, message=f"exception: {exc!r}")
             snapshot = {"rebuild_status": "error", "rebuild_wall_seconds": 0.0}
         finally:
@@ -476,7 +493,15 @@ def _drain_thread_main() -> None:
         _DRAIN_WAKEUP.clear()
         try:
             _drain_pending_recoveries_once()
-        except (sqlite3.Error, OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        except (
+            sqlite3.Error,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TypeError,
+        ):
             logger.debug("drain pending recoveries failed", exc_info=True)
             continue
 

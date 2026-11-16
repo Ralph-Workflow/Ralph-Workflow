@@ -184,10 +184,7 @@ def commit_review_diff(workspace_root: Path, proposal_ref: str | None = None) ->
             if tracked:
                 return tracked
     diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
-    return (
-        _with_secret_signal(diff, secret_work_present=secret_work_present)
-        or _NO_DIFF_SENTINEL
-    )
+    return _with_secret_signal(diff, secret_work_present=secret_work_present) or _NO_DIFF_SENTINEL
 
 
 __all__ = ["commit_generation_diff", "commit_review_diff"]

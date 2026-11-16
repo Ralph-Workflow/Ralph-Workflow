@@ -429,7 +429,14 @@ def handle_edit_file(
                         }
                     if target_path is not None:
                         preview_payload["impact_preview_path"] = str(target_path)
-                except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    KeyError,
+                    AttributeError,
+                    TypeError,
+                ) as exc:
                     preview_payload["impact_preview_unavailable"] = True
                     preview_payload["impact_preview_unavailable_reason"] = (
                         f"impact_query_failed:{type(exc).__name__}"

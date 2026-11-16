@@ -106,7 +106,9 @@ def update_status(
     resolved = deps if deps is not None else default_deps()
     install = resolved.detect_install()
     if resolved.is_disabled(resolved.environ):
-        return UpdateStatus(resolved.current_version, None, update_available=False, install=install, disabled=True)
+        return UpdateStatus(
+            resolved.current_version, None, update_available=False, install=install, disabled=True
+        )
     path = resolved.cache_path(resolved.environ)
     state = resolved.load_state(path)
     now = resolved.now()

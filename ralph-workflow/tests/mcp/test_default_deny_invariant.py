@@ -6,6 +6,7 @@ from ralph.config.mcp_models import McpConfig
 from ralph.mcp.tools.bridge import ToolSpec, tool_specs
 from ralph.mcp.tools.coordination import ToolResult
 from ralph.mcp.tools.names import ALL_RALPH_TOOLS
+from ralph.mcp.tools.tool_error import ToolError
 from tests.mcp._default_deny_invariant_helper__fakeworkspace import _FakeWorkspace
 
 
@@ -57,7 +58,7 @@ def test_deny_all_session_cannot_invoke_any_native_tool() -> None:
             result = handler(deny_session, fake_workspace, {})
             if isinstance(result, ToolResult) and not result.is_error:
                 names_that_succeeded.append(name)
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        except (ToolError, OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
             pass
 
     assert names_that_succeeded == [], (

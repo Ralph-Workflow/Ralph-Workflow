@@ -244,7 +244,15 @@ def _lock_has_no_live_holder(
         with suppress(AttributeError):
             future.cancel()
         return "unknown"
-    except (OSError, RuntimeError, ValueError, TypeError, AttributeError, KeyError, LookupError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        KeyError,
+        LookupError,
+    ) as exc:
         logger.warning(
             "Lock liveness probe returning 'unknown' for {}: probe raised "
             "{}: {}; refusing to unlink without proven negative liveness",

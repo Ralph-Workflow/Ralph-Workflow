@@ -113,7 +113,15 @@ def _run_hook(
         if callable(marker):
             try:
                 marker(observed_paths, source_tool="workspace_awareness", reason="observed")
-            except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error):
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                TypeError,
+                sqlite3.Error,
+            ):
                 awareness.requeue(observed_paths, cause="dirty_handoff_failed")
         else:
             awareness.requeue(observed_paths, cause="dirty_handoff_unavailable")
@@ -135,7 +143,16 @@ def _run_hook(
             **{kwargs_name: options_value},
         )
         result = cast("ReindexResult", raw_result)
-    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError, sqlite3.Error, TimeoutError) as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+        sqlite3.Error,
+        TimeoutError,
+    ) as exc:
         logger.warning(
             "Lifecycle refresh (%s) failed: %s",
             kind,

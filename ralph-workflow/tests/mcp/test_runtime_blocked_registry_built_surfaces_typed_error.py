@@ -79,7 +79,15 @@ def test_blocked_at_registry_built_surfaces_typed_error(tmp_path: Path) -> None:
     def _start() -> None:
         try:
             lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
-        except (KeyboardInterrupt, SystemExit, OSError, RuntimeError, ValueError, TypeError) as exc:
+        except (
+            McpServerError,
+            KeyboardInterrupt,
+            SystemExit,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+        ) as exc:
             result.append(exc)
         finally:
             done.set()

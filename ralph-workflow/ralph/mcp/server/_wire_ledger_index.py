@@ -56,7 +56,9 @@ class WireLedgerIndex:
             if newline:
                 lines = consumed.split(b"\n")
                 for line in lines:
-                    self._head, self._intact, call = self._step(line, self._head, intact=self._intact)
+                    self._head, self._intact, call = self._step(
+                        line, self._head, intact=self._intact
+                    )
                     if call is not None:
                         self._calls.append(call)
                 self._offset += len(consumed) + 1

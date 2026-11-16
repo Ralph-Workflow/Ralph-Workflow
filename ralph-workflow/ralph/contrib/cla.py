@@ -47,8 +47,12 @@ def evaluate_body(body: str | None) -> ClaCheckResult:
     if _CHECKED_CLA_PATTERN.search(body):
         return ClaCheckResult(ok=True, message="CLA agreement checkbox is checked.")
     if _UNCHECKED_CLA_PATTERN.search(body):
-        return ClaCheckResult(ok=False, message="Check the CLA agreement box in the pull request description.")
-    return ClaCheckResult(ok=False, message="Add the CLA agreement checkbox to the pull request description.")
+        return ClaCheckResult(
+            ok=False, message="Check the CLA agreement box in the pull request description."
+        )
+    return ClaCheckResult(
+        ok=False, message="Add the CLA agreement checkbox to the pull request description."
+    )
 
 
 def evaluate_github_event(*, event_name: str | None, event: Mapping[str, object]) -> ClaCheckResult:
@@ -58,7 +62,9 @@ def evaluate_github_event(*, event_name: str | None, event: Mapping[str, object]
 
     pull_request = event.get("pull_request")
     if not isinstance(pull_request, Mapping):
-        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
+        return ClaCheckResult(
+            ok=False, message="Could not load pull request body for CLA verification."
+        )
 
     body = pull_request.get("body")
     return evaluate_body(body if isinstance(body, str) else None)
@@ -79,7 +85,9 @@ def evaluate_codeberg_environment(
 
     api_url = _codeberg_pull_api_url_from_env(env)
     if api_url is None:
-        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
+        return ClaCheckResult(
+            ok=False, message="Could not load pull request body for CLA verification."
+        )
 
     try:
         payload = (fetch_json or _fetch_json)(api_url)
@@ -89,7 +97,9 @@ def evaluate_codeberg_environment(
         )
 
     if not isinstance(payload, Mapping):
-        return ClaCheckResult(ok=False, message="Could not load pull request body for CLA verification.")
+        return ClaCheckResult(
+            ok=False, message="Could not load pull request body for CLA verification."
+        )
     body = payload.get("body")
     return evaluate_body(body if isinstance(body, str) else None)
 

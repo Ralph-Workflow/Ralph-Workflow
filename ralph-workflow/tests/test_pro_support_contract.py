@@ -645,7 +645,6 @@ def test_section_7_heartbeat_adopts_late_marker(
     run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
     runner_module = importlib.import_module("ralph.pipeline.runner")
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
-    monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: None)
     _seed_pro_workspace(tmp_path, run_id="late", token="late-tok")
 
     state_in = PipelineState(phase="complete")

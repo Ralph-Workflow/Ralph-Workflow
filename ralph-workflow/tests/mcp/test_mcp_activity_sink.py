@@ -97,7 +97,15 @@ def test_activity_sink_contextvar_isolation() -> None:
                 )
             finally:
                 reset_active_sink(token)
-        except (KeyboardInterrupt, SystemExit, AssertionError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        except (
+            KeyboardInterrupt,
+            SystemExit,
+            AssertionError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+        ) as exc:
             errors.append(exc)
 
     def thread_b() -> None:
@@ -117,7 +125,15 @@ def test_activity_sink_contextvar_isolation() -> None:
                 )
             finally:
                 reset_active_sink(token)
-        except (KeyboardInterrupt, SystemExit, AssertionError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        except (
+            KeyboardInterrupt,
+            SystemExit,
+            AssertionError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+        ) as exc:
             errors.append(exc)
 
     ta = threading.Thread(target=thread_a, daemon=True)

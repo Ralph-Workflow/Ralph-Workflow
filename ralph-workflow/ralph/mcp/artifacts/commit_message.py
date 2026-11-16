@@ -255,7 +255,9 @@ def _optional_string_list(content: dict[str, object], field: str) -> list[str] |
     if value is None:
         return None
     if not isinstance(value, list):
-        raise CommitMessagePayloadTypeError(f"commit_message field '{field}' must be an array of strings")
+        raise CommitMessagePayloadTypeError(
+            f"commit_message field '{field}' must be an array of strings"
+        )
 
     normalized: list[str] = []
     for item in value:
@@ -270,12 +272,16 @@ def _optional_excluded_files(content: dict[str, object]) -> list[dict[str, objec
     if value is None:
         return None
     if not isinstance(value, list):
-        raise CommitMessagePayloadTypeError("commit_message field 'excluded_files' must be an array")
+        raise CommitMessagePayloadTypeError(
+            "commit_message field 'excluded_files' must be an array"
+        )
 
     normalized: list[dict[str, object]] = []
     for item in value:
         if not isinstance(item, dict):
-            raise CommitMessagePayloadTypeError("commit_message 'excluded_files' entries must be objects")
+            raise CommitMessagePayloadTypeError(
+                "commit_message 'excluded_files' entries must be objects"
+            )
         path = _required_string_field(item, "path")
         reason = _required_string_field(item, "reason")
         if reason not in _EXCLUDED_FILE_REASONS:

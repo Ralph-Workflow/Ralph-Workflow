@@ -126,7 +126,9 @@ def diagnose_command(
     prompt_exists = prompt_path.exists()
     prompt_has_sentinel = False
     if prompt_exists:
-        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+        ):
             sentinel = _load_starter_prompt_sentinel()
             prompt_has_sentinel = sentinel in prompt_path.read_text(encoding="utf-8")
 
@@ -501,21 +503,29 @@ def _collect_unknown_field_rows(
     findings: list[tuple[str, str | None]] = []
 
     global_path = _global_config_path()
-    with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+    with contextlib.suppress(
+        OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+    ):
         global_data = load_toml(global_path)
         findings.extend(_findings_with_path(global_data, global_path))
 
     if config_path is not None:
-        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+        ):
             local_data = load_toml(config_path)
             findings.extend(_findings_with_path(local_data, config_path))
     elif workspace_scope is not None:
         local_path = workspace_scope.local_config_path
-        with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        with contextlib.suppress(
+            OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+        ):
             local_data = load_toml(local_path)
             findings.extend(_findings_with_path(local_data, local_path))
         for propagated_path in workspace_scope.propagated_config_paths:
-            with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+            with contextlib.suppress(
+                OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
+            ):
                 propagated_data = load_toml(propagated_path)
                 findings.extend(_findings_with_path(propagated_data, propagated_path))
 

@@ -2006,5 +2006,13 @@ class ProcessManager:
         for callback in list(self._listeners.values()):
             try:
                 callback(event)
-            except (OSError, RuntimeError, ValueError, TypeError, AttributeError, LookupError, AssertionError):
+            except (
+                OSError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+                AttributeError,
+                LookupError,
+                AssertionError,
+            ):
                 logger.exception("ProcessManager listener raised an exception")

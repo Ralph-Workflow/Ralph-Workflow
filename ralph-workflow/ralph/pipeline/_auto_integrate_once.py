@@ -261,9 +261,7 @@ def _integrate_once_owned(
             "reclaimed_worktree_path": (
                 reclamation.worktree_path if reclamation is not None else None
             ),
-            "reclaim_snapshot_ref": reclamation.snapshot_ref
-            if reclamation is not None
-            else None,
+            "reclaim_snapshot_ref": reclamation.snapshot_ref if reclamation is not None else None,
             "reclaim_discarded_path_count": (
                 reclamation.discarded_path_count if reclamation is not None else 0
             ),

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import SystemClock
 from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
@@ -166,7 +167,7 @@ def _ask(
 ) -> str:
     try:
         return select(question, choices, default)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except (EOFError, OSError, RuntimeError, ValueError) as exc:
         logger.debug("policy prompt failed (non-fatal): {}", exc)
         emit(fallback_notice)
         return default
@@ -338,7 +339,7 @@ def _make_production_invoke_agent(
                     run_id=load_result.run_id,
                     policy_bundle=load_result.policy_bundle,
                 )
-            except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            except (AgentInvocationError, OSError, RuntimeError, ValueError, TypeError) as exc:
                 logger.warning(
                     "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
                 )

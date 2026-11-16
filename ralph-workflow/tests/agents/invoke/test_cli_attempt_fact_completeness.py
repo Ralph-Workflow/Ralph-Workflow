@@ -16,6 +16,7 @@ import pytest
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import PostExitVerdict, TimeoutPolicy, WatchdogFireReason
 from ralph.agents.invoke import (
+    AgentInvocationError,
     AttemptEnded,
     ProcessLineReader,
     ProcessReaderCtx,
@@ -446,7 +447,14 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
     reader_failure: BaseException | None = None
     try:
         list(reader.read_lines())
-    except (AttemptEnded, SystemExit, KeyboardInterrupt, OSError, RuntimeError, ValueError) as exc:
+    except (
+        AgentInvocationError,
+        SystemExit,
+        KeyboardInterrupt,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
         reader_failure = exc
     handle.observe_exit()
     if shape.supervisor_timing == "after-reader":
@@ -463,7 +471,14 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
                 shlex.split(_COMMANDS[parser_key])[0],
                 termination_recorder=reader.termination_recorder,
             )
-        except (AttemptEnded, SystemExit, KeyboardInterrupt, OSError, RuntimeError, ValueError) as exc:
+        except (
+            AgentInvocationError,
+            SystemExit,
+            KeyboardInterrupt,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as exc:
             completion_failure = exc
     failure = reader_failure if reader_failure is not None else completion_failure
     facts = (
