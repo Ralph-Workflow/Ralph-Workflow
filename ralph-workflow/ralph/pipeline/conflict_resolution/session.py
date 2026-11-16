@@ -116,6 +116,7 @@ ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
 class ResolutionSession:
     started_at: float | None = None
     unresolved_paths: tuple[str, ...] = ()
+    initial_conflicted_count: int | None = None
     max_rounds_per_stop: int | None = None
     max_rebase_conflict_stops: int | None = None
     max_fallback_agents: int | None = None

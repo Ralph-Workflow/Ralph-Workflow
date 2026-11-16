@@ -96,6 +96,18 @@ def emit_success(
     _emit(display, f"conflicts resolved in round {round_index}; {next_action}")
 
 
+def _session_progress(status_session: ResolutionSession) -> str:
+    from ralph.pipeline.conflict_resolution import driver as driver_mod
+
+    build_fn = cast(
+        "Callable[..., IntegrationStatus] | None",
+        getattr(driver_mod, "build_session_integration_status", None),
+    )
+    if build_fn is None:
+        return "(unknown)"
+    return build_fn(status_session, cause="PROGRESS").progress
+
+
 def emit_attempt_outcome(
     display: ParallelDisplay | None,
     outcome: StopResolutionOutcome,
@@ -132,7 +144,7 @@ def emit_attempt_outcome(
             f"{reason_label}: duration={duration:.1f}s; "
             f"last_activity_kind={session.last_activity_kind or 'none'}; "
             f"last_activity_at={session.last_activity_at or 'never'}; "
-            f"last_progress=unresolved_count={len(unresolved)}; "
+            f"last_progress={_session_progress(session)}; "
             f"unresolved_paths={', '.join(unresolved)}; "
             f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
         )
@@ -171,7 +183,7 @@ def emit_attempt_outcome(
                     f"{strategy}: duration={duration:.1f}s; "
                     f"last_activity_kind={last_kind}; "
                     f"last_activity_at={last_at}; "
-                    f"last_progress=unresolved_count={len(paths)}; "
+                    f"last_progress={_session_progress(session)}; "
                     f"unresolved_paths={', '.join(paths)}; "
                     f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
                 )

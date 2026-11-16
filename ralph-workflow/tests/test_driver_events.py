@@ -14,7 +14,12 @@ from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.resolution_outcome import (
+    NextStrategyOutcome,
+    ResolvedOutcome,
+    RetryLaterOutcome,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -112,6 +117,26 @@ def test_emit_success_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     emit_success(None, round_index=1, stop=None)
     assert len(lines) == 1
     assert "conflicts resolved in round 1; verifying and committing the merge" in lines[0]
+
+
+def test_emit_attempt_outcome_progress_line_reports_done_and_remaining(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lines: list[str] = []
+
+    def _hook(_d: ParallelDisplay | None, line: str) -> None:
+        _record(lines, _d, line)
+
+    monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _hook)
+    session = ResolutionSession()
+    session.initial_conflicted_count = 4
+    session.unresolved_paths = ("file.py",)
+    session.last_activity_kind = "healthy"
+    session.terminal_reason = None
+    outcome = NextStrategyOutcome(strategy="retry_round")
+    emit_attempt_outcome(None, outcome, session=session)
+    assert len(lines) == 1
+    assert "done=3; remaining=1" in lines[0]
 
 
 def test_emit_attempt_outcome_ignores_success() -> None:

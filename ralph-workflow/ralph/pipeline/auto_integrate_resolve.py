@@ -111,7 +111,7 @@ def endpoint_merge_with_resolution(
                 root, target, "merge state unreadable; progress retained"
             )
         return result
-    resolved = _resolve_and_commit_with_reason(root, target, resolver)
+    resolved = resolve_and_commit_with_reason(root, target, resolver)
     if resolved.outcome not in {"success", MERGE_COMMIT_PENDING}:
         _abort_merge_safely(root)
     return resolved
@@ -127,20 +127,16 @@ def _retain_uncertain_merge(root: Path, target: str, reason: str) -> MergeResult
     )
 
 
-def _resolve_and_commit(
-    root: Path,
-    target: str,
-    resolver: ConflictResolver,
-) -> bool:
-    return _resolve_and_commit_with_reason(root, target, resolver).outcome == "success"
-
-
 def resolve_and_commit_with_reason(
     root: Path,
     target: str,
     resolver: ConflictResolver,
 ) -> MergeResult:
-    conflicted = unmerged_paths(root) or staged_conflict_marker_paths(root)
+    conflicted = unmerged_paths(root)
+    if not conflicted:
+        staged_markers = staged_conflict_marker_paths(root)
+        if staged_markers:
+            conflicted = staged_markers
     retained = read_record(root)
     if retained is not None and retained.resolving_merge:
         conflicted = list(retained_merge_paths(root, tuple(conflicted)))
@@ -328,7 +324,6 @@ def handle_unsuccessful_resolution(
 
 
 _handle_unsuccessful_resolution = handle_unsuccessful_resolution
-_resolve_and_commit_with_reason = resolve_and_commit_with_reason
 
 
 def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:

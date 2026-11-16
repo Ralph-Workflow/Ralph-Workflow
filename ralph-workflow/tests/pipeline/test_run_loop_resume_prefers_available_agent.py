@@ -13,6 +13,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_resolve, run_loop
+from ralph.pipeline._resolved_outcome import ResolvedOutcome
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.integration_resolution import (
     RECOVERABLE,
@@ -445,11 +446,11 @@ class _RecordingContinuationExecutor:
         target: str,
         resolver: RebaseStopResolver,
         config: ConflictResolutionConfig | None,
-    ) -> tuple[bool, str | None, ResolutionFailureCause]:
+    ) -> ResolvedOutcome:
         self.root = root
         self.target = target
         self.resolver = resolver
-        return True, None, ResolutionFailureCause.NONE
+        return ResolvedOutcome()
 
 
 def test_a_paused_rebase_is_driven_through_the_stop_resolver(

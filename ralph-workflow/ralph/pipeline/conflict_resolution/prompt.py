@@ -22,7 +22,7 @@ from ralph.prompts.template_variables import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from ralph.mcp.artifacts.file_backend import FileBackend
@@ -147,6 +147,31 @@ def _session_preamble_variables() -> dict[str, str]:
     return variables
 
 
+def _agent_prompt_sights(kinds: Mapping[str, object]) -> dict[str, object]:
+    from ralph.pipeline.conflict_resolution.sight import (
+        AGENT_ELIGIBLE_SIGHTS,
+        ConflictKind,
+        ConflictSight,
+    )
+
+    _SIGHT_BY_KIND: dict[str, ConflictSight] = {
+        ConflictKind.TEXT: ConflictSight.AGENT,
+        ConflictKind.DELETE_MODIFY: ConflictSight.AGENT_DECISION,
+        ConflictKind.DECLARED_DECISION: ConflictSight.AGENT_DECISION,
+        ConflictKind.APPEND_ONLY: ConflictSight.MECHANICAL,
+        ConflictKind.GITLINK: ConflictSight.GITLINK_POLICY,
+        ConflictKind.BINARY: ConflictSight.OUT_OF_REACH,
+        ConflictKind.OTHER: ConflictSight.OUT_OF_REACH,
+    }
+    eligible: dict[str, object] = {}
+    for path, kind in kinds.items():
+        sight = _SIGHT_BY_KIND.get(kind) if isinstance(kind, ConflictKind) else None
+        if sight is None or sight not in AGENT_ELIGIBLE_SIGHTS:
+            continue
+        eligible[path] = sight
+    return eligible
+
+
 def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
     from ralph.pipeline.conflict_resolution.sight import ConflictKind, classify_conflict_kinds
 
@@ -154,17 +179,26 @@ def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
     if not listed:
         return _UNKNOWN_PATHS_BODY
     try:
-        kinds = classify_conflict_kinds(root, tuple(listed)) if root.is_dir() else {}
+        kinds: dict[str, object] = (
+            dict(classify_conflict_kinds(root, tuple(listed))) if root.is_dir() else {}
+        )
     except (OSError, RuntimeError, ValueError, KeyError):
         kinds = {}
+    eligible = _agent_prompt_sights(kinds)
+    # DELETE_MODIFY is explicitly INCLUDED in the agent prompt: it maps to
+    # AGENT_DECISION, which is inside AGENT_ELIGIBLE_SIGHTS, and invariant 11
+    # gives the agent the delete-or-keep call. Every kind that maps outside
+    # AGENT_ELIGIBLE_SIGHTS (gitlink policy, mechanical, out-of-reach) is excluded.
+    delete_modify_is_agent_eligible = True
     return "\n".join(
         (
             f"- `{path}`: choose delete or keep the modified content; "
             "this path has no raw conflict markers"
-            if kinds.get(path) is ConflictKind.DELETE_MODIFY
+            if delete_modify_is_agent_eligible and kinds.get(path) is ConflictKind.DELETE_MODIFY
             else f"- `{path}`"
         )
         for path in listed
+        if path in eligible
     )
 
 

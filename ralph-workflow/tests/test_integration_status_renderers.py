@@ -60,6 +60,18 @@ def test_defect_21_regression_lower_priority_names_selected_chain_predecessor() 
     assert "capability" not in evidence
 
 
+def test_defect_20b_progress_lines_render_done_and_remaining_via_status_model() -> None:
+    status = build_integration_status(
+        cause="RESOLUTION_INCOMPLETE",
+        paths_with_reasons=(("left.py", "still conflicted"),),
+        done_count=2,
+        remaining_count=1,
+    )
+
+    assert status.progress == "done=2; remaining=1"
+    assert "(unknown)" not in status.summary
+
+
 def test_renderer_parity_regression_status_bar_uses_single_status_summary() -> None:
     status = build_integration_status(
         cause="OUT_OF_REACH",

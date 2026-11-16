@@ -13,6 +13,7 @@ from ralph.pipeline.integration_cleanup import (
     PlanningBaseline,
     PlanningResidue,
     ResidueCleanupOutcome,
+    bind_residue_root,
     capture_planning_baseline,
     compute_fingerprint,
     detect_planning_residue,
@@ -542,11 +543,18 @@ def test_landing_restore_skips_paths_the_landing_recreated() -> None:
     assert git.state is not None
 
 
-def test_unmerged_residue_is_never_touched() -> None:
+def test_unmerged_residue_is_never_touched(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.git.merge import UnmergedPathsObservation
+
     git = _FakeCleanupGit()
     baseline = _baseline(git)
+    bind_residue_root(_ROOT)
     git.worktree["src/app.py"] = "planning wrote here"
     git.forced_blob = "UU src/app.py\0"
+    monkeypatch.setattr(
+        "ralph.git.merge.observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(("src/app.py",), query_ok=True),
+    )
     residue = detect_planning_residue(baseline, "UU src/app.py\0", after_diff_hash="x")
     assert residue is not None
     assert residue.unmerged_paths == ("src/app.py",)

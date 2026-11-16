@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.git.subprocess_runner import run_git
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
@@ -37,9 +35,17 @@ GIT_DIR_ENV_KEYS: frozenset[str] = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"}
 )
 
+UNMERGED_PORCELAIN_XY: frozenset[str] = frozenset(
+    {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
+)
+
 _MIN_PORCELAIN_PIECE_LEN: int = 3
 
 _SELFTEST_ENTRY_COUNT: int = 5
+
+_PATH_SEPARATOR = " "
+
+_XY_WIDTH = 2
 
 
 def scrub_git_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -89,45 +95,14 @@ def parse_porcelain_z(blob: str) -> list[PorcelainEntry]:
     return entries
 
 
-_UNMERGED_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
-
-_XY_WIDTH = 2
-
-_PATH_SEPARATOR = " "
-
-
-def unmerged_paths_z(blob: str) -> list[PorcelainEntry]:
-    return [entry for entry in parse_porcelain_z(blob) if entry.xy in _UNMERGED_XY]
-
-
-def porcelain_z(repo_root: Path) -> str:
-    result = run_git(
-        ("status", "--porcelain", "-z", "--untracked-files=no"),
-        cwd=repo_root,
-        label="hardening:porcelain-z",
-    )
-    if result.returncode != 0:
-        return ""
-    return result.stdout
-
-
-def unmerged_paths_collect(repo_root: Path) -> list[PorcelainEntry]:
-    blob = porcelain_z(repo_root)
-    if not blob:
-        return []
-    return unmerged_paths_z(blob)
-
-
 __all__ = [
     "GIT_DIR_ENV_KEYS",
     "PINNED_CONFIG_ARGS",
+    "UNMERGED_PORCELAIN_XY",
     "PorcelainEntry",
     "parse_porcelain_z",
     "pinned_argv",
-    "porcelain_z",
     "scrub_git_env",
-    "unmerged_paths_collect",
-    "unmerged_paths_z",
 ]
 
 
@@ -142,10 +117,6 @@ def _selftest() -> None:
     entries = parse_porcelain_z(blob)
     if len(entries) != _SELFTEST_ENTRY_COUNT:
         raise AssertionError(f"Expected {_SELFTEST_ENTRY_COUNT} entries, got {len(entries)}")
-    unmerged = unmerged_paths_z(blob)
-    expected_paths = ["conflicted.txt", "added-both.txt", "deleted-by-them.txt"]
-    if [e.path for e in unmerged] != expected_paths:
-        raise AssertionError(f"Expected {expected_paths}, got {[e.path for e in unmerged]}")
     rename = next(e for e in entries if e.xy.startswith("R"))
     if rename.rename_source != "old/name.txt":
         raise AssertionError(f"Expected old/name.txt, got {rename.rename_source}")

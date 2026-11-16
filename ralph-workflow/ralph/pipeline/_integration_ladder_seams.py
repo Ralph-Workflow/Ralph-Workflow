@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
+from ralph.pipeline._next_strategy_outcome import NextStrategyOutcome
 from ralph.pipeline._rung_post_condition import RungPostCondition
 
 if TYPE_CHECKING:
@@ -26,13 +26,6 @@ __all__ = [
 
 
 type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting", "terminal"]
-
-
-@dataclass(frozen=True, slots=True)
-class NextStrategyOutcome:
-    strategy: Literal["complete_in_place"]
-    reason: str
-    alternatives_considered: tuple[str, ...]
 
 
 type LandResult = Literal[

@@ -10,6 +10,7 @@ from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
@@ -99,55 +100,46 @@ def test_resolve_rebase_with_config_result_unpacks_into_three_values(tmp_path: P
     assert public_result is not None
     assert public_result.short_circuit is not None
     result = RebaseResolutionResult(
-        False,
-        public_result.short_circuit.last_reason,
-        public_result.short_circuit.last_failure_cause,
-    )
-
-    resolved, reason, failure_cause = result
-    assert resolved is False
-    assert reason == _OPERATOR_ACTION_MESSAGE
-    assert failure_cause is ResolutionFailureCause.UNRESOLVED_CONFLICT
-    assert len(result) == 3
-    assert list(result) == [
-        False,
+        RetryLaterOutcome(
+            on_change=_OPERATOR_ACTION_MESSAGE,
+            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        ),
         _OPERATOR_ACTION_MESSAGE,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
-    ]
+        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+    )
+
+    assert isinstance(result.outcome, RetryLaterOutcome)
+    assert result.reason == _OPERATOR_ACTION_MESSAGE
+    assert result.failure_cause is ResolutionFailureCause.UNRESOLVED_CONFLICT
+    assert result.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
 
-def test_rebase_resolution_result_keeps_three_value_contract_for_existing_call_sites() -> None:
+def test_rebase_resolution_result_keeps_typed_contract() -> None:
     positional = RebaseResolutionResult(
-        False,
+        RetryLaterOutcome(on_change=_PENDING_REASON),
         _PENDING_REASON,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
     )
-    keyword = RebaseResolutionResult(
-        succeeded=False,
-        reason=_PENDING_REASON,
-        failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+    defaulted = RebaseResolutionResult(
+        RetryLaterOutcome(on_change=_PENDING_REASON),
+        _PENDING_REASON,
     )
-    defaulted = RebaseResolutionResult(False, _PENDING_REASON)
 
-    for result, expected_cause in (
-        (positional, ResolutionFailureCause.UNRESOLVED_CONFLICT),
-        (keyword, ResolutionFailureCause.UNRESOLVED_CONFLICT),
-        (defaulted, ResolutionFailureCause.NONE),
-    ):
-        succeeded, reason, failure_cause = result
-        assert succeeded is False
-        assert reason == _PENDING_REASON
-        assert failure_cause is expected_cause
-        assert len(result) == 3
-        assert tuple(result) == (False, _PENDING_REASON, expected_cause)
+    for result in (positional, defaulted):
+        assert isinstance(result.outcome, RetryLaterOutcome)
+        assert result.reason == _PENDING_REASON
+        assert result.outcome.succeeded is False
 
     assert defaulted.terminal_reason is None
     assert positional.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    assert positional == (
-        False,
+    assert positional == RebaseResolutionResult(
+        RetryLaterOutcome(on_change=_PENDING_REASON),
         _PENDING_REASON,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
     )
 
 

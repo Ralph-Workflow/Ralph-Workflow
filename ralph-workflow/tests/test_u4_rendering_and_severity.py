@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ralph.pipeline import build_integration_status
 from ralph.pipeline.conflict_resolution import driver
 from ralph.pipeline.conflict_resolution._driver_events import announce_declared_decisions
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
+if TYPE_CHECKING:
+    import pytest
 from ralph.process.manager._process_manager_runtime import expected_exit_codes
 from ralph.recovery.agent_selection import (
     agent_availability,
@@ -28,7 +34,22 @@ def test_partial_conflict_scope_renders_each_path_reason() -> None:
     assert "asset.bin: binary conflict" in scope
 
 
-def test_declared_decision_announcement_renders_each_path_reason(monkeypatch) -> None:
+def test_declared_decision_status_builds_progress_via_single_status_model() -> None:
+    session = ResolutionSession()
+    session.unresolved_paths = ("left.py",)
+    session.initial_conflicted_count = 3
+
+    status = driver.build_session_integration_status(
+        session,
+        cause="RESOLUTION_INCOMPLETE",
+    )
+
+    assert status is not None
+    assert "done=2; remaining=1" in status.summary
+    assert status.progress == "done=2; remaining=1"
+
+
+def test_declared_decision_announcement_renders_each_path_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[str] = []
     status = build_integration_status(
         cause="DECLARED_DECISION",

@@ -27,6 +27,8 @@ def complete_commit(
     kwargs: dict[str, object] = dict(extra)
     kwargs.setdefault("phase", "integrated")
     kwargs.setdefault("integrated_feature_sha", integrated_feature_sha.strip())
+    kwargs.setdefault("resolution_gate_key", None)
+    kwargs.setdefault("waiting_notification_key", None)
     return CommitCompletion(
         record=record.with_transition(PROMOTE_TO_INTEGRATED, **kwargs),
         integrated_feature_sha=integrated_feature_sha.strip(),

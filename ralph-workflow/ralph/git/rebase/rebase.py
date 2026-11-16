@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
-from ralph.git.hardening import unmerged_paths_collect
+from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, observe_unmerged_paths
 from ralph.git.rebase._process_executor import ProcessExecutor
 from ralph.git.rebase.process_result import ProcessResult
 from ralph.git.rebase.rebase_conflicts import RebaseConflicts
@@ -96,12 +96,13 @@ def get_conflicted_files(
     path = _resolve_repo_root(repo_root)
     _ = executor
 
-    try:
-        entries = unmerged_paths_collect(path)
-    except Exception as exc:
-        raise RebaseOperationError(f"Failed to list conflicted files: {exc}") from exc
+    observed = observe_unmerged_paths(path)
+    if not observed.query_ok or (
+        observed.paths and observed.paths[0] == UNMERGED_PATH_QUERY_FAILED
+    ):
+        raise RebaseOperationError("Failed to list conflicted files: index query failed")
 
-    return sorted({entry.path for entry in entries if entry.path})
+    return sorted(set(observed.paths))
 
 
 def rebase_onto(

@@ -165,8 +165,9 @@ class IntegrationRecord(RalphBaseModel):
             rebase_continue_tree=None,
             rebase_continue_error=None,
             merge_commit_pending=False,
+            resolution_gate_key=None,
+            waiting_notification_key=None,
         )
-
 
 _LEGACY_GLOBAL_EVIDENCE_KEYS: frozenset[str] = frozenset({"for-each-ref", "ls-files"})
 

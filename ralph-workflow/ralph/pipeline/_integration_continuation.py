@@ -49,19 +49,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-class ExhaustedResolutionFailure(str):
-    terminal_reason: ResolutionTerminationReason
-
-    def __new__(
-        cls,
-        reason: str,
-        terminal_reason: ResolutionTerminationReason,
-    ) -> ExhaustedResolutionFailure:
-        value = super().__new__(cls, reason)
-        value.terminal_reason = terminal_reason
-        return value
-
-
 def reset_continuation_gate_state() -> None:
     from ralph.pipeline._stop_resolution_entry import reset_stop_resolution_presentation
 
@@ -173,7 +160,7 @@ def _continue_rebase_resolution(
     config_path: Path | None,
     force_retry: bool,
     stop_identity: str | None,
-) -> str | None:
+) -> str | RetryLaterOutcome:
     matches = active_operation_matches(root, record)
     if not matches:
         return "active rebase identity differs from retained ownership; operator work preserved"
@@ -264,12 +251,12 @@ def _rebase_failure_transport(
     stop_identity: str | None,
     result: StopResolutionOutcome,
     chain_agents: tuple[str, ...],
-) -> str | None:
+) -> str | RetryLaterOutcome:
     failure_reason = _continuation_outcome_reason(result, record.last_failure_cause.value)
     outcome = _rebase_failure_outcome(result)
     match outcome:
         case ResolvedOutcome():
-            return None
+            return failure_reason
         case NextStrategyOutcome(strategy=strategy):
             from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
 
@@ -283,7 +270,12 @@ def _rebase_failure_transport(
                     strategy,
                 )
             return failure_reason
-        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+        case RetryLaterOutcome(
+            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            on_change=on_change,
+            failure_cause=failure_cause,
+            unresolved_paths=unresolved_paths,
+        ):
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha,
@@ -293,13 +285,18 @@ def _rebase_failure_transport(
                 NextAction.LAST_RESORT_RECOVERY.value,
             )
             msg = (
-                failure_reason
-                if "spent/unavailable" in failure_reason
-                else f"all resolver agents are spent/unavailable; {failure_reason}"
+                on_change
+                or (
+                    failure_reason
+                    if "spent/unavailable" in failure_reason
+                    else f"all resolver agents are spent/unavailable; {failure_reason}"
+                )
             )
-            return ExhaustedResolutionFailure(
-                msg,
-                ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            return RetryLaterOutcome(
+                on_change=msg,
+                terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+                unresolved_paths=unresolved_paths,
+                failure_cause=failure_cause,
             )
         case WaitingOutcome() | RetryLaterOutcome():
             return failure_reason
@@ -395,7 +392,7 @@ def continue_retained_resolution(
     config_path: Path | None = None,
     force_retry: bool = False,
     stop_identity: str | None = None,
-) -> IntegrationRecord | str:
+) -> IntegrationRecord | str | RetryLaterOutcome:
     if recovery_controller is None:
         from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 

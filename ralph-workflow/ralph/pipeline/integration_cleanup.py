@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
-from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS, parse_porcelain_z
+from ralph.git.hardening import (
+    COMMIT_PIN_CONFIG_ARGS,
+    UNMERGED_PORCELAIN_XY,
+    parse_porcelain_z,
+)
+from ralph.git.merge import UnmergedPathsObservation
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -60,8 +65,6 @@ _CLEANUP_LADDER_ACTIONS: frozenset[NextAction] = frozenset(
         NextAction.LAST_RESORT_RECOVERY,
     }
 )
-
-_UNMERGED_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
 
 _OPERATION_LABELS: Final[dict[InProgressKind, str]] = {
     InProgressKind.MERGE: "merge",
@@ -165,6 +168,13 @@ def compute_fingerprint(
     return digest.hexdigest()
 
 
+_RESIDUE_ROOT: Final[list[Path | None]] = [None]
+
+
+def bind_residue_root(root: Path) -> None:
+    _RESIDUE_ROOT[0] = root
+
+
 def detect_planning_residue(
     baseline: PlanningBaseline,
     after_blob: str,
@@ -173,6 +183,14 @@ def detect_planning_residue(
     incoming_overwrite_paths: frozenset[str] = frozenset(),
     after_flag_dirt: IndexFlagDirt | None = None,
 ) -> PlanningResidue | None:
+    import ralph.git.merge as merge_module
+
+    residue_root = _RESIDUE_ROOT[0]
+    observed_unmerged = (
+        merge_module.observe_unmerged_paths(residue_root)
+        if residue_root is not None
+        else UnmergedPathsObservation(query_ok=False)
+    )
     before_flag_hashes = dict(baseline.flag_hashes)
     after_flag_hashes = (
         after_flag_dirt.path_hashes if after_flag_dirt is not None else baseline.flag_hashes
@@ -210,14 +228,21 @@ def detect_planning_residue(
 
     new_untracked = tuple(sorted(after_untracked - before_untracked))
     overwritten = tuple(sorted((before_untracked | after_untracked) & incoming_overwrite_paths))
-    unmerged = tuple(
-        sorted(
-            entry.path
-            for entry in parse_porcelain_z(after_blob)
-            if entry.xy in _UNMERGED_XY and not entry.path.startswith(_PERMITTED_ARTIFACT_PREFIX)
+    unmerged_paths: tuple[str, ...] = ()
+    if observed_unmerged.query_ok:
+        unmerged_paths = tuple(
+            sorted(
+                path
+                for path in observed_unmerged.paths
+                if path not in after_tracked
+                and not path.startswith(_PERMITTED_ARTIFACT_PREFIX)
+                or path in after_tracked
+                and after_tracked[path] in UNMERGED_PORCELAIN_XY
+            )
         )
-    )
-    if not (tracked or ambiguous or new_untracked or overwritten or unmerged or index_flag_paths):
+    if not (
+        tracked or ambiguous or new_untracked or overwritten or unmerged_paths or index_flag_paths
+    ):
         return None
     fingerprint = compute_fingerprint(
         head_sha=baseline.head_sha,
@@ -231,7 +256,7 @@ def detect_planning_residue(
         ambiguous_paths=tuple(ambiguous),
         untracked_paths=new_untracked,
         overwritten_untracked_paths=overwritten,
-        unmerged_paths=unmerged,
+        unmerged_paths=unmerged_paths,
         index_flag_paths=index_flag_paths,
     )
 
@@ -415,6 +440,7 @@ def run_residue_cleanup(
     warn: Callable[[str], None] | None = None,
 ) -> ResidueCleanupOutcome:
     emit = warn if warn is not None else _default_warn
+    bind_residue_root(root)
     try:
         return _run_residue_cleanup(
             root, baseline=baseline, git=git, ledger=ledger, target=target, emit=emit
@@ -653,6 +679,7 @@ def _finalize_progress(
     final_blob = git.porcelain_status_z(root)
     final_diff = git.tracked_diff_hash(root)
     final_flags = git.index_flag_dirt(root)
+    bind_residue_root(root)
     if final_blob is None or final_diff is None or not final_flags.is_known_good:
         still_dirty = set(restore_targets)
     else:
@@ -1061,6 +1088,7 @@ __all__ = [
     "ResidueCleanupOutcome",
     "ResidueLedgerPort",
     "RunGitCleanupPort",
+    "bind_residue_root",
     "capture_planning_baseline",
     "compute_fingerprint",
     "detect_planning_residue",

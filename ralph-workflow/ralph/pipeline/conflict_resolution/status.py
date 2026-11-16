@@ -8,6 +8,7 @@ from loguru import logger
 
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel
+from ralph.pipeline._integration_status import build_integration_status
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     ralph_origin_counts_as_liveness,
 )
@@ -39,6 +40,7 @@ class ResolutionStatusReporter:
     interval_seconds: float
     started_at: float
     unresolved_paths: tuple[str, ...]
+    initial_conflicted_count: int | None = None
     agent_name: str | None = None
     _last_emitted_at: float | None = None
     is_diagnosis: bool = False
@@ -65,13 +67,22 @@ class ResolutionStatusReporter:
         )
         label = "evidence diagnosis" if diag else "conflict resolution"
         channel = _DIAGNOSIS_WARN_CHANNEL if diag else _WARN_CHANNEL
+        progress_status = build_integration_status(
+            cause="PROGRESS",
+            done_count=(
+                None
+                if self.initial_conflicted_count is None
+                else max(self.initial_conflicted_count - len(self.unresolved_paths), 0)
+            ),
+            remaining_count=len(self.unresolved_paths),
+        )
         emit_conflict_phase_line(
             self.display,
             f"{label} status: "
             f"round={min(self.round_index, self.round_cap)}/{self.round_cap}; agent={self.agent_name or 'pending'}; "
             f"last_activity_kind={kind}; last_activity_age_seconds={age}; "
             f"elapsed_seconds={max(0.0, now - self.started_at):.1f}; "
-            f"unresolved_count={len(self.unresolved_paths)}",
+            f"last_progress={progress_status.progress}",
             channel=channel,
         )
 

@@ -21,7 +21,6 @@ from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
-from ralph.pipeline.integration_observation import _decode_quoted_porcelain_path
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.rebase_state import RebaseState
@@ -36,8 +35,6 @@ if TYPE_CHECKING:
 RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 
 _PORCELAIN_MIN_ENTRY_LEN = 4
-
-_BOTH_SIDES_UNMERGED_CODES = frozenset({"AA", "DD"})
 
 
 RESOLVED = IntegrationResolutionStatus.RESOLVED
@@ -154,6 +151,9 @@ def _probe_porcelain(
     root: Path,
     probe: Callable[[Path], tuple[bool, str]],
 ) -> tuple[ProbeOutcome, str]:
+    from ralph.pipeline._porcelain_records import porcelain_unmerged_paths
+    from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, observe_unmerged_paths
+
     try:
         readable, porcelain_output = probe(root)
     except Exception as exc:
@@ -163,12 +163,20 @@ def _probe_porcelain(
         raise
     if not readable:
         return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
-    unmerged = unmerged_porcelain_paths(porcelain_output)
-    if unmerged:
+    observed = observe_unmerged_paths(root)
+    unmerged_paths: tuple[str, ...] = (
+        tuple(sorted(observed.paths))
+        if observed.query_ok
+        else porcelain_unmerged_paths(porcelain_output)
+    )
+    if not observed.query_ok and UNMERGED_PATH_QUERY_FAILED in unmerged_paths:
+        return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
+    if unmerged_paths:
         return (
             KnownBlocked(
                 IntegrationBlockKind.UNMERGED_PATHS,
-                "unmerged paths remain from an unfinished rebase or merge: " + ", ".join(unmerged),
+                "unmerged paths remain from an unfinished rebase or merge: "
+                + ", ".join(unmerged_paths),
             ),
             porcelain_output,
         )
@@ -518,18 +526,6 @@ def retained_integration_reason(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
     return _observe_retained_record(root, backend=backend).reason
-
-
-def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:
-    unmerged: list[str] = []
-    for raw_line in porcelain_output.splitlines():
-        if len(raw_line) < _PORCELAIN_MIN_ENTRY_LEN:
-            continue
-        code = raw_line[:2]
-        if code[0] == "U" or code[1] == "U" or code in _BOTH_SIDES_UNMERGED_CODES:
-            path = raw_line[3:].strip() or raw_line.strip()
-            unmerged.append(_decode_quoted_porcelain_path(path))
-    return tuple(unmerged)
 
 
 def persisted_integration_resolution_verdict(

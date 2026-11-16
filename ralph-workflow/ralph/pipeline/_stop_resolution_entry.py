@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
@@ -138,39 +137,19 @@ def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
 
 
 def _controller_for_key(
-    root: Path,
-    config: UnifiedConfig | None,
     recovery_controller: RecoveryController | None,
+    config: UnifiedConfig | None,
 ) -> RecoveryController | KeyUnavailable | None:
-    if recovery_controller is not None or config is None:
-        return recovery_controller
     from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
-    injected = current_agent_effect_dependencies().recovery_controller
-    if injected is not None:
-        return injected
-    with suppress(OSError, RuntimeError, ValueError, KeyError):
-        from ralph.agents.system_clock import SystemClock
-        from ralph.pipeline.agent_entry_point import AgentEntryPoint
-        from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
-        from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
-        from ralph.pipeline.runner import load_policy_bundle_for_run
-        from ralph.workspace.scope import WorkspaceScope
-
-        policy_bundle = load_policy_bundle_for_run(WorkspaceScope(root=root), config)
-        return build_entry_point_recovery_controller(
-            AgentEntryPoint.INTEGRATION_CONTINUATION,
-            config=config,
-            policy_bundle=policy_bundle,
-            deps=AttemptRunnerDeps(
-                clock=SystemClock(),
-                invoke=PRODUCTION_INVOKE,
-                probe_runner=None,
-                workspace_probe=None,
-                connectivity=None,
-            ),
-        )
-    return None
+    if recovery_controller is not None:
+        return recovery_controller
+    if config is None:
+        return current_agent_effect_dependencies().recovery_controller
+    return KeyUnavailable(
+        "recovery controller required; pass the session/pipeline_deps controller "
+        "or an explicit recovery_controller"
+    )
 
 
 def compute_resolution_attempt_key(
@@ -189,7 +168,7 @@ def compute_resolution_attempt_key(
     stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
     effective_agents = eligible_agents
     if effective_agents is None:
-        controller = _controller_for_key(root, config, recovery_controller)
+        controller = _controller_for_key(recovery_controller, config)
         if isinstance(controller, KeyUnavailable):
             return controller
         if controller is not None:

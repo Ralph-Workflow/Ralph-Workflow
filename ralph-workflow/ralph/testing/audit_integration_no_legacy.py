@@ -144,6 +144,10 @@ _SEALED_OUTCOME_CLASSES: Final[frozenset[str]] = frozenset(
         "UnknownOutcome",
     }
 )
+_RESULT_RESULT_CLASS_NAMES: Final[frozenset[str]] = frozenset({"RebaseResolutionResult"})
+_FORBIDDEN_RESOLUTION_SYMBOLS: Final[frozenset[str]] = frozenset(
+    {"ExhaustedResolutionFailure", "_controller_for_key"}
+)
 
 
 @dataclass(frozen=True)
@@ -202,6 +206,24 @@ def _tuple_subclass(node: ast.ClassDef) -> bool:
             and base.value.id == "tuple"
         )
         for base in node.bases
+    )
+
+
+def _legacy_protocol_member(node: ast.ClassDef) -> str | None:
+    for statement in node.body:
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if statement.name in {"__len__", "__iter__", "__getitem__"}:
+            return f"tuple protocol method '{statement.name}'"
+        if statement.name == "succeeded" and _property_decorated(statement):
+            return "legacy boolean 'succeeded' property"
+    return None
+
+
+def _property_decorated(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        isinstance(decorator, ast.Name) and decorator.id == "property"
+        for decorator in node.decorator_list
     )
 
 
@@ -411,6 +433,15 @@ def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[
         *_forbidden_identifier_violations(
             rel,
             identifier_lines,
+            _FORBIDDEN_RESOLUTION_SYMBOLS,
+            "deleted legacy resolution symbol reappeared",
+            "'ExhaustedResolutionFailure' and '_controller_for_key' were deleted; use the "
+            "sealed RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED) and the "
+            "session/pipeline_deps recovery controller chain",
+        ),
+        *_forbidden_identifier_violations(
+            rel,
+            identifier_lines,
             _LEGACY_GITLINK_ESCALATION_NAMES,
             "legacy gitlink escalation hook reappeared",
             "'escalate_gitlink_on_sight' was removed; gitlink conflicts are resolved in place by "
@@ -487,6 +518,20 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
             violations.append(
                 Violation(rel, node.lineno, "resolution result retains legacy tuple vocabulary")
             )
+        if isinstance(node, ast.ClassDef) and node.name in _RESULT_RESULT_CLASS_NAMES:
+            legacy_member = _legacy_protocol_member(node)
+            if legacy_member is not None:
+                violations.append(
+                    Violation(
+                        rel,
+                        node.lineno,
+                        "resolution result retains legacy tuple vocabulary",
+                        detail=(
+                            f"{node.name} exposes {legacy_member}; results must expose only the "
+                            "typed sealed-outcome surface"
+                        ),
+                    )
+                )
         if isinstance(node, ast.Compare) and _string_cause_match(node):
             violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
         if isinstance(node, ast.Call):
@@ -739,6 +784,35 @@ def selftest() -> int:
             "ralph/pipeline/planted_subclass.py",
             "class RebaseResolutionResult(tuple):\n    pass\n",
             "resolution result retains legacy tuple vocabulary",
+        ),
+        (
+            "ralph/pipeline/planted_tuple_protocol.py",
+            (
+                "class RebaseResolutionResult:\n"
+                "    def __len__(self) -> int:\n"
+                "        return 3\n"
+            ),
+            "resolution result retains legacy tuple vocabulary",
+        ),
+        (
+            "ralph/pipeline/planted_succeeded_property.py",
+            (
+                "class RebaseResolutionResult:\n"
+                "    @property\n"
+                "    def succeeded(self) -> bool:\n"
+                "        return False\n"
+            ),
+            "resolution result retains legacy tuple vocabulary",
+        ),
+        (
+            "ralph/pipeline/planted_exhausted_failure.py",
+            "class ExhaustedResolutionFailure(str):\n    pass\n",
+            "deleted legacy resolution symbol reappeared",
+        ),
+        (
+            "ralph/pipeline/planted_controller_for_key.py",
+            "def _controller_for_key(root):\n    return root\n",
+            "deleted legacy resolution symbol reappeared",
         ),
         (
             "ralph/pipeline/planted_str_cause.py",

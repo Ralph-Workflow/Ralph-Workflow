@@ -3,11 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from ralph.git.hardening import (
-    PorcelainEntry,
-    parse_porcelain_z,
-    unmerged_paths_z,
-)
+from ralph.git.hardening import UNMERGED_PORCELAIN_XY, PorcelainEntry, parse_porcelain_z
 
 if TYPE_CHECKING:
     from ralph.pipeline.integration_observation import (
@@ -26,6 +22,15 @@ _INDEX_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "A", "D", "R", "C",
 _WORKTREE_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "D", "T", "A"})
 
 
+def porcelain_unmerged_paths(text: str) -> tuple[str, ...]:
+    blob = text.replace("\n", "\0")
+    return tuple(
+        entry.path
+        for entry in _decode_porcelain_entries(parse_porcelain_z(blob))
+        if entry.xy in UNMERGED_PORCELAIN_XY
+    )
+
+
 def _porcelain_to_state(text: str) -> WorktreeState:
     from ralph.pipeline.integration_observation import WorktreeState
 
@@ -33,9 +38,10 @@ def _porcelain_to_state(text: str) -> WorktreeState:
     v2_entries = _parse_porcelain_v2_z(blob)
     if v2_entries is not None:
         return _porcelain_v2_to_state(v2_entries)
-    if unmerged_paths_z(blob):
+    parsed = _decode_porcelain_entries(parse_porcelain_z(blob))
+    if any(entry.xy in UNMERGED_PORCELAIN_XY for entry in parsed):
         return WorktreeState.UNMERGED
-    return _state_from_parsed(parse_porcelain_z(blob))
+    return _state_from_parsed(parsed)
 
 
 def _state_from_parsed(entries: list[PorcelainEntry]) -> WorktreeState:
@@ -300,9 +306,10 @@ def _porcelain_to_shape(text: str, evidence: DirtEvidence | None) -> DirtShape:
     v2_entries = _parse_porcelain_v2_z(blob)
     if v2_entries is not None:
         return _shape_for_v2_entries(v2_entries, evidence)
-    if unmerged_paths_z(blob):
+    parsed = _decode_porcelain_entries(parse_porcelain_z(blob))
+    if any(entry.xy in UNMERGED_PORCELAIN_XY for entry in parsed):
         return DirtShape.UNMERGED
-    return _shape_for_tracked(_decode_porcelain_entries(parse_porcelain_z(blob)), evidence)
+    return _shape_for_tracked(parsed, evidence)
 
 
 def _shape_for_tracked(

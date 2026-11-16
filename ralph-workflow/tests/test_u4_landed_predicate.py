@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline._auto_integrate_rebase_resolve import _rebase_run_result
 from ralph.pipeline._integration_continuation import (
-    ExhaustedResolutionFailure,
     _promote_completed_resolution,
     _rebase_failure_transport,
 )
@@ -253,8 +252,7 @@ def test_next_strategy_outcome_does_not_raise_exhausted_failure(tmp_path: Path) 
     )
     outcome = NextStrategyOutcome(strategy="complete_in_place")
     failure = _rebase_failure_transport(root, record, None, outcome, ())
-    assert failure is not None
-    assert not isinstance(failure, ExhaustedResolutionFailure)
+    assert isinstance(failure, str)
     assert "complete_in_place" in failure
 
 
@@ -274,8 +272,9 @@ def test_candidate_exhausted_raises_exhausted_resolution_failure(tmp_path: Path)
         on_change="all agents failed",
     )
     failure = _rebase_failure_transport(root, record, None, outcome, ())
-    assert isinstance(failure, ExhaustedResolutionFailure)
+    assert isinstance(failure, RetryLaterOutcome)
     assert failure.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert "all agents failed" in (failure.on_change or "")
 
 
 def test_integration_record_with_completion_advanced() -> None:

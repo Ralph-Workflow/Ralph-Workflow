@@ -20,10 +20,10 @@ from ralph.pipeline._git_operation_authority import (
 )
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
-    ExhaustedResolutionFailure,
     compute_continuation_retry_gate_key,
     reset_continuation_gate_state,
 )
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline._integration_continuation import (
     continue_retained_resolution as _continue_retained_resolution,
 )
@@ -644,18 +644,22 @@ def _recover_pending_merge(
             force_retry=force_retry,
             stop_identity=stop_identity,
         )
-    if isinstance(resumed, str):
+    if isinstance(resumed, (str, RetryLaterOutcome)):
         latest_record = read_record_outcome(root).record or record
         terminal_reason = (
-            resumed.terminal_reason if isinstance(resumed, ExhaustedResolutionFailure) else None
+            resumed.terminal_reason
+            if isinstance(resumed, RetryLaterOutcome)
+            and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+            else None
         )
+        assert isinstance(terminal_reason, ResolutionTerminationReason) or terminal_reason is None
         return _resumed_failure_outcome(
             root,
             latest_record,
-            resumed,
+            resumed if isinstance(resumed, str) else resumed.on_change or "",
             terminal_reason=terminal_reason,
         )
-    if resumed.reintegrate_pending:
+    if isinstance(resumed, IntegrationRecord) and resumed.reintegrate_pending:
         return _replay_stale_resolution(
             root,
             resumed,

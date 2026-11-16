@@ -98,6 +98,8 @@ PROMOTE_TO_INTEGRATED = Transition(
         "rebase_continue_error": "rebase_continue_error",
         "merge_commit_pending": "merge_commit_pending",
         "reintegrate_pending": "reintegrate_pending",
+        "resolution_gate_key": "resolution_gate_key",
+        "waiting_notification_key": "waiting_notification_key",
     },
     from_state_guard=_is_integrating,
 )

@@ -51,9 +51,14 @@ PAUSED_REBASE_RECOVERY_PREFERS_MERGE: Final[bool] = True
 
 
 def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
-    from ralph.pipeline.integration_cleanup import RunGitCleanupPort, capture_planning_baseline
+    from ralph.pipeline.integration_cleanup import (
+        RunGitCleanupPort,
+        bind_residue_root,
+        capture_planning_baseline,
+    )
 
     try:
+        bind_residue_root(root)
         return capture_planning_baseline(root, git=RunGitCleanupPort())
     except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("pre-planning baseline capture failed: {}", exc)
@@ -69,10 +74,12 @@ def resolve_planning_residue(
     from ralph.pipeline.integration_cleanup import (
         OwnerResidueLedgerPort,
         RunGitCleanupPort,
+        bind_residue_root,
         run_residue_cleanup,
     )
 
     try:
+        bind_residue_root(root)
         outcome = run_residue_cleanup(
             root,
             baseline=baseline,

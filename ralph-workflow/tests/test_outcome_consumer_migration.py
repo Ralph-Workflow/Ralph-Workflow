@@ -50,6 +50,9 @@ def test_rebase_result_exposes_no_legacy_boolean_decision() -> None:
     )
 
     assert not hasattr(result, "succeeded")
+    assert not hasattr(result, "__len__")
+    assert not hasattr(result, "__iter__")
+    assert not hasattr(result, "__getitem__")
 
 
 @pytest.mark.parametrize(

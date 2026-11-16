@@ -21,6 +21,7 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -145,21 +146,17 @@ def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path:
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
 
 
-def test_rebase_resolution_result_unpacking() -> None:
-    res = RebaseResolutionResult(False, "reason text", ResolutionFailureCause.CONFIG_FAILURE)
-    assert res.succeeded is False
+def test_rebase_resolution_result_typed_surface() -> None:
+    res = RebaseResolutionResult(
+        RetryLaterOutcome(on_change="reason text"),
+        "reason text",
+        ResolutionFailureCause.CONFIG_FAILURE,
+    )
+    assert isinstance(res.outcome, RetryLaterOutcome)
+    assert res.outcome.succeeded is False
     assert res.reason == "reason text"
     assert res.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-
-    unpacked_two = res[:2]
-    r2, re2 = unpacked_two
-    assert r2 is False
-    assert re2 == "reason text"
-
-    r3, re3, c3 = res
-    assert r3 is False
-    assert re3 == "reason text"
-    assert c3 == ResolutionFailureCause.CONFIG_FAILURE
+    assert not hasattr(res, "succeeded")
 
 
 def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> None:
@@ -354,7 +351,7 @@ def test_run_loop_integration_alert_format_with_cause_and_fix() -> None:
 
 
 def test_run_loop_waiting_log_gate_emits_once() -> None:
-    records: list[dict[str, object]] = []
+    records: list[dict[str, str]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
         mock_ctx = MagicMock(spec=LoopContext)
@@ -379,7 +376,7 @@ def test_run_loop_waiting_log_gate_emits_once() -> None:
 
 
 def test_run_loop_logs_carried_reason() -> None:
-    records: list[dict[str, object]] = []
+    records: list[dict[str, str]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
     try:
         mock_ctx = MagicMock(spec=LoopContext)
@@ -393,10 +390,9 @@ def test_run_loop_logs_carried_reason() -> None:
         mock_ctx.display_context = None
 
         mock_executor = MagicMock()
-        mock_executor.continue_rebase.return_value = (
-            False,
-            "fix .agent/ralph-workflow.toml then run ralph --check-config",
-            ResolutionFailureCause.CONFIG_FAILURE,
+        mock_executor.continue_rebase.return_value = RetryLaterOutcome(
+            on_change="fix .agent/ralph-workflow.toml then run ralph --check-config",
+            failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
         )
 
         resolved = resolve_paused_rebase(
@@ -439,7 +435,7 @@ def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_pat
     mock_ctx.hooks = RetryDiagnosticHooks(recovery_preamble=lambda *_: None)
     mock_backend = MagicMock()
 
-    records: list[dict[str, object]] = []
+    records: list[dict[str, str]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
     try:
         state1 = handle_pending_retry(

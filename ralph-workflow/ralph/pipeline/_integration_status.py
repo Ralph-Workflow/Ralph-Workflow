@@ -133,6 +133,8 @@ def build_integration_status(
     agent_reasons: Sequence[str] = (),
     done_count: int | None = None,
     remaining_count: int | None = None,
+    unresolved_count: int | None = None,
+    initial_count: int | None = None,
     relation: str | None = None,
     strategy: str | None = None,
     strategy_reason: str | None = None,
@@ -141,6 +143,11 @@ def build_integration_status(
     until_when: str | None = None,
 ) -> IntegrationStatus:
     facts = tuple(paths_with_reasons)
+    if unresolved_count is not None and initial_count is not None:
+        if done_count is None:
+            done_count = max(initial_count - unresolved_count, 0)
+        if remaining_count is None:
+            remaining_count = unresolved_count
     return IntegrationStatus(
         cause=cause,
         paths_with_reasons=facts,

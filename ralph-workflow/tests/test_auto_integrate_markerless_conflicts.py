@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.git.hardening import parse_porcelain_z, unmerged_paths_z
+from ralph.git.hardening import UNMERGED_PORCELAIN_XY, parse_porcelain_z
 from ralph.git.rebase import get_conflicted_files
 
 
@@ -22,13 +22,18 @@ def test_every_unmerged_index_code_is_detected_without_marker_scan() -> None:
 
     for code, conflict_shape in cases:
         path = f"{conflict_shape.replace(' ', '-')}.dat"
-        entries = unmerged_paths_z(f"{code}{path}\0")
+        entries = [
+            entry
+            for entry in parse_porcelain_z(f"{code}{path}\0")
+            if entry.xy in UNMERGED_PORCELAIN_XY
+        ]
 
         assert [(entry.xy, entry.path) for entry in entries] == [(code, path)]
 
 
 def test_non_conflict_statuses_are_not_reported_as_unmerged() -> None:
-    assert unmerged_paths_z(" Mmodified.txt\0??untracked.txt\0") == []
+    blob = " Mmodified.txt\0??untracked.txt\0"
+    assert [entry for entry in parse_porcelain_z(blob) if entry.xy in UNMERGED_PORCELAIN_XY] == []
 
 
 def test_rename_porcelain_preserves_source_and_live_destination() -> None:

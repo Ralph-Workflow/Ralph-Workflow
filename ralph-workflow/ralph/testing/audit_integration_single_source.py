@@ -29,6 +29,9 @@ def _call_name(node: ast.Call) -> str | None:
 
 
 _UNMERGED_READERS = frozenset({"ralph/git/conflict_stage_entries.py", "ralph/git/merge.py"})
+_UNMERGED_XY_CODES: frozenset[str] = frozenset(
+    {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}
+)
 _OPERATION_OWNER = "ralph/git/operation_snapshot.py"
 _ELIGIBILITY_OWNER = "ralph/recovery/agent_failure_ledger.py"
 _LANDED_OWNER = "ralph/pipeline/_landed_predicate.py"
@@ -51,6 +54,22 @@ def _string_literals(node: ast.AST) -> set[str]:
     }
 
 
+def _unmerged_xy_comparisons(node: ast.expr) -> bool:
+    for comparison in ast.walk(node):
+        if not isinstance(comparison, ast.Compare):
+            continue
+        for comparator in comparison.comparators:
+            if not isinstance(comparator, ast.Constant) or not isinstance(
+                comparator.value, str
+            ):
+                continue
+            if comparator.value in _UNMERGED_XY_CODES:
+                return True
+        if _UNMERGED_XY_CODES & _string_literals(comparison):
+            return True
+    return False
+
+
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     violations: list[Violation] = []
     for rel, source in sorted(modules.items()):
@@ -71,6 +90,29 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
                     violations.append(
                         Violation(rel, node.lineno, "unmerged index read outside git owner")
                     )
+                if (
+                    rel not in _UNMERGED_READERS
+                    and any(
+                        isinstance(value, str)
+                        and value.lstrip().startswith("--diff-filter=" + "U")
+                        for value in literals
+                    )
+                ):
+                    violations.append(
+                        Violation(rel, node.lineno, "unmerged index read outside git owner")
+                    )
+            if (
+                isinstance(node, ast.Compare)
+                and rel not in _UNMERGED_READERS
+                and _unmerged_xy_comparisons(node)
+            ):
+                violations.append(
+                    Violation(
+                        rel,
+                        node.lineno,
+                        "porcelain unmerged XY set has a second definition",
+                    )
+                )
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 if node.name in _OPERATION_DEFINITIONS and rel != _OPERATION_OWNER:
                     violations.append(
@@ -119,6 +161,11 @@ def selftest() -> int:
             "unmerged index read outside git owner",
         ),
         (
+            "ralph/pipeline/unmerged_diff_probe.py",
+            'run_git(["diff", "--diff-filter=U", "--name-only"])\n',
+            "unmerged index read outside git owner",
+        ),
+        (
             "ralph/pipeline/state_reader.py",
             "def operation_state(): pass\n",
             "operation state has a second reader",
@@ -137,6 +184,16 @@ def selftest() -> int:
             "ralph/pipeline/land_checker.py",
             "def _landing_reached(): pass\n",
             "operation landed has a second predicate",
+        ),
+        (
+            "ralph/pipeline/unmerged_xy_reader.py",
+            'entry.xy in {"UU", "AA", "DD", "AU", "UA", "DU", "UD"}\n',
+            "porcelain unmerged XY set has a second definition",
+        ),
+        (
+            "ralph/pipeline/unmerged_xy_reader.py",
+            'code = entry.xy\nif code[0] == "UU" or code[1] == "UU":\n    pass\n',
+            "porcelain unmerged XY set has a second definition",
         ),
     ]
 

@@ -135,6 +135,45 @@ def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
         clear_resolver(session.recovery_controller, agent)
 
 
+def build_session_integration_status(
+    session: ResolutionSession,
+    *,
+    cause: str,
+    paths_with_reasons: Sequence[tuple[str, str]] = (),
+    command: str = "",
+    agents_can_finish: bool = True,
+    agent_reasons: Sequence[str] = (),
+    relation: str | None = None,
+    strategy: str | None = None,
+    strategy_reason: str | None = None,
+    at_risk: Sequence[str] = (),
+    next_eligible_agent: str | None = None,
+    until_when: str | None = None,
+) -> IntegrationStatus:
+    initial = session.initial_conflicted_count
+    unresolved = len(session.unresolved_paths)
+    done: int | None = None
+    remaining: int | None = None
+    if initial is not None:
+        done = max(initial - unresolved, 0)
+        remaining = unresolved
+    return build_integration_status(
+        cause=cause,
+        paths_with_reasons=paths_with_reasons,
+        command=command,
+        agents_can_finish=agents_can_finish,
+        agent_reasons=agent_reasons,
+        done_count=done,
+        remaining_count=remaining,
+        relation=relation,
+        strategy=strategy,
+        strategy_reason=strategy_reason,
+        at_risk=at_risk,
+        next_eligible_agent=next_eligible_agent,
+        until_when=until_when,
+    )
+
+
 def emit_conflict_phase_line(
     display: object, message: str, *, channel: str = "rebase-conflict"
 ) -> None:
@@ -152,12 +191,13 @@ def emit_conflict_phase_line(
             act_kind = session.last_activity_kind or "none"
             act_at = session.last_activity_at or "never"
             paths = ", ".join(session.unresolved_paths)
-            unres_count = len(session.unresolved_paths)
+            progress_status = build_session_integration_status(session, cause="PROGRESS")
             message = (
                 f"{reason_label}: duration={dur:.1f}s; "
                 f"last_activity_kind={act_kind}; "
                 f"last_activity_at={act_at}; "
-                f"last_progress=unresolved_count={unres_count}; "
+                f"last_progress="
+                f"{progress_status.progress if progress_status is not None else '(unknown)'}; "
                 f"unresolved_paths={paths}; "
                 f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
             )
@@ -506,6 +546,7 @@ def _prepare_conflicted_paths(
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.unresolved_paths = tuple(conflicted)
+        session.initial_conflicted_count = len(conflicted)
         session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
         emit_conflict_phase_line(
             display, "conflicted paths unreadable; nothing a resolver can repair"
@@ -543,6 +584,7 @@ def _prepare_conflicted_paths(
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         session.unresolved_paths = unreachable
+        session.initial_conflicted_count = len(unreachable)
         msg = (
             session.operator_action_message
             if session.operator_action_message
@@ -574,6 +616,8 @@ def _prepare_conflicted_paths(
             ),
             command=operator_command_for_paths(unreachable),
             agents_can_finish=False,
+            done_count=0,
+            remaining_count=len(unreachable),
         )
         emit_conflict_phase_line(
             display,
@@ -617,11 +661,15 @@ def _declared_decision_status(root: Path, paths: tuple[str, ...]) -> Integration
             )
             for path in paths
         )
+    session = _ACTIVE_SESSION[0] or ResolutionSession()
+    initial = session.initial_conflicted_count
     return build_integration_status(
         cause="DECLARED_DECISION",
         paths_with_reasons=facts,
         command="",
         agents_can_finish=True,
+        done_count=None if initial is None else 0,
+        remaining_count=len(paths),
     )
 
 
@@ -775,6 +823,7 @@ def _run_rounds(
     if session.started_at is None:
         session.started_at = clock()
     session.unresolved_paths = conflicted
+    session.initial_conflicted_count = len(conflicted)
     runner = invoke or _default_invoker(
         config=config,
         pipeline_deps=pipeline_deps,
@@ -1129,6 +1178,7 @@ def _record_unconfigured_resolver(
     session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = conflicted
+    session.initial_conflicted_count = len(conflicted)
     session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
     emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
 
@@ -1181,6 +1231,8 @@ def _handle_dead_candidate_chain(
     controller = session.recovery_controller
     ledger = session.ledger
     paths = tuple(session.unresolved_paths or conflicted)
+    if session.initial_conflicted_count is None:
+        session.initial_conflicted_count = len(paths)
     session.unresolved_paths = paths
 
     barred = skipped_candidates(session, tuple(candidates))
@@ -1233,6 +1285,8 @@ def _escalate_unreachable_remainder(
         return False
     session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
     session.unresolved_paths = session.out_of_reach_paths
+    if session.initial_conflicted_count is None:
+        session.initial_conflicted_count = len(session.unresolved_paths)
     paths = ", ".join(session.out_of_reach_paths)
     msg = (
         session.operator_action_message

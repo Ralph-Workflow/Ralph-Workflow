@@ -1928,9 +1928,6 @@ def _resolve_paused_rebase_with_history(
     return _resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
-_TUPLE_CAUSE_OFFSET = 2
-
-
 def _retry_later_cause(outcome: object, default_cause: str) -> str:
     from ralph.git.resolution_failure_cause import ResolutionFailureCause
     from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
@@ -1949,12 +1946,8 @@ def _retry_later_cause(outcome: object, default_cause: str) -> str:
     return "AGENT_FAILURE"
 
 
-def _parse_paused_rebase_outcome(
-    outcome: object,
-    root: Path,
-) -> tuple[bool, str | None, str]:
-    from ralph.git.resolution_failure_cause import ResolutionFailureCause
-    from ralph.pipeline.auto_integrate_record import read_record
+def _typed_outcome_transport(outcome: object) -> tuple[bool, str | None, str]:
+    from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     from ralph.pipeline.resolution_outcome import (
         ConfigFailureOutcome,
         NextStrategyOutcome,
@@ -1964,46 +1957,46 @@ def _parse_paused_rebase_outcome(
         WaitingOutcome,
     )
 
-    if isinstance(outcome, ResolvedOutcome):
+    result = outcome.outcome if isinstance(outcome, RebaseResolutionResult) else outcome
+    if isinstance(result, ResolvedOutcome):
         return True, None, "UNRESOLVED_CONFLICT"
-    rec = read_record(root)
-    cause_val = (
-        rec.last_failure_cause.value
-        if rec is not None and rec.last_failure_cause is not ResolutionFailureCause.NONE
-        else "UNRESOLVED_CONFLICT"
+    reason = _sealed_outcome_reason(result)
+    cause = "UNRESOLVED_CONFLICT"
+    if isinstance(result, RetryLaterOutcome):
+        cause = _retry_later_cause(result, cause)
+    elif isinstance(result, ConfigFailureOutcome):
+        cause = "CONFIG_FAILURE"
+    elif isinstance(
+        result,
+        (NextStrategyOutcome, UnknownOutcome, WaitingOutcome),
+    ):
+        record_cause: object = getattr(result, "failure_cause", None)
+        if record_cause is not None:
+            cause = str(getattr(record_cause, "value", record_cause)).upper()
+    return False, reason, cause
+
+
+def _sealed_outcome_reason(result: object) -> str | None:
+    from ralph.pipeline.resolution_outcome import (
+        ConfigFailureOutcome,
+        NextStrategyOutcome,
+        RetryLaterOutcome,
+        UnknownOutcome,
+        WaitingOutcome,
     )
-    resolved = False
-    reason: str | None = None
-    match outcome:
-        case tuple() | list():
-            resolved = bool(outcome[0])
-            reason = outcome[1] if len(outcome) > 1 and isinstance(outcome[1], str) else None
-            if len(outcome) > _TUPLE_CAUSE_OFFSET and outcome[_TUPLE_CAUSE_OFFSET] is not None:
-                tuple_cause: object = outcome[_TUPLE_CAUSE_OFFSET]
-                cause_val = str(getattr(tuple_cause, "value", tuple_cause)).upper()
-        case RetryLaterOutcome(on_change=on_change):
-            reason = on_change
-            cause_val = _retry_later_cause(outcome, cause_val)
-        case WaitingOutcome(external_condition=cond):
-            reason = cond
-        case NextStrategyOutcome(strategy=strat):
-            reason = strat
-        case ConfigFailureOutcome(file=f, parse_error=err):
-            fix_prefix = f"fix {f} then run ralph --check-config"
-            reason = f"{fix_prefix}: {err}" if err else fix_prefix
-            cause_val = "CONFIG_FAILURE"
-        case UnknownOutcome(error=err):
-            reason = str(err)
-        case _:
-            if hasattr(outcome, "outcome") and hasattr(outcome, "failure_cause"):
-                succeeded_val: object = getattr(outcome, "succeeded", False)
-                resolved = bool(succeeded_val)
-                raw_reason: object = getattr(outcome, "reason", None)
-                reason = raw_reason if isinstance(raw_reason, str) else None
-                raw_fc: object = getattr(outcome, "failure_cause", None)
-                if raw_fc is not None:
-                    cause_val = str(getattr(raw_fc, "value", raw_fc)).upper()
-    return resolved, reason, cause_val
+
+    if isinstance(result, RetryLaterOutcome):
+        return result.on_change
+    if isinstance(result, WaitingOutcome):
+        return result.external_condition
+    if isinstance(result, NextStrategyOutcome):
+        return result.strategy
+    if isinstance(result, ConfigFailureOutcome):
+        fix_prefix = f"fix {result.file} then run ralph --check-config"
+        return f"{fix_prefix}: {result.parse_error}" if result.parse_error else fix_prefix
+    if isinstance(result, UnknownOutcome):
+        return str(result.error)
+    return None
 
 
 def resolve_paused_rebase(
@@ -2040,9 +2033,7 @@ def resolve_paused_rebase(
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        resolved, reason, failure_cause = _parse_paused_rebase_outcome(
-            outcome, ctx.workspace_scope.root
-        )
+        resolved, reason, failure_cause = _typed_outcome_transport(outcome)
     except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
@@ -2069,12 +2060,12 @@ def _resolve_paused_rebase(
 
 def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResolver) -> bool:
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
-    from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit
+    from ralph.pipeline.auto_integrate_resolve import resolve_and_commit_with_reason
 
     try:
         if merge_state(root) != MERGE_STATE_IN_PROGRESS:
             return False
-        return _resolve_and_commit(root, target, resolver)
+        return resolve_and_commit_with_reason(root, target, resolver).outcome == "success"
     except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning("integration resolution executor failed: {}", resolve_exc)
         return False
@@ -2648,14 +2639,11 @@ def _handoff_retained_failure(
         hooks.handoff_retained_failure(ctx, failure)
         return
     from ralph.pipeline._integration_diagnostic import diagnostic_needed
-    from ralph.pipeline._stop_resolution_entry import retained_round_is_new
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
         read_record_outcome,
     )
 
-    if not retained_round_is_new(ctx.workspace_scope.root, _retained_round_fingerprint(ctx)):
-        return
     outcome = read_record_outcome(ctx.workspace_scope.root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.PRESENT and outcome.record is not None:
         latest = outcome.record
@@ -3096,15 +3084,6 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
 
 
 _REPEAT_ESCALATION_RETRY_SECONDS = 5.0
-
-
-def _retained_round_fingerprint(ctx: LoopContext) -> str:
-    from ralph.pipeline._integration_resolution_gate import retained_round_fingerprint
-
-    try:
-        return retained_round_fingerprint(ctx.workspace_scope.root)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return "unreadable"
 
 
 def _ladder_escalation_reason(detail: str, preserved_copy: str) -> str:
