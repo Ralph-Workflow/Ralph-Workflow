@@ -431,7 +431,7 @@ def _run_one_round(
             count_dropped=progress.count_dropped,
             probe_changed=progress.probe_changed,
         )
-        if succeeded:
+        if succeeded and (not session.unresolved_paths or progress.count_dropped):
             return attempt
         visited.add(selected)
     return attempt

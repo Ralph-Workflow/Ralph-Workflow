@@ -40,6 +40,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "_ProbeError inherits from RuntimeError to match typed probe failure contracts "
         "enforced by the BLE001 exception ban"
     ),
+    "test_timing_out_rebase_state_read_is_unknown_not_blocking": (
+        "_ProbeError inherits from RuntimeError to match the narrowed probe exception hierarchy"
+    ),
 }
 
 

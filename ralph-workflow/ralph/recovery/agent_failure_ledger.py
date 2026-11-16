@@ -36,6 +36,7 @@ _DEFAULT_TOTAL_LIMIT: Final[int] = 9
 _DEFAULT_BASE_COOLDOWN_SECONDS: Final[float] = 60.0
 _DEFAULT_MAX_COOLDOWN_SECONDS: Final[float] = 3600.0
 _DEFAULT_BACKOFF_FACTOR: Final[float] = 2.0
+_AGENT_PHASE_SPLIT_PARTS: Final[int] = 2
 
 
 @dataclass(frozen=True)
@@ -337,6 +338,7 @@ class AgentFailureLedger:
         "_entries",
         "_lock",
         "_max_cooldown_seconds",
+        "_recovery_controller",
         "_total_limit",
     )
 
@@ -375,8 +377,17 @@ class AgentFailureLedger:
         self._base_cooldown_seconds: float = base_cooldown_seconds
         self._max_cooldown_seconds: float = max_cooldown_seconds
         self._backoff_factor: float = backoff_factor
+        self._recovery_controller: object | None = None
         self._lock = threading.Lock()
         self._entries: dict[tuple[str, str], _LedgerEntry] = {}
+
+    @property
+    def recovery_controller(self) -> object | None:
+        return self._recovery_controller
+
+    @recovery_controller.setter
+    def recovery_controller(self, controller: object) -> None:
+        self._recovery_controller = controller
 
     @property
     def clock(self) -> Clock:

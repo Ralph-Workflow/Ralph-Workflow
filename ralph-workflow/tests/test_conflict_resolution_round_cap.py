@@ -74,8 +74,8 @@ def test_round_cap_regression_session_cap_cannot_override_configured_cap(
 
     assert isinstance(outcome, RetryLaterOutcome)
     assert invoked_rounds
-    assert invoked_rounds == list(range(1, len(invoked_rounds) + 1))
     assert max(invoked_rounds) <= configured_cap
+    assert invoked_rounds == list(range(1, len(invoked_rounds) + 1))
     assert session.max_rounds_per_stop == configured_cap + 11
     assert session.rounds_spent <= configured_cap
     rendered_rounds = [
@@ -86,6 +86,14 @@ def test_round_cap_regression_session_cap_cannot_override_configured_cap(
     assert rendered_rounds
     assert all(round_cap == configured_cap for _, round_cap in rendered_rounds)
     assert all(round_index <= round_cap for round_index, round_cap in rendered_rounds)
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_round_cap_regression_unresolved_success_never_exceeds_cap": (
+        "unresolved attempts fall over to the next candidate within each round, "
+        "so invoked_rounds records each candidate's invocation per round up to the round cap"
+    ),
+}
 
 
 @pytest.mark.parametrize("candidates", [("one",), ("one", "two")])
@@ -127,7 +135,7 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
 
     assert isinstance(outcome, RetryLaterOutcome)
     assert invoked_rounds
-    assert invoked_rounds == list(range(1, len(invoked_rounds) + 1))
+    assert invoked_rounds == [r for r in range(1, cap + 1) for _ in candidates]
     assert max(invoked_rounds) <= cap
     assert session.rounds_spent <= cap
     round_models = [model for model in display.models if model.outer_dev_iteration is not None]

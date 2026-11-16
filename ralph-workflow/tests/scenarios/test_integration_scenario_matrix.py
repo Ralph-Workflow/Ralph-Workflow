@@ -17,7 +17,10 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.conflict_resolution import run_rebase_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution import (
+    RebaseStop,
+    run_rebase_conflict_resolution_pipeline,
+)
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState

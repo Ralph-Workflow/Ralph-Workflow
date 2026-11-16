@@ -262,7 +262,7 @@ def _preflight_failure(
         return None
     try:
         exhausted = bool(budget_exhausted())
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("budget_check_failed", started, error=_error_text(exc))
     if exhausted:
         return _inconclusive_result("budget_exhausted", started)
@@ -279,7 +279,7 @@ def _scratch_workspace(
 ) -> Path | _ProbeResult:
     try:
         workspace_path = _create_scratch_workspace(workspace_factory, trusted_parent)
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
     if (
         phase_workspace is not None
@@ -346,7 +346,7 @@ def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
         return trusted_parent
     try:
         return find_repo_root(Path.cwd())
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("canary probe trusted-parent resolution failed: {}", exc)
         return None
 
@@ -369,7 +369,10 @@ def _is_within(candidate: Path, parent: Path) -> bool:
 
 
 def _agent_name(config: AgentConfig) -> str | None:
-    parts = config.cmd.split()
+    cmd: object = getattr(config, "cmd", None)
+    if not isinstance(cmd, str):
+        return None
+    parts = cmd.split()
     return parts[0] if parts else None
 
 

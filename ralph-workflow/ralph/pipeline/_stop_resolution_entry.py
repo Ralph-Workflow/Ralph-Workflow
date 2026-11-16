@@ -341,6 +341,7 @@ def _execute_trigger(trigger: StopResolutionTrigger) -> object:
                 trigger.conflict_config,
                 trigger.agent_runner,
                 trigger.record,
+                trigger=trigger,
             )
         raise TypeError(f"expected callable RebaseStopResolver, got {resolver!r}")
 
@@ -717,6 +718,8 @@ def _resolve_rebase_with_config(
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
     record: IntegrationRecord | None = None,
+    *,
+    trigger: StopResolutionTrigger | None = None,
 ) -> RebaseResolutionResult:
     session = _create_resolution_session(config)
     if _execute_rebase_resolution(root, target, resolver, session, agent_runner):

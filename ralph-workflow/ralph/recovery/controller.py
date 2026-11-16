@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    SupervisionInfrastructureError,
+)
 from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -524,13 +528,15 @@ def _attempt_cooldown_reasons(
     cooldown_reason = typed_signal_unavailability_reason(effective_signal)
     resumable = failure is not None and bool(failure.resumable_session_id)
     watchdog_cooldown = None if resumable else watchdog_unavailability_reason(exc)
+    if watchdog_cooldown is None and not resumable and isinstance(exc, AgentInactivityTimeoutError):
+        watchdog_cooldown = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
-    if cooldown_reason is None and (
-        isinstance(exc, ConnectionError) or type(exc).__name__ == "SupervisionInfrastructureError"
+    if cooldown_reason is None and isinstance(
+        exc, (ConnectionError, SupervisionInfrastructureError)
     ):
         cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
-    if cooldown_reason is None and type(exc).__name__ == "AgentInactivityTimeoutError":
+    if cooldown_reason is None and isinstance(exc, AgentInactivityTimeoutError):
         cooldown_reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     return cooldown_reason, watchdog_cooldown
 
@@ -579,6 +585,8 @@ class RecoveryController:
                 consecutive_limit=self._consecutive_unproductive_limit,
                 total_limit=self._total_unproductive_limit,
             )
+        if isinstance(self._ledger, AgentFailureLedger):
+            self._ledger.recovery_controller = self
         self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._dead_agent_probe_runner = opts.dead_agent_probe_runner
         self._last_verdict_record: dict[str, object] | None = None
@@ -1275,10 +1283,12 @@ class RecoveryController:
                 self.note_retry_exhaustion(phase, agent)
             chain_agents = self._get_chain_agents(phase)
             if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
-                return (
+                sole_msg = (
                     f"Sole agent '{agent}' demoted in phase '{phase}': "
                     f"unproductive attempt limit reached ({outcome.reason})"
                 )
+                logger.warning(sole_msg)
+                return sole_msg
         return None
 
     def _handle_classified_failure(

@@ -58,6 +58,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
+    "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -492,7 +493,7 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
     )
     assert called[0] == ("one", 1)
     assert called[1] == ("one", 2)
-    assert called[2] == ("two", 3)
+    assert called[2] == ("two", 2)
 
 
 def test_invoke_resolution_agent_keeps_chain_retry_budget(
