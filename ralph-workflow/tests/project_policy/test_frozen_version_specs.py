@@ -12,6 +12,11 @@ RALPH_TEST_CHANGE_REASONS = {
         "the v5 pack drops the enforcement-status cell the v6 starter "
         "rule-to-enforcer ladder carries"
     ),
+    "test_version_spec_helpers": (
+        "the single-value portfolio schema accessor was renamed to "
+        "default_portfolio_schema_version_for_version so the name pins its "
+        "first-allowed-default contract against the tuple the validators enforce"
+    ),
 }
 
 
@@ -72,9 +77,11 @@ def test_version_spec_helpers() -> None:
     )
     assert markers.guard_inventory_header_for_version("v6") == markers.GUARD_INVENTORY_HEADER
 
-    assert markers.portfolio_schema_version_for_version("v4") == "v1"
-    assert markers.portfolio_schema_version_for_version("v5") == "v2"
-    assert markers.portfolio_schema_version_for_version("v6") == "v3"
+    for version, spec in markers.VERSION_SPECS.items():
+        assert (
+            markers.default_portfolio_schema_version_for_version(version)
+            == (spec.portfolio_schema_version[0])
+        )
 
     supported_portfolios = markers.supported_portfolio_schema_versions()
     assert supported_portfolios == frozenset({"v1", "v2", "v3"})

@@ -21,12 +21,17 @@ from ralph.project_policy.markers import (
     PLACEHOLDER_TOKENS,
     PORTFOLIO_PATH,
     PORTFOLIO_SCHEMA_VERSION,
+    portfolio_schema_version_ladder,
     supported_portfolio_schema_versions,
 )
 from ralph.project_policy.models import PortfolioError
 from ralph.project_policy.starters import PORTFOLIO_STARTER_NAME, read_starter
 
 SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS: Final[frozenset[str]] = supported_portfolio_schema_versions()
+
+PORTFOLIO_SCHEMA_VERSION_LADDER: Final[tuple[str, ...]] = portfolio_schema_version_ladder()
+_PRE_ENFORCEMENT_PORTFOLIO_SCHEMA_VERSION: Final[str] = PORTFOLIO_SCHEMA_VERSION_LADDER[0]
+_ENFORCEMENT_OPTIONAL_PORTFOLIO_SCHEMA_VERSION: Final[str] = PORTFOLIO_SCHEMA_VERSION_LADDER[1]
 
 MAX_PORTFOLIO_BYTES: Final[int] = 65_536
 MAX_CONTROLS: Final[int] = 64
@@ -323,7 +328,7 @@ def _parse_control_version_fields(
     *,
     known_enforcers: Collection[str] | None = None,
 ) -> tuple[str, str, str]:
-    if schema_version == "v1":
+    if schema_version == _PRE_ENFORCEMENT_PORTFOLIO_SCHEMA_VERSION:
         detects_val = table.get("detects")
         detects = str(detects_val).strip() if isinstance(detects_val, str) else ""
         retire_val = table.get("retirement_trigger")
@@ -336,7 +341,7 @@ def _parse_control_version_fields(
     retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
     _check_claim_scope(control_id, outcome, detects)
 
-    if schema_version == "v2":
+    if schema_version == _ENFORCEMENT_OPTIONAL_PORTFOLIO_SCHEMA_VERSION:
         enforcement_val = table.get("enforcement")
         enforcement = str(enforcement_val).strip() if isinstance(enforcement_val, str) else ""
         return detects, retirement_trigger, enforcement
@@ -363,9 +368,9 @@ def _parse_controls(
 ) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
-    if schema_version == "v1":
+    if schema_version == _PRE_ENFORCEMENT_PORTFOLIO_SCHEMA_VERSION:
         required_fields = _REQUIRED_CONTROL - {"detects", "retirement_trigger", "enforcement"}
-    elif schema_version == "v2":
+    elif schema_version == _ENFORCEMENT_OPTIONAL_PORTFOLIO_SCHEMA_VERSION:
         required_fields = _REQUIRED_CONTROL - {"enforcement"}
     else:
         required_fields = _REQUIRED_CONTROL

@@ -43,13 +43,6 @@ class _CooldownClock(FakeClock):
         return self.monotonic()
 
 
-def _shared_session(clock: FakeClock, *, cycle_cap: int = 3) -> ResolutionSession:
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, cycle_cap=cycle_cap)
-    )
-    return ResolutionSession(recovery_controller=controller)
-
-
 def test_round_cap_regression_session_cap_cannot_override_configured_cap(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

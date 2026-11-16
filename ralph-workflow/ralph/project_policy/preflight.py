@@ -160,10 +160,13 @@ def _commit_preflight_writes(
 
 def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[str]:
     frozen = any(
-        workspace.exists(path) and "<!-- ralph-policy-schema: freeze " in workspace.read(path)
+        workspace.exists(path) and markers.frozen_policy_version(workspace.read(path)) is not None
         for path in (
             f"{markers.CANONICAL_DIR}{name}"
-            for name in (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
+            for name in (
+                *markers.core_files_for_version(None),
+                *markers.CONDITIONAL_POLICY_FILES.values(),
+            )
         )
     )
     if frozen:

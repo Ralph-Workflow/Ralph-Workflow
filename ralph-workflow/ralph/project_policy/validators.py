@@ -658,16 +658,18 @@ def _check_portfolio(
     unfrozen_current = _is_unfrozen_current_pack(workspace, frozen_version)
 
     if unfrozen_current:
-        expected_version = markers.portfolio_schema_version_for_version(markers.SCHEMA_VERSION)
+        expected_version = markers.default_portfolio_schema_version_for_version(
+            markers.SCHEMA_VERSION
+        )
     elif frozen_version is not None and frozen_version in markers.VERSION_SPECS:
         allowed = markers.VERSION_SPECS[frozen_version].portfolio_schema_version
         match = re.search(r'schema_version\s*=\s*["\'](v\d+)["\']', content)
         actual = match.group(1) if match else None
         expected_version = actual if actual in allowed else allowed[0]
     elif has_v1_marker:
-        expected_version = "v1"
+        expected_version = markers.portfolio_schema_version_ladder()[0]
     else:
-        expected_version = markers.portfolio_schema_version_for_version(frozen_version)
+        expected_version = markers.default_portfolio_schema_version_for_version(frozen_version)
 
     if known_enforcers is None:
         known_enforcers = _collect_known_enforcers(workspace)
@@ -738,7 +740,8 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
         )
 
     findings.extend(_check_per_language_coverage(workspace, stack))
-    if frozen_version not in ("v4", "v5"):
+    ban_spec = markers.VERSION_SPECS.get(frozen_version) if frozen_version is not None else None
+    if ban_spec is None or ban_spec.requires_ban_table_coverage:
         findings.extend(
             _check_ban_table_coverage(
                 workspace,

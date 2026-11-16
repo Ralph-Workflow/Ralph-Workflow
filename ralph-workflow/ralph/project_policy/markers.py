@@ -8,6 +8,9 @@ from ralph.project_policy._required_headings import REQUIRED_HEADINGS
 
 SCHEMA_VERSION: Final[str] = "v6"
 POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v6 -->"
+FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
+    r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
+)
 POLICY_CONTRACT_VERSION: Final[str] = "2026-11-09.1"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
@@ -352,6 +355,7 @@ class PolicyVersionSpec:
     guard_inventory_header: tuple[str, ...] | None
     portfolio_schema_version: tuple[str, ...]
     allowed_frozen: bool = True
+    requires_ban_table_coverage: bool = True
 
     @property
     def guard_inventory_columns(self) -> int:
@@ -365,6 +369,7 @@ VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
         guard_inventory_header=None,
         portfolio_schema_version=("v1", "v2"),
         allowed_frozen=True,
+        requires_ban_table_coverage=False,
     ),
     "v5": PolicyVersionSpec(
         version="v5",
@@ -372,6 +377,7 @@ VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
         guard_inventory_header=_V5_GUARD_INVENTORY_HEADER,
         portfolio_schema_version=("v2",),
         allowed_frozen=True,
+        requires_ban_table_coverage=False,
     ),
     "v6": PolicyVersionSpec(
         version="v6",
@@ -379,6 +385,7 @@ VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
         guard_inventory_header=GUARD_INVENTORY_HEADER,
         portfolio_schema_version=("v3",),
         allowed_frozen=True,
+        requires_ban_table_coverage=True,
     ),
 }
 
@@ -400,16 +407,31 @@ def is_allowed_frozen_version(v: str) -> bool:
     return spec is not None and spec.allowed_frozen
 
 
+def frozen_policy_version(content: str) -> int | None:
+    first_line = next((line for line in content.splitlines() if line.strip()), "")
+    match = FREEZE_MARKER_RE.fullmatch(first_line.strip())
+    return int(match.group(1)) if match else None
+
+
 def guard_inventory_header_for_version(v: str | None) -> tuple[str, ...] | None:
     if v is not None and v in VERSION_SPECS:
         return VERSION_SPECS[v].guard_inventory_header
     return VERSION_SPECS[SCHEMA_VERSION].guard_inventory_header
 
 
-def portfolio_schema_version_for_version(v: str | None) -> str:
+def default_portfolio_schema_version_for_version(v: str | None) -> str:
     if v is not None and v in VERSION_SPECS:
         return VERSION_SPECS[v].portfolio_schema_version[0]
     return VERSION_SPECS[SCHEMA_VERSION].portfolio_schema_version[0]
+
+
+def _schema_version_number(version: str) -> int:
+    return int(version[1:])
+
+
+def portfolio_schema_version_ladder() -> tuple[str, ...]:
+    versions = {ver for spec in VERSION_SPECS.values() for ver in spec.portfolio_schema_version}
+    return tuple(sorted(versions, key=_schema_version_number))
 
 
 def supported_portfolio_schema_versions() -> frozenset[str]:
@@ -468,6 +490,7 @@ __all__ = [
     "ENFORCEMENT_MISSING_FINDING_ID",
     "ENFORCEMENT_UNKNOWN_ID_FINDING_ID",
     "FACT_MARKER",
+    "FREEZE_MARKER_RE",
     "GUARD_INVENTORY_HEADER",
     "GUARD_INVENTORY_HEADING",
     "HIDDEN_UNICODE_FINDING_ID",
@@ -526,9 +549,11 @@ __all__ = [
     "VERSION_SPECS",
     "PolicyVersionSpec",
     "core_files_for_version",
+    "default_portfolio_schema_version_for_version",
+    "frozen_policy_version",
     "guard_inventory_header_for_version",
     "is_allowed_frozen_version",
-    "portfolio_schema_version_for_version",
+    "portfolio_schema_version_ladder",
     "spec_for_version",
     "supported_portfolio_schema_versions",
 ]
