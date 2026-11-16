@@ -84,6 +84,26 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "consolidated the parameter cases into a single run verifying both declining resolver "
         "retention and subsequent recovery when receipt flags are lost before successful resolution"
     ),
+    'assert _git(owner, "switch", "-c", "remote-seed").returncode == 0': (
+        "foreign reconciliation repository setup reuses the shared diverged template's "
+        "feature branch to seed origin once instead of asserting a separate remote-seed branch"
+    ),
+    'assert _git(owner, "init", "--bare", str(origin)).returncode == 0': (
+        "origin bare repository creation is asserted once while constructing the shared "
+        "foreign reconciliation template instead of per test run"
+    ),
+    'assert _git(owner, "remote", "add", "origin", str(origin)).returncode == 0': (
+        "origin remote configuration is asserted once while constructing the shared "
+        "foreign reconciliation template instead of per test run"
+    ),
+    'assert _git(owner, "push", "origin", f"remote-seed:{target}").returncode == 0': (
+        "origin target seeding is asserted once while constructing the shared foreign "
+        "reconciliation template using the diverged template's feature branch"
+    ),
+    'assert _git(owner, "switch", target).returncode == 0': (
+        "switching to target is asserted once while constructing the shared foreign "
+        "reconciliation template instead of per test run"
+    ),
 }
 
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
@@ -151,10 +171,9 @@ def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
 
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     tmp_path: Path,
-    tmp_git_repo: Path,
 ) -> None:
     root = tmp_path / "repo-owned-landing"
-    diverged, target, feature, _main = _diverged(tmp_git_repo)
+    diverged, target, feature, _main = _diverged()
     shutil.copytree(diverged, root, ignore=_COPY_IGNORE)
     base = _repo(root).commit("main~1").hexsha
     write_record(
@@ -519,22 +538,33 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     return target, feature, main
 
 
+_FOREIGN_TEMPLATE_CACHE: list[tuple[Path, str]] = []
+
+
+def _foreign_reconcile_template(root: Path | None = None) -> tuple[Path, str]:
+    if not _FOREIGN_TEMPLATE_CACHE:
+        template_base = Path(tempfile.mkdtemp(prefix="it-foreign-reconcile-"))
+        diverged, target, _, _ = _diverged(root)
+        tmpl_owner = template_base / "owner"
+        shutil.copytree(diverged, tmpl_owner, ignore=_COPY_IGNORE)
+        tmpl_origin = template_base / "origin.git"
+        assert _git(tmpl_owner, "init", "--bare", str(tmpl_origin)).returncode == 0
+        assert _git(tmpl_owner, "remote", "add", "origin", str(tmpl_origin)).returncode == 0
+        assert _git(tmpl_owner, "push", "origin", f"feature:{target}").returncode == 0
+        assert _git(tmpl_owner, "switch", target).returncode == 0
+        assert _git(tmpl_owner, "branch", "-D", "feature").returncode == 0
+        _close_repo(tmpl_owner)
+        _FOREIGN_TEMPLATE_CACHE.append((tmpl_owner, target))
+    return _FOREIGN_TEMPLATE_CACHE[0]
+
+
 @pytest.mark.timeout_seconds(20)
 def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
-    tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
-    owner = tmp_git_repo
-    target = _git(owner, "branch", "--show-current").stdout.strip()
-    _commit(owner, "shared.txt", "base\n")
-    assert _git(owner, "switch", "-c", "remote-seed").returncode == 0
-    _commit(owner, "shared.txt", "remote\n")
-    origin = tmp_path / "origin.git"
-    assert _git(owner, "init", "--bare", str(origin)).returncode == 0
-    assert _git(owner, "remote", "add", "origin", str(origin)).returncode == 0
-    assert _git(owner, "push", "origin", f"remote-seed:{target}").returncode == 0
-    assert _git(owner, "switch", target).returncode == 0
-    _commit(owner, "shared.txt", "local\n")
+    tmpl_owner, target = _foreign_reconcile_template()
+    owner = tmp_path / "owner"
+    shutil.copytree(tmpl_owner, owner, ignore=_COPY_IGNORE)
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     _commit(feature, "feature.txt", "valuable completed feature\n")

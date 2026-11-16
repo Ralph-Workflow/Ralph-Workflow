@@ -25,6 +25,10 @@ _TARGET = "release"
 _REMOTE = "tacos"
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
+pytestmark = [
+    pytest.mark.required_auto_integrate_e2e,
+]
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     'assert "SKIPPED_SECOND_ITERATION" in err': (
         "the negative control and positive retry scenarios were consolidated into a single "
@@ -34,9 +38,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
+def _resolve_git_dir(root: Path) -> Path:
+    if (root / "HEAD").is_file() and (root / "refs").is_dir():
+        return root
+    return _git_dir(root)
+
+
 def _fast_branch_name(root: Path) -> str | None:
     try:
-        git_dir = _git_dir(root)
+        git_dir = _resolve_git_dir(root)
         head_file = git_dir / "HEAD"
         head_content = head_file.read_text(encoding="utf-8").strip()
         if head_content.startswith("ref: refs/heads/"):
@@ -48,7 +58,7 @@ def _fast_branch_name(root: Path) -> str | None:
 
 def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
     try:
-        git_dir = _git_dir(root)
+        git_dir = _resolve_git_dir(root)
         common_dir = _common_git_dir(git_dir)
         if ref_name == "HEAD":
             head_file = git_dir / "HEAD"
@@ -95,6 +105,16 @@ def _write_local_config(repo_root: Path, key: str, value: str) -> bool:
     return True
 
 
+def _write_remote_url(repo_root: Path, remote_name: str, url: str) -> bool:
+    try:
+        repo = _repo(repo_root)
+        with repo.config_writer() as config:
+            config.set_value(f'remote "{remote_name}"', "url", url)
+    except Exception:
+        return False
+    return True
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     if args == ("branch", "--show-current"):
         name = _fast_branch_name(repo_root)
@@ -110,6 +130,12 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
             )
     if len(args) == 3 and args[0] == "config" and args[1] in {"user.email", "user.name"}:
         written = _write_local_config(repo_root, args[1], args[2])
+        if written:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout="", stderr="", returncode=0
+            )
+    if len(args) == 4 and args[0] == "remote" and args[1] == "set-url":
+        written = _write_remote_url(repo_root, args[2], args[3])
         if written:
             return subprocess.CompletedProcess(
                 args=("git", *args), stdout="", stderr="", returncode=0
@@ -182,26 +208,65 @@ def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
     assert _run(path, "branch", "-M", default_branch).returncode == 0
 
 
-_SEED_TEMPLATE: list[Path] = []
+_CLUSTER_TEMPLATE: list[Path] = []
+
+
+def _init_cluster_template(template_root: Path) -> None:
+    repo = template_root / "repo"
+    bare = template_root / "tacos.git"
+    _init_repo(repo)
+    bare.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ("git", "clone", "--bare", str(repo), str(bare)),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repo), "remote", "add", _REMOTE, "../tacos.git"),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repo), "push", _REMOTE, _TARGET),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repo), "fetch", _REMOTE),
+        check=True,
+        capture_output=True,
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    template_root = tmp_path_factory.mktemp("acceptance-seed")
-    _init_repo(template_root)
-    _SEED_TEMPLATE.append(template_root)
+def _acceptance_cluster_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    template_root = tmp_path_factory.mktemp("acceptance-cluster")
+    _init_cluster_template(template_root)
+    _CLUSTER_TEMPLATE.append(template_root)
     return template_root
 
 
+def _seed_cluster(tmp_path: Path) -> tuple[Path, Path]:
+    if not _CLUSTER_TEMPLATE:
+        template_root = tmp_path / "_template"
+        _init_cluster_template(template_root)
+        _CLUSTER_TEMPLATE.append(template_root)
+    template = _CLUSTER_TEMPLATE[0]
+    shutil.copytree(template, tmp_path, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+    repo = tmp_path / "repo"
+    bare = tmp_path / "tacos.git"
+    _refreshed_repo(repo)
+    return repo, bare
+
+
 def _seed_repo(path: Path, default_branch: str = _TARGET) -> None:
-    template = _SEED_TEMPLATE[0] if _SEED_TEMPLATE else None
-    if template is None:
-        _init_repo(path, default_branch)
+    if _CLUSTER_TEMPLATE:
+        shutil.copytree(_CLUSTER_TEMPLATE[0] / "repo", path, ignore=_COPY_IGNORE)
+        _refreshed_repo(path)
+        if default_branch != _TARGET:
+            assert _run(path, "branch", "-M", default_branch).returncode == 0
         return
-    shutil.copytree(template, path, ignore=_COPY_IGNORE)
-    _refreshed_repo(path)
-    if default_branch != _TARGET:
-        assert _run(path, "branch", "-M", default_branch).returncode == 0
+    _init_repo(path, default_branch)
 
 
 def _head_sha(repo_root: Path, ref: str) -> str:
@@ -231,16 +296,8 @@ def _build_config(
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    bare = tmp_path / "tacos.git"
+    repo, bare = _seed_cluster(tmp_path)
     writer = tmp_path / "writer"
-
-    _seed_repo(repo)
-    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
-    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
 
     assert _run(tmp_path, "clone", str(bare), str(writer)).returncode == 0
     assert _run(writer, "config", "user.email", "test@example.com").returncode == 0
@@ -289,16 +346,7 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    bare = tmp_path / "tacos.git"
-
-    _seed_repo(repo)
-    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
-    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    assert _run(repo, "fetch", _REMOTE).returncode == 0
+    repo, bare = _seed_cluster(tmp_path)
 
     cfg = _build_config(interval_seconds=60.0)
 
@@ -340,16 +388,7 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    bare = tmp_path / "tacos.git"
-
-    _seed_repo(repo)
-    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
-    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    assert _run(repo, "fetch", _REMOTE).returncode == 0
+    repo, bare = _seed_cluster(tmp_path)
 
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
 
@@ -377,16 +416,7 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    bare = tmp_path / "tacos.git"
-
-    _seed_repo(repo)
-    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
-    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
-    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    assert _run(repo, "fetch", _REMOTE).returncode == 0
+    repo, bare = _seed_cluster(tmp_path)
 
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
 
@@ -412,15 +442,8 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    bare = tmp_path / "tacos.git"
+    repo, bare = _seed_cluster(tmp_path)
     wt = tmp_path / "wt-sibling"
-
-    _seed_repo(repo)
-    assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
-    assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
-    assert _run(repo, "fetch", _REMOTE).returncode == 0
 
     import sys
 
@@ -441,7 +464,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         "def _slow_push(*args, **kwargs):\n"
         "    sys.stdout.write('BEFORE_PUSH\\n')\n"
         "    sys.stdout.flush()\n"
-        "    time.sleep(1)\n"
+        "    time.sleep(10)\n"
         "    return _real_push(*args, **kwargs)\n"
         "_sync.push_single_remote = _slow_push\n"
         "\n"
@@ -460,7 +483,6 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
         ")\n"
         "sys.stdout.write('LANDED\\n')\n"
         "sys.stdout.flush()\n"
-        "time.sleep(1)\n"
     )
     proc = subprocess.Popen(
         [sys.executable, "-c", landing_script, str(repo)],
@@ -510,14 +532,10 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-
-    _seed_repo(repo)
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
+    repo, bare = _seed_cluster(tmp_path)
 
     unreachable_bare = tmp_path / "tacos_unreachable.git"
-    assert _run(repo, "remote", "add", _REMOTE, str(unreachable_bare)).returncode == 0
+    assert _run(repo, "remote", "set-url", _REMOTE, str(unreachable_bare)).returncode == 0
     local_sha = _commit(repo, "local.txt", "local work\n", "local advance")
     state_first = remote_sync.reconcile_remote_publication(
         _build_config(),
@@ -530,18 +548,7 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
         remote_sync.REMOTE_REMOTE_UNREACHABLE,
     )
 
-    bare = tmp_path / "tacos.git"
-    init = subprocess.run(
-        ("git", "init", "--bare", str(bare)),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=20,
-    )
-    assert init.returncode == 0
     assert _run(repo, "remote", "set-url", _REMOTE, str(bare)).returncode == 0
-    seed_sha = _run(repo, "rev-parse", "HEAD~1").stdout.strip()
-    assert _run(repo, "push", _REMOTE, f"{seed_sha}:refs/heads/{_TARGET}").returncode == 0
 
     state_second = remote_sync.reconcile_remote_publication(
         _build_config(),
@@ -699,21 +706,12 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     import sys
     import tempfile
 
-    repo = tmp_path / "repo"
+    repo, bare = _seed_cluster(tmp_path)
     unreachable_bare = tmp_path / "tacos_unreachable.git"
-    bare = tmp_path / "tacos.git"
 
-    _seed_repo(repo)
-    assert _run(repo, "remote", "add", _REMOTE, str(unreachable_bare)).returncode == 0
+    assert _run(repo, "remote", "set-url", _REMOTE, str(unreachable_bare)).returncode == 0
     local_sha = _commit(repo, "feature.txt", "feature advance\n", "feature advance")
     seed_sha = _head_sha(repo, "HEAD~1")
-
-    subprocess.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "push", str(bare), f"{seed_sha}:refs/heads/release"],
-        check=True,
-        capture_output=True,
-    )
 
     with tempfile.TemporaryFile(mode="w+") as stderr_file:
         proc = subprocess.Popen(
@@ -733,12 +731,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
                 assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
                     f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
                 )
-                bare_sha = subprocess.run(
-                    ["git", "-C", str(bare), "rev-parse", "release"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                ).stdout.strip()
+                bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
                 assert bare_sha == seed_sha
                 assert bare_sha != local_sha
 
@@ -746,11 +739,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
                     proc.stdin.write("RETRY\n")
                     proc.stdin.flush()
                 else:
-                    subprocess.run(
-                        ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
-                        check=True,
-                        capture_output=True,
-                    )
+                    assert _run(repo, "remote", "set-url", "tacos", str(bare)).returncode == 0
                     proc.stdin.write("RESTORED\n")
                     proc.stdin.flush()
 
@@ -764,12 +753,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
             err = stderr_file.read()
             assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
 
-            bare_sha = subprocess.run(
-                ["git", "-C", str(bare), "rev-parse", "release"],
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
+            bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
             assert bare_sha == local_sha
         finally:
             if proc.poll() is None:
