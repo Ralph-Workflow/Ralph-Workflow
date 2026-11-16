@@ -368,7 +368,7 @@ class FileBackedSession:
 def _load_session_payload(path: Path) -> dict[str, object]:
     raw: object = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
-        raise TypeError(f"{path} must encode an object")
+        raise SessionPayloadTypeError(f"{path} must encode an object")
     return raw
 
 
@@ -410,7 +410,7 @@ def session_from_env(
         return None
     payload_obj: object = json.loads(raw)
     if not isinstance(payload_obj, dict):
-        raise TypeError(f"{SESSION_ENV} must encode an object")
+        raise SessionPayloadTypeError(f"{SESSION_ENV} must encode an object")
     payload: dict[str, object] = payload_obj
 
     capabilities_value: object = payload.get("capabilities", [])

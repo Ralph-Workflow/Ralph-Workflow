@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,10 +26,6 @@ from ralph.pipeline.integration_resolution_status import IntegrationResolutionSt
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
-
-_SubprocessError: type[Exception] = getattr(
-    sys.modules.get("subprocess"), "SubprocessError", OSError
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -149,15 +144,23 @@ def _uncommitted_integration_reasons(porcelain_output: str) -> tuple[str, ...]:
     return ()
 
 
+def _is_probe_error(exc: BaseException) -> bool:
+    if isinstance(exc, (OSError, RuntimeError, ValueError, KeyError)):
+        return True
+    return type(exc).__name__ in {"TimeoutExpired", "SubprocessError"}
+
+
 def _probe_porcelain(
     root: Path,
     probe: Callable[[Path], tuple[bool, str]],
 ) -> tuple[ProbeOutcome, str]:
     try:
         readable, porcelain_output = probe(root)
-    except (_SubprocessError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("integration resolution: porcelain probe failed: {}", exc)
-        return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
+    except Exception as exc:
+        if _is_probe_error(exc):
+            logger.debug("integration resolution: porcelain probe failed: {}", exc)
+            return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
+        raise
     if not readable:
         return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
     unmerged = unmerged_porcelain_paths(porcelain_output)
@@ -175,9 +178,11 @@ def _probe_porcelain(
 def _probe_rebase(root: Path, rebase_active: Callable[[Path], bool]) -> ProbeOutcome:
     try:
         active = rebase_active(root)
-    except (_SubprocessError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("integration resolution: rebase-state probe failed: {}", exc)
-        return Unknown(UnknownKind.REBASE_STATE_UNREADABLE)
+    except Exception as exc:
+        if _is_probe_error(exc):
+            logger.debug("integration resolution: rebase-state probe failed: {}", exc)
+            return Unknown(UnknownKind.REBASE_STATE_UNREADABLE)
+        raise
     if active:
         return KnownBlocked(IntegrationBlockKind.REBASE_IN_PROGRESS, "rebase is in progress")
     return KnownGood()
@@ -186,9 +191,11 @@ def _probe_rebase(root: Path, rebase_active: Callable[[Path], bool]) -> ProbeOut
 def _probe_merge(root: Path, merge_status: Callable[[Path], str]) -> ProbeOutcome:
     try:
         state = merge_status(root)
-    except (_SubprocessError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("integration resolution: merge-state probe failed: {}", exc)
-        return Unknown(UnknownKind.MERGE_STATE_UNREADABLE)
+    except Exception as exc:
+        if _is_probe_error(exc):
+            logger.debug("integration resolution: merge-state probe failed: {}", exc)
+            return Unknown(UnknownKind.MERGE_STATE_UNREADABLE)
+        raise
     if state == MERGE_STATE_UNKNOWN:
         return Unknown(UnknownKind.MERGE_STATE_UNREADABLE)
     if state != MERGE_STATE_NONE:

@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field, model_validator
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
+from ralph.pipeline._rebase_state_validation_error import RebaseStateValidationError
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
@@ -20,10 +21,6 @@ if TYPE_CHECKING:
 _FROZEN = ConfigDict(frozen=True)
 HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
 _LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
-
-
-class _RebaseStateValidationError(ValueError, TypeError):
-    pass
 
 
 class _StartupRetentionReason(StrEnum):
@@ -261,21 +258,21 @@ class RebaseState(RalphBaseModel):
 
     def set_publication_decision(self, value: PublicationDecision) -> Self:
         if not isinstance(value, PublicationDecision):
-            raise _RebaseStateValidationError(f"invalid publication decision: {value!r}")
+            raise RebaseStateValidationError(f"invalid publication decision: {value!r}")
         return self.model_copy(update={"last_publication_decision": value.value})
 
     def set_fan_out_decision(self, value: FanOutDecision) -> Self:
         from ralph.pipeline._fan_out_authority import FanOutDecision
 
         if not isinstance(value, FanOutDecision):
-            raise _RebaseStateValidationError(f"invalid fan_out_decision: {value!r}")
+            raise RebaseStateValidationError(f"invalid fan_out_decision: {value!r}")
         return self.model_copy(update={"last_fan_out_decision": value.value})
 
     def set_operation_display_state(self, value: OperationDisplayState) -> Self:
         from ralph.display.auto_integrate_message import OperationDisplayState
 
         if not isinstance(value, OperationDisplayState):
-            raise _RebaseStateValidationError(f"invalid operation_display_state: {value!r}")
+            raise RebaseStateValidationError(f"invalid operation_display_state: {value!r}")
         return self.model_copy(update={"operation_display_state": value.value})
 
     def clear_recovery_record_retained(self) -> Self:

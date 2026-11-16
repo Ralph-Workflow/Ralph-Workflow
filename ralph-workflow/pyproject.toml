@@ -161,7 +161,6 @@ select = [
   "ASYNC251",
   "S",
   "TRY",
-  "BLE",
   "FBT",
   "TC006",
 ]

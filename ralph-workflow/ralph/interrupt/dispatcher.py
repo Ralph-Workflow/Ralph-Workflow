@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.interrupt._clock_type_error import ClockTypeError
 from ralph.interrupt.controller import (
     INTERRUPT_EXIT_CODE,
     InterruptController,
@@ -180,10 +181,6 @@ def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]
     _kill_records(records)
 
 
-class _ClockTypeError(TypeError, RuntimeError):
-    pass
-
-
 @dataclass(frozen=True)
 class InterruptDispatcher:
     controller: InterruptController
@@ -204,9 +201,7 @@ class InterruptDispatcher:
         if self.poll_interval_s <= 0:
             raise RuntimeError(f"poll_interval_s must be positive (got {self.poll_interval_s})")
         if not isinstance(self.clock(), float):
-            raise _ClockTypeError(
-                f"clock() must return a float (got {type(self.clock()).__name__})"
-            )
+            raise ClockTypeError(f"clock() must return a float (got {type(self.clock()).__name__})")
 
     def begin_interrupt(
         self,

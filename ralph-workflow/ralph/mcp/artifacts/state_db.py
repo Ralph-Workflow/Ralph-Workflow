@@ -3,8 +3,6 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.mcp.artifacts._schema_version_type_error import SchemaVersionTypeError
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
@@ -71,7 +69,9 @@ class RunStateDB:
             raise RuntimeError("SQLite PRAGMA user_version returned no version")
         version_value: object = version_row[0]
         if not isinstance(version_value, int):
-            raise TypeError("SQLite PRAGMA user_version returned a non-integer version")
+            raise SchemaVersionTypeError(
+                "SQLite PRAGMA user_version returned a non-integer version"
+            )
         if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
         if version_value < _SCHEMA_VERSION:

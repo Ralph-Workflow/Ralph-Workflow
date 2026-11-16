@@ -1989,7 +1989,7 @@ def _boot_allowance_seconds(deps: LifecycleDeps) -> float:
         return 0.0
     try:
         return max(0.0, deps.boot_allowance().total_seconds())
-    except (TypeError, AttributeError, ValueError):
+    except (TypeError, AttributeError, ValueError, RuntimeError):
         return 0.0
 
 

@@ -23,7 +23,7 @@ _PRESSURE_PER_STEP_S = 0.6
 def _emit(env: _TestEnv, job_id: str, payload: bytes) -> None:
     job = env.registry._running_jobs[job_id]
     stream = io.BufferedReader(io.BytesIO(payload))
-    env.registry._read_stream(job, stream, True)
+    env.registry._read_stream(job, stream, is_stdout=True)
 
 
 def _startup_burst(count: int) -> bytes:
