@@ -6,9 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.testing._audit_filesystem_write_exemptions import (
-    EXEMPT_CALL_SITES as _REGISTERED_EXEMPT_CALL_SITES,
-)
+from ralph.testing._audit_filesystem_write_exemptions import EXEMPT_CALL_SITES
 from ralph.testing._audit_scope import build_parent_map_from_nodes, qualified_scope
 
 if TYPE_CHECKING:
@@ -30,17 +28,6 @@ _OPEN_MODE_POSITION = 1
 _OPEN_MODE_MIN_ARGS = 2
 _GETATTR_NAME_POSITION = 1
 _GETATTR_MIN_ARGS = 2
-
-_REAPPLY_EXEMPT_FILE = "ralph/pipeline/integration_preservation_bundle.py"
-_REAPPLY_EXEMPT_SCOPE = "reapply_preserved_progress"
-_REAPPLY_EXEMPT_KINDS: tuple[str, ...] = ("raw_copy2", "raw_copytree", "raw_rmtree")
-
-EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
-    {
-        *_REGISTERED_EXEMPT_CALL_SITES,
-        *((_REAPPLY_EXEMPT_FILE, _REAPPLY_EXEMPT_SCOPE, kind) for kind in _REAPPLY_EXEMPT_KINDS),
-    }
-)
 
 _RAW_MUTATION_QUALIFIERS: frozenset[str] = frozenset(
     {

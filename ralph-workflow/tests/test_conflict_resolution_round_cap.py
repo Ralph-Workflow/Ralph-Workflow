@@ -13,6 +13,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
     phase_label,
+    push_conflict_status_bar,
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
@@ -207,6 +208,28 @@ def test_phase_label_none_handling_unchanged_when_indices_within_cap() -> None:
         replay_total=cap,
     )
     assert replay == f"Rebase Conflict Resolution (commit 2/{cap}, round 2/{cap})"
+
+
+def test_push_conflict_status_bar_never_renders_round_index_above_cap() -> None:
+    cap = 3
+    display = _StatusDisplay()
+
+    push_conflict_status_bar(
+        display,
+        Path("/tmp/ws"),
+        target="main",
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=cap + 2,
+        stop_cap=cap,
+    )
+
+    assert display.models
+    for model in display.models:
+        assert f"round {cap + 1}/{cap}" not in model.phase_label
+        assert f"round {cap}/{cap}" in model.phase_label
+        assert f"commit {cap + 2}/{cap}" not in model.phase_label
+        assert f"commit {cap}/{cap}" in model.phase_label
 
 
 def test_reporter_observe_never_emits_round_index_above_cap() -> None:
