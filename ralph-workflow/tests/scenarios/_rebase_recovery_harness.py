@@ -53,6 +53,14 @@ ORDINARY_PHASE_EXECUTOR_SEAM_CALLABLE: str = "execute_agent_effect"
 
 SCENARIO_FILES: tuple[str, ...] = ("tests/scenarios/test_rebase_recovery_matrix.py",)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "run_declared_decisions_and_gitlink_resolution": (
+        "2f980b011 stages policy gitlinks before the resolution chain runs, so vendor/link "
+        "leaves the driver entry scope and every resolver prompt, and the driver resolves "
+        "the stop itself instead of escalating the gitlink as out of reach"
+    ),
+}
+
 __all__ = [
     "ORDINARY_PHASE_EXECUTOR_SEAM_CALLABLE",
     "ORDINARY_PHASE_EXECUTOR_SEAM_MODULE",
@@ -355,9 +363,12 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         )
 
     assert any(
-        "entering rebase conflict resolution" in line.content and "vendor/link" in line.content
+        "entering rebase conflict resolution" in line.content
+        and "(2 conflicted file(s))" in line.content
         for line in driver_lines
     )
+    assert prompted
+    assert all("vendor/link" not in paths for paths in prompted)
     assert any(
         "conflict(s) git could not write markers into" in line.content
         and "deleted.txt: delete/modify declaration" in line.content
@@ -386,7 +397,7 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
 
     terminal = (
         "landed"
-        if not isinstance(driver_outcome, ResolvedOutcome)
+        if isinstance(driver_outcome, ResolvedOutcome)
         and head == target
         and state is not None
         and equivalence.satisfied

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from git.exc import GitError
@@ -433,6 +433,11 @@ def _run_one_round(
         )
         if succeeded and (not session.unresolved_paths or progress.count_dropped):
             return attempt
+        if succeeded:
+            _driver_mod._classify_incomplete_success(
+                attempt, session, round_index, candidates, policy_bundle
+            )
+            attempt = replace(attempt, succeeded=False)
         visited.add(selected)
     return attempt
 
@@ -455,7 +460,11 @@ def _preferred_conflict_candidate(
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
         return candidates.index(eligible[0])
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
+        [name for name in candidates if name not in skipped],
+        exclude=frozenset(candidates[index] for index in visited),
+    )
     if selection.agent is not None:
         return candidates.index(selection.agent)
     return None

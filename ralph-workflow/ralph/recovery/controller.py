@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.agents.invoke import (
-    AgentInactivityTimeoutError,
-    SupervisionInfrastructureError,
-)
+from ralph.agents.invoke import SupervisionInfrastructureError
 from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -528,16 +525,10 @@ def _attempt_cooldown_reasons(
     cooldown_reason = typed_signal_unavailability_reason(effective_signal)
     resumable = failure is not None and bool(failure.resumable_session_id)
     watchdog_cooldown = None if resumable else watchdog_unavailability_reason(exc)
-    if watchdog_cooldown is None and not resumable and isinstance(exc, AgentInactivityTimeoutError):
-        watchdog_cooldown = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
-    if cooldown_reason is None and isinstance(
-        exc, (ConnectionError, SupervisionInfrastructureError)
-    ):
+    if cooldown_reason is None and isinstance(exc, SupervisionInfrastructureError):
         cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
-    if cooldown_reason is None and isinstance(exc, AgentInactivityTimeoutError):
-        cooldown_reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     return cooldown_reason, watchdog_cooldown
 
 
@@ -1768,6 +1759,7 @@ class RecoveryController:
         *,
         current_index: int | None = None,
         exclude_current: bool = False,
+        exclude: frozenset[str] = frozenset(),
     ) -> AgentSelection:
         self._phase_chains[phase] = tuple(agents)
         now_ms = self._now_ms()
@@ -1783,7 +1775,11 @@ class RecoveryController:
                 cooldown_ms = max(0, status.until_ms - now_ms)
                 cooldown_reason = status.reason
 
-            avail = status.is_eligible and not (exclude_current and idx == current_index)
+            avail = (
+                status.is_eligible
+                and not (exclude_current and idx == current_index)
+                and agent not in exclude
+            )
             is_spent = status.is_spent
 
             rows.append(

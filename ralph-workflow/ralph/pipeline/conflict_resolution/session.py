@@ -335,6 +335,8 @@ def classify_failed_resolution_attempt(
     if session is None:
         return
     effective_outcome = outcome
+    if not workspace_changed and outcome is ConflictAttemptOutcome.UNRESOLVED_REMAINING:
+        effective_outcome = ConflictAttemptOutcome.STALLED_NO_PROGRESS
     typed_outcome = (
         effective_outcome
         if effective_outcome is not None and effective_outcome is not ConflictAttemptOutcome.RAW
@@ -410,35 +412,6 @@ def classify_failed_resolution_attempt(
             retries=next_retries,
         ),
     )
-    unresolved = unresolved_count if unresolved_count > 0 else len(session.unresolved_paths)
-    effective_facts = facts or AttemptFacts(
-        artifact_valid=artifact_valid,
-        workspace_changed=workspace_changed,
-        unresolved_count=unresolved,
-    )
-    attempt_outcome = controller.last_attempt_outcome
-    if attempt_outcome is None:
-        exc = raw_failure if isinstance(raw_failure, BaseException) else None
-        attempt_outcome = controller.finalize_attempt(
-            PHASE_RESOLUTION,
-            agent_name,
-            facts=effective_facts,
-            attempt_failed=True,
-            exc=exc,
-        )
-    session.last_attempt_result = AttemptResult(
-        PipelineEvent.AGENT_FAILURE,
-        effective_facts,
-        attempt_outcome,
-        ((1, attempt_outcome),),
-    )
-    session.last_attempt_evidence = (
-        typed_outcome_reason(typed_outcome, unresolved_count)
-        if typed_outcome is not None
-        else attempt_outcome.reason
-    )
-    session.last_attempt_failure = raw_failure
-
     unresolved = unresolved_count if unresolved_count > 0 else len(session.unresolved_paths)
     effective_facts = facts or AttemptFacts(
         artifact_valid=artifact_valid,
