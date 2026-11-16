@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from git import GitCommandError, Repo
 
-from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.integration_actions import install_executors, reset_executors
@@ -18,13 +16,20 @@ from tests._scenario_agent_mode import AgentMode
 from tests._scenario_git import SCENARIO_GIT_IDENTITY
 from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     CONFLICTED_PATH,
-    TARGET,
     FakeAgentMode,
     FrozenClock,
     make_conflicted_repo,
     make_rebase_stop_resolver,
     make_scripted_resolver_process,
     resolution_policy_bundle,
+)
+from tests.scenarios._integration_scenario_fixtures import (
+    _AGENT_BEHAVIOR_MATRIX_PARAMS,
+    _CONFIG_CLOCK_MATRIX_PARAMS,
+    _REPO_STATE_LEDGER_MATRIX_PARAMS,
+    _SUPERVISOR_RESTART_POINTS,
+    MatrixExpectedOutcome,
+    _make_config,
 )
 from tests.scenarios._ralphsite_worktree_copy import (
     setup_ralphsite_wt02_worktree,
@@ -33,42 +38,6 @@ from tests.scenarios._ralphsite_worktree_copy import (
 from tests.scenarios._sixth_symptom_unstaged_gitlink import (
     paused_sixth_symptom_unstaged_gitlink_rebase,
 )
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands": (
-        "the partial out-of-reach fixture leaves a paused rebase with no integration "
-        "record, which auto-integrate skips as a detached HEAD, and a bare Repo.init has "
-        "no committer identity; the test now starts from tmp_git_repo and adopts the "
-        "active rebase record so the resolver runs once and the stop lands"
-    ),
-    "test_symptom_5_completed_rebase_proven_landed_by_anchor_chain": (
-        "a bare Repo.init has no committer identity, so the production rebase --continue "
-        "failed and the stop was withheld; the scenario now starts from tmp_git_repo"
-    ),
-    "test_symptom_5_empty_resolution_stop_proven_landed_by_tree": (
-        "starts from tmp_git_repo for a committer identity; the harness now seeds an "
-        "empty resolution and anchors the stop at the paused HEAD"
-    ),
-    "test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry": (
-        "starts from tmp_git_repo for a committer identity; the harness now seeds an "
-        "empty resolution so the dropped stop leaves HEAD on the target"
-    ),
-    "test_symptom_5_unrelated_head_rejected_once_then_quiet": (
-        "starts from tmp_git_repo for a committer identity; the harness now moves HEAD "
-        "to the unrelated commit before the ten quiet ticks"
-    ),
-    "test_symptom_repro_ralphsite_wt04_worktree": (
-        "The wt-04 fixture currently defers through the integration ladder before a "
-        "local fast-forward lands; assert no rebase remains in progress and accept the "
-        "durable deferred/skipped record until landing owns the recovered outcome; ruff "
-        "format wraps its unchanged remote-unreachable assertion in parentheses"
-    ),
-    "test_symptom_repro_ralphsite_wt02_worktree": (
-        "Local rebase completion and remote publication are distinct outcomes; with no "
-        "origin the local fast-forward lands as rebased while last_reason records the "
-        "unreachable remote for recovery retry"
-    ),
-}
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -81,35 +50,6 @@ pytestmark = [
 def scenario_git_commit_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     for name, value in SCENARIO_GIT_IDENTITY.items():
         monkeypatch.setenv(name, value)
-
-
-@dataclass(frozen=True)
-class MatrixExpectedOutcome:
-    terminal_kind: str
-    expected_launches: int
-    should_stage_automatically: bool = False
-    requires_cooldown_wait: bool = False
-
-
-def _make_config() -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-                "auto_integrate_target": TARGET,
-            }
-        }
-    )
-
-
-def _init_repo(tmp_path: Path) -> Path:
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir(parents=True, exist_ok=True)
-    repo = Repo.init(repo_dir, initial_branch="main")
-    with repo.config_writer() as config:
-        config.set_value("user", "name", "Test User")
-        config.set_value("user", "email", "test@example.com")
-    return repo_dir
 
 
 def test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds(
@@ -422,31 +362,7 @@ def test_symptom_repro_ralphsite_wt04_worktree(
 
 
 @pytest.mark.parametrize(
-    ("agent_behavior", "git_exit_code", "expected"),
-    [
-        (
-            FakeAgentMode.EDITS_AND_STAGES,
-            0,
-            MatrixExpectedOutcome("rebased", 1, should_stage_automatically=False),
-        ),
-        (
-            FakeAgentMode.EDITS_NEVER_STAGES,
-            1,
-            MatrixExpectedOutcome("rebased", 1, should_stage_automatically=True),
-        ),
-        (
-            FakeAgentMode.LEAVES_MARKER,
-            1,
-            MatrixExpectedOutcome("conflict", 2, should_stage_automatically=False),
-        ),
-        (
-            FakeAgentMode.NON_ZERO_EXIT,
-            1,
-            MatrixExpectedOutcome(
-                "conflict", 2, should_stage_automatically=False, requires_cooldown_wait=True
-            ),
-        ),
-    ],
+    ("agent_behavior", "git_exit_code", "expected"), _AGENT_BEHAVIOR_MATRIX_PARAMS
 )
 def test_matrix_axis_agent_behavior_x_git_exit(
     tmp_path: Path,
@@ -497,15 +413,7 @@ def test_matrix_axis_agent_behavior_x_git_exit(
         assert outcome.last_outcome == RebaseOutcomeKind.CONFLICT
 
 
-@pytest.mark.parametrize(
-    ("repo_state", "ledger_content"),
-    [
-        ("clean", "empty_ledger"),
-        ("detached_head", "empty_ledger"),
-        ("unstaged_edits", "spent_chain"),
-        ("unmerged_markers", "exhausted_budget"),
-    ],
-)
+@pytest.mark.parametrize(("repo_state", "ledger_content"), _REPO_STATE_LEDGER_MATRIX_PARAMS)
 def test_matrix_axis_repo_state_x_ledger_content(
     tmp_path: Path,
     repo_state: str,
@@ -559,14 +467,7 @@ def test_matrix_axis_repo_state_x_ledger_content(
         assert "agentB" in invocations
 
 
-@pytest.mark.parametrize(
-    ("config_kind", "clock_behavior"),
-    [
-        ("valid", "frozen"),
-        ("corrupted_agents_toml", "frozen"),
-        ("valid", "advancing"),
-    ],
-)
+@pytest.mark.parametrize(("config_kind", "clock_behavior"), _CONFIG_CLOCK_MATRIX_PARAMS)
 def test_matrix_axis_config_x_clock(
     tmp_path: Path,
     config_kind: str,
@@ -613,13 +514,7 @@ def test_matrix_axis_config_x_clock(
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
 
 
-@pytest.mark.parametrize(
-    "interruption_point",
-    [
-        "mid_rebase",
-        "post_resolution_pre_continue",
-    ],
-)
+@pytest.mark.parametrize("interruption_point", _SUPERVISOR_RESTART_POINTS)
 def test_matrix_axis_supervisor_restart(
     tmp_path: Path,
     interruption_point: str,
