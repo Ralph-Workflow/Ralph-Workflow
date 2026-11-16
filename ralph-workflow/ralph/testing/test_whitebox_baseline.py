@@ -682,7 +682,7 @@ tests/test_planning_phase_2026_08_06_regression.py|1,1,0
 tests/test_policy_cycle_timebox_validation.py|0,1,0
 tests/test_policy_loader.py|0,0,2
 tests/test_policy_remediation_completion_evidence.py|0,2,1
-tests/test_pro_support_contract.py|9,0,0
+tests/test_pro_support_contract.py|8,0,0
 tests/test_pro_support_end_to_end.py|3,0,0
 tests/test_pro_support_heartbeat.py|0,0,1
 tests/test_pro_support_hooks.py|15,0,0

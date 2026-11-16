@@ -1182,7 +1182,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_policy_loader.py` | 0 | 0 | 2 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/test_policy_remediation_completion_evidence.py` | 0 | 2 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_process_manager_expected_exits.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_pro_support_contract.py` | 9 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
+| `tests/test_pro_support_contract.py` | 8 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_pro_support_end_to_end.py` | 3 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_pro_support_heartbeat.py` | 0 | 0 | 1 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/test_pro_support_hooks.py` | 15 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |

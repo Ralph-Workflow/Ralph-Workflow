@@ -127,15 +127,17 @@ def _scan_tracked_files(repo_root: Path, tracked_rel_paths: Sequence[str]) -> li
         normalized = rel_path.replace("\\", "/")
         if _is_historical_archive(normalized):
             continue
-        for forbidden in FORBIDDEN_TEXT_STRINGS:
-            if forbidden in normalized:
+        for forbidden_text in FORBIDDEN_TEXT_STRINGS:
+            if forbidden_text in normalized:
                 violations.append(f"{normalized}: forbidden identifier in tracked path")
         file_path = repo_root / rel_path
-        if not file_path.is_file():
+        try:
+            with file_path.open("rb") as f:
+                content = f.read()
+        except OSError:
             continue
-        content = file_path.read_bytes()
-        for forbidden in FORBIDDEN_BYTE_STRINGS:
-            if forbidden in content:
+        for forbidden_bytes in FORBIDDEN_BYTE_STRINGS:
+            if forbidden_bytes in content:
                 violations.append(f"{normalized}: forbidden identifier in tracked content")
     return violations
 
@@ -193,6 +195,7 @@ def test_tracked_inventory_is_read_from_the_git_index() -> None:
     assert len(tracked) > 1
 
 
+@pytest.mark.timeout_seconds(2.0)
 def test_no_retired_identifier_in_tracked_inventory() -> None:
     repo_root = _repo_root()
     violations = _scan_tracked_files(repo_root, _tracked_paths(repo_root))
