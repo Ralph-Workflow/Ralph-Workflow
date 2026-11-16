@@ -232,6 +232,114 @@ def test_push_conflict_status_bar_never_renders_round_index_above_cap() -> None:
         assert f"commit {cap}/{cap}" in model.phase_label
 
 
+def test_render_round_index_equal_to_cap_renders_normally() -> None:
+    cap = 3
+    display = _StatusDisplay()
+
+    push_conflict_status_bar(
+        display,
+        Path("/tmp/ws"),
+        target="main",
+        round_index=cap,
+        round_cap=cap,
+        stop_index=cap,
+        stop_cap=cap,
+    )
+
+    assert display.models
+    for model in display.models:
+        assert f"round {cap}/{cap}" in model.phase_label
+        assert model.outer_dev_iteration == cap
+        assert model.outer_dev_cap == cap
+
+    reporter = ResolutionStatusReporter(
+        display=display,
+        target="main",
+        round_index=cap,
+        round_cap=cap,
+        stop_index=1,
+        stop_cap=cap,
+        clock=lambda: 100.0,
+        interval_seconds=30.0,
+        started_at=0.0,
+        unresolved_paths=("src/alpha.py",),
+        agent_name="one",
+    )
+
+    class _Event:
+        def __init__(self) -> None:
+            self.diagnostic = {
+                "last_activity_kind": "healthy",
+                "last_activity_age_seconds": 1.0,
+            }
+
+    reporter.observe(_Event())
+
+    assert display.lines
+    assert any(f"round={cap}/{cap}" in line for line in display.lines)
+
+
+def _parse_round_pairs(text: str) -> list[tuple[int, int]]:
+    pairs: list[tuple[int, int]] = []
+    for token in text.replace("(", " ").replace(")", " ").split():
+        if token.startswith("round"):
+            continue
+        if "/" not in token:
+            continue
+        numerator, _, denominator = token.rpartition("/")
+        if numerator.isdigit() and denominator.isdigit():
+            pairs.append((int(numerator), int(denominator)))
+    return pairs
+
+
+def test_render_layer_never_shows_round_numerator_greater_than_denominator() -> None:
+    cap = 3
+    display = _StatusDisplay()
+
+    push_conflict_status_bar(
+        display,
+        Path("/tmp/ws"),
+        target="main",
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=cap + 2,
+        stop_cap=cap,
+        replay_index=cap + 5,
+        replay_total=cap,
+    )
+
+    reporter = ResolutionStatusReporter(
+        display=display,
+        target="main",
+        round_index=cap + 1,
+        round_cap=cap,
+        stop_index=1,
+        stop_cap=cap,
+        clock=lambda: 100.0,
+        interval_seconds=30.0,
+        started_at=0.0,
+        unresolved_paths=("src/alpha.py",),
+        agent_name="one",
+    )
+
+    class _Event:
+        def __init__(self) -> None:
+            self.diagnostic = {
+                "last_activity_kind": "healthy",
+                "last_activity_age_seconds": 1.0,
+            }
+
+    reporter.observe(_Event())
+
+    rendered_texts = [model.phase_label for model in display.models] + display.lines
+    assert rendered_texts
+    for text in rendered_texts:
+        for numerator, denominator in _parse_round_pairs(text):
+            assert numerator <= denominator, (
+                f"rendered round=N/M with N > M: {text!r} -> {numerator}/{denominator}"
+            )
+
+
 def test_reporter_observe_never_emits_round_index_above_cap() -> None:
     cap = 3
     display = _StatusDisplay()
