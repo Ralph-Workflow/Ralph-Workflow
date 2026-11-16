@@ -74,6 +74,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
     resolution_outcome as _verdict_resolution_outcome,
 )
 from ralph.pipeline.conflict_resolution.session import (
+    RecoveryControllerUnavailableError,
     ResolutionSession,
     begin_resolution_stop,
     classify_failed_resolution_attempt,
@@ -644,7 +645,16 @@ def _run_rounds(
         from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
 
         session.probe_runner = fail_open_dead_agent_probe_runner()
-    ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps, config=config)
+    try:
+        ensure_session_controller(
+            session, policy_bundle, pipeline_deps=pipeline_deps, config=config
+        )
+    except RecoveryControllerUnavailableError as exc:
+        session.terminal_reason = ResolutionTerminationReason.EXCEPTION
+        session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
+        session.exhaustion_reason = str(exc)
+        emit_conflict_phase_line(display, f"conflict resolution blocked: {exc}")
+        return False
     if session.workspace is None:
         ws_obj: object = getattr(effective_scope, "workspace", None)
         from ralph.workspace.protocol import Workspace

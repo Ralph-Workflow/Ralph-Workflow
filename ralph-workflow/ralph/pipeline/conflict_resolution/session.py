@@ -20,7 +20,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
 )
 from ralph.pipeline.attempt_result import AttemptResult
-from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller, run_agent_attempt
+from ralph.pipeline.attempt_runner import run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -38,7 +38,6 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -206,6 +205,7 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
+    del policy_bundle, config
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         controller = session.recovery_controller
         session.ledger = controller.ledger
@@ -219,26 +219,6 @@ def ensure_session_controller(
             session.ledger = controller.ledger
             session.unavailability_store = controller.unavailability_store
         return controller
-    store = (
-        pipeline_deps.unavailability_store
-        if pipeline_deps is not None and pipeline_deps.unavailability_store is not None
-        else (session.unavailability_store if session is not None else None)
-    )
-    if session is not None:
-        session.unavailability_store = store
-    ledger = (
-        session.ledger
-        if session is not None and session.ledger is not None
-        else (pipeline_deps.ledger if pipeline_deps is not None else None)
-    )
-    if ledger is not None:
-        controller_candidate: object = getattr(ledger, "recovery_controller", None)
-        if isinstance(controller_candidate, RecoveryController):
-            if session is not None:
-                session.recovery_controller = controller_candidate
-                session.ledger = controller_candidate.ledger
-                session.unavailability_store = controller_candidate.unavailability_store
-            return controller_candidate
     active_controller = (
         _effect_executor_module.current_agent_effect_dependencies().recovery_controller
     )
@@ -248,36 +228,9 @@ def ensure_session_controller(
             session.ledger = active_controller.ledger
             session.unavailability_store = active_controller.unavailability_store
         return active_controller
-    if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
-        clock = pipeline_deps.recovery_clock
-    elif isinstance(ledger, AgentFailureLedger):
-        clock = ledger.clock
-    elif isinstance(store, AgentUnavailabilityTracker):
-        clock = store.clock
-    else:
-        from ralph.agents.system_clock import SystemClock
-
-        clock = SystemClock()
-    deps = AttemptRunnerDeps(
-        clock=clock,
-        invoke=effect_attempt_invoke(_effect_executor_module.execute_agent_effect),
-        probe_runner=session.probe_runner if session is not None else None,
-        workspace_probe=session.workspace_probe if session is not None else None,
-        connectivity=None,
+    raise RecoveryControllerUnavailableError(
+        "RecoveryController must already exist on the resolution session or pipeline_deps"
     )
-    controller = build_entry_point_recovery_controller(
-        AgentEntryPoint.CONFLICT_RESOLUTION,
-        config=config,
-        policy_bundle=policy_bundle,
-        deps=deps,
-        ledger=ledger,
-        unavailability_store=store,
-    )
-    if session is not None:
-        session.recovery_controller = controller
-        session.unavailability_store = controller.unavailability_store
-        session.ledger = controller.ledger
-    return controller
 
 
 def _advance_conflict_chain_cursor(
