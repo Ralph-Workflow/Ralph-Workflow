@@ -872,7 +872,7 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
-            _wait_for_eligible_agent(session, candidates)
+            cohort_wait_ms = _wait_for_eligible_agent(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -885,8 +885,8 @@ def _execute_round_loop(
                 round_cap,
                 worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
+                cohort_wait_ms=cohort_wait_ms,
             )
-            _classify_incomplete_success(attempt, session, round_index, candidates, policy_bundle)
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -1024,9 +1024,14 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
 
 def _wait_for_eligible_agent(
     session: ResolutionSession,
-    candidates: tuple[str, ...],
-) -> None:
+    candidates: Sequence[str],
+) -> int:
+    controller = session.recovery_controller
+    if controller is None:
+        return 0
+    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
     _wait_for_candidates_if_cooling_down(session, candidates)
+    return max(wait_ms, 0)
 
 
 def _record_unconfigured_resolver(

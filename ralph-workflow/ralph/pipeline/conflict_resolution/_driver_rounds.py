@@ -67,6 +67,7 @@ __all__ = [
     "_paths_still_unresolved",
     "_preferred_conflict_candidate",
     "_record_invoker_outcome",
+    "_revive_cooling_candidates",
     "_run_one_round",
 ]
 
@@ -377,6 +378,7 @@ def _run_one_round(
     round_cap: int,
     worktree_resolved: Callable[[], bool] | None = None,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
+    cohort_wait_ms: int = 0,
 ) -> RoundAttempt:
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
@@ -385,13 +387,19 @@ def _run_one_round(
         return RoundAttempt(succeeded=False, invoked=False)
     visited: set[int] = set()
     attempt = RoundAttempt(succeeded=False, invoked=False)
+    revived = False
     while len(visited) < total:
         skipped = _skipped_candidates(session, candidates)
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
-            return RoundAttempt(
-                succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran
-            )
+            if revived or not _revive_cooling_candidates(
+                session, candidates, visited, skipped, cohort_wait_ms
+            ):
+                return RoundAttempt(
+                    succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran
+                )
+            revived = True
+            continue
         agent_name = candidates[selected]
         _driver_mod.emit_conflict_phase_line(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
@@ -431,6 +439,10 @@ def _run_one_round(
             count_dropped=progress.count_dropped,
             probe_changed=progress.probe_changed,
         )
+        if succeeded and session.unresolved_paths:
+            _driver_mod._classify_incomplete_success(
+                attempt, session, round_index, candidates, policy_bundle
+            )
         if succeeded and (not session.unresolved_paths or progress.count_dropped):
             return attempt
         if succeeded:
@@ -440,6 +452,45 @@ def _run_one_round(
             attempt = replace(attempt, succeeded=False)
         visited.add(selected)
     return attempt
+
+
+def _revive_cooling_candidates(
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    visited: set[int],
+    skipped: frozenset[str],
+    cohort_wait_ms: int,
+) -> bool:
+    from ralph.recovery.controller import RecoveryController
+
+    controller = session.recovery_controller
+    if not isinstance(controller, RecoveryController) or cohort_wait_ms <= 0:
+        return False
+    pending = [
+        name
+        for index, name in enumerate(candidates)
+        if index not in visited and name not in skipped
+    ]
+    cohort = [
+        name
+        for name in pending
+        if 0 < controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name]) <= cohort_wait_ms
+    ]
+    if not cohort:
+        return False
+    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, cohort)
+    if wait_ms <= 0:
+        return False
+    wait_s = wait_ms / 1000.0
+    if hasattr(controller._clock, "advance"):
+        controller._clock.advance(wait_s)
+    else:
+        controller.clock.sleep(wait_s)
+    controller.prune_expired()
+    return any(
+        status.is_eligible
+        for _agent, status in controller.chain_eligibility(PHASE_RESOLUTION, cohort)
+    )
 
 
 def _preferred_conflict_candidate(
