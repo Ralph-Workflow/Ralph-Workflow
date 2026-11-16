@@ -142,7 +142,12 @@ def test_known_dead_surface_is_not_reentered(
             artifact_valid=False,
         )
     )
-    session = ResolutionSession(ledger=ledger)
+    session = ResolutionSession(
+        ledger=ledger,
+        recovery_controller=RecoveryController(
+            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -299,7 +304,12 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
                 artifact_valid=False,
             )
         )
-    session = ResolutionSession(ledger=ledger)
+    session = ResolutionSession(
+        ledger=ledger,
+        recovery_controller=RecoveryController(
+            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -338,7 +348,12 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
         )
     assert spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) is None
 
-    session_spent = ResolutionSession(ledger=spent_ledger)
+    session_spent = ResolutionSession(
+        ledger=spent_ledger,
+        recovery_controller=RecoveryController(
+            ledger=spent_ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     assert (
         round_termination_reason(session_spent, invoked=False, candidates=candidates)
         is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
@@ -369,7 +384,12 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
     wait_ms = cooldown_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates)
     assert wait_ms is not None and wait_ms > 0
 
-    session_cooldown = ResolutionSession(ledger=cooldown_ledger)
+    session_cooldown = ResolutionSession(
+        ledger=cooldown_ledger,
+        recovery_controller=RecoveryController(
+            ledger=cooldown_ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     assert (
         round_termination_reason(session_cooldown, invoked=False, candidates=candidates)
         is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
@@ -558,7 +578,12 @@ def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
     _install_seams(monkeypatch)
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
-    session = ResolutionSession(ledger=ledger)
+    session = ResolutionSession(
+        ledger=ledger,
+        recovery_controller=RecoveryController(
+            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
     session.charge_conflict_budget = False
     assert skipped_candidates(session, ("primary", "fallback")) == frozenset()
@@ -632,7 +657,9 @@ def test_every_reason_less_exit_now_names_itself(
     _install_seams(monkeypatch)
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ())
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
     _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -650,7 +677,9 @@ def test_every_reason_less_exit_now_names_itself(
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
     _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -712,7 +741,9 @@ def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
         display=None,
         display_context=None,
         invoke=lambda name, _p, _r: calls.append(name) is None,
-        session=ResolutionSession(),
+        session=ResolutionSession(
+            recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+        ),
     )
     assert calls, "a binary conflict must not starve the text conflicts beside it"
 
@@ -735,7 +766,9 @@ def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
     calls: list[str] = []
 
     outcome = driver_module.run_conflict_resolution_outcome(
@@ -771,12 +804,14 @@ def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
         lambda _root, paths: dict.fromkeys(paths, ConflictSight.OUT_OF_REACH),
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
 
     _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
+        config=_CONFIG,
         pipeline_deps=None,
         workspace_scope=None,
         policy_bundle=_policy_bundle(),
@@ -795,7 +830,9 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
 
     _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
@@ -829,7 +866,9 @@ def test_mechanical_staging_never_masks_a_path_nobody_can_repair(
         },
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ("mode.txt",))
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
 
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,

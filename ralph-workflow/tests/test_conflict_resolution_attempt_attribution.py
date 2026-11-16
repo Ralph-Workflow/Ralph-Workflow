@@ -16,6 +16,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -51,7 +52,9 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
     driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -94,7 +97,12 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     )
     _install_seams(monkeypatch)
     ledger = AgentFailureLedger(clock=clock)
-    session = ResolutionSession(ledger=ledger)
+    session = ResolutionSession(
+        ledger=ledger,
+        recovery_controller=RecoveryController(
+            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -165,7 +173,10 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         )
 
     monkeypatch.setattr(driver_module, "finalize_resolution_attempt_failure", _spy)
-    session = ResolutionSession(max_rounds_per_stop=1)
+    session = ResolutionSession(
+        max_rounds_per_stop=1,
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions()),
+    )
 
     assert (
         run_conflict_resolution_pipeline(
@@ -204,7 +215,9 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     )
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve", encoding="utf-8")
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
 
     outcome = invoke_resolution_agent(
         agent_name="claude",
@@ -234,7 +247,9 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
     monkeypatch.setattr(
         driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
     )
-    session = ResolutionSession()
+    session = ResolutionSession(
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
+    )
 
     assert (
         run_conflict_resolution_pipeline(
@@ -282,7 +297,13 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     )
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     ledger = AgentFailureLedger(clock=clock)
-    session = ResolutionSession(ledger=ledger, max_rounds_per_stop=1)
+    session = ResolutionSession(
+        ledger=ledger,
+        max_rounds_per_stop=1,
+        recovery_controller=RecoveryController(
+            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+        ),
+    )
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:

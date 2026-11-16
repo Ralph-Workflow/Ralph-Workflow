@@ -14,6 +14,7 @@ from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_conflict_resolution_pipeline import (
     _CONFLICTED,
@@ -93,7 +94,16 @@ def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
         display=None,
         display_context=None,
         invoke=_invoke,
-        session=ResolutionSession(),
+        session=ResolutionSession(
+            ledger=deps.ledger,
+            recovery_controller=RecoveryController(
+                ledger=deps.ledger,
+                options=RecoveryControllerOptions(
+                    clock=deps.recovery_clock,
+                    unavailability_store=deps.unavailability_store,
+                ),
+            ),
+        ),
     )
 
 

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.recovery.controller import RecoveryController
 from tests._conflict_resolution_phase_parity_seams import _config, _install_seams, _policy_bundle
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ def test_a_bad_exit_after_a_repaired_worktree_spends_no_further_candidate(
     monkeypatch.setattr(
         driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
     )
-    session = ResolutionSession()
+    session = ResolutionSession(recovery_controller=RecoveryController())
     invoked: list[str] = []
 
     def _killed_after_repairing(agent_name: str, *_args: object) -> bool:
@@ -58,7 +59,10 @@ def test_a_bad_exit_with_markers_left_still_hands_over_to_the_next_candidate(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED] * 8)
-    session = ResolutionSession(max_rounds_per_stop=1)
+    session = ResolutionSession(
+        max_rounds_per_stop=1,
+        recovery_controller=RecoveryController(),
+    )
     invoked: list[str] = []
 
     def _killed_mid_work(agent_name: str, *_args: object) -> bool:

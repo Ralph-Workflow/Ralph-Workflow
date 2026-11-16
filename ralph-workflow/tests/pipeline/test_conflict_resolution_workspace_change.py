@@ -14,6 +14,7 @@ from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -90,7 +91,13 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
             total_limit=9,
         )
 
-        session = ResolutionSession(ledger=ledger, max_rounds_per_stop=15)
+        session = ResolutionSession(
+            ledger=ledger,
+            max_rounds_per_stop=15,
+            recovery_controller=RecoveryController(
+                ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+            ),
+        )
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -164,7 +171,13 @@ def test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limi
             total_limit=9,
         )
 
-        session = ResolutionSession(ledger=ledger, max_rounds_per_stop=15)
+        session = ResolutionSession(
+            ledger=ledger,
+            max_rounds_per_stop=15,
+            recovery_controller=RecoveryController(
+                ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+            ),
+        )
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
