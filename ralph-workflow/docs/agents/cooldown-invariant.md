@@ -95,22 +95,25 @@ the agent owner by construction. They are exemptions, not gaps.
 - **Cross-phase contract test.**
   `tests/recovery/test_cooldown_parity_all_phases.py` loads the production
   default policy through
-  `ralph.policy.loader.cached_default_pipeline_policy` and drives the
-  registered production invocation route for `planning`,
+  `ralph.policy.loader.cached_default_policy_bundle` and drives the
+  registered production invocation routes for `planning`,
   `planning_analysis`, `development`, `development_commit_review`,
   `development_commit`, `development_analysis`,
-  `development_final_commit_review`, `development_final_commit`, and
-  `rebase_conflict_resolution`. Each route's failed attempt is routed
-  through the owner's own classification and handling API
-  (`RecoveryController.classify_*` followed by `handle`), and the suite
-  asserts `Cooldown` after the owner threshold, next-candidate
-  selection, the owner's `earliest_available_wait_ms`, and the reason
-  and duration from the `UnavailabilityReason` policy table. The matrix
-  includes a stalled agent that reports success and a no-activity agent.
-  Its mutation check proves that removing the classification-to-handler
-  handoff makes the contract test fail. The production owner handoff of
-  the main loop is pinned separately by
-  `tests/pipeline/test_reducer_single_owner.py`, and the conflict
+  `development_final_commit_review`, `development_final_commit`,
+  `policy_remediation`, and `policy_remediation_analysis`. Each route's
+  failed attempt is routed through the owner's own classification and
+  handling API (`RecoveryController.classify_*` followed by `handle`),
+  and the suite asserts `Cooldown` after the owner threshold, next-candidate
+  selection, and the owner's `earliest_available_wait_ms`. The matrix covers
+  launch failures (`PROCESS_EXITED`) and no-activity failures
+  (`NO_OUTPUT_AT_START`) with reasons and durations from the
+  `UnavailabilityReason` policy table, as well as stalled agents reporting
+  success without valid artifacts cooling down for
+  `consecutive_unproductive_limit_reached`. Conflict resolution is exercised
+  separately via paused-rebase integration scenarios. Its mutation check
+  proves that removing the classification-to-handler handoff makes the contract
+  test fail. The production owner handoff of the main loop is pinned separately
+  by `tests/pipeline/test_reducer_single_owner.py`, and the conflict
   resolution driver's own classification is pinned by
   `tests/test_conflict_resolution_phase_parity.py`.
 - **Owner-lifetime contract tests.**

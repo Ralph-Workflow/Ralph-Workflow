@@ -373,6 +373,62 @@ def call_agent():
     ], f"Expected the deliberate re-raise to be accepted, got: {violations}"
 
 
+def test_agent_invocation_except_tuple_excluding_domain_base_is_flagged() -> None:
+    source = """
+def invoke_policy():
+    try:
+        run_agent_attempt(agent, controller=controller)
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        pass
+"""
+    violations = audit_production_source("ralph/project_policy/cli_integration.py", source)
+    assert any(v.rule == "production_agent_failure_except_tuple_coverage" for v in violations), (
+        f"Expected production_agent_failure_except_tuple_coverage, got: {violations}"
+    )
+
+
+def test_agent_invocation_except_tuple_including_domain_base_is_accepted() -> None:
+    source = """
+def invoke_policy():
+    try:
+        run_agent_attempt(agent, controller=controller)
+    except (AgentInvocationError, OSError, RuntimeError, ValueError, TypeError) as exc:
+        pass
+"""
+    violations = audit_production_source("ralph/project_policy/cli_integration.py", source)
+    assert not [
+        v for v in violations if v.rule == "production_agent_failure_except_tuple_coverage"
+    ], f"Expected no except-tuple coverage violation, got: {violations}"
+
+
+def test_agent_invocation_except_tuple_with_qualified_domain_base_is_accepted() -> None:
+    source = """
+def invoke_policy():
+    try:
+        invoke_agent(agent)
+    except (invoke.AgentInvocationError, OSError) as exc:
+        pass
+"""
+    violations = audit_production_source("ralph/project_policy/cli_integration.py", source)
+    assert not [
+        v for v in violations if v.rule == "production_agent_failure_except_tuple_coverage"
+    ], f"Expected qualified domain base to be accepted, got: {violations}"
+
+
+def test_agent_invocation_except_tuple_with_broad_domain_base_is_accepted() -> None:
+    source = """
+def invoke_policy():
+    try:
+        invoke_agent(agent)
+    except (Exception, OSError) as exc:
+        pass
+"""
+    violations = audit_production_source("ralph/project_policy/cli_integration.py", source)
+    assert not [
+        v for v in violations if v.rule == "production_agent_failure_except_tuple_coverage"
+    ], f"Expected broad domain base to be accepted, got: {violations}"
+
+
 def test_phase_owned_cooldown_state_is_flagged() -> None:
     source = """
 class DevelopmentPhase:

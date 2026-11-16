@@ -1253,6 +1253,34 @@ def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
             _collect_dead_in_block(case.body, dead)
 
 
+_AGENT_FAILURE_EXCEPT_TUPLE_RULE = "production_agent_failure_except_tuple_coverage"
+
+_AGENT_FAILURE_DOMAIN_BASES: frozenset[str] = frozenset(
+    {
+        "AgentInvocationError",
+        "Exception",
+        "BaseException",
+    }
+)
+
+
+def _exception_matches_domain_base(node: ast.expr) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in _AGENT_FAILURE_DOMAIN_BASES
+    if isinstance(node, ast.Attribute):
+        return node.attr in _AGENT_FAILURE_DOMAIN_BASES
+    return False
+
+
+def _tuple_includes_domain_base(node: ast.Tuple) -> bool:
+    for elt in node.elts:
+        if _exception_matches_domain_base(elt):
+            return True
+        if isinstance(elt, ast.Tuple) and _tuple_includes_domain_base(elt):
+            return True
+    return False
+
+
 def _recovery_calls(handler: ast.ExceptHandler) -> list[ast.Call]:
     calls = [
         child
@@ -1313,6 +1341,19 @@ def _check_agent_invocation_failure_routing(
         if invocation.lineno in bypassed_lines
     )
     for handler in node.handlers:
+        if isinstance(handler.type, ast.Tuple) and not _tuple_includes_domain_base(handler.type):
+            target_name = _call_name(invocation_calls[0]) or "agent invocation"
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=handler.lineno,
+                    rule=_AGENT_FAILURE_EXCEPT_TUPLE_RULE,
+                    detail=(
+                        f"Except tuple wrapping agent invocation '{target_name}' "
+                        "excludes the agent-failure domain base 'AgentInvocationError'."
+                    ),
+                )
+            )
         calls = _recovery_calls(handler)
         if (
             any(_is_classifier_call(call) for call in calls)

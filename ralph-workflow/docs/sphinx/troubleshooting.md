@@ -310,6 +310,24 @@ See [Recovery](recovery.md#tool-availability-failures) for the three additive ca
 
 **Fix:** Read the ending line for the typed reason, last activity vs last progress, candidates tried, and unresolved paths. If the chain has a single agent, add a fallback in `[agent_chains.rebase_conflict_resolution]` — load warns when there is no fallback. If output says the conflict budget is exhausted, Ralph Workflow has stopped starting rebases for that identity; a distinct remote conflict can still run because it uses `scope=remote`.
 
+## Commit review rejected the run
+
+**Symptom:** The run stops in `failed_terminal` during or after a commit review phase (`development_commit_review` or `development_final_commit_review`), reporting that the pending changes were rejected.
+
+**Cause:** Commit review acts as a damage gate against accidental mass deletion or protected-path modification. Consecutive rejections are tracked by the `commit_review_rejections` counter (default: `2`). When rejections reach this limit (or the cycle timebox expires), the pipeline transitions to `failed_terminal` without another workspace reset to avoid looping.
+
+**Recovery:** A rejected run preserves the full rejected tree in a Git proposal ref before resetting the workspace:
+
+- Proposal ref: `refs/ralph/proposals/<run>/<iteration>`
+
+To inspect or restore the rejected proposal into your current worktree, run:
+
+```bash
+git checkout refs/ralph/proposals/<run>/<iteration> -- .
+```
+
+Inspect the rejection reason in the run output or proposal metadata, adjust your prompt or configuration if needed, and re-run `ralph`.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

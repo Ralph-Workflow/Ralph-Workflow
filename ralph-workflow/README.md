@@ -178,9 +178,11 @@ for update cadence and the trust statement.
 ## Protections
 
 A two-stage commit review runs immediately before each commit. Stage 1 computes
-deterministic tripwires from tracked and untracked pending state; hard mass or
-protected-deletion damage rejects without invoking an agent. Stage 2 applies
-validated housekeeping edits only and never performs source-code review. A
+deterministic tripwires from tracked and untracked pending state (defaulting to
+50 deleted files, 25% of tracked files, and a 1 MB binary size limit per the
+[commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration));
+hard mass or protected-deletion damage rejects without invoking an agent. Stage 2
+applies validated housekeeping edits only and never performs source-code review. A
 normal rejection saves the proposal first, then resets every pending-commit
 file. Only exact deletions in the planning-analysis-approved plan may bypass
 mass-deletion accounting; protected deletions never bypass, and developer or
@@ -188,8 +190,8 @@ reviewer input cannot widen the list. Ralph Workflow's own engine writes are
 auto-committed in isolation at the producer boundary: each commit covers
 only the exact paths the writer just modified, paths that are already
 dirty are skipped and stay in the agent or user commit flow, and an
-auto-commit failure is logged but never blocks the run. See [commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration)
-and the [auto-commit contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
+auto-commit failure is logged but never blocks the run. See the
+[auto-commit contract](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/deterministic-auto-commit.md).
 
 ## Next steps
 
