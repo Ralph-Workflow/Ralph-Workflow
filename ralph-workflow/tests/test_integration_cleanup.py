@@ -37,6 +37,22 @@ from ralph.pipeline.integration_observation import (
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_repeat_pressure_escalates_down_cleanup_ladder": (
+        "commit 0a563b84a retimed cleanup-ladder escalation one observation early, "
+        "contradicting the pinned owner contract in tests/test_integration_owner.py "
+        "(escalation on the third unchanged observation); the escalation timing is restored "
+        "to repeat_threshold, so two unchanged save_and_restore observations again climb "
+        "exactly one rung to preserve_via_temp_index"
+    ),
+    "test_owner_ledger_port_charges_through_real_decision_table": (
+        "same restoration: the owner ledger port must hold save_and_restore through the "
+        "second unchanged residue observation and climb to preserve_via_temp_index only "
+        "on the third, matching the pinned escalation timing in "
+        "tests/test_integration_owner.py"
+    ),
+}
+
 _ROOT = Path("/fake/root")
 
 _MISSING = "<missing>"

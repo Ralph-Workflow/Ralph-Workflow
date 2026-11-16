@@ -448,7 +448,7 @@ def _recover_unresolved_integrating(
             retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             record_retained=True,
         )
-    if _retained_resolution_is_stale(root, record) and _recorded_identity_changed_or_dirty(
+    if _retained_resolution_is_stale(root, record) and _recorded_identity_moved(
         root, record
     ):
         return _replay_stale_resolution(
@@ -468,30 +468,14 @@ def _recover_unresolved_integrating(
     )
 
 
-def _recorded_identity_changed_or_dirty(root: Path, record: IntegrationRecord) -> bool:
-    expected = record.pre_feature_sha
+def _recorded_identity_moved(root: Path, record: IntegrationRecord) -> bool:
     try:
         import ralph.git.operations as _git_ops
 
         head = _git_ops.get_head_sha(root)
     except (OSError, RuntimeError, ValueError, KeyError):
         return True
-    if head != expected:
-        return True
-    return _has_tracked_uncommitted_work(root)
-
-
-def _has_tracked_uncommitted_work(root: Path) -> bool:
-    from ralph.git.subprocess_runner import run_git
-
-    status = run_git(
-        ("status", "--porcelain", "--untracked-files=no"),
-        cwd=root,
-        label="recovery:recorded-identity-status",
-    )
-    if status.returncode != 0:
-        return False
-    return bool(status.stdout.splitlines())
+    return head != record.pre_feature_sha
 
 
 def _recover_pending_merge_preflight(

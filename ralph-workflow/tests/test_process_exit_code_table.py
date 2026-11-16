@@ -74,12 +74,14 @@ _NEW_ANSWER_LABELS = (
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_every_emitted_label_has_an_exit_code_decision": (
         "the reviewed inventory gains the two integration-preservation reapply labels, whose "
-        "nonzero exits keep the loud default"
+        "nonzero exits keep the loud default, and drops the retired "
+        "recovery:recorded-identity-status probe, which disappeared with the dirty-tree half "
+        "of the recorded-identity check"
     ),
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "6069ee23eb7898d3f34b1e9ffd9741f92980b48f271a56b9a2ca0c48c22f9894"
+    "3b7a665070551481578e38c7d49ee5bf236132dc3f4752cc9a13c3a54d6d7db0"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory replaces git-rebase:diff with the four "
@@ -88,7 +90,9 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "git-completion-in-place, git-append-only-attributes, git-rm-resolved, "
     "the recovery:completed-rebase-* receipt checks, pending-rebase:land-commit, and "
     "pending-rebase:land-ref, and the integration-preservation:reapply-work-diff and "
-    "integration-preservation:reapply-work-diff-cached reapply steps. These are "
+    "integration-preservation:reapply-work-diff-cached reapply steps. It also removes the "
+    "retired recovery:recorded-identity-status probe, which disappeared with the "
+    "dirty-tree half of the recorded-identity check. These are "
     "real recovery and conflict-resolution operations whose nonzero exits must retain the "
     "loud default."
 )

@@ -31,6 +31,25 @@ from ralph.pipeline.integration_observation import (
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_residue_repeats_climb_the_fallback_ladder": (
+        "commit 0a563b84a retimed cleanup-ladder escalation one observation early, "
+        "contradicting the pinned owner contract in tests/test_integration_owner.py "
+        "(escalation on the third unchanged observation); the trace is restored so the "
+        "ladder climbs one rung per observation after the repeat_threshold charge lands"
+    ),
+    "test_phase_owned_repeats_climb_the_same_ladder": (
+        "same restoration for phase-owned attribution: commit_via_commit_phase holds "
+        "through the second identical observation and the ladder climbs one rung per "
+        "subsequent observation"
+    ),
+    "test_dirt_signature_repeat_counts_drive_the_climb": (
+        "same restoration: five unchanged save_and_restore observations climb to "
+        "adapt_environment_and_retry (signature_attempts - repeat_threshold rungs) as "
+        "pinned before 0a563b84a"
+    ),
+}
+
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_residue_repeats_climb_the_fallback_ladder": (

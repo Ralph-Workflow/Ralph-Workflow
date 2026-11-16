@@ -323,9 +323,14 @@ def _ladder_dispatch_or_direct(
     *,
     direct: NextAction,
 ) -> NextAction:
-    if attempts.repeat_counts and attempts.repeat_pressure(
-        repeat_count=attempts.repeat_count_for(observation, direct),
-        signature_attempts=attempts.signature_attempts(observation) + 1,
+    repeat_count = attempts.repeat_count_for(observation, direct)
+    if (
+        attempts.repeat_counts
+        and repeat_count >= attempts.repeat_threshold
+        and attempts.repeat_pressure(
+            repeat_count=repeat_count,
+            signature_attempts=attempts.signature_attempts(observation) + 1,
+        )
     ):
         return _ladder_action_skipping_resolver(_escalated_rung(attempts.rung), observation)
     return direct
@@ -365,9 +370,14 @@ def _cleanup_escalation_action(
     *,
     direct: NextAction,
 ) -> NextAction | None:
-    if not attempts.repeat_counts or not attempts.repeat_pressure(
-        repeat_count=attempts.repeat_count_for(observation, direct),
-        signature_attempts=attempts.signature_attempts(observation) + 1,
+    repeat_count = attempts.repeat_count_for(observation, direct)
+    if (
+        not attempts.repeat_counts
+        or repeat_count < attempts.repeat_threshold
+        or not attempts.repeat_pressure(
+            repeat_count=repeat_count,
+            signature_attempts=attempts.signature_attempts(observation) + 1,
+        )
     ):
         return None
     climbed = attempts.signature_attempts(observation) - attempts.repeat_threshold
