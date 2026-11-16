@@ -71,6 +71,7 @@ __all__ = [
     "escalate_record_fact_outcome",
     "integration_action",
     "integration_owner_seam",
+    "recover_target_resolution",
     "reduce",
     "resolve_conflicted_rebase",
 ]
@@ -133,6 +134,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "escalate_record_fact_outcome": (
         "ralph.pipeline._integration_diagnostic_handoff",
         "escalate_record_fact_outcome",
+    ),
+    "recover_target_resolution": (
+        "ralph.pipeline._remote_reconcile_recovery",
+        "recover_target_resolution",
     ),
     "reduce": ("ralph.pipeline.reducer", "reduce"),
     "resolve_conflicted_rebase": (
