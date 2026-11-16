@@ -82,6 +82,7 @@ from ralph.pipeline.conflict_resolution.session import (
     resolution_chain_agents,
 )
 from ralph.pipeline.conflict_resolution.sight import (
+    ConflictSight,
     classify_unmerged_conflicts,
     declared_decision_paths,
     out_of_reach_escalation_message,
@@ -459,6 +460,22 @@ def _prepare_conflicted_paths(
         return (), False, (), None
     session.out_of_reach_paths = ()
     kinds = observer.classify_unmerged_conflicts(root, conflicted)
+    policy_gitlinks = [path for path, kind in kinds.items() if kind is ConflictSight.GITLINK_POLICY]
+    if policy_gitlinks:
+        from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+            _pick_and_stage_gitlinks,
+        )
+
+        staged_links = set(_pick_and_stage_gitlinks(root, policy_gitlinks, session.gitlink_policy))
+        for link in staged_links:
+            kinds.pop(link, None)
+        conflicted = tuple(path for path in conflicted if path not in staged_links)
+        if not conflicted:
+            emit_conflict_phase_line(
+                display, "gitlink conflicts staged per policy without spending the resolution chain"
+            )
+            return (), True, (), None
+
     unreachable = out_of_reach_paths(kinds)
     reasons: dict[str, str] = (
         observer.out_of_reach_reasons(kinds)
@@ -518,11 +535,13 @@ def _prepare_conflicted_paths(
         return remaining, None, decisions, integration_status
     if session.out_of_reach_paths:
         _escalate_unreachable_remainder(session, display)
-        return (), False, (), integration_status
-    emit_conflict_phase_line(
-        display, "mechanical conflicts staged without spending the resolution chain"
-    )
-    return (), True, (), integration_status
+        outcome = False
+    else:
+        emit_conflict_phase_line(
+            display, "mechanical conflicts staged without spending the resolution chain"
+        )
+        outcome = True
+    return (), outcome, (), integration_status
 
 
 def _declared_decision_status(root: Path, paths: tuple[str, ...]) -> IntegrationStatus | None:

@@ -670,6 +670,18 @@ def finish_resolved_rebase_stops(root: Path, target: str) -> bool:
 def _stage_observed_resolutions(root: Path, paths: tuple[str, ...]) -> bool:
     if not paths:
         return True
+    from ralph.git.merge import conflict_stage_entries
+    from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+        _pick_and_stage_gitlinks,
+    )
+
+    entries = conflict_stage_entries(root, paths)
+    gitlink_paths = [
+        p for p, stg in entries.items() if any(m == "160000" for m, _h in stg.values())
+    ]
+    if gitlink_paths:
+        _pick_and_stage_gitlinks(root, gitlink_paths, _ACTIVE_GITLINK_POLICY.get())
+
     kinds = classify_conflict_kinds(root, paths)
     resolve_completion_in_place(root, paths, kinds)
     stageable = tuple(

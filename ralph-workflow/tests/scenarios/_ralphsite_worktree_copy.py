@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
 from tests._scenario_git import commit_file, git
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -197,9 +198,7 @@ def setup_ralphsite_wt02_worktree(root: Path, *, seed_ledger: bool = True) -> tu
 
     if not rebase_in_progress(root):
         raise AssertionError("wt-02 fixture did not pause in a conflicted rebase")
-    from ralph.pipeline import adopt_resolving_rebase_record
-
-    adopt_resolving_rebase_record(root, "main")
+    adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, RALPHSITE_VENDOR_PATH)
 
 
@@ -282,9 +281,7 @@ def setup_ralphsite_wt04_worktree(root: Path, *, seed_ledger: bool = True) -> tu
 
     if not rebase_in_progress(root):
         raise AssertionError("wt-04 fixture did not pause in a conflicted rebase")
-    from ralph.pipeline import adopt_resolving_rebase_record
-
-    adopt_resolving_rebase_record(root, "main")
+    adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, RALPHSITE_VENDOR_PATH)
 
 

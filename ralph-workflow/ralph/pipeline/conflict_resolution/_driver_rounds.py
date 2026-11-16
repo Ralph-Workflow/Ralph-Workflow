@@ -123,20 +123,30 @@ def _paths_still_unresolved(
     substantive: frozenset[str],
     observer: WorktreeConflictObserver,
 ) -> tuple[str, ...]:
+    from ralph.git.merge import conflict_stage_entries, stage_paths, unmerged_paths
+    from ralph.pipeline.conflict_resolution.deterministic_resolution import (
+        _pick_and_stage_gitlinks,
+    )
+
+    entries = conflict_stage_entries(root, conflicted)
+    gitlink_paths = [
+        p for p, stg in entries.items() if any(m == "160000" for m, _h in stg.values())
+    ]
+    if gitlink_paths:
+        _pick_and_stage_gitlinks(root, gitlink_paths, None)
+
     marked = list(observer.paths_with_conflict_markers(root, conflicted))
     decisions = set(decision_paths)
     stageable = [
         path
         for path in conflicted
         if path not in marked
-        and path not in decisions
         and observer.path_exists(root / path)
         and not observer.is_effectively_empty(root / path)
     ]
     if stageable:
-        from ralph.git.merge import stage_paths
-
         stage_paths(root, tuple(stageable))
+    unmerged = set(unmerged_paths(root))
     emptied = (
         path
         for path in conflicted
@@ -152,7 +162,7 @@ def _paths_still_unresolved(
     )
     seen: set[str] = set()
     unresolved: list[str] = []
-    for path in (*marked, *emptied, *vanished):
+    for path in (*marked, *emptied, *vanished, *(p for p in conflicted if p in unmerged)):
         if path not in seen:
             seen.add(path)
             unresolved.append(path)

@@ -86,6 +86,11 @@ class _PsutilProcessAdapter:
         return self.raw.pid
 
     @property
+    def returncode(self) -> int | None:
+        raw_rc: object = getattr(self.raw, "returncode", None)
+        return int(raw_rc) if isinstance(raw_rc, int) and not isinstance(raw_rc, bool) else None
+
+    @property
     def info(self) -> dict[str, int]:
         return {
             str(key): int(value) for key, value in self.raw.info.items() if isinstance(value, int)

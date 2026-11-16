@@ -239,7 +239,6 @@ def ensure_session_controller(
             session.ledger = active_controller.ledger
             session.unavailability_store = active_controller.unavailability_store
         return active_controller
-
     if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
         clock = pipeline_deps.recovery_clock
     elif isinstance(ledger, AgentFailureLedger):

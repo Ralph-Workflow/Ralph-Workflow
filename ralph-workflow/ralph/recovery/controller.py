@@ -526,6 +526,12 @@ def _attempt_cooldown_reasons(
     watchdog_cooldown = None if resumable else watchdog_unavailability_reason(exc)
     if cooldown_reason is None:
         cooldown_reason = watchdog_cooldown
+    if cooldown_reason is None and (
+        isinstance(exc, ConnectionError) or type(exc).__name__ == "SupervisionInfrastructureError"
+    ):
+        cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
+    if cooldown_reason is None and type(exc).__name__ == "AgentInactivityTimeoutError":
+        cooldown_reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     return cooldown_reason, watchdog_cooldown
 
 

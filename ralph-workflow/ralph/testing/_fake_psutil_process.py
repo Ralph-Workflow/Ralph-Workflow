@@ -41,6 +41,16 @@ class FakePsutilProcess:
     def info(self) -> dict[str, int]:
         return {"pid": self.pid, "ppid": self.ppid}
 
+    @property
+    def returncode(self) -> int | None:
+        if self._killed:
+            return -9
+        if self._terminated:
+            return -15
+        if not self._running:
+            return 0
+        return None
+
     def is_running(self) -> bool:
         return self._running and not self._terminated and not self._killed
 
