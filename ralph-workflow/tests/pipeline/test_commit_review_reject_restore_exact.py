@@ -228,6 +228,73 @@ def test_commit_review_reject_restores_prework_working_tree_and_proposal_is_exac
     assert (root / "README.md").read_bytes() == _MODIFIED_TRACKED_PAYLOAD
 
 
+_HEAD_CONFIG_PAYLOAD = b"mode: head\n"
+_BASELINE_CONFIG_PAYLOAD = b"mode: run-start baseline\n"
+
+
+def test_commit_review_reject_deleted_tracked_file_restores_baseline_not_head(
+    tmp_path: Path,
+    tmp_git_repo: Path,
+) -> None:
+    root = Path(tmp_git_repo)
+
+    tracked_config = root / "src" / "config.yaml"
+    tracked_config.parent.mkdir(parents=True, exist_ok=True)
+    tracked_config.write_bytes(_HEAD_CONFIG_PAYLOAD)
+    route_run_git(["add", "src/config.yaml"], cwd=root, label="add")
+    route_run_git(["commit", "-m", "add tracked config at head content"], cwd=root, label="commit")
+
+    tracked_config.write_bytes(_BASELINE_CONFIG_PAYLOAD)
+
+    baseline = seal_baseline(root, _RUN_ID)
+    assert baseline is not None
+    baseline_ref = baseline.ref
+    prework_snapshot = _snapshot_tree(root, exclude_ignored=True)
+
+    tracked_config.unlink()
+
+    seal = seal_pending(root, _RUN_ID, _ITERATION)
+    preflight(root, seal.ref)
+
+    entries = {e.path: e for e in diff_tree(root, ref=seal.ref, base=baseline_ref)}
+    assert entries["src/config.yaml"].status == "D"
+
+    bundle = load_policy(_DEFAULT_POLICY_DIR)
+    state = PipelineState(
+        phase="development_commit_review",
+        commit_review_rejections=0,
+        rollback_baseline_ref=baseline_ref,
+    )
+    pending_state, _ = reduce(
+        state,
+        CommitReviewRejected(
+            reason="proposal rejected: tracked file deletion",
+            ref=seal.ref,
+            hard=True,
+        ),
+        bundle.pipeline,
+    )
+    assert pending_state.rollback_pending is True
+    assert pending_state.rollback_ref == seal.ref
+
+    checkpoint_path = rollback_checkpoint_path_for_root(root)
+    cleared_state = execute_pending_rollback(
+        pending_state,
+        root,
+        bundle.pipeline,
+        checkpoint_path=checkpoint_path,
+    )
+    assert cleared_state.rollback_pending is False
+    assert cleared_state.rollback_ref is None
+
+    restored = root / "src" / "config.yaml"
+    assert restored.exists()
+    assert restored.read_bytes() == _BASELINE_CONFIG_PAYLOAD
+    assert restored.read_bytes() != _HEAD_CONFIG_PAYLOAD
+
+    assert _snapshot_tree(root, exclude_ignored=True) == prework_snapshot
+
+
 def test_commit_review_reject_clean_baseline_restores_head_exact(
     tmp_path: Path,
     tmp_git_repo: Path,

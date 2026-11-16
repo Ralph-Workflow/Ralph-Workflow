@@ -248,7 +248,7 @@ tests/pipeline/test_run_loop_waiting_state_logs.py|0,2,0
 tests/pipeline/test_run_loop_waiting_state_real_controller.py|0,4,0
 tests/pipeline/test_run_time_report_shutdown.py|2,0,1
 tests/pipeline/test_runner_missing_plan_handoff_recovery.py|0,3,0
-tests/pipeline/test_target_reconcile_retry_later_retained.py|0,2,0
+tests/pipeline/test_target_reconcile_retry_later_retained.py|0,3,0
 tests/pipeline/test_terminal_mcp_error_per_entry_path.py|0,4,4
 tests/pipeline/test_terminal_mcp_error_supervisor_ordering.py|0,3,0
 tests/process/monitor/test_dispatch_all_transports.py|0,2,0

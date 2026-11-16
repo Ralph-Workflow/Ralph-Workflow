@@ -280,6 +280,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_cleanup_pipeline", "_LoopContext"),
         ),
         (
+            "tests/pipeline/test_target_reconcile_retry_later_retained.py",
+            "ralph.pipeline._remote_reconcile_recovery",
+            ("_continue_target_reconciliation",),
+        ),
+        (
             "tests/recovery/test_agent_unavailable_tracker.py",
             "ralph.pipeline.run_loop",
             ("_apply_connectivity_check",),
