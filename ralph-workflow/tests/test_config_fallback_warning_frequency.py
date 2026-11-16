@@ -323,7 +323,6 @@ def test_fallback_warning_registry_capacity_bounded_and_evicts_oldest(
         )
         assert emitted is True
 
-    # The oldest entries were evicted by LRU capacity bound, so re-emitting for cfg_0 emits again
     re_emitted_oldest = emit_config_failure_warning(
         tmp_path / "cfg_0.toml",
         kind="pipeline",
@@ -334,7 +333,6 @@ def test_fallback_warning_registry_capacity_bounded_and_evicts_oldest(
     )
     assert re_emitted_oldest is True
 
-    # The latest entry is still cached in registry, so re-emitting is suppressed
     re_emitted_latest = emit_config_failure_warning(
         tmp_path / f"cfg_{max_capacity + 4}.toml",
         kind="pipeline",
