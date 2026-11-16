@@ -69,3 +69,26 @@ def test_a_shard_root_with_recent_shard_activity_is_kept(
     assert _run_one_shard() == 0
 
     assert long_running.exists()
+
+
+def test_each_shard_keeps_its_temporary_files_inside_its_own_shard_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTEST_WORKERS", "2")
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", ())
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
+
+    exit_code = test_suites_module.run_test_suites(
+        cwd=Path.cwd(),
+        spawner=spawner,
+        file_discoverer=lambda _cwd: ("tests/test_alpha.py", "tests/test_bravo.py"),
+        file_weigher=lambda _cwd, _path: 1,
+        wait=lambda _seconds: None,
+    )
+
+    assert exit_code == 0
+    for command, _cwd, env in spawner.calls:
+        shard_root = Path(command[command.index("--basetemp") + 1]).parent
+        assert Path(env["TMPDIR"]).is_relative_to(shard_root)

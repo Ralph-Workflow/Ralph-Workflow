@@ -1155,6 +1155,8 @@ def _run_shards(
             )
             shard_basetemp = basetemp_root / f"shard-{shard_index}"
             shard_basetemp.mkdir(mode=0o700, parents=True, exist_ok=True)
+            shard_tmpdir = basetemp_root / f"shard-{shard_index}-tmp"
+            shard_tmpdir.mkdir(mode=0o700, parents=True, exist_ok=True)
             processes.append(
                 spawner(
                     _shard_command(
@@ -1164,7 +1166,7 @@ def _run_shards(
                         xdist_workers=xdist_workers,
                     ),
                     cwd=cwd,
-                    env=env,
+                    env={**env, "TMPDIR": str(shard_tmpdir)},
                 )
             )
     except OSError as exc:
