@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
@@ -118,7 +119,16 @@ def handle_ralph_reindex(
             options=options,
             cancel=cancel_callable,
         )
-    except Exception as exc:
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        TypeError,
+        TimeoutError,
+        sqlite3.Error,
+    ) as exc:
         logger.exception("ralph_reindex crashed")
         return ToolResult(
             content=[

@@ -132,9 +132,6 @@ def _matching_banned_rules(selectors: Iterable[str]) -> tuple[str, ...]:
 _ALLOWED_CONFIG_BYPASSES: frozenset[tuple[str, str]] = frozenset(
     {
         ("tests/**/*.py", "S101"),
-        ("ralph/display/context.py", "BLE001"),
-        ("ralph/display/line_sanitizer.py", "BLE001"),
-        ("ralph/pipeline/integration_resolution.py", "BLE001"),
     }
 )
 

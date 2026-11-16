@@ -83,7 +83,6 @@ __all__ = [
 class _CliOptions:
     paths: tuple[str, ...]
     json_output: bool
-    enforce: bool = False
     governed: bool = False
 
 
@@ -138,17 +137,12 @@ def audit_repository(start: Path | None = None) -> list[Finding]:
 def _parse_cli(argv: Sequence[str]) -> _CliOptions:
     paths: list[str] = []
     json_output = False
-    enforce = False
     governed = False
     index = 0
     while index < len(argv):
         argument = argv[index]
         if argument == "--json":
             json_output = True
-            index += 1
-            continue
-        if argument in {"--enforce", "--strict"}:
-            enforce = True
             index += 1
             continue
         if argument == "--governed":
@@ -165,10 +159,10 @@ def _parse_cli(argv: Sequence[str]) -> _CliOptions:
                 raise _AuditInputError("--paths requires at least one path")
             continue
         raise _AuditInputError(f"unrecognized argument: {argument}")
-    selected_scopes = int(bool(paths)) + int(enforce) + int(governed)
+    selected_scopes = int(bool(paths)) + int(bool(governed))
     if selected_scopes > 1:
-        raise _AuditInputError("choose only one of --paths, --enforce, or --governed")
-    return _CliOptions(tuple(paths), json_output, enforce, governed)
+        raise _AuditInputError("choose only one of --paths or --governed")
+    return _CliOptions(tuple(paths), json_output, governed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

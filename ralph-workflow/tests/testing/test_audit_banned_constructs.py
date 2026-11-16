@@ -18,9 +18,15 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_default_governed_paths_scanned_when_no_paths_specified": (
+    "test_default_run_audits_tracked_python_outside_governed_paths": (
         "assert that pyproject.toml, _driver_rounds.py, pydantic_validation_errors.py, "
         "and banned constructs testing modules are included in DEFAULT_GOVERNED_PATHS"
+    ),
+    "test_audit_banned_constructs_regression_removed_scope_flags_are_rejected": (
+        "the --enforce and --strict scope flags select no scope of their own and "
+        "duplicate the default full tracked-Python scan, so they are removed; the "
+        "default remains the full tracked-Python scan and --governed remains the "
+        "bounded scope"
     ),
 }
 
@@ -627,3 +633,52 @@ def test_default_run_audits_tracked_python_outside_governed_paths(
     assert code == 1
     assert "ralph/outside_governed.py" in captured.out
     assert "eval call" in captured.out
+
+
+@pytest.mark.parametrize("flag", ["--enforce", "--strict"])
+def test_audit_banned_constructs_regression_removed_scope_flags_are_rejected(
+    flag: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = main([flag])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert f"unrecognized argument: {flag}" in captured.err
+
+
+def test_scope_flags_are_mutually_exclusive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = _write(tmp_path, "ralph/mod.py", "eval('value')\n")
+
+    code = main(["--paths", str(target), "--governed"])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert "choose only one of --paths or --governed" in captured.err
+
+
+def test_default_scope_is_the_full_tracked_python_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write(tmp_path, "ralph/tracked.py", "eval('value')\n")
+
+    def _fake_run_process(cmd: str, args: tuple[str, ...], options: object = None) -> object:
+        if args == ("rev-parse", "--show-toplevel"):
+            return SimpleNamespace(returncode=0, stdout=str(tmp_path), stderr="")
+        if args == ("ls-files", "-z", "--", "*.py"):
+            return SimpleNamespace(returncode=0, stdout="ralph/tracked.py\0", stderr="")
+        return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+    monkeypatch.setattr("ralph.testing._banned_constructs_scope.run_process", _fake_run_process)
+    monkeypatch.chdir(tmp_path)
+
+    code = main([])
+    captured = capsys.readouterr()
+
+    assert code == 1
+    assert "ralph/tracked.py" in captured.out
