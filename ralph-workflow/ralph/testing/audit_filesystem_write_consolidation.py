@@ -1,31 +1,23 @@
 from __future__ import annotations
 
-import ast
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.testing._audit_filesystem_write_exemptions import EXEMPT_CALL_SITES
-from ralph.testing._audit_scope import build_parent_map_from_nodes, qualified_scope
-from ralph.testing._filesystem_write_consolidation_rules import (
-    _call_root_name,
-    _import_aliases,
-    _path_variable_names,
-    _qualified_violation_message,
-    _raw_builtin_open_call,
-    _raw_direct_import_mutation_call,
-    _raw_fdopen_call,
-    _raw_qualified_mutation_call,
-    _raw_write_text_call,
-    _violation_message,
-)
+from ralph.testing._filesystem_write_scan import FilesystemWriteViolation, _scan_module
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+__all__ = [
+    "EXEMPT_CALL_SITES",
+    "FilesystemWriteViolation",
+    "audit_filesystem_write_consolidation",
+    "main",
+]
+
 _DEFAULT_PACKAGE_ROOTS: tuple[str, ...] = ("ralph",)
-_MODE_POSITION: int = 1
 
 _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
     {
@@ -35,17 +27,6 @@ _DEFAULT_EXEMPT_PATHS: frozenset[str] = frozenset(
         "testing/audit_filesystem_write_consolidation.py",
     }
 )
-
-
-@dataclass(frozen=True)
-class FilesystemWriteViolation:
-    kind: str
-    file_path: str
-    line: int
-    message: str
-
-    def __str__(self) -> str:
-        return f"{self.file_path}:{self.line}: [{self.kind}] {self.message}"
 
 
 def _coerce_exempt_paths(
@@ -81,181 +62,6 @@ def _collect_python_files(root: Path) -> list[Path]:
             continue
         result.append(path)
     return result
-
-
-def _parse_candidate_module(
-    source: str, module_path: Path, rel_path: str
-) -> ast.Module | FilesystemWriteViolation:
-    try:
-        return ast.parse(source, filename=str(module_path))
-    except SyntaxError as exc:
-        return FilesystemWriteViolation(
-            kind="invalid_module",
-            file_path=rel_path,
-            line=exc.lineno or 0,
-            message=(
-                "module could not be parsed; restore valid source before the "
-                "filesystem-write audit can evaluate it"
-            ),
-        )
-
-
-def _read_candidate_source(module_path: Path, rel_path: str) -> str | FilesystemWriteViolation:
-    try:
-        return module_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return FilesystemWriteViolation(
-            kind="unreadable_module",
-            file_path=rel_path,
-            line=0,
-            message=(
-                "module could not be read; restore readable source and ensure the audit can walk it"
-            ),
-        )
-
-
-def _prepare_module(
-    module_path: Path, rel_path: str
-) -> tuple[ast.Module, str] | list[FilesystemWriteViolation]:
-    source_or_violation = _read_candidate_source(module_path, rel_path)
-    if isinstance(source_or_violation, FilesystemWriteViolation):
-        return [source_or_violation]
-    tree_or_violation = _parse_candidate_module(source_or_violation, module_path, rel_path)
-    if isinstance(tree_or_violation, FilesystemWriteViolation):
-        return [tree_or_violation]
-    return tree_or_violation, source_or_violation
-
-
-def _scan_module(
-    module_path: Path,
-    rel_path: str,
-) -> list[FilesystemWriteViolation]:
-    prepared = _prepare_module(module_path, rel_path)
-    if isinstance(prepared, list):
-        return prepared
-    tree, _source = prepared
-
-    nodes = list(ast.walk(tree))
-    parents = build_parent_map_from_nodes(nodes)
-    (
-        module_aliases,
-        direct_mutations,
-        direct_open_aliases,
-        open_module_aliases,
-        direct_fdopen_aliases,
-        fdopen_module_aliases,
-    ) = _import_aliases(nodes)
-    path_variables = _path_variable_names(nodes, module_aliases, parents)
-    violations: list[tuple[FilesystemWriteViolation, ast.Call]] = []
-    for node in nodes:
-        if not isinstance(node, ast.Call):
-            continue
-        attr = _raw_write_text_call(node)
-        if attr is not None:
-            violation = FilesystemWriteViolation(
-                kind="raw_write_text",
-                file_path=rel_path,
-                line=node.lineno,
-                message=_violation_message(attr),
-            )
-            violations.append((violation, node))
-            continue
-        if _raw_fdopen_call(node, direct_fdopen_aliases, fdopen_module_aliases):
-            violations.append(
-                (
-                    FilesystemWriteViolation(
-                        kind="raw_fdopen_write",
-                        file_path=rel_path,
-                        line=node.lineno,
-                        message=(
-                            "raw os.fdopen() with a write/append mode bypasses the "
-                            "filesystem activity guard; route stable content through "
-                            "ralph.mcp.artifacts.idempotent_write, or register the call "
-                            "site in EXEMPT_CALL_SITES naming the transient or "
-                            "append-stream lifecycle contract"
-                        ),
-                    ),
-                    node,
-                )
-            )
-            continue
-        if _raw_builtin_open_call(node, direct_open_aliases, open_module_aliases):
-            violations.append(
-                (
-                    FilesystemWriteViolation(
-                        kind="raw_open_write",
-                        file_path=rel_path,
-                        line=node.lineno,
-                        message=(
-                            "raw builtin open() with a write/append mode bypasses the "
-                            "stable-path mutation guard; route through "
-                            "ralph.mcp.artifacts.idempotent_write "
-                            "(write_text_if_changed / atomic_write_text_if_changed / "
-                            "write_bytes_if_changed / atomic_write_bytes_if_changed), "
-                            "or register the call site in EXEMPT_CALL_SITES naming the "
-                            "behavioral contract (deliberate binary append, "
-                            "deliberately timestamped, atomic-create, etc.)"
-                        ),
-                    ),
-                    node,
-                )
-            )
-            continue
-        direct_violation = _direct_import_violation(node, direct_mutations, rel_path)
-        if direct_violation is not None:
-            violations.append((direct_violation, node))
-            continue
-        qattr = _raw_qualified_mutation_call(node, module_aliases, path_variables, parents)
-        if qattr is not None:
-            qualifier = _call_receiver_root(node) or "?"
-            violations.append(
-                (
-                    FilesystemWriteViolation(
-                        kind=f"raw_{qattr}",
-                        file_path=rel_path,
-                        line=node.lineno,
-                        message=_qualified_violation_message(qualifier, qattr),
-                    ),
-                    node,
-                )
-            )
-    return _registered_violations(violations, rel_path, parents)
-
-
-def _registered_violations(
-    violations: list[tuple[FilesystemWriteViolation, ast.Call]],
-    rel_path: str,
-    parents: dict[ast.AST, ast.AST],
-) -> list[FilesystemWriteViolation]:
-    kept: list[FilesystemWriteViolation] = []
-    for violation, node in violations:
-        scope = qualified_scope(node, parents)
-        if (rel_path, scope, violation.kind) in EXEMPT_CALL_SITES:
-            continue
-        kept.append(violation)
-    return kept
-
-
-def _call_receiver_root(node: ast.Call) -> str | None:
-    if not isinstance(node.func, ast.Attribute):
-        return None
-    return _call_root_name(node.func.value)
-
-
-def _direct_import_violation(
-    node: ast.Call,
-    direct_mutations: dict[str, str],
-    rel_path: str,
-) -> FilesystemWriteViolation | None:
-    direct_attr = _raw_direct_import_mutation_call(node, direct_mutations)
-    if direct_attr is None:
-        return None
-    return FilesystemWriteViolation(
-        kind=f"raw_{direct_attr}",
-        file_path=rel_path,
-        line=node.lineno,
-        message=_qualified_violation_message("import", direct_attr),
-    )
 
 
 def audit_filesystem_write_consolidation(
