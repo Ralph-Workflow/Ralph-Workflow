@@ -94,6 +94,7 @@ from ralph.agents.invoke.opencode_subagent_sessions import (
 )
 from ralph.agents.invoke.termination_recorder import return_code_may_be_a_signal
 from ralph.agents.parsers import resolve_parser_key
+from ralph.agents.parsers.content_channel import ContentChannel
 from ralph.agents.parsers.line_channel import line_channel
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.checked_accessors import optional_float
@@ -148,7 +149,6 @@ if TYPE_CHECKING:
 
     from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-    from ralph.agents.parsers.content_channel import ContentChannel
     from ralph.mcp.server._activity_sink import ActivitySink
     from ralph.process.manager import ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor
@@ -188,6 +188,15 @@ def _subagent_activity_observed(watchdog: _EvidenceSummaryWatchdog) -> bool | No
     if counter is None:
         return False
     return counter > 0
+
+
+def _record_parser_subagent_activity(
+    parser_key: str,
+    watchdog: IdleWatchdog,
+    queued_line: str,
+) -> None:
+    if line_channel(parser_key, queued_line) is ContentChannel.SUBAGENT:
+        watchdog.record_subagent_work(description=queued_line)
 
 
 def _is_idle_watchdog(value: object) -> TypeGuard[IdleWatchdog]:
@@ -1196,6 +1205,7 @@ class ProcessLineReader:
                 self._raw_overflow.append(line)
 
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
+        _record_parser_subagent_activity(self._parser_key, watchdog, queued_line)
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is None:
             self._last_activity_meaningful[0] = False

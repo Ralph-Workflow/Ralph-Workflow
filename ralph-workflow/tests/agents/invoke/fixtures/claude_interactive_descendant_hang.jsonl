@@ -1,0 +1,3 @@
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Claude Interactive starts operation."}, {"type": "tool_use", "id": "toolu_read", "name": "Read", "input": {"path": "nonexistent.txt"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_read", "content": [{"type": "text", "text": "file not found"}], "is_error": true}]}}
+agent parent completed

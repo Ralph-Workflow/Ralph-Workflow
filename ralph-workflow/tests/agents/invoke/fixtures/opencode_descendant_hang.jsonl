@@ -1,0 +1,4 @@
+{"type": "step_start", "timestamp": 1785000001000, "sessionID": "s_0001", "part": {"id": "p_0001", "messageID": "m_0001", "sessionID": "s_0001", "type": "step-start"}}
+{"type": "tool_use", "timestamp": 1785000002000, "sessionID": "s_0001", "part": {"type": "tool", "tool": "read", "callID": "c_0001", "state": {"status": "completed", "input": {"filePath": "/workspace/hello.txt"}, "output": "hello", "time": {"start": 1786032889766, "end": 1786032889770}}, "id": "p_0002", "sessionID": "s_0001", "messageID": "m_0001"}}
+{"type": "step_finish", "timestamp": 1785000003000, "sessionID": "s_0001", "part": {"id": "p_0003", "reason": "tool-calls", "messageID": "m_0001", "sessionID": "s_0001", "type": "step-finish"}}
+{"type": "text", "timestamp": 1785000004000, "sessionID": "s_0001", "part": {"id": "p_0004", "messageID": "m_0002", "sessionID": "s_0001", "type": "text", "text": "agent parent completed"}}

@@ -79,7 +79,7 @@ _COMMANDS: dict[str, str] = {
 _REGISTRY_KEYS: tuple[str, ...] = list_parser_keys()
 
 _CAPTURES: dict[str, Path | None] = {
-    "agy": _INVOKE_FIXTURES / "agy_wire_tool.jsonl",
+    "agy": _DISPLAY_FIXTURES / "agy_wire_subagent.jsonl",
     "claude": _DISPLAY_FIXTURES / "claude_wire.jsonl",
     "claude_interactive": _CLAUDE_INTERACTIVE_CAPTURE,
     "codex": _DISPLAY_FIXTURES / "codex_wire.jsonl",
@@ -195,6 +195,32 @@ _SHAPE_CAPTURES: dict[tuple[str, str], Path] = {
     ("pi", "nonzero-exit"): _INVOKE_FIXTURES / "pi_nonzero_exit.jsonl",
     ("pi", "stderr-quota-line"): _INVOKE_FIXTURES / "pi_stderr_quota_line.jsonl",
     ("pi", "auth-error"): _INVOKE_FIXTURES / "pi_auth_error.jsonl",
+    ("agy", "killed"): _INVOKE_FIXTURES / "agy_killed.jsonl",
+    ("claude", "killed"): _INVOKE_FIXTURES / "claude_killed.jsonl",
+    ("claude_interactive", "killed"): _INVOKE_FIXTURES / "claude_interactive_killed.jsonl",
+    ("codex", "killed"): _INVOKE_FIXTURES / "codex_killed.jsonl",
+    ("cursor", "killed"): _INVOKE_FIXTURES / "cursor_killed.jsonl",
+    ("gemini", "killed"): _INVOKE_FIXTURES / "gemini_killed.jsonl",
+    ("generic", "killed"): _INVOKE_FIXTURES / "generic_killed.jsonl",
+    ("kimi", "killed"): _INVOKE_FIXTURES / "kimi_killed.jsonl",
+    ("nanocoder", "killed"): _INVOKE_FIXTURES / "nanocoder_killed.jsonl",
+    ("opencode", "killed"): _INVOKE_FIXTURES / "opencode_killed.jsonl",
+    ("pi", "killed"): _INVOKE_FIXTURES / "pi_killed.jsonl",
+    ("agy", "descendant-hang"): _INVOKE_FIXTURES / "agy_descendant_hang.jsonl",
+    ("claude", "descendant-hang"): _INVOKE_FIXTURES / "claude_descendant_hang.jsonl",
+    ("claude_interactive", "descendant-hang"): _INVOKE_FIXTURES
+    / "claude_interactive_descendant_hang.jsonl",
+    ("codex", "descendant-hang"): _INVOKE_FIXTURES / "codex_descendant_hang.jsonl",
+    ("cursor", "descendant-hang"): _INVOKE_FIXTURES / "cursor_descendant_hang.jsonl",
+    ("gemini", "descendant-hang"): _INVOKE_FIXTURES / "gemini_descendant_hang.jsonl",
+    ("generic", "descendant-hang"): _INVOKE_FIXTURES / "generic_descendant_hang.jsonl",
+    ("kimi", "descendant-hang"): _INVOKE_FIXTURES / "kimi_descendant_hang.jsonl",
+    ("nanocoder", "descendant-hang"): _INVOKE_FIXTURES / "nanocoder_descendant_hang.jsonl",
+    ("opencode", "descendant-hang"): _INVOKE_FIXTURES / "opencode_descendant_hang.jsonl",
+    ("pi", "descendant-hang"): _INVOKE_FIXTURES / "pi_descendant_hang.jsonl",
+    ("opencode", "nonzero-exit"): _INVOKE_FIXTURES / "opencode_nonzero_exit.jsonl",
+    ("opencode", "stderr-quota-line"): _INVOKE_FIXTURES / "opencode_stderr_quota_line.jsonl",
+    ("opencode", "auth-error"): _INVOKE_FIXTURES / "opencode_auth_error.jsonl",
 }
 
 _RECORDED_SHAPE_GAPS: tuple[tuple[str, str, str], ...] = tuple(
@@ -210,12 +236,6 @@ _RECORDED_SHAPE_GAPS: tuple[tuple[str, str, str], ...] = tuple(
 )
 
 _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
-    (
-        "agy",
-        "subagent_activity_observed",
-        "agy_wire_tool.jsonl carries no subagent step; subagent activity is"
-        " populated by the child-liveness seam, not step_update frames",
-    ),
     (
         "claude",
         "subagent_activity_observed",
@@ -646,5 +666,24 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "were updated to assert 'no scripted capture recorded for {shape} of {key}' rather "
         "than requiring an external live CLI session, while exact correspondence is preserved "
         "for all remaining open cells"
+    ),
+    "RALPH_TEST_CHANGE_REASONS agy capture repoint and subagent gap row closure": (
+        "the agy healthy capture is repointed to the committed scripted capture "
+        "tests/display/_fixtures/agy_wire_subagent.jsonl (step_update frames with "
+        "step_type 'subagent'), and the ('agy', 'subagent_activity_observed') gap row "
+        "is closed because a production forwarder in "
+        "ralph/agents/invoke/_process_reader.py (_record_line_activity) now records "
+        "idle-watchdog subagent work for every raw wire line whose parser "
+        "classification is ContentChannel.SUBAGENT, so healthy agy replay populates "
+        "subagent_activity_observed; exact correspondence is preserved for all "
+        "remaining open cells"
+    ),
+    "RALPH_TEST_CHANGE_REASONS register remaining scripted shape captures": (
+        "_SHAPE_CAPTURES registers the 25 remaining non-healthy cells: killed and "
+        "descendant-hang for every parser key, plus opencode nonzero-exit, "
+        "stderr-quota-line, and auth-error, each backed by a scripted fake_cli "
+        "capture under tests/agents/invoke/fixtures/ recorded through the production "
+        "subprocess/reader entry point, so _RECORDED_SHAPE_GAPS is empty while exact "
+        "correspondence is preserved for all remaining open field-gap cells"
     ),
 }
