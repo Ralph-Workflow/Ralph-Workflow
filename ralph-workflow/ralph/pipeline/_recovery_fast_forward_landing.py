@@ -75,7 +75,7 @@ def _land_and_reconcile(
         else:
             ok = False
             skip_reason = str(raw_outcome)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         ff_failed = True
         skip_reason = f"fast-forward raised: {exc}"
         logger.warning("recovery: fast_forward_target raised: {}", exc)

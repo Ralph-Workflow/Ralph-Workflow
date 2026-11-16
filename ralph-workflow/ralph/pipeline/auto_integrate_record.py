@@ -454,7 +454,7 @@ def load_record(
 
     try:
         rebuilt = rebuild_from_git(workspace_root) if rebuild_from_git is not None else None
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         rebuilt = None
     if rebuilt is not None:
         write_record(workspace_root, rebuilt, backend=backend)
@@ -517,7 +517,7 @@ def _migrate_payload_evidence(data_raw: dict[str, object]) -> dict[str, object] 
             if parsed_sequence is None:
                 return _clear_legacy_ownership_and_intervention(data_raw)
             sequence = parsed_sequence
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return _clear_legacy_ownership_and_intervention(data_raw)
 
     is_intervention_flagged = data_raw.get("diagnostic_intervention_required") is True
@@ -575,7 +575,7 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     with_cause = _clamp_loaded_attempt_counters(with_cause)
     try:
         record = IntegrationRecord.model_validate(with_cause)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     from ralph.pipeline._auto_integrate_record_restamp import (
         restamp_fingerprint_mismatch,
@@ -614,7 +614,7 @@ def set_resolving_rebase(
             current.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=resolving),
             backend=backend,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate: could not persist resolving_rebase={} to the durable record: {}",
             resolving,
@@ -650,7 +650,7 @@ def adopt_active_rebase_record(
             pre_target_sha=onto,
         )
         write_record(workspace_root, record, backend=backend)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate: could not adopt the active rebase on '{}' into the durable record: {}",
             target,

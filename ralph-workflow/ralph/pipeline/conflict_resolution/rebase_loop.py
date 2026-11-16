@@ -178,7 +178,7 @@ def _resolve_rebase_in_progress(
             return _resolve_stops(root, target, resolver, effective_cap, session=effective_session)
         finally:
             _ACTIVE_GITLINK_POLICY.reset(policy_token)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "conflict_resolution: rebase resolution loop failed for '{}': {}",
             target,

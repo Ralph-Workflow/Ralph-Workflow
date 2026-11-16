@@ -364,12 +364,10 @@ def post_http_jsonrpc_with_session(
 ) -> tuple[JsonRpcResponse, str | None]:
     if isinstance(endpoint_or_target, HttpEndpointTarget):
         endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
-        assert payload is None
         payload_obj = cast("JsonRpcResponse", target_or_payload)
     elif isinstance(target_or_payload, HttpEndpointTarget):
         endpoint = str(endpoint_or_target)
-        assert payload is not None
-        payload_obj = payload
+        payload_obj = payload or {}
     else:
         endpoint = str(endpoint_or_target)
         payload_obj = target_or_payload if payload is None else payload

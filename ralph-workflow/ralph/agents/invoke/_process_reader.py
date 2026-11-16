@@ -1054,12 +1054,14 @@ class ProcessLineReader:
             _raise_on_relay_health_error(self, _agent_command_name(raw_config))
         if verdict != WatchdogVerdict.FIRE:
             return None
-        assert (
-            self._policy.idle_timeout_seconds is not None
-            or self._policy.max_session_seconds is not None
-        )
+        if (
+            self._policy.idle_timeout_seconds is None
+            and self._policy.max_session_seconds is None
+        ):
+            return None
         fire_reason = watchdog.last_fire_reason
-        assert fire_reason is not None
+        if fire_reason is None:
+            return None
         fire_reason = _reclassify_supervisor_idle_fire(
             fire_reason,
             self._handle,
@@ -1072,8 +1074,7 @@ class ProcessLineReader:
             else self._policy.no_progress_quiet_seconds
             if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
-        )
-        assert timeout_val is not None
+        ) or 0.0
         captured_session_id = self._captured_session_id
         resume_safe = _is_resumable_fire_reason(fire_reason)
         logger.warning(

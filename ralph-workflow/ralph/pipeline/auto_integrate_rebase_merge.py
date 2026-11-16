@@ -505,8 +505,11 @@ def _preserve_refusal_paths(root: Path) -> tuple[str | None, str | None]:
         head_sha, query_ok = observe_branch_sha(root, "HEAD")
         if not query_ok or not head_sha:
             return None, "HEAD unreadable; snapshot refused"
-        backup_ref, _feature_sha = create_stale_resolution_snapshot(root, None, head_sha)
-    except Exception as exc:
+        snapshot_result = create_stale_resolution_snapshot(root, None, head_sha)
+        if isinstance(snapshot_result, Exception):
+            raise snapshot_result
+        backup_ref, _feature_sha = snapshot_result
+    except (TypeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return None, str(exc) or type(exc).__name__
     return backup_ref, None
 
@@ -667,5 +670,5 @@ def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> N
             git_ops.abort_rebase(root)
         elif rebase_in_progress(root):
             abort_rebase_discarding_progress(root)
-    except Exception as abort_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)

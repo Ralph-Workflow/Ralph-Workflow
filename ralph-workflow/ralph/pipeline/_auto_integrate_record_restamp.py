@@ -204,6 +204,6 @@ def restamp_fingerprint_mismatch(
             from ralph.pipeline.auto_integrate_record import IntegrationRecord as _Rec
 
             return _Rec.model_validate(cleared)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return record
     return record

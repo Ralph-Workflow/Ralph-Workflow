@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, cast
 
-from git import InvalidGitRepositoryError, Repo
+from git import GitError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
 from ralph.agents._broker_secret import parent_broker_secret
@@ -125,9 +125,10 @@ def _path_exists_in_head(repo_root: Path, relative_path: str) -> bool:
         repo = Repo(repo_root, search_parent_directories=False)
         try:
             repo.git.cat_file("-e", f"HEAD:{relative_path}")
-            return True
-        except Exception:
+        except (GitError, OSError, RuntimeError, ValueError, KeyError):
             return False
+        else:
+            return True
     except InvalidGitRepositoryError:
         return False
     finally:
@@ -225,9 +226,10 @@ def _resolve_diff_base(repo_root: Path) -> str:
     try:
         repo = Repo(repo_root, search_parent_directories=False)
         repo.git.rev_parse("--verify", "HEAD")
-        return "HEAD"
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    else:
+        return "HEAD"
     finally:
         _close_repo(repo)
 
@@ -304,7 +306,7 @@ def _persist_commit_review_context_to_root(
 
         ws = FsWorkspace(repo_root)
         ws.write(_COMMIT_REVIEW_CONTEXT_PATH, json.dumps(payload, indent=2))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("Could not persist commit review context: {}", exc)
 
 
@@ -339,13 +341,15 @@ def _parse_action_line(text: str) -> CommitReviewAction | None:
         return None
     action = action.strip()
     value = value.strip()
-    try:
-        if action == "delete_file":
-            return CommitReviewAction.model_validate({"action": action, "path": value})
-        if action in ("add_to_gitignore", "add_to_git_exclude"):
-            return CommitReviewAction.model_validate({"action": action, "pattern": value})
+    if action == "delete_file":
+        payload = {"action": action, "path": value}
+    elif action in ("add_to_gitignore", "add_to_git_exclude"):
+        payload = {"action": action, "pattern": value}
+    else:
         return None
-    except Exception:
+    try:
+        return CommitReviewAction.model_validate(payload)
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 
@@ -364,7 +368,7 @@ def _read_commit_review_document(
     try:
         text = ctx.workspace.read(COMMIT_REVIEW_ARTIFACT_PATH)
         document, _ = parse_markdown_document(text)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("{}: failed to parse markdown artifact: {}", phase_name, exc)
         return None
 
@@ -510,38 +514,38 @@ def run_commit_review_stage1_preflight(
 ):
     try:
         ensure_git_initialized(str(repo_root))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("ensure_git_initialized failed: {}", exc)
 
     try:
         untrack_engine_internal_files(repo_root, is_agent_internal_path)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("untrack_engine_internal_files failed: {}", exc)
 
     try:
         from ralph.config.bootstrap import auto_seed_default_gitignore
 
         auto_seed_default_gitignore(repo_root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_seed_default_gitignore failed: {}", exc)
 
     try:
         from ralph.config.bootstrap import auto_seed_default_git_exclude
 
         auto_seed_default_git_exclude(repo_root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_seed_default_git_exclude failed: {}", exc)
 
     try:
         seal = seal_pending(repo_root, run_id, iteration)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("{}: failed to seal proposal tree: {}", phase_name, exc)
         return CommitReviewGateFailed(detail=f"Failed to seal proposal tree: {exc}")
 
     base = _resolve_diff_base(repo_root)
     try:
         diff_entries = diff_tree(repo_root, seal.ref, base=base)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("{}: failed to compute diff-tree: {}", phase_name, exc)
         return CommitReviewGateFailed(detail=f"Failed to compute diff-tree: {exc}")
 
@@ -718,7 +722,7 @@ def _handle_actions_and_reseal(
 
     try:
         report = _apply_commit_review_report(repo_root, artifact)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         _consume_commit_review_artifact(ctx)
         return [CommitReviewGateFailed(detail=f"Failed to apply commit review actions: {exc}")]
 
@@ -733,7 +737,7 @@ def _handle_actions_and_reseal(
         try:
             seal = seal_pending(repo_root, run_id, iteration)
             diff_entries = diff_tree(repo_root, seal.ref, base=base)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             _consume_commit_review_artifact(ctx)
             return [CommitReviewGateFailed(detail=f"Failed to reseal proposal tree: {exc}")]
 
@@ -834,7 +838,7 @@ def _resolve_workspace_root_safe(ctx: PhaseContext) -> tuple[Path | None, str]:
     try:
         repo_root_str = ctx.workspace.absolute_path(".")
         return Path(repo_root_str), ""
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return None, str(exc)
 
 
@@ -899,26 +903,26 @@ def handle_commit_review_phase(
 
     try:
         ensure_git_initialized(str(repo_root))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("ensure_git_initialized failed: {}", exc)
 
     try:
         untrack_engine_internal_files(repo_root, is_agent_internal_path)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("untrack_engine_internal_files failed: {}", exc)
 
     try:
         from ralph.config.bootstrap import auto_seed_default_gitignore
 
         auto_seed_default_gitignore(repo_root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_seed_default_gitignore failed: {}", exc)
 
     try:
         from ralph.config.bootstrap import auto_seed_default_git_exclude
 
         auto_seed_default_git_exclude(repo_root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_seed_default_git_exclude failed: {}", exc)
 
     run_id, iteration = _resolve_run_id_and_iteration(ctx, effect)
@@ -956,7 +960,7 @@ def _consume_commit_review_artifact(ctx: PhaseContext) -> None:
     try:
         if ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
             ctx.workspace.delete(COMMIT_REVIEW_ARTIFACT_PATH)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Failed to consume commit-review leftover artifact: {}", exc)
 
 

@@ -505,10 +505,11 @@ def _format_elapsed(seconds: float) -> str:
 
 
 _ELAPSED_FIXED_WIDTH: int = 13
-assert len("Time 99:59:59") == _ELAPSED_FIXED_WIDTH, (
-    f"_ELAPSED_FIXED_WIDTH must match the worst-case realistic label width; "
-    f"got {_ELAPSED_FIXED_WIDTH} but 'Time 99:59:59' is {len('Time 99:59:59')} chars"
-)
+if len("Time 99:59:59") != _ELAPSED_FIXED_WIDTH:
+    raise ValueError(
+        f"_ELAPSED_FIXED_WIDTH must match the worst-case realistic label width; "
+        f"got {_ELAPSED_FIXED_WIDTH} but 'Time 99:59:59' is {len('Time 99:59:59')} chars"
+    )
 
 
 def _format_elapsed_fixed(seconds: float | None) -> str:

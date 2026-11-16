@@ -71,7 +71,7 @@ def _flag_probe_output(
 
     try:
         result = git_runner(args, cwd=root, label=label)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _unreadable(what, str(exc) or type(exc).__name__)
     if result.returncode != 0:
         return _unreadable(what, f"exit={result.returncode}")

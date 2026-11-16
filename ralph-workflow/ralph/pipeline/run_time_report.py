@@ -402,7 +402,7 @@ def _emit_degraded_run_time_report(
 def _guarded_final_phase(state: PipelineState) -> str:
     try:
         return _safe_text(state.phase) or "unknown"
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return "unknown"
 
 
@@ -422,7 +422,7 @@ def _guarded_signals_line(state: PipelineState) -> str:
             + _format_count(state.push_count)
             + "."
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return "- [SG-1] Metric counts are unavailable in the minimal report."
 
 
@@ -523,7 +523,7 @@ def emit_run_time_report_safely(
             cycle_timebox=cycle_timebox,
             development_timebox=development_timebox,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("run_time_report emission failed: {}", exc)
         try:
             failure_reason = (
@@ -538,7 +538,7 @@ def emit_run_time_report_safely(
                 elapsed_seconds=elapsed_seconds,
                 failure_reason=failure_reason,
             )
-        except Exception as degraded_exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as degraded_exc:
             logger.error(
                 "run_time_report degraded emission failed after {}: {}",
                 exc,
@@ -555,7 +555,7 @@ def emit_run_time_report_safely(
                     ),
                     signals_line=_guarded_signals_line(state),
                 )
-            except Exception as minimal_exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as minimal_exc:
                 logger.error(
                     "run_time_report minimal emission failed after {}: {}",
                     degraded_exc,

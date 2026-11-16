@@ -73,7 +73,7 @@ class _DefaultRemoteClient:
                 timeout_seconds=timeout_seconds,
                 remote=remote,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("auto_integrate: remote refresh query failed: {}", exc)
             return REFRESH_UNREACHABLE
 
@@ -92,7 +92,7 @@ class _DefaultRemoteClient:
                 remote=remote,
                 timeout_seconds=timeout_seconds,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("auto_integrate: remote push failed: {}", exc)
             return _remote_push_module.PushResult(
                 _remote_push_module.PushStatus.UNREACHABLE,
@@ -167,7 +167,7 @@ def pull_and_reconcile_target(
         from ralph.pipeline.auto_integrate_remote_sync import observe_conflict_identity
 
         identity = observe_conflict_identity(repo_root, target, scope="remote")
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         identity = ConflictIdentity(scope="remote")
     prior_state = prior or RebaseState()
     effective_ledger = _resolve_effective_ledger(ledger)
@@ -275,7 +275,7 @@ def _dispatch_pull_outcome(
             _remote_sync._fast_forward_local_target_to_remote(
                 repo_root, target, chosen_remote, config
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("auto_integrate: pull-side ff failed: {}", exc)
             _consume_throttle_signal_unhealthy(repo_root, chosen_remote, target)
             state = _record_remote_state(

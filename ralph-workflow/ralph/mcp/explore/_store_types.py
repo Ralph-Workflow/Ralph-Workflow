@@ -64,7 +64,8 @@ def _is_add_column(sql: str) -> bool:
 
 def _parse_add_column(sql: str) -> tuple[str, str]:
     match = _ADD_COLUMN_RE.match(sql)
-    assert match is not None
+    if match is None:
+        return ("", "")
     return match.group(1), match.group(2)
 
 

@@ -115,7 +115,7 @@ def render_conflict_prompt(
         template_text = (template_root / PROMPT_TEMPLATE_NAME).read_text(encoding="utf-8")
         partials = load_partial_templates((template_root,))
         rendered = render_template(template_text, variables, partials)
-    except Exception as render_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as render_exc:
         logger.warning(
             "conflict_resolution: failed to render the resolution prompt: {}",
             render_exc,
@@ -155,7 +155,7 @@ def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
         return _UNKNOWN_PATHS_BODY
     try:
         kinds = classify_conflict_kinds(root, tuple(listed)) if root.is_dir() else {}
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         kinds = {}
     return "\n".join(
         (

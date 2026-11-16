@@ -140,20 +140,24 @@ def _selftest() -> None:
         " Mmodified.txt\0"
     )
     entries = parse_porcelain_z(blob)
-    assert len(entries) == _SELFTEST_ENTRY_COUNT, entries
+    if len(entries) != _SELFTEST_ENTRY_COUNT:
+        raise AssertionError(f"Expected {_SELFTEST_ENTRY_COUNT} entries, got {len(entries)}")
     unmerged = unmerged_paths_z(blob)
-    assert [e.path for e in unmerged] == [
-        "conflicted.txt",
-        "added-both.txt",
-        "deleted-by-them.txt",
-    ], [e.path for e in unmerged]
+    expected_paths = ["conflicted.txt", "added-both.txt", "deleted-by-them.txt"]
+    if [e.path for e in unmerged] != expected_paths:
+        raise AssertionError(f"Expected {expected_paths}, got {[e.path for e in unmerged]}")
     rename = next(e for e in entries if e.xy.startswith("R"))
-    assert rename.rename_source == "old/name.txt", rename
-    assert rename.path == "new/name.txt", rename
-    assert scrub_git_env({"GIT_DIR": "/x", "PATH": "/y"}) == {"PATH": "/y"}
+    if rename.rename_source != "old/name.txt":
+        raise AssertionError(f"Expected old/name.txt, got {rename.rename_source}")
+    if rename.path != "new/name.txt":
+        raise AssertionError(f"Expected new/name.txt, got {rename.path}")
+    if scrub_git_env({"GIT_DIR": "/x", "PATH": "/y"}) != {"PATH": "/y"}:
+        raise AssertionError("scrub_git_env failed")
     out = pinned_argv(("rebase", "--", "upstream"))
-    assert all(out[i] == "-c" and "=" in out[i + 1] for i in range(0, len(PINNED_CONFIG_ARGS), 2))
-    assert out[-2:] == ("--", "upstream")
+    if not all(out[i] == "-c" and "=" in out[i + 1] for i in range(0, len(PINNED_CONFIG_ARGS), 2)):
+        raise AssertionError("pinned config args missing")
+    if out[-2:] != ("--", "upstream"):
+        raise AssertionError("trailing argv mismatch")
 
 
 if __name__ == "__main__":

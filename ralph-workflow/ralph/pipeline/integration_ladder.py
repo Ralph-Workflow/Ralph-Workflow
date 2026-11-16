@@ -184,18 +184,18 @@ def _next_enabled_rung(
 def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
     _ = facts.clock_now
     if facts.landed is LandedVerdict.LANDED:
-        transition = LadderTransition(LadderState.LANDED, False, "landed", None, ())
+        transition = LadderTransition(LadderState.LANDED, terminal=False, reason="landed", next_rung=None, effects=())
     elif facts.terminal_for_attempt:
-        transition = LadderTransition(LadderState.NEEDS_OPERATOR, True, facts.reason, None, ())
+        transition = LadderTransition(LadderState.NEEDS_OPERATOR, terminal=True, reason=facts.reason, next_rung=None, effects=())
     elif facts.rung is None:
         transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
     elif facts.outcome is None:
         transition = LadderTransition(
             _RUNG_STATES[facts.rung],
-            False,
-            facts.reason,
-            facts.rung,
-            (LadderEffect(LadderEffectKind.RUN_RUNG, facts.rung),),
+            terminal=False,
+            reason=facts.reason,
+            next_rung=facts.rung,
+            effects=(LadderEffect(LadderEffectKind.RUN_RUNG, facts.rung),),
         )
     else:
         next_rung = _next_enabled_rung(facts.rung, facts.enabled_rungs)
@@ -206,17 +206,17 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
             transition = _needs_operator_transition(facts.reason)
         elif facts.outcome == "waiting" or facts.reason.startswith("autonomous-transition:"):
             transition = LadderTransition(
-                _RUNG_STATES[facts.rung], False, facts.reason, facts.rung, ()
+                _RUNG_STATES[facts.rung], terminal=False, reason=facts.reason, next_rung=facts.rung, effects=()
             )
         elif next_rung is None:
             transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
         else:
             transition = LadderTransition(
                 _RUNG_STATES[next_rung],
-                False,
-                facts.reason,
-                next_rung,
-                (LadderEffect(LadderEffectKind.EMIT_ESCALATION, next_rung),),
+                terminal=False,
+                reason=facts.reason,
+                next_rung=next_rung,
+                effects=(LadderEffect(LadderEffectKind.EMIT_ESCALATION, next_rung),),
             )
     return transition
 
@@ -226,7 +226,7 @@ def _needs_operator_transition(reason: str) -> LadderTransition:
         LadderEffect(LadderEffectKind.EMIT_TERMINAL),
         LadderEffect(LadderEffectKind.RECORD_TERMINAL_MARKER),
     )
-    return LadderTransition(LadderState.NEEDS_OPERATOR, True, reason, None, effects)
+    return LadderTransition(LadderState.NEEDS_OPERATOR, terminal=True, reason=reason, next_rung=None, effects=effects)
 
 
 def ladder_facts_fingerprint(
@@ -701,23 +701,23 @@ def last_resort_wait_proof(
             if isinstance(status, CoolingDown):
                 proofs.append(
                     _LastResortAgentProof(
-                        pool.phase,
-                        agent,
-                        True,
-                        "cooling_down",
-                        status.until_ms,
-                        status.reason,
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=True,
+                        outcome="cooling_down",
+                        cooldown_until_ms=status.until_ms,
+                        reason=status.reason,
                     )
                 )
             elif isinstance(status, Spent):
                 proofs.append(
                     _LastResortAgentProof(
-                        pool.phase,
-                        agent,
-                        True,
-                        "spent",
-                        None,
-                        status.reason,
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=True,
+                        outcome="spent",
+                        cooldown_until_ms=None,
+                        reason=status.reason,
                     )
                 )
             else:
@@ -726,12 +726,12 @@ def last_resort_wait_proof(
                 )
                 proofs.append(
                     _LastResortAgentProof(
-                        pool.phase,
-                        agent,
-                        False,
-                        "eligible" if status.is_eligible else "unavailable",
-                        None,
-                        reason,
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=False,
+                        outcome="eligible" if status.is_eligible else "unavailable",
+                        cooldown_until_ms=None,
+                        reason=reason,
                     )
                 )
     all_tried_and_unavailable = bool(proofs) and all(proof.tried for proof in proofs)

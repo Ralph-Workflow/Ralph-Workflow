@@ -419,7 +419,7 @@ def run_residue_cleanup(
         return _run_residue_cleanup(
             root, baseline=baseline, git=git, ledger=ledger, target=target, emit=emit
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("planning-residue cleanup raised; leaving tree untouched: {}", exc)
         return ResidueCleanupOutcome(refused=True)
 
@@ -733,7 +733,7 @@ def _perform_action(
             preserved = git.preserve_dirt_commit(
                 root, head_sha=baseline.head_sha, paths=restore_targets
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             emit(f"alternate preservation failed ({exc}); continuing with restore")
             return
         if preserved is not None:

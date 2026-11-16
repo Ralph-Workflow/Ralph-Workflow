@@ -500,7 +500,7 @@ def _report_agent_invocation_exception(exc: BaseException) -> None:
         from ralph.telemetry._sentry import report_handled_exception
 
         report_handled_exception(exc, origin="agent_invocation")
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return
 
 
@@ -527,7 +527,7 @@ def _record_agent_invocation_telemetry(
             duration_s=duration_s,
             outcome=outcome,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return
 
 
@@ -986,7 +986,7 @@ def _has_fresh_valid_artifact(
             expected_type=resolved_required_artifact.artifact_type,
         )
         return True
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 
@@ -1263,7 +1263,7 @@ def _invoke_agent_with_recovery(
                 ),
             )
         raise
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         logger.exception("Unexpected error during agent invocation")
         return PipelineEvent.AGENT_FAILURE
     finally:
@@ -1466,7 +1466,7 @@ def _bridge_endpoint_uri(bridge: object) -> str:
         uri_fn = cast("Callable[[], object]", raw_uri)
         try:
             return str(uri_fn())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return ""
     return str(raw_uri)
 
@@ -2379,7 +2379,7 @@ def _write_terminal_missing_artifact_hint(
             retry_hint_fingerprint(phase_name, str(exc), registry=registry),
             encoding="utf-8",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return
 
 

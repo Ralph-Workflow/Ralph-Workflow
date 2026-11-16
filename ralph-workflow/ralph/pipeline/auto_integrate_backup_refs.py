@@ -51,7 +51,7 @@ def create_rebase_backup_ref(
             cwd=root,
             label="auto-integrate:backup-ref-create",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         raise RuntimeError(
             "auto_integrate: B11/E5 backup-ref creation raised unexpectedly; "
             f"refusing to start without recovery reachability: {exc}"
@@ -404,7 +404,7 @@ def list_ralph_backup_refs(root: Path) -> tuple[str, ...]:
         common = common_git_dir(root) or rebase_bookkeeping_dir(root)
         if common is not None:
             return _direct_list_ralph_backup_refs(common)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("Direct backup ref listing failed; falling back to git: {}", exc)
     result = run_git(
         ("for-each-ref", "--format=%(refname)", "-z", "refs/rebase-backup/", "refs/ralph-backup/"),
@@ -452,7 +452,7 @@ def delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:
             cwd=root,
             label="auto-integrate:backup-ref-delete",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate: backup-ref deletion failed: {}", exc)
         return
     if result.returncode not in (0, 1):

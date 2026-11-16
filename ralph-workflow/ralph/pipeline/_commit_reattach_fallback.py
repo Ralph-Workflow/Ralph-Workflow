@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,7 +81,7 @@ def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccup
             cwd=repo_root,
             label="commit:worktree-list-occupied",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "reattach fallback: worktree list failed ({}); treating every branch as occupied", exc
         )
@@ -93,18 +94,16 @@ def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccup
         return WorktreeOccupancy(frozenset(occupied), query_failed=True)
     try:
         resolved_root = repo_root.resolve()
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         resolved_root = repo_root
     current_path: str | None = None
     for line in res.stdout.splitlines():
         if line.startswith("worktree "):
             current_path = line[len("worktree ") :].strip()
         elif line.startswith("branch refs/heads/") and current_path:
-            try:
+            with suppress(OSError, RuntimeError, ValueError):
                 if Path(current_path).resolve() == resolved_root:
                     continue
-            except Exception:
-                pass
             occupied.add(line[len("branch refs/heads/") :].strip())
     return WorktreeOccupancy(frozenset(occupied))
 
@@ -139,7 +138,7 @@ def branch_tip_sha(repo_root: Path, branch: str) -> str | None:
             cwd=repo_root,
             label="commit:branch-tip-sha-read",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
     if result.returncode != 0:
         return None
@@ -203,7 +202,7 @@ def fast_forward_reattach(
                 cwd=repo_root,
                 label="commit:fast-forward-cas",
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             update = None
         if update is None or update.returncode != 0:
             logger.debug(
@@ -262,7 +261,7 @@ def create_fresh_branch_for_detached(
             cwd=repo_root,
             label="commit:create-fresh-branch",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
     if create_branch.returncode != 0:
         return None

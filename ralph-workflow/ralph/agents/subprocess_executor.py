@@ -254,8 +254,8 @@ class SubprocessAgentExecutor:
 
         async def drain_output() -> None:
             nonlocal last_line
-            assert handle is not None
-            assert handle.stdout is not None
+            if handle is None or handle.stdout is None:
+                return
             async for raw_line in drain_agent_lines(
                 handle.stdout,
                 unit.unit_id,

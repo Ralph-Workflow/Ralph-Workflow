@@ -37,7 +37,7 @@ def is_stale_since_invocation(workspace: Workspace, phase: str, artifact_path: s
         before = recorded["fingerprint"] if recorded["path"] == artifact_path else None
         current = artifact_fingerprint(Path(workspace.absolute_path(artifact_path)))
         return before is not None and before == current
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 

@@ -47,7 +47,8 @@ def build_next_steps(
 def _print_next_steps_panel(steps: list[str], *, display: object) -> None:
     from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    if not isinstance(display, ParallelDisplay):
+        raise TypeError(f"expected ParallelDisplay, got {type(display).__name__}")
     content_parts: list[str] = []
     for i, step in enumerate(steps):
         if i > 0:

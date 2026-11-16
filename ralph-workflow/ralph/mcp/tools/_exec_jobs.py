@@ -508,7 +508,7 @@ class ExecJobRegistry:
         self._dispatch_progress_for_job(job)
 
     def _read_stream(
-        self, job: _ActiveJob, stream: IO[bytes] | None, is_stdout: bool = True
+        self, job: _ActiveJob, stream: IO[bytes] | None, *, is_stdout: bool = True
     ) -> None:
         if stream is None:
             return

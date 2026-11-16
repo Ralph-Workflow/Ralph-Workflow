@@ -60,7 +60,7 @@ def replay_stale_resolution(
 
     try:
         head_sha = get_head_sha(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _retained_replay_outcome(
             record,
             f"retained resolution HEAD is unreadable: {exc}",
@@ -73,7 +73,7 @@ def replay_stale_resolution(
             head_sha,
             record.owning_worktree or str(root),
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("auto_integrate: stale-resolution snapshot failed: {}", exc)
         return _retained_replay_outcome(
             record,
@@ -109,7 +109,7 @@ def replay_stale_resolution(
             update={"resolution_gate_key": None, "waiting_notification_key": None}
         )
         write_record(root, replay_record)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("auto_integrate: stale-resolution record transition failed: {}", exc)
         return _retained_replay_outcome(
             record,
@@ -155,7 +155,7 @@ def _release_for_commit_review(root: Path, record: IntegrationRecord) -> RebaseS
                 record.with_transition(MARK_REINTEGRATE_PENDING, reintegrate_pending=False),
             )
         clear_record(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _retained_replay_outcome(
             record,
             f"the worktree has uncommitted work that could not be preserved for commit review: {exc}",

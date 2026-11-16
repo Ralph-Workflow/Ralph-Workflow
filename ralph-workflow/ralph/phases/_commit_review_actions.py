@@ -152,7 +152,7 @@ def _apply_gitignore_patterns(
             append_to_gitignore(repo_root, [pattern])
             report.applied_gitignore_patterns.append(pattern)
             logger.debug("Added pattern to .gitignore: {}", pattern)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             report.failed_gitignore_patterns.append(pattern)
             logger.warning("Failed to append pattern to .gitignore ({}): {}", pattern, exc)
 
@@ -169,7 +169,7 @@ def _apply_git_exclude_patterns(
             add_to_git_exclude(repo_root, [pattern])
             report.applied_exclude_patterns.append(pattern)
             logger.debug("Added pattern to .git/info/exclude: {}", pattern)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             report.failed_exclude_patterns.append(pattern)
             logger.warning("Failed to append pattern to .git/info/exclude ({}): {}", pattern, exc)
 
@@ -193,7 +193,7 @@ def _apply_safe_deletes(
             delete_file_from_repo(repo_root, file_path)
             report.applied_delete_paths.append(file_path)
             logger.debug("Deleted file: {}", file_path)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             report.failed_delete_paths.append(file_path)
             logger.warning("Failed to delete file {!r} (continuing batch): {}", file_path, exc)
 

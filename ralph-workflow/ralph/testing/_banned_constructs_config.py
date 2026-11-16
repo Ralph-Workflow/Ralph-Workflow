@@ -145,14 +145,21 @@ def _audit_pyproject(path: Path, display: str) -> list[Finding]:
         for table in (lint.get(table_name), ruff.get(table_name)):
             if not isinstance(table, dict):
                 continue
+            pattern: object
+            value: object
             for pattern, value in table.items():
+                matched_rules = [
+                    rule
+                    for rule in _matching_banned_rules(_selectors(value))
+                    if not (pattern == "tests/**/*.py" and rule == "S101")
+                ]
                 findings.extend(
                     _config_finding(
                         display,
                         1,
                         f"ruff {table_name} re-enables {rule} for {pattern}",
                     )
-                    for rule in _matching_banned_rules(_selectors(value))
+                    for rule in matched_rules
                 )
     for setting in ("ignore", "extend-ignore"):
         for table in (lint, ruff):

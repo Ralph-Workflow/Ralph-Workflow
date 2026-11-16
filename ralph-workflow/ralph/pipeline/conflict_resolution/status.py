@@ -161,7 +161,7 @@ def push_conflict_status_bar(
             integration_status=integration_status,
         )
         _update_status_bar(display, model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar push for '{}' failed: {}", target, exc)
 
 
@@ -191,7 +191,7 @@ def capture_status_bar_model(display: object) -> object | None:
             return None
         model: object = getattr(status_bar, "last_model", None)
         return model
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar capture failed: {}", exc)
         return None
 
@@ -214,7 +214,7 @@ def clear_conflict_status_bar(
                 run_started_monotonic=run_started_monotonic,
             ),
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar clear failed: {}", exc)
 
 
@@ -223,7 +223,7 @@ def restore_status_bar(display: object, model: object | None) -> None:
         return
     try:
         _update_status_bar(display, model)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar restore failed: {}", exc)
 
 

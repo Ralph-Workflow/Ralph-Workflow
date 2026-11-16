@@ -281,7 +281,7 @@ def try_deterministic_resolution(
         ):
             return False
         return _resolve_mode_only(root, stop.conflicted_files, stages)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: deterministic resolution declined: {}", exc)
         return False
 

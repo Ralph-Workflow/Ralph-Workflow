@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from loguru import logger
-
 if TYPE_CHECKING:
     from pathlib import Path
+
+from git.exc import GitError
+from loguru import logger
 
 from ralph.git import subprocess_runner
 from ralph.git.merge import (
@@ -44,7 +45,7 @@ def _read_gitdir_ref_file(root: Path, filename: str) -> str | None:
             sha = target_file.read_text(encoding="utf-8", errors="replace").strip()
             if _is_valid_oid(sha):
                 return sha
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("Failed reading direct gitdir ref {}: {}", filename, exc)
     return None
 
@@ -55,7 +56,7 @@ def _direct_git_value(root: Path, args: tuple[str, ...]) -> str | None:
             from ralph.git.operations import get_head_sha
 
             return get_head_sha(root)
-        except Exception:
+        except (GitError, OSError, RuntimeError, ValueError, KeyError):
             return None
     if args in (("rev-parse", "--verify", "MERGE_HEAD"), ("rev-parse", "MERGE_HEAD")):
         return _read_gitdir_ref_file(root, "MERGE_HEAD")

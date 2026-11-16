@@ -273,7 +273,7 @@ def _observe_remote_target_sha(
             if forced in _READABLE_REFRESH_OUTCOMES:
                 refresh = forced
         return observed, refresh
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("auto_integrate: remote observation failed: {}", exc)
         return None, REFRESH_UNREACHABLE
 
@@ -321,11 +321,11 @@ def _dispatch_ref_comparison(
 ) -> RebaseState:
     try:
         local_ahead = is_ancestor(repo_root, remote_sha, local_sha)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         local_ahead = False
     try:
         remote_ahead = is_ancestor(repo_root, local_sha, remote_sha)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         remote_ahead = False
     if local_ahead and not remote_ahead:
         pushed = push_target_after_landing(
@@ -449,7 +449,7 @@ def _build_disabled_noop_state(
 def _safe_local_sha(repo_root: Path, target: str) -> str | None:
     try:
         return branch_sha(repo_root, target)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("auto_integrate: local target SHA unreadable: {}", exc)
         return None
 

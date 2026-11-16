@@ -46,7 +46,7 @@ class _AutoIntegrateError(Exception):
 def _run_auto_integrate_operation[T](operation: Callable[[], T]) -> T:
     try:
         return operation()
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         raise _AutoIntegrateError(exc) from exc
 
 
@@ -234,7 +234,7 @@ def build_agent_rebase_stop_resolver(
                 parse_error=exc,
                 terminal_reason=ResolutionTerminationReason.CONFIG_FAILURE,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
                 "configuration for rebase conflict resolution ({}); declining "
@@ -333,7 +333,7 @@ def _resolve_within_target_context(
                 display=display,
                 display_context=display_context,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning(
                 "auto_integrate: rebase conflict-resolution pipeline raised: {}",
                 exc,

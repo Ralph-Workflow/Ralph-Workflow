@@ -317,6 +317,10 @@ def _extract_terminal_theme(ctx: object) -> tuple[bool | None, str | None]:
     return None, None
 
 
+def _is_valid_display_context(ctx: object) -> bool:
+    return isinstance(ctx, DisplayContext) or hasattr(ctx, "console")
+
+
 class ParallelDisplay:
     __slots__ = (
         "_active_block",
@@ -388,7 +392,7 @@ class ParallelDisplay:
         monotonic: Callable[[], float] | None = None,
         capability_recorder: CapabilityObservationRecorder | None = None,
     ) -> None:
-        if not hasattr(display_context, "console"):
+        if not _is_valid_display_context(display_context):
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet

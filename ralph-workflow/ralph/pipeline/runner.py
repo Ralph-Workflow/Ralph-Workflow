@@ -793,7 +793,7 @@ def _invoke_execute_effect_with_optional_display(
                 workspace_root=workspace_scope.root,
                 explore_index=before_index,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("before_agent_refresh skipped: %s", exc)
 
     def invoke_agent() -> Event | CommitReviewEvent:
@@ -827,7 +827,7 @@ def _invoke_execute_effect_with_optional_display(
                     workspace_root=workspace_scope.root,
                     explore_index=after_index,
                 )
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 logger.debug("after_agent_refresh skipped: %s", exc)
 
 
@@ -884,7 +884,7 @@ def _save_checkpoint_or_log(
 ) -> bool:
     try:
         ckpt.save(state, path)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.exception(message, phase=state.phase, err=exc)
         return False
     return True
@@ -1018,7 +1018,7 @@ def _integrate_inline_effect(
             pipeline_deps=pipeline_deps,
             display_context=display_context,
         )
-    except Exception as inline_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as inline_exc:
         logger.warning(
             "auto_integrate inline-effect boundary raised: {}",
             inline_exc,
@@ -1214,7 +1214,7 @@ def _maybe_auto_integrate(
                 ),
                 display=display,
             )
-    except Exception as auto_integrate_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as auto_integrate_exc:
         logger.warning(
             "auto_integrate_after_commit raised unexpectedly: {}",
             auto_integrate_exc,
@@ -1353,7 +1353,7 @@ def _integrate_on_phase_transition(
                 ),
                 display=display,
             )
-    except Exception as transition_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as transition_exc:
         logger.warning(
             "auto_integrate_on_phase_transition raised unexpectedly: {}",
             transition_exc,
@@ -1939,7 +1939,7 @@ def _rejected_changes_predate_the_run(workspace_root: Path, state: PipelineState
         return False
     try:
         return not diff_tree(workspace_root, ref=rollback_ref, base=baseline_ref)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 
@@ -1981,7 +1981,7 @@ def execute_pending_rollback(
         )
     try:
         rollback(workspace_root, rollback_ref, baseline_ref=state.rollback_baseline_ref)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.exception(
             "Commit review rollback refused for {ref}: {err}",
             ref=rollback_ref,
@@ -2293,7 +2293,7 @@ def _run_pipeline_step(
         return _with_phase_step_timing(next_state, _phase_timer)
     except KeyboardInterrupt:
         raise
-    except (Exception, SystemExit) as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
         _phase_outcome = "crashed"
         logger.exception(
             "Pipeline step crashed in phase={phase}: {err}",

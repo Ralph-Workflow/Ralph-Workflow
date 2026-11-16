@@ -687,7 +687,8 @@ class PtyLineReader:
                         file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
                     transcript_session_id = matched_session_id
                     self._capture_discovered_transcript_session_id(matched_session_id)
-                assert file_obj is not None
+                if file_obj is None:
+                    continue
                 line = file_obj.readline()
                 if not line:
                     self._monitor_stop.wait(0.1)
@@ -935,14 +936,9 @@ class PtyLineReader:
             detail = relay_health_error()
             if detail:
                 raise SupervisionInfrastructureError(self._agent_name, detail)
-        if verdict != WatchdogVerdict.FIRE:
+        if verdict != WatchdogVerdict.FIRE or watchdog.last_fire_reason is None:
             return None
-        assert (
-            self._policy.idle_timeout_seconds is not None
-            or self._policy.max_session_seconds is not None
-        )
         fire_reason = watchdog.last_fire_reason
-        assert fire_reason is not None
         hard_stop_event = self._last_hard_stop[0]
         hard_stop_diag = hard_stop_event.diagnostic if hard_stop_event is not None else None
         diagnostic = hard_stop_diag
@@ -965,8 +961,7 @@ class PtyLineReader:
             else self._policy.no_progress_quiet_seconds
             if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
-        )
-        assert timeout_val is not None
+        ) or 0.0
         outcome = self._attempt_supervisor().act(SilenceObserved(fire_reason))
         if outcome is None:
             return None

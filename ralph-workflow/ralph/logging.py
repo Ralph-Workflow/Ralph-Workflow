@@ -140,7 +140,6 @@ def _configure_file_handlers(
     structured_log_path: Path | None = None
     if config.structured:
         structured_log_path = run_directory / "ralph.jsonl"
-        assert structured_log_path is not None
         _add_buffered_file_sink(
             adder,
             structured_log_path,

@@ -210,11 +210,10 @@ def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
     for stmt in func_body:
         if not isinstance(stmt, ast.If):
             continue
-        try:
+        test_src: str | None = None
+        with contextlib.suppress(ValueError, TypeError, RecursionError):
             test_src = ast.unparse(stmt.test)
-        except Exception:
-            continue
-        if "self._is_agent_available" in test_src and "all(" in test_src:
+        if test_src is not None and "self._is_agent_available" in test_src and "all(" in test_src:
             return stmt
     return None
 
@@ -407,6 +406,7 @@ def _typed_signal_type(namespace: dict[str, object]) -> type[TypedSignal]:
 
 def build_typed_agent_signal(
     signal_name: str | None,
+    *,
     signal_provider_originated: bool,
     facts: AttemptFacts | None,
 ) -> TypedSignal | None:
@@ -1113,8 +1113,8 @@ class RecoveryController:
             effective_facts = AttemptFacts()
         typed_signal = build_typed_agent_signal(
             signal_name,
-            signal_provider_originated,
-            effective_facts,
+            signal_provider_originated=signal_provider_originated,
+            facts=effective_facts,
         )
         attribution: AttributionVerdict | None = None
         if effective_facts is not None:
@@ -1161,7 +1161,7 @@ class RecoveryController:
             return None
         try:
             return runner(phase, agent)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
             return None
 
@@ -1191,8 +1191,8 @@ class RecoveryController:
         typed_signal = (
             build_typed_agent_signal(
                 signal_name,
-                signal_provider_originated,
-                attempt_facts,
+                signal_provider_originated=signal_provider_originated,
+                facts=attempt_facts,
             )
             if signal_name is not None
             else None

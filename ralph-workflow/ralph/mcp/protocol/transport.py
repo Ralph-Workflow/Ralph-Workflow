@@ -60,7 +60,7 @@ if TYPE_CHECKING:
         def is_alive(self) -> bool: ...
 
     class ThreadFactory(Protocol):
-        def __call__(self, target: Callable[[], None], daemon: bool = False) -> ThreadLike: ...
+        def __call__(self, target: Callable[[], None], *, daemon: bool = False) -> ThreadLike: ...
 
 
 class StdioTransport:
@@ -86,8 +86,8 @@ class StdioTransport:
 
     def start(self) -> None:
         self._process = self._process_factory(self._command, self._cwd)
-        self._reader_thread = self._thread_factory(self._read_loop, True)
-        self._writer_thread = self._thread_factory(self._write_loop, True)
+        self._reader_thread = self._thread_factory(self._read_loop, daemon=True)
+        self._writer_thread = self._thread_factory(self._write_loop, daemon=True)
         self._reader_thread.start()
         self._writer_thread.start()
         logger.info("Started MCP server: {}", " ".join(self._command))
@@ -244,7 +244,9 @@ def _default_process_factory(
     )
 
 
-def _default_thread_factory(target: Callable[[], None], daemon: bool = False) -> threading.Thread:
+def _default_thread_factory(
+    target: Callable[[], None], *, daemon: bool = False
+) -> threading.Thread:
     return threading.Thread(
         target=target,
         daemon=daemon,

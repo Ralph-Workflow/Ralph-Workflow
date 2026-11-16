@@ -87,14 +87,14 @@ def _emit_via_display(
 ) -> bool:
     try:
         display: ParallelDisplay = resolve_active_display(None, display_context)
-    except Exception:
+    except (TypeError, AttributeError, OSError, RuntimeError, ValueError, KeyError):
         return False
     method: object = getattr(display, method_name, None)
     if not isinstance(method, _DisplayMethod):
         return False
     try:
         method(*args, **kwargs)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     return True
 
@@ -131,7 +131,7 @@ def _phase_event_after_agent_run(
         events = _hp(effect, ctx)
     except KeyboardInterrupt:
         raise
-    except (Exception, SystemExit) as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
         if isinstance(exc, McpServerError):
             logger.warning(
                 "Phase handler McpServerError in phase={phase}: "
@@ -190,7 +190,7 @@ def _phase_event_after_agent_run(
                     decision=summary.decision,
                     reason=summary.reason,
                 )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             logger.debug("Failed to emit analysis result", exc_info=True)
 
     return event
@@ -406,7 +406,7 @@ def _render_success_artifact(
                 agent_config,
                 shared_capture=shared_capture,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             logger.debug(
                 "graded phase verdict failed for {artifact}", artifact=artifact_type, exc_info=True
             )

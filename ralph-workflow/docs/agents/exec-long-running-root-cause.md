@@ -176,14 +176,14 @@ is entered only when a caller injects a custom runner or replaces
 it. The rule table for the production kills is under
 "Cause 1 — production liveness subsystem (CURRENT)" below.
 
-- `ralph-workflow/ralph/process/manager/_managed_process.py:292` resets
+- `ralph-workflow/ralph/process/manager/_managed_process.py:286` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
-- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:350-386`
+- The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:344-380`
   computes `inactivity_deadline = last_output_at_ref[0] + timeout`
-  (`:360-362`) and arms the kill with `timeout_cause = "inactivity"` and
-  `timeout_value = timeout` (`:371-372`); the terminate-then-raise is at
-  `:376-386`.
+  (`:354-356`) and arms the kill with `timeout_cause = "inactivity"` and
+  `timeout_value = timeout` (`:365-366`); the terminate-then-raise is at
+  `:370-380`.
 - `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:37`)
   — the inactivity window the exec seam applies when the caller passes no
   timeout. A command that stays silent is killed there with cause
@@ -551,8 +551,8 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`ralph/mcp/server/lifecycle.py:2166-2178`; the `"ralph.mcp.server"` module name is at
-  `:2176`). The MCP server runs as a separate child
+  (`ralph/mcp/server/lifecycle.py:2218-2236`; the `"ralph.mcp.server"` module name is at
+  `:2228`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:58-63`),
   which calls `_terminate_server_process(process, grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`
@@ -777,8 +777,8 @@ stale, and the fastest drift check is a re-read of:
   and `:39` (`EXEC_MAX_TIMEOUT_MS`), plus `:169`
   (`EXEC_SOFT_REPLY_BUDGET_MS`), `:171` (`EXEC_JOB_CEILING_S`), `:173`
   (`EXEC_JOB_CEILING_MAX_S`) — the Cause 1 / Cause 2 constants.
-- `ralph-workflow/ralph/process/manager/_managed_process.py:292` (the
-  output-only `last_output_at_ref` reset) and `:349-380` (the poll
+- `ralph-workflow/ralph/process/manager/_managed_process.py:286` (the
+  output-only `last_output_at_ref` reset) and `:344-380` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
 - ralph-workflow/ralph/mcp/tools/exec.py:558-571 (the injected-runner
   seam) and `:572-607` (the production registry entry path) — reading

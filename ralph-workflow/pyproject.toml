@@ -159,12 +159,10 @@ select = [
   "PL",
   "PGH",
   "ASYNC251",
-  "S102",
-  "S301",
-  "S302",
-  "S307",
-  "S602",
-  "S604",
+  "S",
+  "TRY",
+  "BLE",
+  "FBT",
   "TC006",
 ]
 
@@ -174,6 +172,9 @@ select = [
     "PLR0911",
     "PLR0912",
     "PLR2004",
+]
+"ralph/visual/design_verdict.py" = [
+    "S105",
 ]
 "ralph/agents/multimodal_status.py" = [
     "PLR0911",
@@ -201,6 +202,9 @@ select = [
 "ralph/project_policy/remediation.py" = [
     "PLC0415"
 ]
+"ralph/project_policy/markers.py" = [
+    "S105",
+]
 "ralph/prompts/__init__.py" = [
     "PLC0415"
 ]
@@ -216,6 +220,12 @@ select = [
     "PLR0911",
     "PLR0912",
     "PLC0415"
+]
+"ralph/pipeline/plumbing/smoke_evidence.py" = [
+    "S105",
+]
+"ralph/process/_spawn_env.py" = [
+    "S105",
 ]
 "ralph/mcp/multimodal/capabilities.py" = [
     "PLR0911"
@@ -234,6 +244,19 @@ select = [
     "ANN204",
     "E501",
     "PLC0415",
+    "S101",
+    "S105",
+    "S106",
+    "S108",
+    "S110",
+    "S112",
+    "S311",
+    "S603",
+    "S607",
+    "TRY003",
+    "FBT001",
+    "FBT002",
+    "FBT003",
 ]
 "ralph/cli/**/*.py" = ["PLC0415"]
 "ralph/config/**/*.py" = ["PLC0415"]
@@ -248,8 +271,45 @@ select = [
 ]
 "ralph/mcp/tools/coordination.py" = [
     "PLC0415",
+    "S105",
 ]
-"ralph/**/*.py" = ["E501"]
+"ralph/**/*.py" = [
+    "E501",
+    "TRY003",
+    "TRY300",
+    "FBT001",
+    "FBT002",
+]
+"ralph/mcp/server/_http_tools_list.py" = [
+    "S310",
+]
+"ralph/mcp/server/lifecycle.py" = [
+    "S310",
+]
+"ralph/mcp/explore/_store_class_file_rows.py" = [
+    "S608",
+]
+"ralph/process/manager/_supervisor.py" = [
+    "S606",
+]
+"ralph/process/pty.py" = [
+    "S606",
+]
+"ralph/testing/_audit_baseline.py" = [
+    "S603",
+]
+"ralph/testing/audit_comments.py" = [
+    "S603",
+]
+"ralph/git/_lock_recovery.py" = [
+    "S603",
+]
+"ralph/mcp/explore/_bench_r6_metrics.py" = [
+    "S603",
+]
+"ralph/mcp/explore/_bench_r6_subprocess.py" = [
+    "S603",
+]
 "ralph/mcp/explore/**/*.py" = [
     "PLC0415",
     "PLR0911",

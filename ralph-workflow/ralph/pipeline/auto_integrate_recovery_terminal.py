@@ -132,7 +132,7 @@ def _read_head_sha(root: Path) -> str | None:
         result = run_git(
             ("rev-parse", "--verify", "HEAD"), cwd=root, label="git-rev-parse-head-verify"
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if result.returncode != 0:
         return None
@@ -148,7 +148,7 @@ def _rebase_bookkeeping_dir(root: Path) -> Path | None:
             return direct
     try:
         result = run_git(("rev-parse", "--git-dir"), cwd=root, label="git-recovery-git-dir")
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if result.returncode != 0:
         return None
@@ -186,7 +186,7 @@ def delete_rebase_backup_refs(root: Path, backup_ref: str | None) -> None:
             cwd=root,
             label=f"recovery:delete-backup-ref:{backup_ref}",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recovery: backup-ref deletion failed for {}: {}", backup_ref, exc)
         return
     if deletion.returncode not in (0, 1):

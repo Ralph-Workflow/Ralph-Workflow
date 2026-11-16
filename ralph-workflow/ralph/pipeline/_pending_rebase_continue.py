@@ -5,7 +5,11 @@ from pathlib import Path
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import is_ancestor
 from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
-from ralph.git.rebase.rebase_continuation import continue_rebase_at, rebase_in_progress_at
+from ralph.git.rebase.rebase_continuation import (
+    RebaseContinuationError,
+    continue_rebase_at,
+    rebase_in_progress_at,
+)
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
@@ -160,7 +164,7 @@ def _resume_prepared_rebase(root: Path, record: IntegrationRecord) -> Integratio
         try:
             restore_pending_rebase_sequence(root, record)
             continue_rebase_at(root)
-        except Exception as exc:
+        except (RebaseContinuationError, OSError, RuntimeError, ValueError, KeyError) as exc:
             if (
                 _git_value(root, "rev-parse", "--verify", "REBASE_HEAD")
                 == record.rebase_continue_stop

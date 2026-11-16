@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from tempfile import NamedTemporaryFile
 from typing import TYPE_CHECKING
 
+from git.exc import GitError
 from loguru import logger
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 def target_worktree_lookup(repo_root: Path, target: str) -> tuple[str, Path | None]:
     try:
         return worktree_lookup(find_main_worktree_root(repo_root), target)
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return WORKTREE_QUERY_FAILED, None
 
 
@@ -134,7 +135,7 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
             cwd=worktree,
             label="auto-integrate:reclaim-list-refs",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate: reclaim-ref listing failed: {}", exc)
         return
     if listed.returncode != 0:
@@ -168,7 +169,7 @@ def _prune_reclaim_refs(worktree: Path, target: str, snapshot_ref: str) -> None:
                 cwd=worktree,
                 label="auto-integrate:reclaim-delete-ref",
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("auto_integrate: reclaim-ref deletion failed for {}: {}", ref, exc)
             continue
         if deleted.returncode != 0:

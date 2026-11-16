@@ -130,7 +130,7 @@ class ParallelCoordinator:
 
                     if pending:
                         break
-        except* Exception as group:
+        except* (_WorkerFailureError, OSError, RuntimeError, ValueError, KeyError) as group:
             failures, unexpected = _flatten_worker_failures(group.exceptions)
             _append_terminal_failure_events(
                 events=events,

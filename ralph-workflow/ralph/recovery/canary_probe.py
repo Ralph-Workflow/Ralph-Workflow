@@ -182,7 +182,7 @@ def run_canary_probe(
             trusted_parent=trusted_parent,
             started=started,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("probe_internal_error", started, error=_error_text(exc))
 
 
@@ -209,9 +209,9 @@ def _run_canary_probe(
         workspace = _scratch_workspace(
             workspace_factory,
             phase_workspace,
-            owns_workspace,
             trusted_parent,
             started,
+            owns_workspace=owns_workspace,
         )
         if isinstance(workspace, _ProbeResult):
             return workspace
@@ -261,7 +261,7 @@ def _preflight_failure(
         return None
     try:
         exhausted = bool(budget_exhausted())
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("budget_check_failed", started, error=_error_text(exc))
     if exhausted:
         return _inconclusive_result("budget_exhausted", started)
@@ -271,13 +271,14 @@ def _preflight_failure(
 def _scratch_workspace(
     workspace_factory: Callable[[], Path] | None,
     phase_workspace: Path | None,
-    owns_workspace: bool,
     trusted_parent: Path | None,
     started: float,
+    *,
+    owns_workspace: bool,
 ) -> Path | _ProbeResult:
     try:
         workspace_path = _create_scratch_workspace(workspace_factory, trusted_parent)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
     if (
         phase_workspace is not None
@@ -315,7 +316,7 @@ def _prepare_probe(
             extra_env,
             timeout_s,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result("options_build_failed", started, error=_error_text(exc))
     try:
         prompt_file = _write_prompt(workspace_path)
@@ -344,7 +345,7 @@ def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
         return trusted_parent
     try:
         return find_repo_root(Path.cwd())
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("canary probe trusted-parent resolution failed: {}", exc)
         return None
 
@@ -410,7 +411,7 @@ def _invoke_with_timeout(
     def _run() -> None:
         try:
             finished.append(_run_probe_attempt(invoke, config, prepared, general))
-        except BaseException as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             captured.append(exc)
 
     thread = threading.Thread(target=_run, name="ralph-canary-probe", daemon=True)

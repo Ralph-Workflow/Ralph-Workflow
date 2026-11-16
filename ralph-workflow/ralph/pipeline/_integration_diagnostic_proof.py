@@ -61,7 +61,7 @@ def _check_worktree_match(root: Path, record: IntegrationRecord) -> tuple[bool, 
     try:
         if Path(record.owning_worktree).resolve() != root.resolve():
             return False, f"owning_worktree {record.owning_worktree} does not match {root}"
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False, f"owning_worktree {record.owning_worktree} is invalid"
     return True, "worktree matches"
 
@@ -83,7 +83,7 @@ def _rebase_in_progress(root: Path) -> bool:
 
     try:
         return rebase_in_progress(root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
 
 

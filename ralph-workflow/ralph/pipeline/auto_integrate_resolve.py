@@ -64,11 +64,11 @@ def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
 
     try:
         in_rebase = rebase_in_progress_at(root)
-    except (RebaseContinuationError, Exception):
+    except (RebaseContinuationError, OSError, RuntimeError, ValueError):
         in_rebase = False
 
     if in_rebase:
-        try:
+        with suppress(OSError, RuntimeError, ValueError):
             orig_head, onto = current_rebase_identity(root)
             return IntegrationRecord(
                 phase="integrating",
@@ -77,12 +77,10 @@ def resolution_gate_record(root: Path, target: str) -> IntegrationRecord:
                 pre_target_sha=onto,
                 resolving_rebase=True,
             )
-        except Exception:
-            pass
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
 
     in_merge = False
-    with suppress(Exception):
+    with suppress(OSError, RuntimeError, ValueError):
         in_merge = merge_state(root) == MERGE_STATE_IN_PROGRESS
     return IntegrationRecord(
         phase="integrating",
@@ -101,7 +99,7 @@ def endpoint_merge_with_resolution(
     keep = resolver is not None
     try:
         result = merge_target_into_current(root, target, keep_conflicts=keep)
-    except Exception as merge_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as merge_exc:
         logger.warning("auto_integrate: endpoint merge raised: {}", merge_exc)
         return _retain_uncertain_merge(root, target, f"merge command failed: {merge_exc}")
     if result.outcome != "conflict" or resolver is None:
@@ -122,7 +120,7 @@ def endpoint_merge_with_resolution(
 def _retain_uncertain_merge(root: Path, target: str, reason: str) -> MergeResult:
     try:
         mark_pending_merge(root, target, resolving=True)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         reason = f"{reason}; ownership persistence failed: {exc}"
     return MergeResult(
         MERGE_COMMIT_PENDING, reason, failure_cause=ResolutionFailureCause.CONTEXT_FAILURE
@@ -156,7 +154,7 @@ def resolve_and_commit_with_reason(
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
-        result = attempt_stop_resolution(
+        raw_resolution = attempt_stop_resolution(
             None,
             StopResolutionTrigger(
                 name="merge_stop",
@@ -172,17 +170,20 @@ def resolve_and_commit_with_reason(
                 ),
             ),
         )
-        if isinstance(result, StopResolutionBlocked):
-            result = MergeResult(
-                MERGE_COMMIT_PENDING,
-                result.reason,
-                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-            )
-        if not isinstance(result, MergeResult):
-            raise TypeError("merge stop resolution returned an invalid result")
-    except Exception as resolver_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as resolver_exc:
         logger.warning("auto_integrate: conflict resolver raised: {}", resolver_exc)
         return _resolver_exception_result(resolver_exc, tuple(conflicted))
+
+    if isinstance(raw_resolution, StopResolutionBlocked):
+        result = MergeResult(
+            MERGE_COMMIT_PENDING,
+            raw_resolution.reason,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+    elif isinstance(raw_resolution, MergeResult):
+        result = raw_resolution
+    else:
+        raise TypeError("merge stop resolution returned an invalid result")
     if result.outcome != "success":
         return result
     return _commit_resolved_merge(root, conflicted, target)
@@ -205,7 +206,7 @@ def _merge_scope_refusal(
         )
     try:
         mark_pending_merge(root, target, resolving=True)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         return MergeResult(
             MERGE_COMMIT_PENDING,
             f"cannot protect merge resolution: {exc}",
@@ -299,7 +300,7 @@ def _resolver_exception_result(
 
 
 def handle_unsuccessful_resolution(
-    result: StopResolutionOutcome | bool,
+    result: object,
     reason: str | None,
     conflicted: tuple[str, ...] = (),
 ) -> MergeResult:
@@ -335,14 +336,14 @@ def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:
 
     try:
         _remove_ort_residue(root, conflicted)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("auto_integrate: could not clear ort residue: {}", exc)
 
 
 def _stage_verify_and_commit(root: Path, conflicted: list[str], target: str) -> MergeResult:
     try:
         return _stage_and_verify(root, conflicted, target)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         return MergeResult(
             MERGE_COMMIT_PENDING,
             f"resolution staging failed: {exc}; progress retained",
@@ -407,7 +408,7 @@ def _commit_verified_merge(root: Path, target: str) -> MergeResult:
                 resumed,
                 failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
             )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         return MergeResult(
             MERGE_COMMIT_PENDING,
             f"verified merge commit pending: {exc}",
@@ -428,5 +429,5 @@ def _abort_merge_safely(root: Path) -> None:
                 root,
                 state,
             )
-    except Exception as abort_exc:
+    except (OSError, RuntimeError, ValueError) as abort_exc:
         logger.warning("auto_integrate: abort_merge failed: {}", abort_exc)

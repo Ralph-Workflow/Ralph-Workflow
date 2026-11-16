@@ -26,6 +26,10 @@ from .state_models import (
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
 
+class PipelineStateValidationError(RuntimeError, TypeError):
+    pass
+
+
 _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 PIPELINE_STATE_VERSION: Final[int] = 1
@@ -310,7 +314,7 @@ class PipelineState(_FrozenPipelineStateModel):
                 "or pass phase= explicitly."
             )
         if not isinstance(self.agent_retry_intent, AgentRetryIntent):
-            raise RuntimeError(
+            raise PipelineStateValidationError(
                 "PipelineState.agent_retry_intent must be AgentRetryIntent; "
                 f"got {type(self.agent_retry_intent).__name__}"
             )

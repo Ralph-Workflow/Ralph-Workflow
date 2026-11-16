@@ -533,9 +533,8 @@ def _collect_enclosing_helpers(lines: list[str], line_index: int) -> list[str]:
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(line) - len(stripped)
-        if re.match(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", stripped):
-            name_match = re.match(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", stripped)
-            assert name_match is not None
+        name_match = re.match(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", stripped)
+        if name_match is not None:
             name = name_match.group(1)
             if indent_of_current is None or indent < indent_of_current:
                 helper_names.append(name)

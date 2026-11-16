@@ -120,6 +120,11 @@ def repair_pending_merge(
         return False
 
 
+def _require_controls_match(current: object, expected: object, message: str) -> None:
+    if current != expected:
+        raise RuntimeError(message)
+
+
 def _repair_owned_merge(
     *,
     workspace_scope: WorkspaceScope,
@@ -178,9 +183,11 @@ def _repair_owned_merge(
     try:
         before = capture_unstaged_work(root)
         controls = capture_commit_controls(root, backend)
-        if record.repair_commit_controls is not None and record.repair_commit_controls != controls:
-            raise RuntimeError(
-                "commit hook or signing controls changed; restore checks before retry"
+        if record.repair_commit_controls is not None:
+            _require_controls_match(
+                controls,
+                record.repair_commit_controls,
+                "commit hook or signing controls changed; restore checks before retry",
             )
         record = record.with_transition(RESUME_REPAIR, repair_commit_controls=controls)
         manifest = root / _REPAIR_DECLARATION
@@ -195,10 +202,11 @@ def _repair_owned_merge(
             controller=controller,
             protected_paths=tuple(before),
         )
-        if capture_commit_controls(root, backend) != controls:
-            raise RuntimeError(
-                "repair changed commit hook or signing controls; restore checks before retry"
-            )
+        _require_controls_match(
+            capture_commit_controls(root, backend),
+            controls,
+            "repair changed commit hook or signing controls; restore checks before retry",
+        )
         return repaired and accept_repair_edits(root, record, before, backend=backend)
     except WorkspaceContextError as exc:
         reason_text = exc.fix
@@ -215,7 +223,7 @@ def _repair_owned_merge(
                 backend=backend,
             )
         return False
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         terminal_emitter.critical("Pending integration retained; source repair refused: {}", exc)
         retained = read_record(root)
         if retained is not None:
@@ -319,7 +327,7 @@ def handoff_pending_merge_repair(
             reported.append(bool(invoke(agent, prompt)))
 
         workspace_changed = observe_workspace_change(controller, root, _attempt)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         terminal_emitter.critical("Pending integration retained; repair handoff failed: {}", exc)
         bench_resolver(controller, agent, exc)
         return False
@@ -340,10 +348,10 @@ def handoff_pending_merge_repair(
 def _declared_repair_present(backend: FileBackend, declaration: Path) -> bool:
     try:
         raw = backend.read_text(declaration)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     try:
         value: object = json.loads(raw)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     return isinstance(value, list) and all(isinstance(item, str) for item in value)

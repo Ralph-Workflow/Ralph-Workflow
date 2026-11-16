@@ -161,7 +161,7 @@ def _show_phase_start_with_context(
     if console is not None:
         try:
             display_obj = resolve_active_display(None, display_context)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             display_obj = None
     if display_obj is not None and hasattr(display_obj, "emit_phase_start_from_entry"):
         with suppress(Exception):
@@ -530,7 +530,7 @@ def _emit_phase_transition_if_changed(
             display_context=ctx,
             pipeline_policy=pipeline_policy,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         logger.debug("phase change emission failed", exc_info=True)
 
     return state.phase

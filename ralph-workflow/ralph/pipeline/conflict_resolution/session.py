@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    SupervisionInfrastructureError,
+)
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -526,7 +530,7 @@ def invoke_resolution_agent(
             policy_bundle=policy_bundle,
             run_id=None,
         )
-    except Exception as exc:
+    except (AgentInvocationError, OSError, RuntimeError, ValueError, KeyError) as exc:
         _record_attempt_failure(session, exc)
         if isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError)):
             _record_resolution_termination(session, exc)

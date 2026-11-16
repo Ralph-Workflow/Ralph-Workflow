@@ -163,7 +163,8 @@ def _dispatch_validate_report(args: _BenchArgs) -> int:
             file=sys.stderr,
         )
         return 1
-    assert args.validate_report is not None
+    if args.validate_report is None:
+        return 1
     return run_validate_report(
         args.validate_report,
         baseline_path=args.baseline,

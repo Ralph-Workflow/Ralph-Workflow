@@ -79,7 +79,7 @@ def _read_porcelain(root: Path) -> Reading[str]:
 def _read_branch_sha(root: Path, ref: str) -> tuple[str | None, bool]:
     try:
         return observe_branch_sha(root, ref)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None, False
 
 
@@ -94,7 +94,7 @@ def _read_head_state(
     probe = head_probe if head_probe is not None else read_head_state
     try:
         result = probe(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return Reading.unknown(f"head probe failed: {exc or type(exc).__name__}")
     if not result.is_known_good:
         return Reading.unknown(result.reason or "head probe did not answer")
@@ -111,7 +111,7 @@ def _read_in_progress_kind(
     probe = in_progress_probe if in_progress_probe is not None else read_in_progress_kind
     try:
         result = probe(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return Reading.unknown(f"in-progress probe failed: {exc or type(exc).__name__}")
     if not result.is_known_good:
         return Reading.unknown(result.reason or "in-progress probe did not answer")
@@ -130,7 +130,7 @@ def _read_merge_base(
     probe = merge_base_probe if merge_base_probe is not None else read_merge_base
     try:
         return probe(root, left, right)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None, False
 
 
@@ -144,7 +144,7 @@ def _read_remote_sha(
     if remote_probe is not None:
         try:
             return remote_probe(root, remote, target)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return None, False
     ref_path = f"refs/remotes/{remote}/{target}"
     return _read_branch_sha(root, ref_path)

@@ -123,7 +123,7 @@ def stream_parsed_agent_activity(
             last_subagent_summary.clear()
             try:
                 _capture_summary_into(retained_line, emit_hook, last_subagent_summary)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 logger.debug("parser.emit_subagent_activity failed", exc_info=True)
         rendered = _render_agent_activity_line(retained_line, agent_name)
         if rendered is not None and rendered_output_sink is not None:
@@ -201,12 +201,12 @@ def _capture_summary_into(
         sink_buffer.append(summary)
         try:
             invoke_subagent_sink(summary)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return
 
     try:
         emit_hook(parsed_line, _capturing_sink)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return
 
 
@@ -242,7 +242,7 @@ def _record_activity_on_subscriber(
             workdir=workdir,
             command=command,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         logger.debug("subscriber.record_activity failed", exc_info=True)
 
 

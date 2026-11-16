@@ -448,8 +448,9 @@ def _terminal_process_unavailability_reason(
 
 def _apply_terminal_unavailability_category(
     category: FailureCategory,
-    counts: bool,
     provider_unavailability: UnavailabilityReason | None,
+    *,
+    counts: bool,
     reset_tool_registry: bool,
 ) -> tuple[FailureCategory, bool, UnavailabilityReason | None]:
     if reset_tool_registry and category not in {
@@ -750,9 +751,9 @@ class FailureClassifier:
         reset_tool_registry = self._is_tool_availability_failure(exc_obj, detail_parts)
         category, counts, provider_unavailability = _apply_terminal_unavailability_category(
             category,
-            counts,
             provider_unavailability,
-            reset_tool_registry,
+            counts=counts,
+            reset_tool_registry=reset_tool_registry,
         )
         child_alive: bool | None = None
         resumable_session_id: str | None = None

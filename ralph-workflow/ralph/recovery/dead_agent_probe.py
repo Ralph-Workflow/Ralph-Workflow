@@ -32,7 +32,7 @@ def build_dead_agent_probe_runner(
             return None
         try:
             config = resolve_agent(agent)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("dead-agent probe skipped for {}: {}", agent, exc)
             return None
         if config is None:
@@ -40,7 +40,7 @@ def build_dead_agent_probe_runner(
         probes_started += 1
         try:
             return probe(config).outcome
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
             return None
 

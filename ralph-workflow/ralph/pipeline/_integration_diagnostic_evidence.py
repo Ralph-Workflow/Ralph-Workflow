@@ -82,7 +82,7 @@ def snapshot_has_unreadable(
     try:
         col = collector if collector is not None else operation_evidence_collector()
         snapshot = col.snapshot(root, record)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
     return any(fact.value == _UNREADABLE for fact in snapshot)
 
@@ -104,5 +104,5 @@ def release_verified_diagnostic(
 ) -> EvidenceVerdict:
     try:
         return diagnostic_evidence_verdict(root, record, collector=collector)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return EvidenceVerdict.UNKNOWN

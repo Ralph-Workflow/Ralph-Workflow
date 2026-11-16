@@ -333,12 +333,12 @@ def run_conflict_resolution_outcome(
         outcome = _resolution_outcome(active_session, resolved)
         active_session.last_resolution_outcome = outcome
         return outcome
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
         emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        outcome = _resolution_outcome(active_session, False)
+        outcome = _resolution_outcome(active_session, succeeded=False)
         active_session.last_resolution_outcome = outcome
         return outcome
     finally:
@@ -397,12 +397,12 @@ def run_rebase_conflict_resolution_outcome(
         outcome = _resolution_outcome(active_session, resolved)
         active_session.last_resolution_outcome = outcome
         return outcome
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
         emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        outcome = _resolution_outcome(active_session, False)
+        outcome = _resolution_outcome(active_session, succeeded=False)
         active_session.last_resolution_outcome = outcome
         return outcome
     finally:
@@ -530,7 +530,7 @@ def _declared_decision_status(root: Path, paths: tuple[str, ...]) -> Integration
         return None
     try:
         entries = conflict_stage_entries(root, paths)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         facts = tuple((path, "marker-less declaration") for path in paths)
     else:
         facts = tuple(

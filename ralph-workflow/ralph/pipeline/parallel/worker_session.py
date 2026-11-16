@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -53,13 +54,11 @@ def build_worker_session(
         stored_capability_profile=cfg.session_capability_profile,
     )
     mcp_handle = mcp_factory.build(session)
-    try:
+    with suppress(OSError, RuntimeError, ValueError):
         from ralph.mcp.explore.handlers import build_explore_index
 
         explore_handle = build_explore_index(Path(workspace_scope.root))
         session.explore_index = explore_handle
-    except Exception:
-        pass
     return WorkerSessionBundle(
         session=session,
         mcp_handle=mcp_handle,

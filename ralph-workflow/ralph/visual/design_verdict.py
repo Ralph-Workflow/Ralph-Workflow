@@ -12,6 +12,11 @@ from ralph.visual.visual_finding import (
     VisualFinding,
 )
 
+
+class DesignVerdictValidationError(ValueError, TypeError):
+    pass
+
+
 VERDICT_PASS: str = "pass"
 VERDICT_FAIL: str = "fail"
 VERDICT_BLOCKED: str = "blocked"
@@ -63,10 +68,10 @@ def _fixture_capture_bytes(capture: Mapping[str, object], label: str) -> tuple[b
     evidence: list[bytes] = []
     for cell in cells:
         if not isinstance(cell, Mapping):
-            raise ValueError(f"{label} capture evidence is required")
+            raise DesignVerdictValidationError(f"{label} capture evidence is required")
         encoded = cell.get("evidence_b64")
         if not isinstance(encoded, str):
-            raise ValueError(f"{label} capture evidence is required")
+            raise DesignVerdictValidationError(f"{label} capture evidence is required")
         try:
             evidence.append(base64.b64decode(encoded, validate=True))
         except binascii.Error as exc:
@@ -97,9 +102,9 @@ def _validate_inputs_typed(
     findings: object,
 ) -> str:
     if not isinstance(before, CaptureSet):
-        raise ValueError("DesignVerdict.before must be a CaptureSet")
+        raise DesignVerdictValidationError("DesignVerdict.before must be a CaptureSet")
     if not isinstance(after, CaptureSet):
-        raise ValueError("DesignVerdict.after must be a CaptureSet")
+        raise DesignVerdictValidationError("DesignVerdict.after must be a CaptureSet")
     if not isinstance(intent, str) or not intent.strip():
         raise ValueError("DesignVerdict.intent must be a non-empty string")
     if len(intent) > _INTENT_MAX_LEN:
@@ -111,7 +116,7 @@ def _validate_inputs_typed(
             f"DesignVerdict.status must be one of {list(VERDICT_VALUES)}; got {status!r}"
         )
     if not isinstance(findings, tuple):
-        raise ValueError("DesignVerdict.findings must be a tuple of VisualFinding instances")
+        raise DesignVerdictValidationError("DesignVerdict.findings must be a tuple of VisualFinding instances")
     return status
 
 
@@ -190,7 +195,7 @@ def _validate_findings(
     by_capture: dict[str, list[VisualFinding]] = {}
     for finding in findings:
         if not isinstance(finding, VisualFinding):
-            raise ValueError("DesignVerdict.findings must contain only VisualFinding instances")
+            raise DesignVerdictValidationError("DesignVerdict.findings must contain only VisualFinding instances")
         if finding.capture_id not in valid_capture_ids:
             raise ValueError(
                 f"VisualFinding cites capture_id={finding.capture_id!r} which "

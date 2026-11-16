@@ -315,8 +315,10 @@ def _emit_progress_status(
     effective_ceiling: float,
     current_corr: CorroborationSnapshot,
 ) -> None:
-    assert self._last_waiting_status_at is not None
-    if now - self._last_waiting_status_at < self._config.waiting_status_interval_seconds:
+    if (
+        self._last_waiting_status_at is not None
+        and now - self._last_waiting_status_at < self._config.waiting_status_interval_seconds
+    ):
         return
     self._last_waiting_status_at = now
     corr_diag = self._build_corroboration_diag(current_corr)

@@ -298,9 +298,10 @@ class ProcessManager:
             else next(iter(_async_cell), None)
         )
         pf = pty_process_factory if pty_process_factory is not None else next(iter(_pty_cell), None)
-        assert sf is not None and af is not None and pf is not None, (
-            "No process factories set; import ralph.process.manager before creating ProcessManager"
-        )
+        if sf is None or af is None or pf is None:
+            raise RuntimeError(
+                "No process factories set; import ralph.process.manager before creating ProcessManager"
+            )
         self._sync_process_factory: _SyncProcessFactory = sf
         self._async_process_factory: _AsyncProcessFactory = af
         self._pty_process_factory: _PtyProcessFactory = pf
@@ -1013,7 +1014,8 @@ class ProcessManager:
                 async_proc = self._async_procs.get(pid)
                 if sync_proc is not None or pty_proc is not None:
                     reap_target = sync_proc if sync_proc is not None else pty_proc
-                    assert reap_target is not None
+                    if reap_target is None:
+                        raise RuntimeError("reap_target unexpectedly None")
                     self._reap_sync_and_mark(record, reap_target, cause="zombie_reconciled")
                 elif async_proc is not None:
                     self._reap_async_in_sync_and_mark(record, async_proc, cause="zombie_reconciled")

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.display.parallel_display import ParallelDisplay
+
 from rich.text import Text
 
 import ralph
@@ -59,6 +61,14 @@ if TYPE_CHECKING:
 
     from ralph.display.context import DisplayContext
     from ralph.pipeline._integration_status import IntegrationStatus
+
+
+def _as_parallel_display(display: object) -> ParallelDisplay:
+    from ralph.display.parallel_display import ParallelDisplay
+
+    if not isinstance(display, ParallelDisplay):
+        raise TypeError(f"expected ParallelDisplay, got {type(display).__name__}")
+    return display
 
 
 def __getattr__(name: str) -> object:
@@ -174,9 +184,8 @@ def _check_terminal_colour(ctx: DisplayContext, *, display: object) -> None:
     )
     _emit_simple_table(display, "Terminal / colour", rows)
     if ctx.console.color_system is None:
-        from ralph.display.parallel_display import ParallelDisplay
 
-        assert isinstance(display, ParallelDisplay)
+        display = _as_parallel_display(display)
         display.emit_status(
             "Warning: colour system is unset; this means the Console was built with "
             "color_system=None or its destination is not a TTY."
@@ -188,9 +197,8 @@ def _check_integration_status(workspace_root: Path, *, display: object) -> bool:
         _integration_lifecycle_view,
         _persisted_integration_status,
     )
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     view = _integration_lifecycle_view(workspace_root)
     if view is None:
         display.emit_status(
@@ -214,9 +222,8 @@ _integration_status_rows = integration_status_rows
 
 
 def _check_capability_state(*, display: object) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     manager = SkillManager()
     manager.check_baseline_health()
     manager.check_skills_for_updates()
@@ -257,9 +264,8 @@ def _check_capability_state(*, display: object) -> bool:
 def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...]]) -> None:
     from rich.table import Table
 
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     table = Table(title=title)
     for cell in rows[0] if rows else ("Check", "Status"):
         if isinstance(cell, Text):
@@ -303,9 +309,8 @@ def _run_preflight_validation(
     *,
     display: object,
 ) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     rows: list[tuple[object, ...]] = []
 
     try:
@@ -391,9 +396,8 @@ def _check_version(*, display: object, allow_network: bool) -> None:
 
 
 def _check_git_repo(*, display: object) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     rows: list[tuple[object, ...]] = []
 
     try:
@@ -445,9 +449,8 @@ def _check_configuration(
     *,
     display: object,
 ) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     rows: list[tuple[object, ...]] = []
 
     workspace_scope: WorkspaceScope | None = None
@@ -588,9 +591,8 @@ def _check_agents_impl(
     *,
     display: object,
 ) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     rows: list[tuple[object, ...]] = []
 
     any_missing = False
@@ -636,9 +638,8 @@ def _check_agents_impl(
 
 
 def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     rows: list[tuple[object, ...]] = []
 
     workspace_files: list[tuple[str, str, Path]] = [
@@ -695,9 +696,8 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
 
 
 def _check_filesystem_health(workspace_root: Path, *, display: object) -> bool:
-    from ralph.display.parallel_display import ParallelDisplay
 
-    assert isinstance(display, ParallelDisplay)
+    display = _as_parallel_display(display)
     fs_health = _run_fs_health_for_diagnose(workspace_root)
 
     spotlight_cell: Text

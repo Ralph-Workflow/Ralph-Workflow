@@ -18,5 +18,5 @@ def dispatch_waiting_event(
     if subscriber is not None:
         try:
             subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             logger.debug("dispatch_waiting_event.record_waiting_status failed", exc_info=True)

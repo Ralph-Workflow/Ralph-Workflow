@@ -83,7 +83,7 @@ def parse_analysis_decision_status(
             return None
 
         return status
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "Failed to parse analysis artifact at {}: {}.",
             artifact_path,

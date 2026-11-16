@@ -91,7 +91,7 @@ def remove_path(path: Path) -> None:
 
         try:
             shutil.rmtree(path)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("recovery: could not rmtree {}: {}", path, exc)
     else:
         try:
@@ -125,7 +125,7 @@ def run_sequencer_quit(root: Path, op: str) -> None:
             cwd=root,
             label=f"recovery:sequencer-quit:{op}",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recovery: sequencer --quit for '{}' failed: {}", op, exc)
 
 
@@ -140,7 +140,7 @@ def detached_head_no_state(root: Path, git_dir: Path) -> bool:
             cwd=root,
             label="recovery:head-symbolic-ref",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     return result.returncode != 0
 
@@ -266,7 +266,7 @@ def detached_branch_name(root: Path) -> str | None:
             cwd=root,
             label="recovery:head-reflog",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if result.returncode != 0:
         return None
@@ -290,5 +290,5 @@ def reattach_head_to_branch(root: Path, branch: str) -> None:
             cwd=root,
             label="recovery:head-reattach",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recovery: could not re-attach HEAD to '{}': {}", branch, exc)

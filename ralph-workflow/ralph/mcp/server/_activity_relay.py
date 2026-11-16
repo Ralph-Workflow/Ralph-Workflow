@@ -154,8 +154,7 @@ class ActivityRelay:
 
     def _deliver(self, event: Mapping[str, object]) -> dict[str, object]:
         sequence = self._validate_event(event)
-        tool_name = event["tool_name"]
-        assert isinstance(tool_name, str)
+        tool_name = str(event.get("tool_name", ""))
         with self._lock:
             expected = self._next_sequence
             fresh = sequence >= expected

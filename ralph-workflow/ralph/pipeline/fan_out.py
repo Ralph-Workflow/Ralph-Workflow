@@ -119,7 +119,7 @@ def _recovery_owner(ctx: _FanOutCtx) -> RecoveryController | None:
 def _save_checkpoint_or_log(state: PipelineState, *, message: str) -> None:
     try:
         ckpt.save(state)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.exception(message, phase=state.phase, err=exc)
 
 
@@ -555,15 +555,15 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         if ctx.install_signal_handlers_fn is not None
         else cast("_InstallSignalHandlersFn", install_signal_handlers)
     )
-    teardown_fn: Callable[[], None] | None = None
+    loop = asyncio.get_running_loop()
+    bridge = SignalBridge()
+    if ctx.monitor_stop_cb is not None:
+        bridge._connectivity_stop = ctx.monitor_stop_cb
+    root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
+    if root_task is None:
+        raise RuntimeError("root_task is None")
+    teardown_fn = _install(loop, root_task, bridge)
     try:
-        loop = asyncio.get_running_loop()
-        bridge = SignalBridge()
-        if ctx.monitor_stop_cb is not None:
-            bridge._connectivity_stop = ctx.monitor_stop_cb
-        root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
-        assert root_task is not None
-        teardown_fn = _install(loop, root_task, bridge)
 
         session_mcp_plan, session_drain = build_session_mcp_plan_for_phase(
             effect=ctx.effect,
@@ -659,7 +659,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         return current
     except KeyboardInterrupt:
         raise
-    except (Exception, SystemExit) as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, SystemExit) as exc:
         logger.exception(
             "Fan-out execution crashed in phase={phase}: {err}",
             phase=current.phase,
@@ -688,7 +688,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         if teardown_fn is not None:
             try:
                 teardown_fn()
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 logger.debug("install_signal_handlers teardown raised")
 
 

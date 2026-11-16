@@ -67,7 +67,7 @@ _MAX_REMOTE_SYNC_ATTEMPTS = 3
 def _safe_target_sha(repo_root: Path, target: str) -> str | None:
     try:
         return branch_sha(repo_root, target)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 
@@ -81,7 +81,7 @@ def _observe_remote_tracking_sha(
     client = remote_client or _default_remote_client()
     try:
         return client.observe_remote_sha(repo_root, target, remote=remote)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 
@@ -111,7 +111,7 @@ def push_single_remote(
             remote=remote,
             timeout_seconds=timeout_seconds,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate: push_branch raised unexpectedly for {}/{}: {}",
             remote,
@@ -503,7 +503,7 @@ def _align_target_with_remote(
     rebase_ongoing = False
     try:
         rebase_ongoing = rebase_in_progress(repo_root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         rebase_ongoing = False
 
     if rebase_ongoing:

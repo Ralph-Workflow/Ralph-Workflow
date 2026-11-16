@@ -373,7 +373,7 @@ def _empty_commit_review_effect(
 ) -> EmptyCommitEffect | ExitFailureEffect | None:
     try:
         has_pending_work = has_uncommitted_changes_fn(workspace_root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if not has_pending_work:
         return EmptyCommitEffect(phase_role="commit_review")
@@ -427,7 +427,7 @@ def _is_empty_commit_phase(
             not is_recognized_secret_path(path) and not is_agent_internal_path(path)
             for path in effective_changed
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 

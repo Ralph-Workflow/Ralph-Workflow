@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeGuard
@@ -131,7 +132,7 @@ def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
                 or record.resolving_stop_sha
                 or record.pre_target_sha
             )
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None if not record.resolving_stop_sha else record.resolving_stop_sha
     return record.resolving_stop_sha or record.pre_target_sha or record.pre_feature_sha
 
@@ -148,7 +149,7 @@ def _controller_for_key(
     injected = current_agent_effect_dependencies().recovery_controller
     if injected is not None:
         return injected
-    try:
+    with suppress(OSError, RuntimeError, ValueError, KeyError):
         from ralph.agents.system_clock import SystemClock
         from ralph.pipeline.agent_entry_point import AgentEntryPoint
         from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
@@ -169,8 +170,6 @@ def _controller_for_key(
                 connectivity=None,
             ),
         )
-    except Exception:
-        pass
     return None
 
 
@@ -202,7 +201,7 @@ def compute_resolution_attempt_key(
                 effective_agents = tuple(
                     sorted(agent for agent, status in eligibility if status.is_eligible)
                 )
-            except Exception as exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 return KeyUnavailable(f"agent eligibility unavailable: {exc}")
         else:
             effective_agents = ()
@@ -212,7 +211,7 @@ def compute_resolution_attempt_key(
             if config_fingerprint is not None
             else compute_config_fingerprint_for_workspace(root, config_path)
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return KeyUnavailable(f"configuration fingerprint unavailable: {exc}")
     return ResolutionAttemptKey(stop_id, tuple(sorted(effective_agents)), fingerprint)
 
@@ -483,7 +482,7 @@ def _adopt_active_rebase_record(
             pre_target_sha=onto,
         )
         write_record(workspace_root, record)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate: could not adopt the active rebase on '{}' into the durable record: {}",
             target,

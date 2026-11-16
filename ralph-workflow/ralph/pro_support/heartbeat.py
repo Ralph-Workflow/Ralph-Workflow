@@ -125,13 +125,13 @@ class ProHeartbeatClient:
         payload = self._build_payload()
         try:
             client = self._client_factory()
-        except Exception as exc:
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
             logger.debug("Pro heartbeat client creation failed (transient): %s", exc)
             return
         try:
             try:
                 response = client.post(url, json=payload, timeout=self._timeout)
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
                 logger.debug("Pro heartbeat POST to %s failed (transient): %s", url, exc)
                 return
             status_code: int = response.status_code
@@ -153,7 +153,7 @@ class ProHeartbeatClient:
             if callable(close_method):
                 try:
                     close_method()
-                except Exception:
+                except (httpx.HTTPError, OSError, RuntimeError, ValueError):
                     logger.debug("Pro heartbeat client close failed", exc_info=True)
 
 

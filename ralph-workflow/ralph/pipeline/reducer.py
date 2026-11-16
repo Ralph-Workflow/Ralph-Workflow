@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import re
 import time
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -526,12 +527,10 @@ def reduce(
     if routed_state.phase == "failed_terminal" and routed_state.is_waiting_state:
         routed_state = routed_state.clear_waiting().copy_with(last_retry_delay_ms=0)
     if recovery is not None and hasattr(recovery, "ledger"):
-        try:
+        with suppress(OSError, RuntimeError, ValueError, AttributeError):
             snap = recovery.ledger.snapshot()
             if snap != routed_state.ledger_snapshot:
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
-        except Exception:
-            pass
         verdict_record = cast("object", getattr(recovery, "last_verdict_record", None))
         if (
             isinstance(verdict_record, dict)
@@ -1103,13 +1102,14 @@ def _handle_analysis_success(
             progress_state,
             completed_route.increments_counter if completed_route is not None else None,
         )
-        return progress_state, effects
     except ValueError as exc:
         return _advance_to_failed(
             state,
             f"Routing error after analysis success in '{state.phase}': {exc}",
             policy,
         )
+    else:
+        return progress_state, effects
 
 
 def _handle_execution_result(
@@ -1812,13 +1812,11 @@ def _handle_commit_failure(
             _lock_match = _lock_pattern.search(last_error or "")
             if _lock_match:
                 lock_path_str = _lock_match.group(1)
-                try:
+                with suppress(OSError, ValueError):
                     from pathlib import Path as _Path
 
                     lock_age = time.time() - _Path(lock_path_str).stat().st_mtime
                     lock_path_str = f"{lock_path_str} (age={lock_age:.1f}s)"
-                except Exception:
-                    pass
             logger.bind(component="policy.routing").warning(
                 "Repairable git failure with no recovery phase defined; "
                 "re-routing in-place to {} (lock={}) with validated message preserved "

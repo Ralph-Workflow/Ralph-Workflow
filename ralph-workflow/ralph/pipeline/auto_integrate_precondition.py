@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 def read_post_integration_head_sha(root: Path, target: str) -> str | None:
     try:
         return get_head_sha(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         _clear_record(root)
         logger.warning("auto_integrate: get_head_sha failed post-merge: {}", exc)
         return None

@@ -171,7 +171,7 @@ def build_session_bridge(
 
         spill_root = workspace_root / ".agent" / "tmp"
         session.exec_resource_resolver = ExecResourceResolver(spill_roots=(spill_root,))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         session.exec_resource_resolver = None
     activity_relay = None
     if conflict_activity_relay:
@@ -191,7 +191,7 @@ def build_session_bridge(
         from ralph.mcp.explore.handlers import build_explore_index
 
         explore_handle = build_explore_index(workspace_root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         explore_handle = None
     if explore_handle is not None:
         session.explore_index = explore_handle

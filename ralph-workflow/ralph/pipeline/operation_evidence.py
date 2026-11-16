@@ -337,7 +337,7 @@ def _read_unstaged_work(root: Path) -> OperationFact:
         unstaged = hashlib.sha256(
             repr(sorted(capture_unstaged_work(root).items())).encode()
         ).hexdigest()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         unstaged = _UNREADABLE
     return OperationFact(kind=_KIND_UNSTAGED_WORK, value=unstaged)
 
@@ -352,7 +352,7 @@ def _read_commit_controls(
 
     try:
         controls = hashlib.sha256(capture_commit_controls(root, backend).encode()).hexdigest()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         controls = _UNREADABLE
     return OperationFact(kind=_KIND_COMMIT_CONTROLS, value=controls)
 

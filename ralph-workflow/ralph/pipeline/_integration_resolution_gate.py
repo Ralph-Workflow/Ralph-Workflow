@@ -20,7 +20,7 @@ __all__ = [
 def conflict_resolution_warranted(root: Path) -> bool:
     try:
         snapshot = observe_operation_snapshot(root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
     return bool(
         snapshot.operation_state is OperationState.REBASE_PAUSED

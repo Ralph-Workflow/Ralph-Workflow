@@ -5,6 +5,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from git import GitError
 from loguru import logger
 
 from ralph.checked_accessors import as_mapping
@@ -108,7 +109,7 @@ _COMMITTED_TREE_ARGS = ("log", "--format=%T", "HEAD", "--branches", "--tags", "-
 def _git_stdout(repo_root: Path, args: tuple[str, ...], label: str) -> str:
     try:
         result = run_git(args, cwd=repo_root, label=label)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return ""
     return result.stdout if result.returncode == 0 else ""
 
@@ -169,7 +170,7 @@ def _proposal_retention_limit(repo_root: Path, opts: dict[str, object]) -> int:
         data = load_toml(repo_root / CONFIG_DIR_NAME / "pipeline.toml", kind="pipeline")
         commit_review = as_mapping(data.get("commit_review"), field="commit_review")
         value = commit_review.get("proposal_retention")
-    except Exception:
+    except (TypeError, OSError, RuntimeError, ValueError, KeyError):
         value = None
     if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
         return value
@@ -197,7 +198,7 @@ def _render_commit_message_via_display(repo_root: Path, display_context: object)
     elif display_context is not None:
         try:
             display = resolve_active_display(None, cast("DisplayContext", display_context))
-        except Exception:
+        except (TypeError, OSError, RuntimeError, ValueError, KeyError):
             display = None
     if display is None:
         return
@@ -330,7 +331,10 @@ def _perform_commit_creation(
 
     def _create(root: Path, commit_message: str, *, expected_head: str) -> CommitCreationResult:
         if approved_tree_sha is None:
-            return create_commit_fn(str(root), commit_message, expected_head=expected_head)
+            try:
+                return create_commit_fn(str(root), commit_message, expected_head=expected_head)
+            except TypeError:
+                return cast("Callable[[Path | str, str], CommitCreationResult]", create_commit_fn)(str(root), commit_message)
         create_with_hooks = repair_opts.get("create_commit_with_hooks_fn")
         hook_committer: _CreateCommitWithHooksFn = (
             create_with_hooks
@@ -407,6 +411,18 @@ def _handle_post_commit_actions(
         cleanup_commit_message_artifacts(repo_root)
 
 
+def _validated_commit_payload(
+    payload: dict[str, object] | None, message: str, message_file: str
+) -> dict[str, object]:
+    if payload is None or not message:
+        logger.error(
+            "Commit message file is {}: {}",
+            "empty" if not _has_content(message_file) else "invalid",
+            message_file,
+        )
+        raise ValueError("commit message artifact is invalid")
+    return payload
+
 def execute_commit_effect(
     effect: CommitEffect,
     repo_root: Path,
@@ -435,15 +451,9 @@ def execute_commit_effect(
         _raw_write_tree if _is_write_tree_fn(_raw_write_tree) else None
     )
     try:
-        payload = read_commit_message_payload_from_path(Path(effect.message_file))
+        raw_payload = read_commit_message_payload_from_path(Path(effect.message_file))
         message = read_commit_message_from_path(Path(effect.message_file)) or ""
-        if payload is None or not message:
-            logger.error(
-                "Commit message file is {}: {}",
-                "empty" if not _has_content(effect.message_file) else "invalid",
-                effect.message_file,
-            )
-            raise ValueError("commit message artifact is invalid")
+        payload = _validated_commit_payload(raw_payload, message, effect.message_file)
         if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
             logger.info("Commit agent requested skip — skipping commit execution")
             cleanup_commit_message_artifacts(repo_root)
@@ -457,7 +467,7 @@ def execute_commit_effect(
             return PipelineEvent.COMMIT_SUCCESS
         try:
             before_paths = tuple(_changed_commit_paths(repo_root))
-        except Exception:
+        except (GitError, OSError, RuntimeError, ValueError):
             before_paths = ()
         include_paths = _commit_include_paths(repo_root, payload)
         sha = _perform_commit_creation(
@@ -473,7 +483,7 @@ def execute_commit_effect(
         )
         set_last_commit_error(None)
         logger.info("Created commit: {}", sha[:8])
-    except Exception as exc:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError) as exc:
         err_msg = f"{type(exc).__name__}: {exc}"
         _commit_failure_pending.record_failure(err_msg, effect.expected_tree_sha)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
@@ -497,7 +507,7 @@ def execute_commit_effect(
                     )
                 if remaining_paths:
                     logger.warning("Residual commit paths overlap committed paths; no re-entry")
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Unable to inspect residual commit work: {}", exc)
     return PipelineEvent.COMMIT_SUCCESS
 
@@ -537,7 +547,10 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
 
 
 def _changed_commit_paths(repo_root: Path) -> list[str]:
-    return sorted(set(list_changed_paths(repo_root)))
+    try:
+        return sorted(set(list_changed_paths(repo_root)))
+    except (GitError, OSError, RuntimeError, ValueError):
+        return []
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:

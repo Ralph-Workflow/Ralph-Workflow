@@ -44,7 +44,7 @@ class _DefaultRemoteClient(RemoteOps):
                 timeout_seconds=timeout_seconds,
                 remote=remote,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("auto_integrate: remote refresh query failed: {}", exc)
             return REFRESH_UNREACHABLE
 
@@ -63,7 +63,7 @@ class _DefaultRemoteClient(RemoteOps):
                 remote=remote,
                 timeout_seconds=timeout_seconds,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("auto_integrate: remote push failed: {}", exc)
             return _remote_push_module.PushResult(
                 _remote_push_module.PushStatus.UNREACHABLE,

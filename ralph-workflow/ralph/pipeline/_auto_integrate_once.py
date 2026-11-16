@@ -128,18 +128,18 @@ def _parse_ff_status(raw_outcome: object) -> _FastForwardStatus:
 
     match raw_outcome:
         case ResolvedOutcome():
-            return _FastForwardStatus(True, "")
+            return _FastForwardStatus(ok=True, skip_reason="")
         case RetryLaterOutcome(on_change=on_change):
-            return _FastForwardStatus(False, on_change or "")
+            return _FastForwardStatus(ok=False, skip_reason=on_change or "")
         case WaitingOutcome(external_condition=cond):
-            return _FastForwardStatus(False, cond or "")
+            return _FastForwardStatus(ok=False, skip_reason=cond or "")
         case tuple():
             reason = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
             return _FastForwardStatus(bool(raw_outcome[0]), reason)
         case bool():
             return _FastForwardStatus(raw_outcome, "")
         case _:
-            return _FastForwardStatus(False, str(raw_outcome))
+            return _FastForwardStatus(ok=False, skip_reason=str(raw_outcome))
 
 
 def _integrate_once_owned(

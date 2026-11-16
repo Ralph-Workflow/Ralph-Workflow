@@ -177,10 +177,11 @@ def _worker_integration_resolvers(
             "integrating without in-place conflict resolution"
         )
         if display_context is not None:
-            emit_integration_warn_line(
-                resolve_active_display(None, display_context),
-                "conflict resolution unavailable: parallel worker has no resolution dependencies",
-            )
+            with suppress(Exception):
+                emit_integration_warn_line(
+                    resolve_active_display(None, display_context),
+                    "conflict resolution unavailable: parallel worker has no resolution dependencies",
+                )
         return None, None, None
     display = resolve_active_display(None, display_context)
     conflict_resolver = build_agent_conflict_resolver(
@@ -275,7 +276,7 @@ def run_worker_auto_integration(
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
         )
-    except Exception as integrate_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as integrate_exc:
         logger.warning(
             "auto_integrate: parallel worker integration seam failed: {}",
             integrate_exc,

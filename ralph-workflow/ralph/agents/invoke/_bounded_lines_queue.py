@@ -25,8 +25,7 @@ class BoundedLinesQueue:
 
     @property
     def maxlen(self) -> int:
-        assert self._deque.maxlen is not None
-        return self._deque.maxlen
+        return int(self._deque.maxlen or 0)
 
     def __len__(self) -> int:
         return len(self._deque)

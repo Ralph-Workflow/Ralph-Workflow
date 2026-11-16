@@ -143,7 +143,7 @@ def artifact_digest(ctx: PhaseContext, artifact_path: str) -> str:
         return "missing"
     try:
         raw = ctx.workspace.read(artifact_path)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return "unreadable"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -189,7 +189,7 @@ def _read_identity_counts(ctx: PhaseContext) -> dict[str, int]:
         return {}
     try:
         loaded: object = json.loads(ctx.workspace.read(_IDENTITY_STATE_PATH))
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return {}
     if not isinstance(loaded, dict):
         return {}
@@ -211,7 +211,7 @@ def _write_identity_counts(ctx: PhaseContext, counts: dict[str, int]) -> None:
     payload = {"counts": retained}
     try:
         ctx.workspace.write(_IDENTITY_STATE_PATH, json.dumps(payload))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Failed to persist commit-review identity state: {}", exc)
 
 
@@ -233,7 +233,7 @@ def persist_unapplied_hint(
             ),
             hint,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Failed to persist commit-review retry hint: {}", exc)
 
 

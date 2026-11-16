@@ -9,6 +9,7 @@ import ralph.mcp.transport.claude as claude_transport_module
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
+from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.tool_catalog_cache import (
     cache_tool_catalog,
     clear_tool_catalog,
@@ -131,7 +132,14 @@ def run_custom_mcp_validation(
     for server in agent_healthy:
         try:
             catalog.update(collect_tool_catalog((server,)))
-        except Exception as exc:
+        except (
+            UpstreamCallError,
+            UpstreamValidationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+        ) as exc:
             logger.warning(
                 "Failed to collect tool catalog for agent-native MCP server '{}' "
                 "(skipping; the agent runtime's MCP config is misconfigured): {}",
@@ -142,7 +150,14 @@ def run_custom_mcp_validation(
     try:
         catalog.update(collect_tool_catalog(custom_healthy))
         cache_tool_catalog(workspace_root, catalog)
-    except Exception as exc:
+    except (
+        UpstreamCallError,
+        UpstreamValidationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         clear_tool_catalog(workspace_root)
         if strict:
             logger.error("Failed to cache upstream tool catalog: {}", exc)

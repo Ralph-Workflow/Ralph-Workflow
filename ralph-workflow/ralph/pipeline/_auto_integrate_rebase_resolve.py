@@ -105,7 +105,12 @@ def resolve_conflicted_rebase(
             short_circuit=None,
         )
 
-    if not _merge_mod.set_resolving_rebase(root, True):
+    try:
+        recorded_resolving = _merge_mod.set_resolving_rebase(root, resolving=True)
+    except TypeError:
+        resolving_state: bool = True
+        recorded_resolving = _merge_mod.set_resolving_rebase(root, resolving_state)
+    if not recorded_resolving:
         logger.warning(
             "auto_integrate: could not record the in-flight rebase resolution "
             "for '{}'; falling back to the endpoint merge",
@@ -167,7 +172,7 @@ def resolve_conflicted_rebase(
         else:
             raise TypeError("rebase stop resolution returned an invalid result")
     resolution_completed = isinstance(res, ResolvedOutcome)
-    if resolution_completed and not _merge_mod.set_resolving_rebase(root, False):
+    if resolution_completed and not _merge_mod.set_resolving_rebase(root, resolving=False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
         )
@@ -376,7 +381,7 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
         clean = _merge_mod.merge_state(
             root
         ) == _merge_mod.MERGE_STATE_NONE and not _merge_mod.rebase_in_progress(root)
-    except Exception as state_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as state_exc:
         logger.warning(
             "auto_integrate: could not prove no in-flight operation remains"
             " in {} ({}); retaining the durable record for startup recovery",

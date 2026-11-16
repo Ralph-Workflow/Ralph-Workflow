@@ -135,7 +135,7 @@ from ralph.pipeline.rebase_state import StartupRetentionReason
 
 complete_commit = _complete_commit
 
-_random = random.Random()
+_random = random.SystemRandom()
 
 
 _DEFAULT_RECOVER_BEFORE_ATTEMPT = recover_before_attempt
@@ -384,7 +384,7 @@ def auto_integrate_after_commit(
         )
     except TerminalStateViolationError:
         raise
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate_after_commit: unexpected failure: {}", exc)
         skipped = _record_skip(reason=f"unexpected failure: {exc}", target=None)
         if (
@@ -464,7 +464,7 @@ def _auto_integrate_on_phase_transition_inner(
         )
         if boundary_handled:
             return boundary_outcome
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate: phase-transition pre-check failed: {}\n"
             "  recording skip (AC-08); the next seam will retry from a "
@@ -473,7 +473,7 @@ def _auto_integrate_on_phase_transition_inner(
         )
         try:
             recorded_target = resolve_integration_target(config, Path(workspace_scope.root)) or ""
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             recorded_target = ""
         return _record_skip(
             reason=f"phase-transition pre-check failed: {exc}",

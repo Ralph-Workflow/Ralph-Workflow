@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,7 +56,7 @@ def _settle_spent_budget(
     is_expired_lease = held_at is None or (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
     is_old_flagged = not record.diagnostic_evidence and not record.diagnostic_ownership
     if is_expired_lease or is_old_flagged or is_owner_dead(record):
-        try:
+        with suppress(OSError, RuntimeError, ValueError):
             apply_record_transition(
                 root,
                 RELEASE_DIAGNOSTIC_EVIDENCE,
@@ -69,8 +70,6 @@ def _settle_spent_budget(
             refreshed = read_record(root)
             if refreshed is not None:
                 record = refreshed
-        except Exception:
-            pass
     if record.merge_commit_repair_attempts < DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
         return record, False
     try:
@@ -84,7 +83,7 @@ def _settle_spent_budget(
             env=env,
             clock=clock,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         terminal_emitter.critical(
             "Integration diagnostic budget spent but ladder escalation raised; "
             "the durable ledger keeps the climb and the next seam resumes it",

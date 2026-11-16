@@ -126,7 +126,7 @@ def _is_terminal_failure(phase: str, policy: PipelinePolicy | None) -> bool:
         if failure_route != success_route:
             return phase == failure_route
         return False
-    except Exception:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError):
         return False
 
 

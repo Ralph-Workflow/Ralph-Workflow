@@ -29,7 +29,7 @@ async def _default_probe(host: str, port: int, timeout_s: float) -> bool:
         with contextlib.suppress(Exception):
             await writer.wait_closed()
         return True
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 

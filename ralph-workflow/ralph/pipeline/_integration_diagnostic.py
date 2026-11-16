@@ -188,7 +188,7 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
             OperationState.NONE,
             OperationState.DETACHED,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
 
 
@@ -239,7 +239,7 @@ def _handle_diagnostic_generic_failure(
                 clock=clock,
                 target=target.target,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
                 "Integration diagnostic budget spent but ladder escalation raised; "
                 "the durable ledger keeps the climb and the next seam resumes it",
@@ -371,7 +371,7 @@ def diagnose_retained_integration(
             )
         except WorkspaceContextError as exc:
             _handle_diagnostic_config_failure(ctx.workspace_scope.root, record, exc)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             _handle_diagnostic_generic_failure(
                 ctx.workspace_scope.root,
                 record,
@@ -442,7 +442,7 @@ def _pre_pass_failure(
                 clock=clock,
                 target=record.target,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
                 "Integration diagnostic budget spent but ladder escalation raised; "
                 "the durable ledger keeps the climb and the next seam resumes it",
@@ -481,7 +481,7 @@ def _run_completion_pre_pass(
                 clock=clock,
                 target=record.target,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
                 "Typed record-fact outcome {} could not escalate to the ladder; "
                 "the durable ledger keeps the climb and the next seam resumes it",
@@ -657,7 +657,7 @@ def _settle_exhausted_cap(
             clock=clock,
             target=record.target,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         terminal_emitter.critical(
             "Integration diagnostic budget spent but ladder escalation raised; "
             "the durable ledger keeps the climb and the next seam resumes it",
@@ -745,7 +745,7 @@ def handoff_integration_diagnostic(
                     clock=clock,
                     target=record.target,
                 )
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 terminal_emitter.critical(
                     "Integration diagnostic budget spent but ladder escalation raised; "
                     "the durable ledger keeps the climb and the next seam resumes it",

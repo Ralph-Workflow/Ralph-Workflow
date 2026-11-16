@@ -163,7 +163,7 @@ def build_recovery_context(
                     from ralph.pipeline.checkpoint import load as load_checkpoint
 
                     state = load_checkpoint(checkpoint_file)
-                except Exception:
+                except (OSError, RuntimeError, ValueError, KeyError):
                     state = None
             if state is None:
                 from ralph.pipeline.state import PipelineState
@@ -202,7 +202,7 @@ def build_recovery_context(
             strategy_history=strategy_history,
         )
         return conflict_resolver, rebase_stop_resolver, controller
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("Failed building recovery context: {}", exc)
         return None, None, None
 
@@ -350,7 +350,7 @@ def _recover_incomplete_integration_owned(
             force_retry=force_retry,
         )
 
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
         return _record_skip(
             reason=f"recovery failed: {exc}",

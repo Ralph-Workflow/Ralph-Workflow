@@ -92,7 +92,7 @@ def release_verified_diagnostic(
 ) -> EvidenceVerdict:
     try:
         return diagnostic_evidence_verdict(root, record, collector=collector)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return EvidenceVerdict.UNKNOWN
 
 
@@ -124,5 +124,5 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
         return merge == MERGE_STATE_UNKNOWN or (
             merge == MERGE_STATE_NONE and not rebase_in_progress_at(operation_root)
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True

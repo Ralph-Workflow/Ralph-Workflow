@@ -21,7 +21,7 @@ class CheckpointRetiredPhaseError(CheckpointPolicyMismatchError):
                 from ralph.policy.loader import cached_default_policy_bundle
 
                 valid_phases = set(cached_default_policy_bundle().pipeline.phases.keys())
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 valid_phases = set()
         self.checkpoint_phase = checkpoint_phase
         self.valid_phases = valid_phases

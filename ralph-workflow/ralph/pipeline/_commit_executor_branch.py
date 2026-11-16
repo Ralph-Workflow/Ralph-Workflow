@@ -33,7 +33,7 @@ def _is_git_worktree(repo_root: Path) -> bool:
             ("rev-parse", "--is-inside-work-tree"), cwd=repo_root, label="check-git-worktree"
         )
         return res.returncode == 0 and res.stdout.strip() == "true"
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 
@@ -70,7 +70,7 @@ def _is_head_detached(repo_root: Path) -> bool:
     try:
         cmd = ("symbolic-ref", "--quiet", "HEAD")
         return run_git(cmd, cwd=repo_root, label="commit:head-symbolic-ref").returncode != 0
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 
@@ -95,7 +95,7 @@ def _branch_exists(repo_root: Path, branch: str) -> bool:
     try:
         cmd = ("show-ref", "--verify", f"refs/heads/{clean}")
         return run_git(cmd, cwd=repo_root, label="check-branch").returncode == 0
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
 
 
@@ -137,7 +137,7 @@ def _detached_branch_from_reflog(repo_root: Path) -> str | None:
             cwd=repo_root,
             label="commit:reflog-source-branch",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if result.returncode != 0:
         return None
@@ -180,21 +180,21 @@ def _branch_from_worktree_metadata(repo_root: Path) -> str | None:
             cwd=repo_root,
             label="commit:worktree-list",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if res.returncode != 0:
         return None
     current_matches = False
     try:
         resolved_root = repo_root.resolve()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         resolved_root = repo_root
     for line in res.stdout.splitlines():
         if line.startswith("worktree "):
             path_str = line[len("worktree ") :].strip()
             try:
                 current_matches = Path(path_str).resolve() == resolved_root
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 current_matches = False
         elif current_matches and line.startswith("branch refs/heads/"):
             b = line[len("branch refs/heads/") :].strip()
@@ -309,7 +309,7 @@ def _detached_head_sha(repo_root: Path) -> str | None:
             cwd=repo_root,
             label="commit:detached-head-sha",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     if result.returncode != 0:
         return None
@@ -355,7 +355,7 @@ def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> b
             cwd=repo_root,
             label="commit:branch-tip-sha",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     if result.returncode != 0:
         return False

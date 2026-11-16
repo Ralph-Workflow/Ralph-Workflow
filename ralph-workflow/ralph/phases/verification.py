@@ -49,7 +49,7 @@ def _check_artifact_gate(
             f"Verification artifact at '{artifact_path}' is empty; "
             f"the artifact must contain verification evidence"
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return False, (f"Verification artifact at '{artifact_path}' could not be read: {exc}")
 
 

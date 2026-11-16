@@ -101,7 +101,7 @@ def _current_time(clock: object) -> float | None:
             if isinstance(value, str):
                 return float(value)
             return None
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             return None
     if isinstance(clock, (int, float)):
         return float(clock)

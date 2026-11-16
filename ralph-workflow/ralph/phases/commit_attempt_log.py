@@ -20,7 +20,7 @@ class CommitAttemptLog:
         self.prompt_size_bytes = size
         return self
 
-    def with_diff_info(self, size: int, was_truncated: bool) -> CommitAttemptLog:
+    def with_diff_info(self, size: int, *, was_truncated: bool) -> CommitAttemptLog:
         self.diff_size_bytes = size
         self.diff_was_truncated = was_truncated
         return self

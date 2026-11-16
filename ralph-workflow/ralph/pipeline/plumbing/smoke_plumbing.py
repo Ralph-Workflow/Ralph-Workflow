@@ -907,7 +907,8 @@ def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:
 
 def _tool_activity_seen(config: AgentConfig, lines: list[str]) -> bool:
     transport = config.transport
-    assert transport is not None
+    if transport is None:
+        raise RuntimeError("transport is required")
     strategy = strategy_for_command(config.cmd, transport)
     for line in lines:
         signal = strategy.classify_activity_line(line)

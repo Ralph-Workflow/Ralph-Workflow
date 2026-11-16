@@ -488,7 +488,8 @@ def process_retention_coordinator() -> RetentionPassCoordinator:
     if _RETENTION_COORDINATOR_HOLDER[0] is None:
         _RETENTION_COORDINATOR_HOLDER[0] = RetentionPassCoordinator()
     coordinator = _RETENTION_COORDINATOR_HOLDER[0]
-    assert coordinator is not None
+    if coordinator is None:
+        raise RuntimeError("Retention coordinator unexpectedly None")
     return coordinator
 
 

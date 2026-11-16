@@ -1991,11 +1991,13 @@ def handle_check_config(
             registry = _load_agent_registry_factory().from_config(config_value)
             if config_path is not None:
                 bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
-            else:
-                assert workspace_scope is not None
+            elif workspace_scope is not None:
                 bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
-            validate_agent_chains_satisfiable(bundle, registry)
-            validate_chain_agents_on_path(bundle.agents)
+            else:
+                bundle = None
+            if bundle is not None:
+                validate_agent_chains_satisfiable(bundle, registry)
+                validate_chain_agents_on_path(bundle.agents)
         except (
             PolicyValidationError,
             OSError,

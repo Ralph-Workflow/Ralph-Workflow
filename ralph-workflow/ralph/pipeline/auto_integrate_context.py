@@ -53,13 +53,13 @@ def record_when_stale(record: RebaseState, refresh: str | None) -> RebaseState |
 
 def current_branch_or_detached_marker(root: Path) -> str | None:
     from git import Repo
-    from git.exc import GitCommandError
+    from git.exc import GitError
 
     repo: Repo | None = None
     try:
         repo = Repo(root)
         return repo.active_branch.name
-    except (TypeError, ValueError, GitCommandError, AttributeError):
+    except (TypeError, ValueError, GitError, AttributeError):
         return None
     finally:
         if repo is not None:

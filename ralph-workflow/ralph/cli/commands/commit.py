@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.registry import AgentRegistry
@@ -100,6 +101,7 @@ def commit_plumbing(
     try:
         repo_root = find_repo_root()
     except Exception as e:
+        logging.exception("find_repo_root failed")
         display.emit_warning(f"Error: Not in a git repository: {e}")
         return 1
 

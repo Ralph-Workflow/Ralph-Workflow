@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from git import Repo
+from git import GitError, Repo
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -82,7 +82,7 @@ def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
         return resolved
     try:
         return _repo(root).commit(ref_name).hexsha
-    except Exception:
+    except (GitError, OSError, ValueError, KeyError):
         return None
 
 

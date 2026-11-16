@@ -373,7 +373,8 @@ def handle_drain_window(
     now: float,
     classify_quiet: Callable[[], AgentExecutionState],
 ) -> WatchdogVerdict:
-    assert self._drain_started_at is not None
+    if self._drain_started_at is None:
+        return WatchdogVerdict.CONTINUE
 
     quiet_state = classify_quiet()
     if quiet_state == AgentExecutionState.WAITING_ON_CHILD:

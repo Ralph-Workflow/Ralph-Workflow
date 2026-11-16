@@ -352,7 +352,7 @@ def _process_is_dead(target: StandaloneMcpProcess) -> bool:
         return True
     try:
         return poll_fn() is not None
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return False
 
 
@@ -374,7 +374,7 @@ def is_alive_process(proc: object) -> bool:
         return False
     try:
         return poll_fn() is None
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
         return False
 
 
@@ -460,7 +460,7 @@ def _child_process_diagnostics(inner: object) -> tuple[int | None, str | None]:
         return None, None
     try:
         status = str(psutil.Process(raw_pid).status())
-    except Exception:
+    except (psutil.Error, OSError, RuntimeError, ValueError):
         return raw_pid, None
     return raw_pid, status
 
@@ -758,7 +758,17 @@ class RestartAwareMcpBridge:
             self._probe_fn(self._inner.endpoint, probe_timeout)
             self._last_probe_error = None
             return False, None, False, False
-        except Exception as exc:
+        except (
+            McpServerError,
+            PreflightError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TimeoutError,
+            urllib.error.URLError,
+        ) as exc:
             self._last_probe_error = exc
             if _is_saturated_dispatch_outcome(exc):
                 return False, None, False, False
@@ -907,7 +917,14 @@ class RestartAwareMcpBridge:
             try:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
-            except Exception as restart_exc:
+            except (
+                McpServerError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+            ) as restart_exc:
                 last_stage, elapsed_s = _restart_error_fields(restart_exc)
                 logger.warning(
                     "MCP restart attempt {}/{} failed (non-terminal, budget remains): "
@@ -1084,7 +1101,14 @@ class RestartAwareMcpBridge:
                         result.failure_stage,
                         result.detail,
                     )
-        except Exception as exc:
+        except (
+            McpServerError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+        ) as exc:
             logger.warning("Candidate verification raised exception: {}", exc)
         finally:
             with contextlib.suppress(Exception):
@@ -1115,7 +1139,7 @@ class RestartAwareMcpBridge:
                 poll_result: object = poll_fn()
                 if poll_result is not None:
                     return False
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
                 return False
         parent_sock_obj: object = getattr(candidate, "handover_parent_sock", None)
         proc_pid: object = getattr(proc, "pid", None)
@@ -1211,18 +1235,15 @@ class RestartAwareMcpBridge:
         self._draining_inners.append(old_inner)
 
         def _drain_worker() -> None:
-            try:
+            with contextlib.suppress(OSError, RuntimeError, ValueError, KeyError, AttributeError):
                 sleep_fn(drain_s)
-            except Exception:
-                pass
-            finally:
-                with self._lock:
-                    with contextlib.suppress(ValueError):
-                        self._draining_inners.remove(old_inner)
-                    with contextlib.suppress(ValueError):
-                        self._drain_threads.remove(threading.current_thread())
-                with contextlib.suppress(Exception):
-                    old_inner.shutdown()
+            with self._lock:
+                with contextlib.suppress(ValueError):
+                    self._draining_inners.remove(old_inner)
+                with contextlib.suppress(ValueError):
+                    self._drain_threads.remove(threading.current_thread())
+            with contextlib.suppress(Exception):
+                old_inner.shutdown()
 
         t = threading.Thread(target=_drain_worker, name="mcp-old-drain", daemon=True)
         with self._lock:
@@ -1340,7 +1361,14 @@ class RestartAwareMcpBridge:
             old_inner = self._inner
         try:
             candidate = self._spawn_candidate()
-        except Exception as restart_exc:
+        except (
+            McpServerError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+        ) as restart_exc:
             _stamp_handover_step(restart_exc, _HANDOVER_STEP_SPAWN)
             last_stage, elapsed_s = _restart_error_fields(restart_exc)
             logger.warning(
@@ -1461,13 +1489,10 @@ class RestartAwareMcpBridge:
         process_exited: bool,
         probe_duration_s: float | None,
     ) -> str:
-        try:
-            replaced = self._perform_restart(
-                process_exited=process_exited,
-                probe_duration_s=probe_duration_s,
-            )
-        except McpServerError:
-            raise
+        replaced = self._perform_restart(
+            process_exited=process_exited,
+            probe_duration_s=probe_duration_s,
+        )
         if replaced:
             return RestartAttemptResult.REPLACED
         return RestartAttemptResult.ATTEMPT_FAILED
@@ -1482,7 +1507,7 @@ class RestartAwareMcpBridge:
             sleep_fn(sample_duration_s)
             c2 = proc.cpu_times()
             return ((c2.user - c1.user) + (c2.system - c1.system)) > _CPU_PROGRESS_THRESHOLD
-        except Exception:
+        except (psutil.Error, OSError, RuntimeError, ValueError, AttributeError):
             return False
 
     def _handle_failed_probe_under_lock(
@@ -1619,7 +1644,7 @@ class RestartAwareMcpBridge:
         producer = self._contention_signal_producer or current_host_is_contended
         try:
             fresh_b_signal = bool(producer())
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError, AttributeError):
             fresh_b_signal = False
         fresh_b_signal = (fresh_b_signal or fresh_b_signal_from_overrun) if deferrable else False
 
@@ -1648,7 +1673,17 @@ class RestartAwareMcpBridge:
             try:
                 self._probe_fn(self._inner.endpoint, confirm_timeout)
                 confirm_ok = True
-            except Exception as confirm_exc:
+            except (
+                McpServerError,
+                PreflightError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+                TimeoutError,
+                urllib.error.URLError,
+            ) as confirm_exc:
                 if _is_timeout_class_probe_outcome(confirm_exc, overrun=False):
                     confirm_ok = self._check_child_cpu_progress(probed_pid, _CONFIRM_CPU_SAMPLE_S)
             if confirm_ok:
@@ -1738,7 +1773,14 @@ class RestartAwareMcpBridge:
             try:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
-            except Exception as restart_exc:
+            except (
+                McpServerError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                KeyError,
+                AttributeError,
+            ) as restart_exc:
                 last_stage, elapsed_s = _restart_error_fields(restart_exc)
                 logger.warning(
                     "MCP tool-registry-reset attempt {}/{} failed "
@@ -1947,7 +1989,7 @@ def _boot_allowance_seconds(deps: LifecycleDeps) -> float:
         return 0.0
     try:
         return max(0.0, deps.boot_allowance().total_seconds())
-    except Exception:
+    except (TypeError, AttributeError, ValueError):
         return 0.0
 
 
@@ -1969,7 +2011,7 @@ def _await_mcp_startup_or_failure(
     preflight_timeout_s = preflight_timeout_td.total_seconds()
     try:
         whole_startup_s = mcp_whole_startup_budget_from_env(env)
-    except Exception:
+    except (ValueError, TypeError, KeyError):
         whole_startup_s = preflight_timeout_s
     startup_deadline_s = min(preflight_timeout_s, whole_startup_s)
     if startup_deadline_s >= preflight_timeout_s:
@@ -1990,7 +2032,17 @@ def _await_mcp_startup_or_failure(
     def _run_preflight() -> None:
         try:
             deps.preflight(endpoint, visible_tools, preflight_budget_td)
-        except Exception as exc:
+        except (
+            PreflightError,
+            McpServerError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            KeyError,
+            AttributeError,
+            TimeoutError,
+            urllib.error.URLError,
+        ) as exc:
             preflight_error.append(exc)
         finally:
             preflight_done.set()

@@ -4,20 +4,24 @@ from collections.abc import Mapping
 from typing import cast
 
 
+class FalseBenchFixtureError(ValueError, TypeError):
+    pass
+
+
 def false_bench_fixture_draft(event: Mapping[str, object]) -> dict[str, object]:
     verdict_ref = event.get("verdict_ref")
     if not isinstance(verdict_ref, Mapping):
-        raise ValueError("event must contain a verdict_ref mapping")
+        raise FalseBenchFixtureError("event must contain a verdict_ref mapping")
     verdict_ref = cast("Mapping[str, object]", verdict_ref)
 
     facts = verdict_ref.get("facts")
     if not isinstance(facts, Mapping):
-        raise ValueError("verdict_ref must contain a facts mapping")
+        raise FalseBenchFixtureError("verdict_ref must contain a facts mapping")
     facts = cast("Mapping[str, object]", facts)
 
     session_ref = event.get("session_ref")
     if not isinstance(session_ref, Mapping):
-        raise ValueError("event must contain a session_ref mapping")
+        raise FalseBenchFixtureError("event must contain a session_ref mapping")
     session_ref = cast("Mapping[str, object]", session_ref)
 
     attribution = verdict_ref.get("attribution")

@@ -66,7 +66,7 @@ def _read_commit_message(ctx: PhaseContext) -> str | None:
         )
         content = unwrap_phase_artifact_content(artifact, expected_type=COMMIT_MESSAGE_TYPE)
         return render_commit_message_content(content)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 

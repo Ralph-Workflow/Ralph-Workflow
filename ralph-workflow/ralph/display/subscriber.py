@@ -82,7 +82,8 @@ def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKind
 
 def _format_waiting_status_line(event: object) -> str:
     waiting_event_cls, waiting_kind_cls = _resolve_waiting_types()
-    assert isinstance(event, waiting_event_cls)
+    if not isinstance(event, waiting_event_cls):
+        raise TypeError(f"Expected {waiting_event_cls}, got {type(event)}")
     cast_event = event
     cum = f"{cast_event.cumulative_seconds:.0f}"
     ceil = f"{cast_event.ceiling_seconds:.0f}"

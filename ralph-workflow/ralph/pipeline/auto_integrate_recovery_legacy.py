@@ -135,7 +135,7 @@ def _reclaim_unowned_stale_rebase(root: Path) -> RebaseState | None:
         _recover_merge_marker(root, git_dir)
         _recover_sequencer_state(root, git_dir)
         _recover_detached_head(root, git_dir)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recovery: failed to reclaim stale unowned rebase state: {}", exc)
         return _record_skip(
             reason=f"recovery: stale unowned rebase state could not be reclaimed: {exc}",
@@ -203,7 +203,7 @@ def _discard_dead_rebase_progress(root: Path) -> None:
 
     try:
         clear_progress(root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate: could not clear the rebase progress record: {}", exc)
 
 

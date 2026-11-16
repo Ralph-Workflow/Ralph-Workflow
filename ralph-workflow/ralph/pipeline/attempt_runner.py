@@ -247,12 +247,12 @@ def run_agent_attempt(
         if all(exc is not recorded for recorded in finalized_failures):
             finalize(
                 AttemptFinalization(
-                    max(finalized, default=0) + 1,
-                    True,
-                    exc,
-                    None,
-                    None,
-                    None,
+                    attempt_ordinal=max(finalized, default=0) + 1,
+                    attempt_failed=True,
+                    exc=exc,
+                    workspace_changed=None,
+                    typed_signal=None,
+                    retryable_reason=None,
                 )
             )
         raise
@@ -382,7 +382,7 @@ def _resolve_agent_config(
         return None
     try:
         resolved = registry.get(agent)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
     return resolved if isinstance(resolved, AgentConfig) else None
 
@@ -395,7 +395,7 @@ def _agent_registry(
     if factory is not None:
         try:
             registry = factory(config)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             registry = None
         if isinstance(registry, _RegistryReader):
             return registry

@@ -69,7 +69,7 @@ def handle_keyboard_interrupt(
                 grace_period_s=resolved_pm.policy.default_grace_period_s,
                 error_log_message="Interrupt controller raised during KeyboardInterrupt",
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             interrupt_error.append(exc)
         finally:
             interrupt_done.set()

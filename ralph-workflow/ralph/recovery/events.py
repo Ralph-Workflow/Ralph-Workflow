@@ -38,7 +38,7 @@ class FailureEventBus:
         for listener in list(self._listeners):
             try:
                 listener(evt)
-            except Exception:
+            except (OSError, RuntimeError, ValueError, KeyError):
                 logger.debug("FailureEventBus listener raised", exc_info=True)
 
     def subscribe(self, cb: _AnyListener) -> UnsubscribeFn:

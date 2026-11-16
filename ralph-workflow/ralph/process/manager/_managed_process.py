@@ -95,10 +95,7 @@ class ManagedProcess:
         return rc
 
     def wait(self, timeout: float | None = None) -> int:
-        try:
-            rc = self._proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            raise
+        rc = self._proc.wait(timeout=timeout)
         if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
@@ -108,10 +105,7 @@ class ManagedProcess:
         input: bytes | None = None,
         timeout: float | None = None,
     ) -> tuple[bytes | None, bytes | None]:
-        try:
-            stdout, stderr = self._proc.communicate(input=input, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            raise
+        stdout, stderr = self._proc.communicate(input=input, timeout=timeout)
         rc = self._proc.returncode
         if rc is None:
             rc = self._proc.wait(timeout=PROCESS_EXIT_WAIT_SECONDS)

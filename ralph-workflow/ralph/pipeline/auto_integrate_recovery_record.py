@@ -170,7 +170,7 @@ def continue_retained_resolution(
                 if config is not None
                 else None
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             policy_bundle = None
         effective_controller = build_entry_point_recovery_controller(
             AgentEntryPoint.INTEGRATION_CONTINUATION,
@@ -211,7 +211,7 @@ def _refresh_before_verdict(
     refresh_fn = _rec_mod._refresh_target
     try:
         outcome = refresh_fn(config, workspace_root, target)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("recovery: target refresh raised: {}", exc)
         return REFRESH_UNREACHABLE, False
     return outcome, refresh_outcome_is_healthy(outcome)
@@ -322,7 +322,7 @@ def _get_branch_sha(workspace_root: Path, target: str) -> str | None:
 def _read_outcome_or_skip(root: Path, backend: FileBackend) -> RebaseState | None:
     try:
         outcome = read_record_outcome(root, backend=backend)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         critical("Integration ownership unreadable; recovery retained: {}", exc)
         return _record_skip(
             reason=f"integration ownership unreadable: {exc}",
@@ -474,7 +474,7 @@ def _recorded_identity_changed_or_dirty(root: Path, record: IntegrationRecord) -
         import ralph.git.operations as _git_ops
 
         head = _git_ops.get_head_sha(root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
     if head != expected:
         return True
@@ -535,7 +535,7 @@ def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -
 def _read_head_sha_or_none(root: Path) -> str | None:
     try:
         return get_head_sha(root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 

@@ -203,11 +203,11 @@ def clear_tool_catalog(workspace_root: Path | None) -> None:
     if key is None:
         return
     _CACHE.pop(key, None)
-    assert workspace_root is not None
-    try:
-        _catalog_file(workspace_root).unlink(missing_ok=True)
-    except OSError:
-        logger.debug("could not remove catalog file for %s", workspace_root)
+    if workspace_root is not None:
+        try:
+            _catalog_file(workspace_root).unlink(missing_ok=True)
+        except OSError:
+            logger.debug("could not remove catalog file for %s", workspace_root)
 
 
 def collect_tool_catalog(

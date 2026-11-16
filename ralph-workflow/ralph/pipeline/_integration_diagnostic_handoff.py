@@ -122,14 +122,14 @@ def observe_workspace_change(
     workspace = FsWorkspace(root)
     try:
         probe.observe_before(_INTEGRATION_PROBE_KEY, workspace)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "Integration: workspace baseline could not be observed before the attempt: {}", exc
         )
     attempt()
     try:
         return bool(probe.has_changed(_INTEGRATION_PROBE_KEY, workspace))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "Integration: workspace change could not be observed after the attempt: {}", exc
         )
@@ -144,7 +144,7 @@ def check_target_worktree_context(target_root: Path) -> str | None:
             pass
     except WorkspaceContextError as exc:
         return exc.fix
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return f"target worktree context error: {exc}"
     return None
 
@@ -192,7 +192,7 @@ def _invoke_and_judge(
         workspace_changed = observe_workspace_change(controller, inspection_root, _attempt)
     except WorkspaceContextError:
         raise
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         bench_resolver(controller, agent, exc)
         raise
     verified, _reason = _check_operation_completion_proof(inspection_root, record, collector=col)
@@ -247,7 +247,7 @@ def _observed_signature(root: Path) -> str:
 
     try:
         return AttemptState().signature(observe(root))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("Integration diagnostic: blocking signature unreadable: {}", exc)
         return ""
 
@@ -773,7 +773,7 @@ def read_planning_handoff_record(handoff_path: Path) -> dict[str, object] | None
         if isinstance(parsed, dict):
             return {str(k): v for k, v in parsed.items()}
         return None
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None
 
 

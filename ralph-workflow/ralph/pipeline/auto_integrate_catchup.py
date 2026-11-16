@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
-from git import Repo
+from git import GitError, Repo
 from loguru import logger
 
 from ralph.git.git_call_policy import classify_git_exception, quarantine_reason
@@ -152,7 +152,7 @@ def _current_branch_name(root: Path) -> str | None:
     try:
         repo = Repo(root)
         return repo.active_branch.name
-    except Exception:
+    except (GitError, AttributeError, TypeError, OSError, RuntimeError, ValueError, KeyError):
         return None
     finally:
         _close_repo(repo)
@@ -169,7 +169,7 @@ def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
 def _local_head(repo: Repo, name: str) -> Head | None:
     try:
         return next((head for head in repo.heads if head.name == name), None)
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return None
 
 
@@ -181,7 +181,7 @@ def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
         if head is None:
             return None, True
         return head.commit.hexsha, True
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return None, False
     finally:
         _close_repo(repo)
@@ -192,7 +192,7 @@ def is_ancestor(root: Path, ancestor_sha: str, descendant_sha: str) -> bool:
     try:
         repo = Repo(root)
         return repo.is_ancestor(repo.commit(ancestor_sha), repo.commit(descendant_sha))
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return False
     finally:
         _close_repo(repo)
@@ -204,7 +204,7 @@ def _worktree_is_clean(root: Path) -> bool:
         repo = Repo(root)
         status_out = cast("str", repo.git.status("--porcelain", "--untracked-files=no"))
         return not status_out.strip()
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return False
     finally:
         _close_repo(repo)
@@ -222,7 +222,7 @@ def _recover_stale_locks(root: Path) -> str:
         repo = Repo(root)
         git_dir = Path(repo.git_dir)
         common_dir = Path(repo.common_dir)
-    except Exception:
+    except (GitError, AttributeError, TypeError, OSError, RuntimeError, ValueError, KeyError):
         return ""
     finally:
         _close_repo(repo)
@@ -230,7 +230,7 @@ def _recover_stale_locks(root: Path) -> str:
     for lock_path in git_lock_candidates(git_dir, common_dir):
         try:
             verdict = lock_has_no_live_holder(lock_path, git_dir, common_dir)
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             verdict = "unknown"
         if verdict != "dead":
             reason = CATCHUP_LOCK_HELD if verdict == "live" else CATCHUP_LOCK_UNKNOWN
@@ -262,7 +262,8 @@ def attempt_catchup_fast_forward(
 ) -> str:
     if not _catchup_enabled(config):
         return CATCHUP_DISABLED
-    assert config is not None
+    if config is None:
+        raise RuntimeError("config is None")
     remote_enabled = remote_sync_enabled(config)
     current = _current_branch_name(root)
     if current is None and not remote_enabled:
@@ -332,7 +333,7 @@ def _mutation_lease(root: Path) -> Iterator[_LeaseVerdict]:
             root,
             holder=WorktreeLeaseHolder(name="auto-integrate-catchup"),
         )
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         yield "unknown"
         return
     if lease is None:
@@ -343,7 +344,7 @@ def _mutation_lease(root: Path) -> Iterator[_LeaseVerdict]:
     finally:
         try:
             end_agent_lease(lease)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning(
                 "auto_integrate catch-up lease release failed: {}",
                 exc,
@@ -387,7 +388,7 @@ def _backoff_after_failure(
     try:
         delay = compute_retry_delay(attempt_count, jitter=jitter)
         clock.sleep(delay)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "auto_integrate catch-up backoff failed (attempt {}): {}",
             attempt_count,
@@ -437,7 +438,7 @@ def _charge_attempt(
             _CATCHUP_LEDGER_ACTION,
             is_unknown=False,
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return _ledger_failure_outcome(signature, observation, failure_budget, clock, jitter)
     if failure_budget is not None:
         failure_budget.record_success()
@@ -681,7 +682,14 @@ def _advance_observed_target(
         else:
             advanced = False
             refusal_reason = str(outcome)
-    except Exception as exc:
+    except (
+        subprocess.SubprocessError,
+        GitError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         kind = _classify_git_exception(exc)
         if kind != GitOutcomeKind.FAILED:
             _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
@@ -697,7 +705,7 @@ def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | Non
     try:
         repo = Repo(root)
         return repo.commit(f"refs/remotes/{remote}/{target}").hexsha
-    except Exception:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return None
     finally:
         _close_repo(repo)
@@ -789,7 +797,14 @@ def _execute_fast_forward(
 ) -> str:
     try:
         merged = fast_forward_via_worktree(root, observation.target_sha)
-    except Exception as exc:
+    except (
+        subprocess.SubprocessError,
+        GitError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         kind = _classify_git_exception(exc)
         if kind != GitOutcomeKind.FAILED:
             _backoff_after_failure(clock, attempt_count, jitter=jitter)
@@ -808,7 +823,7 @@ def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
         if (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists():
             return False
         return repo.active_branch.name == expected_branch
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return False
     finally:
         _close_repo(repo)
@@ -955,7 +970,7 @@ class AutoIntegrateCatchupWorker:
             logger.warning("auto_integrate catch-up tick failed: {}: {}", CATCHUP_KILLED, exc)
             self._record_progress(CATCHUP_KILLED)
             return
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("auto_integrate catch-up tick failed: {}: {}", CATCHUP_UNKNOWN, exc)
             self._record_progress(CATCHUP_UNKNOWN)
             return
@@ -984,7 +999,7 @@ class AutoIntegrateCatchupWorker:
     def _publication_window(self, target: str) -> AbstractContextManager[None] | None:
         try:
             verdict, owner = worktree_lookup(find_main_worktree_root(self._root), target)
-        except Exception:
+        except (GitError, OSError, RuntimeError, ValueError, KeyError):
             verdict, owner = WORKTREE_QUERY_FAILED, None
         if verdict == WORKTREE_FOUND and owner is not None:
             if self._agent_phases.is_active(owner):
@@ -1029,7 +1044,7 @@ class AutoIntegrateCatchupWorker:
                         remote_client=self._remote_client,
                         rebase_stop_resolver=self._rebase_stop_resolver,
                     )
-            except Exception as tick_exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as tick_exc:
                 logger.warning(
                     "auto_integrate catch-up publication tick failed: {}: {}",
                     CATCHUP_UNKNOWN,

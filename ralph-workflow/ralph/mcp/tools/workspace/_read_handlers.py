@@ -850,10 +850,9 @@ def _read_multiple_item(
             }
         payload_dict: dict[str, object] = cast("dict[str, object]", payload)
         payload_dict["is_error"] = single_result.is_error
-        if per_item_max_bytes and isinstance(payload_dict.get("content"), str):
-            content_value = payload_dict["content"]
-            assert isinstance(content_value, str)
-            payload_dict["content"] = content_value[:per_item_max_bytes]
+        raw_content = payload_dict.get("content")
+        if per_item_max_bytes and isinstance(raw_content, str):
+            payload_dict["content"] = raw_content[:per_item_max_bytes]
             payload_dict["truncated"] = True
         return payload_dict
     if "span_id" in item:
@@ -872,10 +871,9 @@ def _read_multiple_item(
         span_payload = _decode_payload(span_result)
         span_payload["selector"] = "span_id"
         span_payload["is_error"] = span_result.is_error
-        if per_item_max_bytes and isinstance(span_payload.get("content"), str):
-            content_value = span_payload["content"]
-            assert isinstance(content_value, str)
-            span_payload["content"] = content_value[:per_item_max_bytes]
+        raw_span_content = span_payload.get("content")
+        if per_item_max_bytes and isinstance(raw_span_content, str):
+            span_payload["content"] = raw_span_content[:per_item_max_bytes]
             span_payload["truncated"] = True
         return span_payload
     if "symbol" in item:
@@ -894,10 +892,9 @@ def _read_multiple_item(
         symbol_payload = _decode_payload(symbol_result)
         symbol_payload["selector"] = "symbol"
         symbol_payload["is_error"] = symbol_result.is_error
-        if per_item_max_bytes and isinstance(symbol_payload.get("content"), str):
-            content_value = symbol_payload["content"]
-            assert isinstance(content_value, str)
-            symbol_payload["content"] = content_value[:per_item_max_bytes]
+        raw_sym_content = symbol_payload.get("content")
+        if per_item_max_bytes and isinstance(raw_sym_content, str):
+            symbol_payload["content"] = raw_sym_content[:per_item_max_bytes]
             symbol_payload["truncated"] = True
         return symbol_payload
     path = item.get("path")

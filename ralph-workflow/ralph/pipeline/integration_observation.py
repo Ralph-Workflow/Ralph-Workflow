@@ -5,6 +5,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from git.exc import GitError
+
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._index_flag_records import IndexFlagDirt, read_index_flag_dirt
@@ -72,7 +74,7 @@ def reading_from_callable[
 ) -> Reading[T]:
     try:
         return Reading.known(probe())
-    except Exception as exc:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError, AttributeError) as exc:
         reason = classify_blocked(exc)
         if isinstance(reason, str) and reason:
             return Reading[T].known_blocked(reason)
@@ -355,7 +357,7 @@ def read_worktree_porcelain(root: Path) -> Reading[str]:
             cwd=root,
             label="integration-observation-porcelain",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return _unreadable("git status --porcelain", str(exc) or type(exc).__name__)
     if result.returncode != 0:
         return _unreadable("git status --porcelain", f"exit={result.returncode}")
@@ -369,7 +371,7 @@ def read_head_state(root: Path) -> Reading[HeadState]:
             cwd=root,
             label="integration-observation-head",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return Reading[HeadState].unknown(
             f"git symbolic-ref HEAD unreadable: {exc or type(exc).__name__}"
         )
@@ -387,7 +389,7 @@ def read_merge_base(root: Path, left: str, right: str) -> tuple[str | None, bool
             cwd=root,
             label="integration-observation-merge-base",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return None, False
     if result.returncode == 0:
         return result.stdout.strip() or None, True
@@ -453,7 +455,7 @@ def read_in_progress_kind(root: Path) -> Reading[InProgressKind]:
             cwd=root,
             label="integration-observation-git-dir",
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return Reading[InProgressKind].unknown(
             f"git directory unreadable: {exc or type(exc).__name__}"
         )

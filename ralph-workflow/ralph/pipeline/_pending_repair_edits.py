@@ -22,6 +22,11 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 
+
+class SourceRepairError(RuntimeError, TypeError):
+    pass
+
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -143,7 +148,7 @@ def accept_repair_edits(
         raise RuntimeError("repair source corrections failed staging or conflict verification")
     resumed = resume_source_repair(root, staged_transition, backend=backend)
     if isinstance(resumed, str):
-        raise RuntimeError(resumed)
+        raise SourceRepairError(resumed)
     return True
 
 

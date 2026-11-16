@@ -174,7 +174,7 @@ def clear_validation_retry_hint(
         ):
             if workspace.exists(candidate):
                 workspace.remove(candidate)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return
 
 

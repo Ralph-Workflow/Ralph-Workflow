@@ -317,7 +317,7 @@ def _recovery_preamble_for(
                     display_context=display_context,
                     strategy_history=history,
                 )
-            except Exception as resolver_exc:
+            except (OSError, RuntimeError, ValueError, KeyError) as resolver_exc:
                 logger.debug("Recovery preamble resolver construction skipped: {}", resolver_exc)
 
         try:
@@ -670,7 +670,7 @@ def _preserved_copy_clause_for_root(root: Path) -> str:
 
     try:
         evidence = AttemptLedger(root).read().ladder_evidence
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return "no preserved copy recorded"
     identity = evidence.get(PRESERVED_COPY_LEDGER_KEY) or evidence.get(QUARANTINE_COPY_LEDGER_KEY)
     return identity or "no preserved copy recorded"
@@ -800,7 +800,7 @@ def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
             return
         for lock in reap_stale_locks(git_dir, common_git_dir(root), operation="startup-sweep"):
             logger.info("startup sweep removed orphaned git lock: {}", lock)
-    except Exception as sweep_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as sweep_exc:
         logger.warning("startup git-lock sweep failed: {}", sweep_exc)
 
 
@@ -856,7 +856,7 @@ def run_auto_integrate_recovery_preamble(
             recovery_controller=recovery_controller,
             force_retry=force_retry,
         )
-    except Exception as recover_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as recover_exc:
         logger.warning("auto_integrate recovery preamble failed: {}", recover_exc)
         return None
     if recovered is not None:
@@ -906,7 +906,7 @@ def _run_startup_integration(
             ),
             display=ctx.active_display,
         )
-    except Exception as startup_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as startup_exc:
         logger.warning("startup auto-integrate failed: {}", startup_exc)
         return None
     with suppress(Exception):
@@ -969,7 +969,7 @@ def _save_recovered_rebase_checkpoint(
             message=("Checkpoint save failed while persisting auto-integrate recovery: {err}"),
             path=_runner_module._checkpoint_path(ctx.workspace_scope),
         )
-    except Exception as save_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as save_exc:
         logger.warning("auto_integrate recovery checkpoint save failed: {}", save_exc)
 
 
@@ -1094,7 +1094,7 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
         seal = seal_baseline(root, run_id, force=False)
     except (InvalidGitRepositoryError, NoSuchPathError):
         return state
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("Failed to seal the run-start baseline: {}", exc)
         return state.copy_with(rollback_baseline_ref=f"{_BASELINE_REF_NAMESPACE}/{run_id}")
     if seal is None:
@@ -1537,7 +1537,7 @@ def _integration_target_or_none(ctx: LoopContext) -> str | None:
 
     try:
         return resolve_integration_target(ctx.config, ctx.workspace_scope.root)
-    except Exception as target_exc:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as target_exc:
         logger.warning("integration resolution: unable to resolve target: {}", target_exc)
         return None
 
@@ -1601,7 +1601,7 @@ def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIden
 
     try:
         return observe_conflict_identity(ctx.workspace_scope.root, target)
-    except Exception as identity_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as identity_exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", identity_exc)
         return ConflictIdentity()
 
@@ -1669,7 +1669,7 @@ def _resolve_blocking_conflict(
                 else ()
             ),
         )
-    except Exception as build_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as build_exc:
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
     complete_merge = _retry_hooks(ctx).complete_in_progress_merge or _complete_in_progress_merge
@@ -1801,7 +1801,7 @@ def _resolve_orphaned_unmerged_index_in_place(ctx: LoopContext, target: str) -> 
             logger.warning("integration resolution: could not stage the resolved paths")
             return False
         return not [path for path in unmerged_paths(root) if path != "<unmerged-path-query-failed>"]
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("integration resolution: orphaned index resolution failed: {}", exc)
         return False
 
@@ -1815,7 +1815,7 @@ def _rederive_live_conflict_state_or_none(
     try:
         derive = _retry_hooks(ctx).rederive_live_conflict_state or _rederive_live_conflict_state
         return derive(root, target, rebase)
-    except Exception as derive_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as derive_exc:
         logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
         return None
 
@@ -1840,7 +1840,7 @@ def _run_cold_capped_escalation(
         return True
     try:
         return _resolve_blocking_conflict(ctx, target, rebase)
-    except Exception as resolve_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning(
             "integration resolution: cold-capped escalation resolver failed: {}",
             resolve_exc,
@@ -1858,7 +1858,7 @@ def _rederive_live_conflict_state(
 
     try:
         verdict = inspect_integration_resolution(root, rebase)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug(
             "integration resolution: live re-derivation verdict unreadable: {}",
             exc,
@@ -1883,7 +1883,7 @@ def _paused_rebase_at(root: Path) -> bool:
         from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 
         return bool(rebase_in_progress_at(root))
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning(
             "integration resolution: rebase state unreadable ({}); "
             "falling back to git's on-disk rebase markers",
@@ -1902,7 +1902,7 @@ def _rebase_markers_on_disk(root: Path) -> bool:
             _, _, path = pointer.partition("gitdir:")
             git_dir = Path(path.strip() or str(git_dir))
         return any((git_dir / name).exists() for name in REBASE_STATE_DIRS)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("integration resolution: rebase markers unreadable: {}", exc)
         return False
 
@@ -2038,7 +2038,7 @@ def resolve_paused_rebase(
         resolved, reason, failure_cause = _parse_paused_rebase_outcome(
             outcome, ctx.workspace_scope.root
         )
-    except Exception as resolve_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
     if not resolved:
@@ -2070,7 +2070,7 @@ def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResol
         if merge_state(root) != MERGE_STATE_IN_PROGRESS:
             return False
         return _resolve_and_commit(root, target, resolver)
-    except Exception as resolve_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning("integration resolution executor failed: {}", resolve_exc)
         return False
 
@@ -2290,7 +2290,7 @@ def _execute_owner_ladder_rung(
             target=target,
             expected_target_sha=expected_sha,
         )
-    except Exception as rung_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as rung_exc:
         logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)
         return
     if result is None:
@@ -2415,7 +2415,7 @@ def _ask_owner_planning_sync(
             target=target,
             remote=remote,
         )
-    except Exception as seam_exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as seam_exc:
         logger.debug("owner seam unreadable: {}", seam_exc)
         return None
 
@@ -2530,14 +2530,14 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         return True
     try:
         target = resolve_integration_target(ctx.config, ctx.workspace_scope.root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("integration resolution: unable to resolve target: {}", exc)
         return True
     if not target:
         return True
     try:
         identity = observe_conflict_identity(ctx.workspace_scope.root, target)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
@@ -2604,7 +2604,7 @@ def _repair_pending_merge_commit(ctx: LoopContext, failure: str) -> None:
             failure=failure,
             controller=ctx.controller,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         critical("Merge commit retained; repair agent unavailable: {}", exc)
 
 
@@ -2619,7 +2619,7 @@ def _conflict_resolution_warranted(ctx: LoopContext) -> bool:
 
     try:
         return conflict_resolution_warranted(ctx.workspace_scope.root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return True
 
 
@@ -2913,7 +2913,7 @@ def _boundary_ladder_recovery(
     remote = _configured_sync_remote(ctx)
     try:
         record = read_record(root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         record = None
     executed_rung: CleanupLadderRung | None = None
     previous_action: IntegrationAction | None = None
@@ -3098,7 +3098,7 @@ def _retained_round_fingerprint(ctx: LoopContext) -> str:
 
     try:
         return retained_round_fingerprint(ctx.workspace_scope.root)
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return "unreadable"
 
 
@@ -3866,7 +3866,7 @@ def _subscribe_recovery_display(
                     now_ts,
                     build=lambda: status_text(label, value, style),
                 )
-        except Exception:
+        except (OSError, RuntimeError, ValueError, KeyError):
             logger.bind(recovery=True).debug(
                 "Recovery display subscriber raised; swallowing",
                 exc_info=True,
@@ -3917,7 +3917,7 @@ def _handle_keyboard_interrupt(
 def _run_cleanup_step(resource: str, stage: str, action: Callable[[], None]) -> None:
     try:
         action()
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         logger.exception(
             "pipeline cleanup failed resource={} stage={}",
             resource,

@@ -102,10 +102,10 @@ def _merge_interactive_settings_json(settings_json: str | None, sentinel_path: P
         cast("dict[str, object]", parsed_hooks) if isinstance(parsed_hooks, dict) else {}
     )
     default_hooks = settings["hooks"]
-    assert isinstance(default_hooks, dict)
     merged_hooks: dict[str, object] = dict(existing_hooks)
-    for event_name, default_value in default_hooks.items():
-        merged_hooks.setdefault(event_name, default_value)
+    if isinstance(default_hooks, dict):
+        for event_name, default_value in default_hooks.items():
+            merged_hooks.setdefault(event_name, default_value)
     merged["hooks"] = merged_hooks
     return json.dumps(merged)
 

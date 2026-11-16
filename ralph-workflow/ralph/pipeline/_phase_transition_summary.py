@@ -57,9 +57,9 @@ def emit_final_summary(
         snapshot: PipelineSnapshot | None = None
         if subscriber is not None:
             try:
-                dropped_count = subscriber.dropped_count
+                dropped_count = getattr(subscriber, "dropped_count", 0)
                 snapshot = subscriber.build_snapshot(state)
-            except Exception:
+            except (AttributeError, OSError, RuntimeError, ValueError, KeyError):
                 logger.debug(
                     "subscriber.build_snapshot failed; falling back to raw snapshot",
                     exc_info=True,
@@ -95,5 +95,5 @@ def emit_final_summary(
         if target_display is None:
             target_display = resolve_active_display(None, ctx)
         target_display.emit_completion_summary_panel(snapshot, options=cs_opts)
-    except Exception:
+    except (AttributeError, OSError, RuntimeError, ValueError, KeyError):
         logger.debug("Failed to emit completion summary", exc_info=True)

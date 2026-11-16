@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Final
 
 from loguru import logger
@@ -54,7 +55,7 @@ def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
 
     try:
         return capture_planning_baseline(root, git=RunGitCleanupPort())
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("pre-planning baseline capture failed: {}", exc)
         return None
 
@@ -79,7 +80,7 @@ def resolve_planning_residue(
             ledger=OwnerResidueLedgerPort(),
             target=target,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("planning residue cleanup failed: {}", exc)
         return None
     if outcome.operation_blocked or outcome.operation_unknown:
@@ -103,7 +104,7 @@ def _route_blocked_operation(
     label = "unknown-operation" if outcome.operation_kind is None else outcome.operation_kind.name
     try:
         action = decide_seam_action(root, record=read_record(root), target=target)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("planning residue: operation-ladder routing unreadable: {}", exc)
         return
     if isinstance(action, RecordFactOutcome):
@@ -240,12 +241,10 @@ def _abort_and_fallback_merge(
     from ralph.pipeline.auto_integrate_record import clear_record
 
     saved_feature_tip: str | None = None
-    try:
+    with suppress(OSError, RuntimeError, ValueError):
         tip, ok = observe_branch_sha(root, "feature")
         if ok and tip:
             saved_feature_tip = tip
-    except Exception:
-        pass
 
     try:
         abort_rebase(repo_root=root)
@@ -267,10 +266,11 @@ def _abort_and_fallback_merge(
             rebase_stop_resolver=resolver,
             prefer_merge=PAUSED_REBASE_RECOVERY_PREFERS_MERGE,
         )
-        return outcome
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("abort_rebase or merge fallback failed: {}", exc)
-    return None
+        return None
+    else:
+        return outcome
 
 
 def _finish_paused_rebase(
@@ -284,7 +284,7 @@ def _finish_paused_rebase(
     try:
         if not rebase_in_progress(root):
             return None
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
     from ralph.git.merge import observe_branch_sha
     from ralph.pipeline.conflict_resolution.rebase_loop import (
@@ -292,13 +292,11 @@ def _finish_paused_rebase(
         finish_resolved_rebase_stops,
     )
 
-    try:
+    with suppress(OSError, RuntimeError, ValueError):
         feature_sha, _ = current_rebase_identity(root)
         tip, ok = observe_branch_sha(root, "feature")
         if ok and feature_sha and tip and feature_sha != tip:
             return _abort_and_fallback_merge(config, root, target, resolver)
-    except Exception:
-        pass
 
     if finish_resolved_rebase_stops(root, target) or resolver is None:
         return None

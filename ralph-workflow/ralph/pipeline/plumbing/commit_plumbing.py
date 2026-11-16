@@ -1170,7 +1170,7 @@ def invoke_commit_agent_attempt(
 
     try:
         artifact_message = read_artifact(attempt_context.repo_root)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         return CommitAgentAttempt(
             failure_detail=_format_commit_agent_failure(
                 agent.cmd, prompt_file, parsed_output, str(exc)

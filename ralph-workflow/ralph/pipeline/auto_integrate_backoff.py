@@ -106,5 +106,5 @@ def wait_before_retry(
     try:
         delay = compute_retry_delay(attempt, jitter=jitter)
         sleep(delay)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("auto_integrate: retry backoff failed (non-fatal): {}", exc)

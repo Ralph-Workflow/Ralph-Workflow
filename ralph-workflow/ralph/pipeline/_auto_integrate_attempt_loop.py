@@ -269,7 +269,7 @@ def run_attempt_loop(
             )
     except TerminalStateViolationError:
         raise
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("auto_integrate: integration attempt failed: {}", exc)
         charged = record_refresh(
             record_skip(reason=f"unexpected failure: {exc}", target=target),

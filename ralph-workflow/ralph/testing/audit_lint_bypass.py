@@ -260,6 +260,106 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "is the documented contract."
         ),
     },
+    "TRY003": {
+        "pattern": [
+            "ralph/**/*.py",
+            "tests/**/*.py",
+        ],
+        "reason": (
+            "Exception messages contain explanatory string details at "
+            "the raise site without dedicated custom exception classes."
+        ),
+    },
+    "S101": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test expectations use assertions as test verifications.",
+    },
+    "S105": {
+        "pattern": [
+            "tests/**/*.py",
+            "ralph/project_policy/markers.py",
+            "ralph/visual/design_verdict.py",
+            "ralph/pipeline/plumbing/smoke_evidence.py",
+            "ralph/process/_spawn_env.py",
+            "ralph/mcp/tools/coordination.py",
+        ],
+        "reason": "Named constants and test fixtures contain token or verdict identifiers without credentials.",
+    },
+    "S106": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test fixtures supply dummy credentials to test parameter verification.",
+    },
+    "S108": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test fixtures isolate test runs using temporary filesystem paths.",
+    },
+    "S110": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test teardown tolerates missing transient paths.",
+    },
+    "S112": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test loops continue on expected iteration skips.",
+    },
+    "S310": {
+        "pattern": [
+            "ralph/mcp/server/_http_tools_list.py",
+            "ralph/mcp/server/lifecycle.py",
+        ],
+        "reason": "Internal MCP server lifecycle checks query local HTTP loopback endpoints.",
+    },
+    "S311": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test generators select pseudo-random sample data for non-cryptographic inputs.",
+    },
+    "S603": {
+        "pattern": [
+            "tests/**/*.py",
+            "ralph/git/_lock_recovery.py",
+            "ralph/mcp/explore/_bench_r6_metrics.py",
+            "ralph/mcp/explore/_bench_r6_subprocess.py",
+            "ralph/testing/_audit_baseline.py",
+            "ralph/testing/audit_comments.py",
+        ],
+        "reason": "Commands invoke trusted tools with explicit argument lists.",
+    },
+    "S606": {
+        "pattern": [
+            "ralph/process/manager/_supervisor.py",
+            "ralph/process/pty.py",
+        ],
+        "reason": "Process manager executes child supervisor binaries directly without shell.",
+    },
+    "S607": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test helpers invoke git and python from PATH.",
+    },
+    "S608": {
+        "pattern": "ralph/mcp/explore/_store_class_file_rows.py",
+        "reason": "File queries construct parameterized question-mark placeholders for batch path lookups.",
+    },
+    "FBT001": {
+        "pattern": [
+            "tests/**/*.py",
+            "ralph/**/*.py",
+        ],
+        "reason": "Public and internal APIs maintain positional boolean compatibility where callers specify conditions.",
+    },
+    "FBT002": {
+        "pattern": [
+            "tests/**/*.py",
+            "ralph/**/*.py",
+        ],
+        "reason": "Public and internal APIs maintain positional boolean default values where callers rely on optional flags.",
+    },
+    "TRY300": {
+        "pattern": "ralph/**/*.py",
+        "reason": "Control flow returns directly within try blocks following established codebase error handling style.",
+    },
+    "FBT003": {
+        "pattern": "tests/**/*.py",
+        "reason": "Test call sites pass boolean positional values to test fixtures and functions.",
+    },
 }
 
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s+\S)")

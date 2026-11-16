@@ -24,7 +24,7 @@ def _verdict(root: Path) -> WorktreeVerdict:
             cwd=root,
             label="git-transition-status",
         )
-    except Exception:
+    except (OSError, RuntimeError, ValueError, KeyError):
         return classify_worktree(WorktreeState.UNKNOWN)
     if result.returncode != 0:
         return classify_worktree(WorktreeState.UNKNOWN)
