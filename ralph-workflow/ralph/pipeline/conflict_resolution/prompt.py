@@ -151,24 +151,16 @@ def _agent_prompt_sights(kinds: Mapping[str, object]) -> dict[str, object]:
     from ralph.pipeline.conflict_resolution.sight import (
         AGENT_ELIGIBLE_SIGHTS,
         ConflictKind,
-        ConflictSight,
+        sight_for_kind,
     )
 
-    _sight_by_kind: dict[str, ConflictSight] = {
-        ConflictKind.TEXT: ConflictSight.AGENT,
-        ConflictKind.DELETE_MODIFY: ConflictSight.AGENT_DECISION,
-        ConflictKind.DECLARED_DECISION: ConflictSight.AGENT_DECISION,
-        ConflictKind.APPEND_ONLY: ConflictSight.MECHANICAL,
-        ConflictKind.GITLINK: ConflictSight.GITLINK_POLICY,
-        ConflictKind.BINARY: ConflictSight.OUT_OF_REACH,
-        ConflictKind.OTHER: ConflictSight.OUT_OF_REACH,
-    }
     eligible: dict[str, object] = {}
     for path, kind in kinds.items():
-        sight = _sight_by_kind.get(kind) if isinstance(kind, ConflictKind) else None
-        if sight is None or sight not in AGENT_ELIGIBLE_SIGHTS:
+        if not isinstance(kind, ConflictKind):
             continue
-        eligible[path] = sight
+        sight = sight_for_kind(kind)
+        if sight in AGENT_ELIGIBLE_SIGHTS:
+            eligible[path] = sight
     return eligible
 
 
@@ -186,12 +178,11 @@ def _conflicted_block(root: Path, conflicted_paths: Sequence[str]) -> str:
     except (OSError, RuntimeError, ValueError, KeyError):
         kinds = {}
     eligible = _agent_prompt_sights(kinds)
-    delete_modify_is_agent_eligible = True
     return "\n".join(
         (
             f"- `{path}`: choose delete or keep the modified content; "
             "this path has no raw conflict markers"
-            if delete_modify_is_agent_eligible and kinds.get(path) is ConflictKind.DELETE_MODIFY
+            if kinds.get(path) is ConflictKind.DELETE_MODIFY
             else f"- `{path}`"
         )
         for path in listed

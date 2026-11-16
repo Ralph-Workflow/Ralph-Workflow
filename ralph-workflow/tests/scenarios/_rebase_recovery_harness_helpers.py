@@ -17,30 +17,24 @@ from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from ralph.agents.timeout_clock import FakeClock
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.conflict_resolution import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from tests._scenario_display import ScenarioDisplay
 
 pytestmark = pytest.mark.subprocess_e2e
 
 __all__ = [
-    "EMPTY_OUTCOME_LEDGER",
     "FakeAgentRunner",
-    "OutcomeLedger",
     "_capture_log_records",
     "capture_operator_lines",
     "corrupted_config",
-    "driver_session_outcome",
     "empty_resolution_stop_snapshot",
-    "outcome_entry",
     "paused_partial_out_of_reach_rebase",
     "paused_three_commit_first_stop_rebase",
-    "record_outcome",
     "scenario_config",
     "shared_executor_seam",
     "supervisor_restart",
@@ -316,54 +310,6 @@ def supervisor_restart(root: Path) -> dict[str, object]:
     return payload
 
 
-EMPTY_OUTCOME_LEDGER: str = "{}"
-
-
-class OutcomeLedger:
-    def __init__(self) -> None:
-        self.entries: dict[str, str] = {}
-
-    def put(self, key: str, value: str) -> None:
-        self.entries[key] = value
-
-    def read(self, key: str) -> str:
-        value = self.entries.get(key)
-        if value is None:
-            raise AssertionError(f"durable outcome ledger has no entry {key!r}")
-        return value
-
-
-def record_outcome(
-    ledger: OutcomeLedger,
-    head: str,
-    target: str,
-    anchors: tuple[str, ...],
-    trees: tuple[str, ...],
-) -> str:
-    verdict = key_landed_outcome(head, target, anchors, trees)
-    ledger.put("landed-verdict", verdict)
-    return verdict
-
-
-def key_landed_outcome(head: str, target: str, anchors: tuple[str, ...], trees: tuple[str, ...]) -> str:
-    anchor_ancestors = ", ".join(anchors)
-    tree_matches = ", ".join(trees)
-    if head == target or any(anchor == head for anchor in anchors) or any(tree == head for tree in trees):
-        return "landed"
-    return f"not-landed head={head} target={target} anchors=({anchor_ancestors}) trees=({tree_matches})"
-
-
-def outcome_entry(ledger: OutcomeLedger, key: str) -> str:
-    return ledger.read(key)
-
-
-def driver_session_outcome(session: ResolutionSession) -> str:
-    outcome = getattr(session, "last_resolution_outcome", None)
-    if outcome is None:
-        raise AssertionError("resolution session has no terminal outcome recorded")
-    return type(outcome).__name__
-
-
 def paused_three_commit_first_stop_rebase(root: Path) -> None:
     from ralph.git.rebase.rebase import rebase_in_progress
 
@@ -381,16 +327,17 @@ def paused_three_commit_first_stop_rebase(root: Path) -> None:
 
 
 def empty_resolution_stop_snapshot(root: Path) -> tuple[str, str, str]:
+    from ralph.git.rebase.rebase import rebase_in_progress
+
     commit_file(root, "shared.txt", "base\n", "base")
+    commit_file(root, "series.txt", "seed\n", "seed")
     git(root, "checkout", "-q", "-b", "feature")
-    commit_file(root, "shared.txt", "feature diff\n", "feature stop")
+    pre_rebase_head = commit_file(root, "shared.txt", "feature diff\n", "feature stop")
     git(root, "checkout", "-q", "main")
     commit_file(root, "shared.txt", "target value\n", "target change")
     git(root, "checkout", "-q", "feature")
     git(root, "rebase", "main", check=False)
-    from ralph.git.rebase.rebase import rebase_in_progress
-
     if not rebase_in_progress(root):
         raise AssertionError("empty-resolution fixture did not pause")
     resolved_tree = git(root, "rev-parse", "HEAD^{tree}")
-    return (resolved_tree, git(root, "rev-parse", "REBASE_HEAD"), git(root, "rev-parse", "HEAD"))
+    return (resolved_tree, git(root, "rev-parse", "HEAD"), pre_rebase_head)

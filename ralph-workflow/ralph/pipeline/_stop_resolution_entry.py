@@ -82,10 +82,6 @@ def decide_resolution_attempt(facts: ResolutionGateFacts) -> ResolutionGateDecis
     )
 
 
-def reset_stop_resolution_presentation() -> None:
-    return
-
-
 def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
     try:
         if record.resolving_merge and merge_state(root) == MERGE_STATE_IN_PROGRESS:

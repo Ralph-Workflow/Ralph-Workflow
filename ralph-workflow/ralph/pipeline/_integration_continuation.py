@@ -49,12 +49,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-def reset_continuation_gate_state() -> None:
-    from ralph.pipeline._stop_resolution_entry import reset_stop_resolution_presentation
-
-    reset_stop_resolution_presentation()
-
-
 def compute_continuation_retry_gate_key(
     root: Path,
     record: IntegrationRecord,

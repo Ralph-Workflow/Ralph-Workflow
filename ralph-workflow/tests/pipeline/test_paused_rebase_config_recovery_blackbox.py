@@ -22,7 +22,6 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery_record import (
     recover_pending_merge,
-    reset_continuation_gate_state,
 )
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.pipeline.resolution_outcome import ResolvedOutcome
@@ -39,12 +38,16 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_clean_gate_state": (
+        "the autouse fixture only called reset_continuation_gate_state, which cleared the "
+        "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
+        "hook and every caller are removed as dead code"
+    ),
+}
+
+
 pytestmark = pytest.mark.timeout_seconds(10)
-
-
-@pytest.fixture(autouse=True)
-def _clean_gate_state() -> None:
-    reset_continuation_gate_state()
 
 
 @pytest.fixture(autouse=True)

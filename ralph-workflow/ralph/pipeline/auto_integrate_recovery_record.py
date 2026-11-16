@@ -21,7 +21,6 @@ from ralph.pipeline._git_operation_authority import (
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
     compute_continuation_retry_gate_key,
-    reset_continuation_gate_state,
 )
 from ralph.pipeline._integration_continuation import (
     continue_retained_resolution as _continue_retained_resolution,
@@ -85,7 +84,6 @@ __all__ = [
     "compute_continuation_retry_gate_key",
     "continue_retained_resolution",
     "recover_pending_merge",
-    "reset_continuation_gate_state",
 ]
 
 _REBASE_RECEIPT_ENTRIES = 2
@@ -652,12 +650,6 @@ def _recover_pending_merge(
             and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
             else None
         )
-        if raw_reason is not None and not isinstance(
-            raw_reason, ResolutionTerminationReason
-        ):
-            raise TypeError(
-                f"continuation returned an invalid terminal reason: {raw_reason!r}"
-            )
         terminal_reason = (
             raw_reason if isinstance(raw_reason, ResolutionTerminationReason) else None
         )

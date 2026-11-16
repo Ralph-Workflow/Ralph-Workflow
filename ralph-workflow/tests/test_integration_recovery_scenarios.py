@@ -15,7 +15,6 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record,
 from ralph.pipeline.auto_integrate_recovery_record import (
     compute_continuation_retry_gate_key,
     continue_retained_resolution,
-    reset_continuation_gate_state,
 )
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -273,7 +272,6 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
             return ConfigFailureOutcome(file, str(exc))
         return NextStrategyOutcome("completion_in_place")
 
-    reset_continuation_gate_state()
     lines, handler = _capture_lines()
     try:
         first = continue_retained_resolution(
@@ -347,7 +345,6 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
         return NextStrategyOutcome(NextAction.LAST_RESORT_RECOVERY.value)
 
     ledger = AttemptLedger(root)
-    reset_continuation_gate_state()
     status = continue_retained_resolution(
         root,
         record,
@@ -495,7 +492,6 @@ def test_retry_gate_blocks_launch_for_unchanged_identity(
     )
     record = record.with_resolution_gate_key(key)
     write_record(root, record)
-    reset_continuation_gate_state()
     adapter = RealRepoAgentAdapter({}, succeeds=False)
     lines, handler = _capture_lines()
     try:

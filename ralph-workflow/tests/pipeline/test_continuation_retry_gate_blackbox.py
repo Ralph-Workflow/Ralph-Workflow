@@ -21,7 +21,6 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery_record import (
     compute_continuation_retry_gate_key,
-    reset_continuation_gate_state,
 )
 from ralph.pipeline.auto_integrate_resolve import MERGE_COMMIT_PENDING, MergeResult
 from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
@@ -29,6 +28,14 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_clean_gate_state": (
+        "the autouse fixture only called reset_continuation_gate_state, which cleared the "
+        "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
+        "hook and every caller are removed as dead code"
+    ),
+}
 
 
 class _LogLevelDouble(Protocol):
@@ -41,11 +48,6 @@ class _LogRecord(TypedDict):
 
 
 pytestmark = pytest.mark.timeout_seconds(5)
-
-
-@pytest.fixture(autouse=True)
-def _clean_gate_state() -> None:
-    reset_continuation_gate_state()
 
 
 def _capture_loguru_records() -> tuple[list[_LogRecord], int]:

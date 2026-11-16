@@ -131,18 +131,14 @@ def _continue_target_reconciliation(
         if isinstance(continued, RetryLaterOutcome):
             return _retained(record, continued.on_change or str(continued.reason))
         if (
-            isinstance(continued, (str, RetryLaterOutcome))
+            isinstance(continued, str)
             or branch_sha(owner, record.target) != continued.integrated_feature_sha
         ):
             return _retained(
                 record,
                 continued
                 if isinstance(continued, str)
-                else (
-                    continued.on_change or "target resolution retained for a later retry"
-                    if isinstance(continued, RetryLaterOutcome)
-                    else "target reconciliation completion does not match target"
-                ),
+                else "target reconciliation completion does not match target",
             )
         reason = finish_target_substep(root, record)
         if reason is not None:

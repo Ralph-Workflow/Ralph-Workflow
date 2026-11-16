@@ -19,7 +19,6 @@ from ralph.pipeline.auto_integrate_recovery_record import (
     compute_continuation_retry_gate_key,
     continue_retained_resolution,
     recover_pending_merge,
-    reset_continuation_gate_state,
 )
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
@@ -33,6 +32,15 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_clean_gate_state": (
+        "the autouse fixture only called reset_continuation_gate_state, which cleared the "
+        "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
+        "hook and every caller are removed as dead code"
+    ),
+}
+
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
@@ -43,11 +51,6 @@ class _LogLevelDouble(Protocol):
 class _LogRecord(TypedDict):
     level: _LogLevelDouble
     message: str
-
-
-@pytest.fixture(autouse=True)
-def _clean_gate_state() -> None:
-    reset_continuation_gate_state()
 
 
 def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
@@ -265,7 +268,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
     assert persisted_record is not None
     assert persisted_record.resolution_gate_key is not None
 
-    reset_continuation_gate_state()
     ctrl2 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     ctrl2.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
     ctrl2.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
@@ -293,7 +295,6 @@ def test_second_process_with_unchanged_record_does_not_reenter_resolution(
         assert p2_persisted is not None
         assert p2_persisted.waiting_notification_key is not None
 
-        reset_continuation_gate_state()
         ctrl3 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
         ctrl3.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
         ctrl3.unavailability_store.mark_unavailable(

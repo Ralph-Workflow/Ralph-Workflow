@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Protocol, TypedDict
 
-import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
@@ -17,10 +16,17 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery_record import (
     recover_pending_merge,
-    reset_continuation_gate_state,
 )
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_clean_gate_state": (
+        "the autouse fixture only called reset_continuation_gate_state, which cleared the "
+        "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
+        "hook and every caller are removed as dead code"
+    ),
+}
 
 
 class _LogLevelDouble(Protocol):
@@ -30,11 +36,6 @@ class _LogLevelDouble(Protocol):
 class _LogRecord(TypedDict):
     level: _LogLevelDouble
     message: str
-
-
-@pytest.fixture(autouse=True)
-def _clean_gate_state() -> None:
-    reset_continuation_gate_state()
 
 
 def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
@@ -198,7 +199,6 @@ def test_second_process_reload_without_resolver_gates_immediately(
     assert persisted_record is not None
     assert persisted_record.resolution_gate_key is not None
 
-    reset_continuation_gate_state()
     ctrl2 = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     ctrl2.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
     ctrl2.unavailability_store.mark_unavailable("rebase_conflict_resolution", "agent1", "cooldown")
