@@ -128,7 +128,21 @@ def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
     assert choose_resolver(controller, ("codex/a",)).agent is None
 
 
-def test_integration_health_does_not_contaminate_development_phase() -> None:
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolution_health_benches_agent_in_development_phase": (
+        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
+        "and is inverted by the single-cooldown invariant criteria: resolver-health benching "
+        "in the resolution phase makes the agent ineligible in development too"
+    ),
+    "test_development_phase_failure_benches_agent_in_resolution": (
+        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
+        "and is inverted by the single-cooldown invariant criteria: a failure recorded under "
+        "development makes the agent ineligible in the resolution phase as well"
+    ),
+}
+
+
+def test_resolution_health_benches_agent_in_development_phase() -> None:
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "codex/a", "kaboom")
@@ -137,10 +151,12 @@ def test_integration_health_does_not_contaminate_development_phase() -> None:
     assert res_choice.agent == "cursor/auto"
 
     dev_choice = controller.preferred_agent_index("development", CHAIN)
-    assert dev_choice.agent == "codex/a"
+    assert dev_choice.agent == "cursor/auto"
+    assert controller.agent_eligibility("development", "codex/a").is_eligible is False
 
 
-def test_development_phase_failure_does_not_contaminate_resolution() -> None:
+def test_development_phase_failure_benches_agent_in_resolution() -> None:
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
     from ralph.recovery.agent_failure_ledger import AttemptFact
 
     controller = _controller(FakeClock())
@@ -158,4 +174,5 @@ def test_development_phase_failure_does_not_contaminate_resolution() -> None:
     assert dev_choice.agent == "cursor/auto"
 
     res_choice = choose_resolver(controller, CHAIN)
-    assert res_choice.agent == "codex/a"
+    assert res_choice.agent == "cursor/auto"
+    assert controller.agent_eligibility(PHASE_RESOLUTION, "codex/a").is_eligible is False

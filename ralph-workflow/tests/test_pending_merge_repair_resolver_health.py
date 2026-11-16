@@ -181,7 +181,16 @@ def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldow
     assert invoked == ["first"] * 12
 
 
-def test_integration_phase_standing_does_not_leak_into_other_phases() -> None:
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolution_health_benches_agent_in_other_phases": (
+        "the test encoded the superseded phase-isolated contract ('does not leak') "
+        "and is inverted by the single-cooldown invariant criteria: resolver-health "
+        "benching in the resolution phase makes the agent ineligible in other phases too"
+    ),
+}
+
+
+def test_resolution_health_benches_agent_in_other_phases() -> None:
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
     backend = _RecordBackend()
@@ -191,4 +200,4 @@ def test_integration_phase_standing_does_not_leak_into_other_phases() -> None:
         _run(backend, controller, invoked)
 
     assert controller.ledger.status(PHASE_RESOLUTION, "first").is_cooldown is True
-    assert controller.ledger.status("development", "first").is_eligible is True
+    assert controller.ledger.status("development", "first").is_eligible is False

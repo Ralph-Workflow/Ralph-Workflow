@@ -24,6 +24,22 @@ LEGACY_MALFORMED_REASON = "legacy_guard_malformed"
 
 FAIL_CLOSED_SKIP_EVIDENCE = "skipped agent_a: unavailable"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_each_chain_migrates_to_its_own_ledger_entry": (
+        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
+        "the single-cooldown invariant criteria: the Spent entry migrated for review:claude "
+        "makes claude ineligible when queried from the development phase on the shared "
+        "ledger, while the review chain's own (phase, agent) entry retains its Spent status "
+        "and reason"
+    ),
+    "test_stored_entries_for_other_identities_are_preserved": (
+        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
+        "the single-cooldown invariant criteria: the Spent entry migrated for review:claude "
+        "projects ineligibility onto development:claude on the shared ledger, while the "
+        "stored development:claude entry itself is preserved unchanged in the snapshot"
+    ),
+}
+
 
 def _migrated_state(payload: dict[str, object]) -> PipelineState:
     return PipelineState.model_validate(payload)
@@ -72,9 +88,11 @@ def test_each_chain_migrates_to_its_own_ledger_entry() -> None:
     ledger = _restored_controller(state, FakeClock(100.0)).ledger
 
     assert ledger.status("development", "codex").is_eligible
-    assert ledger.status("review", "claude").is_spent
+    review_status = ledger.status("review", "claude")
+    assert isinstance(review_status, Spent)
+    assert review_status.reason == "legacy_exhausted"
     assert ledger.status("review", "codex").is_eligible
-    assert ledger.status("development", "claude").is_eligible
+    assert not ledger.status("development", "claude").is_eligible
 
 
 def test_chain_history_is_not_dropped_without_a_top_level_guard() -> None:
@@ -198,8 +216,18 @@ def test_stored_entries_for_other_identities_are_preserved() -> None:
     state = _migrated_state(legacy)
     ledger = _restored_controller(state, FakeClock(100.0)).ledger
 
-    assert ledger.status("development", "claude").is_eligible
-    assert ledger.status("review", "claude").is_spent
+    review_status = ledger.status("review", "claude")
+    assert isinstance(review_status, Spent)
+    assert review_status.reason == "legacy_exhausted"
+    assert not ledger.status("development", "claude").is_eligible
+
+    snapshot = state.ledger_snapshot
+    assert snapshot is not None
+    entries = snapshot["entries"]
+    assert isinstance(entries, dict)
+    stored = entries["development:claude"]
+    assert isinstance(stored, dict)
+    assert stored["is_spent"] is False
 
 
 def test_non_mapping_payload_fails_closed(tmp_path: Path) -> None:

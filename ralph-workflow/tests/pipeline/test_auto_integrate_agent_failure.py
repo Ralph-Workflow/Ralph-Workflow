@@ -38,17 +38,15 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 _OTHER_PHASES = ("development", "review")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_scenario_c_integration_demotion_leaves_other_phases_untouched": (
-        "restores the phase-isolated cooldown contract that c14583b81 inverted without a "
-        "recorded reason; an integration demotion is keyed to the resolution phase, and the "
-        "in-gate ledger, resolver-health and phase-isolation tests require other phases to "
-        "keep their own standing"
+    "test_scenario_c_integration_demotion_benches_agent_in_other_phases": (
+        "restores the cross-phase cooldown contract: an integration demotion on the shared "
+        "ledger makes the same agent ineligible in ordinary phases, so preferred selection "
+        "skips agentA identically outside resolution"
     ),
-    "test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact": (
-        "restores the phase-isolated cooldown contract that c14583b81 inverted without a "
-        "recorded reason; an integration demotion is keyed to the resolution phase, and the "
-        "in-gate ledger, resolver-health and phase-isolation tests require other phases to "
-        "keep their own standing"
+    "test_scenario_c_ordinary_phase_cooldown_blocks_integration_launch": (
+        "restores the cross-phase cooldown contract: an ordinary-phase demotion on the shared "
+        "ledger makes the same agent ineligible for resolution, so the integration chain "
+        "skips agentA and launches the next eligible candidate"
     ),
     "test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves": (
         "each failed attempt falls over to the fallback candidate in that round, "
@@ -239,7 +237,7 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
         )
 
 
-def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
+def test_scenario_c_integration_demotion_benches_agent_in_other_phases(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -267,15 +265,16 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
     with _captured_logs() as other_logs:
         for phase in _OTHER_PHASES:
             selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
-            assert selection.index == 0
-            assert selection.agent == "agentA"
-            assert not any(
-                skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons
+            assert selection.index == 1
+            assert selection.agent == "agentB"
+            assert any(skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons)
+            assert any(
+                f"Phase {phase}: Selected agent agentB (skipped agentA:" in line
+                for line in other_logs
             )
-            assert any(f"Phase {phase}: Selected agent agentA" in line for line in other_logs)
 
 
-def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
+def test_scenario_c_ordinary_phase_cooldown_blocks_integration_launch(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -304,16 +303,14 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
         clock=clock,
         ledger=ledger,
         candidates=("agentA", "agentB"),
-        resolving_agents=("agentA",),
+        resolving_agents=("agentB",),
     )
 
-    assert invocations == ["agentA"]
+    assert invocations == ["agentB"]
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
     assert outcome.fast_forwarded is True
     assert not outcome.is_intervention_required
 
-    assert not any(
-        f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
-    )
-    assert not any("skipped agentA" in line for line in logs)
+    assert "agentA" not in invocations
+    assert any("skipped agentA" in line for line in logs)

@@ -29,6 +29,24 @@ sleep-and-retry loop. A failure class the owner does not penalise is a
 defect unless it is provably progress: the attempt changed the
 workspace, produced a valid artifact, or reduced the work remaining.
 
+## Cross-phase projection
+
+There is exactly one cooldown ledger, the shared
+`AgentFailureLedger`. It is the single record of agent failures,
+cooldowns and spent state across the whole run, and it is not
+partitioned by phase: a bench recorded in any phase makes the agent
+ineligible in every phase through that one shared ledger.
+Eligibility answers (`AgentFailureLedger.eligibility`,
+`project_eligibility`, `project_chain_eligibility`) skip a benched
+agent identically everywhere, so an agent cooled during conflict
+resolution is skipped by the development phases and vice versa.
+
+This holds even where two `RecoveryController` instances share the
+ledger: the conflict-resolution resolver controller and the pipeline
+controller read and write the same ledger, and neither instance may
+treat the other phase's benches as invisible. A bench visible to one
+controller is visible to both.
+
 ## The owner
 
 | Component | Module | Responsibility |

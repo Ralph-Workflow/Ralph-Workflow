@@ -393,16 +393,31 @@ def test_free_retry_category_treated_identically() -> None:
     assert o3.reason == "consecutive_unproductive_limit_reached"
 
 
-def test_independent_tracking_per_phase_and_agent() -> None:
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_tracking_projects_across_phases": (
+        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
+        "the single-cooldown invariant criteria: a cooldown recorded for an agent under one "
+        "phase makes that agent ineligible when queried from other phases on the shared "
+        "ledger, while the benched agent's own (phase, agent) entry retains its own cooldown "
+        "status and reason"
+    ),
+}
+
+
+def test_tracking_projects_across_phases() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
     for _ in range(3):
         ledger.record(AttemptFact(phase="p1", agent="a", artifact_valid=False))
 
-    assert isinstance(ledger.status("p1", "a"), Cooldown)
+    own_status = ledger.status("p1", "a")
+    assert isinstance(own_status, Cooldown)
+    assert own_status.reason == "consecutive_unproductive_limit_reached"
     assert isinstance(ledger.status("p1", "b"), Eligible)
-    assert isinstance(ledger.status("p2", "a"), Eligible)
+    projected = ledger.status("p2", "a")
+    assert not projected.is_eligible
+    assert not ledger.is_available("p2", "a")
 
 
 def test_snapshot_round_trip() -> None:

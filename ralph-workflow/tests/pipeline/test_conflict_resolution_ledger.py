@@ -101,6 +101,22 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "after a failed attempt instead of retrying the failed resolver three times, and one "
         "ambiguous failure leaves the primary resolver preferred for the next stop"
     ),
+    "test_cross_phase_projection_through_public_integration_flow": (
+        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
+        "the single-cooldown invariant criteria: a failure recorded for an agent under one "
+        "phase makes that agent ineligible when queried from other phases on the shared "
+        "ledger, so the pipeline must skip the benched agent identically everywhere"
+    ),
+    "test_resolution_health_benches_agent_in_other_phases": (
+        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
+        "and is inverted by the single-cooldown invariant criteria: resolver-health benching "
+        "in the resolution phase makes the agent ineligible in other phases too"
+    ),
+    "test_other_phase_failure_benches_agent_in_resolution": (
+        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
+        "and is inverted by the single-cooldown invariant criteria: a failure recorded under "
+        "another phase makes the agent ineligible in the resolution phase as well"
+    ),
     "test_all_cooling_pending_state_preserves_rebase_state_then_resumes": (
         "a stop whose every resolver is cooling down ends pending; the resume is a "
         "second resolution call after the cooldown instead of a wait inside the first"
@@ -230,7 +246,7 @@ def test_all_demoted_candidates_preserve_pending_rebase_state(
         reset_executors(token)
 
 
-def test_phase_isolation_through_public_integration_flow(
+def test_cross_phase_projection_through_public_integration_flow(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     resolved = False
@@ -258,7 +274,7 @@ def test_phase_isolation_through_public_integration_flow(
                 )
             )
         assert not ledger.is_available("development", "agentA")
-        assert ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
+        assert not ledger.status(driver_module.PHASE_RESOLUTION, "agentA").is_eligible
 
         invocations: list[str] = []
 
@@ -285,7 +301,7 @@ def test_phase_isolation_through_public_integration_flow(
         )
 
         assert succeeded is True
-        assert invocations == ["agentA"]
+        assert invocations == ["agentB"]
         assert not ledger.is_available("development", "agentA")
 
         resolved = False
@@ -342,7 +358,7 @@ def test_all_candidates_cooling_down_reports_pending_wait(
     assert choice_after.agent == "agentA"
 
 
-def test_integration_health_does_not_contaminate_other_phases() -> None:
+def test_resolution_health_benches_agent_in_other_phases() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -353,10 +369,13 @@ def test_integration_health_does_not_contaminate_other_phases() -> None:
     assert res_choice.agent == "agentB"
 
     dev_choice = controller.preferred_agent_index("development", ("agentA", "agentB"))
-    assert dev_choice.agent == "agentA"
+    assert dev_choice.agent == "agentB"
+    assert controller.agent_eligibility("development", "agentA").is_eligible is False
 
 
-def test_other_phase_failure_does_not_contaminate_resolution() -> None:
+def test_other_phase_failure_benches_agent_in_resolution() -> None:
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -373,7 +392,8 @@ def test_other_phase_failure_does_not_contaminate_resolution() -> None:
     assert dev_choice.agent == "agentB"
 
     res_choice = choose_resolver(controller, ("agentA", "agentB"))
-    assert res_choice.agent == "agentA"
+    assert res_choice.agent == "agentB"
+    assert controller.agent_eligibility(PHASE_RESOLUTION, "agentA").is_eligible is False
 
 
 def test_clear_resolver_resets_resolution_history() -> None:
