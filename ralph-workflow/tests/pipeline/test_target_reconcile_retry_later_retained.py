@@ -8,7 +8,7 @@ import pytest
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._remote_reconcile_recovery import _continue_target_reconciliation
+from ralph.pipeline._remote_reconcile_recovery import recover_target_resolution
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
@@ -96,14 +96,7 @@ def test_target_reconcile_retry_later_outcome_retains_record(tmp_path: Path) -> 
             unresolved_paths=("shared.txt",),
         )
 
-    state = _continue_target_reconciliation(
-        owner,
-        owner,
-        record,
-        None,
-        None,
-        _resolver,
-    )
+    state = recover_target_resolution(owner, record, None, None, _resolver)
 
     assert consulted_stops == [stop]
     assert isinstance(state, RebaseState)

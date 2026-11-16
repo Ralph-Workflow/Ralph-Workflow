@@ -453,7 +453,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 | project-policy | 28 | 4 | 53 | 158 | 215 | follow-up: policy public-seam unit |
 | run-loop | 18 | 102 | 29 | 90 | 221 | follow-up: run-loop public-seam unit |
 | display | 20 | 22 | 85 | 74 | 181 | follow-up: display public-seam unit |
-| pipeline | 32 | 72 | 33 | 80 | 185 | follow-up: pipeline public-seam unit |
+| pipeline | 33 | 72 | 35 | 80 | 187 | follow-up: pipeline public-seam unit |
 | integration | 22 | 21 | 40 | 98 | 159 | follow-up: integration public-seam unit |
 | property | 11 | 0 | 58 | 32 | 90 | follow-up: property public-seam unit |
 | recovery | 24 | 6 | 40 | 23 | 69 | follow-up: recovery public-seam unit |
@@ -744,6 +744,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/pipeline/test_run_loop_waiting_state_real_controller.py` | 0 | 4 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_time_report_shutdown.py` | 2 | 0 | 1 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_runner_missing_plan_handoff_recovery.py` | 0 | 3 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
+| `tests/pipeline/test_target_reconcile_retry_later_retained.py` | 0 | 2 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_terminal_mcp_error_per_entry_path.py` | 0 | 4 | 4 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_terminal_mcp_error_supervisor_ordering.py` | 0 | 3 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
 | `tests/process/monitor/test_dispatch_all_transports.py` | 0 | 2 | 0 | process | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: process public-seam unit |
