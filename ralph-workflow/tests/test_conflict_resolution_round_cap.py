@@ -40,7 +40,9 @@ class _CooldownClock(FakeClock):
 
 
 def _shared_session(clock: FakeClock, *, cycle_cap: int = 3) -> ResolutionSession:
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock, cycle_cap=cycle_cap))
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, cycle_cap=cycle_cap)
+    )
     return ResolutionSession(recovery_controller=controller)
 
 
@@ -121,9 +123,7 @@ def test_round_cap_regression_unresolved_success_never_exceeds_cap(
         {"general": {}, "conflict_resolution": {"max_rounds_per_stop": cap}}
     )
     clock = _CooldownClock()
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, cycle_cap=cap)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock, cycle_cap=cap))
     session = ResolutionSession(max_rounds_per_stop=cap, recovery_controller=controller)
     display = _StatusDisplay()
     invoked_rounds: list[int] = []
