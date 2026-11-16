@@ -1481,12 +1481,6 @@ class RecoveryController:
         computed = entry.base_backoff_ms * multiplier
         duration_ms = min(computed, entry.max_backoff_ms)
         effective_reason = reason or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
-        self._ledger.mark_cooldown(
-            phase,
-            agent,
-            until_ms=entry.unavailable_until_ms,
-            reason=effective_reason.value,
-        )
         self._log_cooldown_decision(
             phase,
             agent,

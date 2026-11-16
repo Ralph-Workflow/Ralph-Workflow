@@ -96,10 +96,6 @@ operator pages are [Pipeline states](../sphinx/operator-states.md) and
 handling — the single cooldown owner, the audited agent-invoking call
 sites, production-route contract evidence, and structural checks — is in
 [Agent cooldown: the single-owner invariant](cooldown-invariant.md).
-That contract is cross-phase: the one shared agent failure ledger is
-not partitioned by phase, so a bench recorded for an agent in any
-phase makes the agent ineligible in every phase, identically for
-every `RecoveryController` instance that shares the ledger.
 
 ## Registration
 

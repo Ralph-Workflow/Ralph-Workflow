@@ -20,15 +20,6 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 CHAIN = ("codex/a", "cursor/auto", "opencode/b")
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_resolution_bench_makes_agent_ineligible_in_development": (
-        "the test encoded the superseded phase-isolated contract "
-        "('phase histories remain independent') and is inverted by the single-cooldown "
-        "invariant criteria: resolver-health benching in the resolution phase makes the "
-        "agent ineligible in development too"
-    ),
-}
-
 
 class _ChangingWorkspaceProbe:
     def __init__(self) -> None:
@@ -250,7 +241,19 @@ def test_agent_whose_invocation_raises_is_benched_before_the_error_propagates(
     assert invoked == ["codex/a", "codex/a", "codex/a", "cursor/auto"]
 
 
-def test_resolution_bench_makes_agent_ineligible_in_development(tmp_path: Path) -> None:
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_histories_remain_independent": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
+        "bench leaves the agent eligible in development"
+    ),
+}
+
+
+def test_phase_histories_remain_independent(tmp_path: Path) -> None:
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     controller = _controller(FakeClock())
@@ -263,7 +266,7 @@ def test_resolution_bench_makes_agent_ineligible_in_development(tmp_path: Path) 
 
     assert controller.ledger.status(PHASE_RESOLUTION, "codex/a").is_cooldown is True
 
-    assert controller.ledger.status("development", "codex/a").is_eligible is False
+    assert controller.ledger.status("development", "codex/a").is_eligible is True
 
 
 def test_truthy_invocation_without_a_verified_completion_is_unproductive(

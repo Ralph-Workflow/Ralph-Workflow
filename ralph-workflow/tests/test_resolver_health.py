@@ -129,20 +129,26 @@ def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_resolution_health_benches_agent_in_development_phase": (
-        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
-        "and is inverted by the single-cooldown invariant criteria: resolver-health benching "
-        "in the resolution phase makes the agent ineligible in development too"
+    "test_integration_health_does_not_contaminate_development_phase": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
+        "bench leaves the agent eligible in development"
     ),
-    "test_development_phase_failure_benches_agent_in_resolution": (
-        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
-        "and is inverted by the single-cooldown invariant criteria: a failure recorded under "
-        "development makes the agent ineligible in the resolution phase as well"
+    "test_development_phase_failure_does_not_contaminate_resolution": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
+        "development-phase failure leaves the agent eligible for resolution"
     ),
 }
 
 
-def test_resolution_health_benches_agent_in_development_phase() -> None:
+def test_integration_health_does_not_contaminate_development_phase() -> None:
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "codex/a", "kaboom")
@@ -151,12 +157,10 @@ def test_resolution_health_benches_agent_in_development_phase() -> None:
     assert res_choice.agent == "cursor/auto"
 
     dev_choice = controller.preferred_agent_index("development", CHAIN)
-    assert dev_choice.agent == "cursor/auto"
-    assert controller.agent_eligibility("development", "codex/a").is_eligible is False
+    assert dev_choice.agent == "codex/a"
 
 
-def test_development_phase_failure_benches_agent_in_resolution() -> None:
-    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+def test_development_phase_failure_does_not_contaminate_resolution() -> None:
     from ralph.recovery.agent_failure_ledger import AttemptFact
 
     controller = _controller(FakeClock())
@@ -174,5 +178,4 @@ def test_development_phase_failure_benches_agent_in_resolution() -> None:
     assert dev_choice.agent == "cursor/auto"
 
     res_choice = choose_resolver(controller, CHAIN)
-    assert res_choice.agent == "cursor/auto"
-    assert controller.agent_eligibility(PHASE_RESOLUTION, "codex/a").is_eligible is False
+    assert res_choice.agent == "codex/a"

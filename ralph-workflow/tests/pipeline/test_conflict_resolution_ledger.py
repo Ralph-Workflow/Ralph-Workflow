@@ -29,22 +29,6 @@ def _make_controller(clock: FakeClock, **kwargs: object) -> RecoveryController:
     return RecoveryController(options=RecoveryControllerOptions(clock=clock, **kwargs))
 
 
-def _session_with_ledger(
-    ledger: AgentFailureLedger,
-    clock: object,
-    **session_kwargs: object,
-) -> ResolutionSession:
-    controller = RecoveryController(
-        ledger=ledger,
-        options=RecoveryControllerOptions(clock=clock),
-    )
-    return ResolutionSession(
-        ledger=ledger,
-        recovery_controller=controller,
-        **session_kwargs,
-    )
-
-
 def test_resolver_falls_over_after_three_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -70,7 +54,7 @@ def test_resolver_falls_over_after_three_failures(
     token = install_executors(clock=clock)
     try:
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -96,26 +80,34 @@ def test_resolver_falls_over_after_three_failures(
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_isolation_through_public_integration_flow": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
+        "development-phase failure leaves the agent eligible for resolution"
+    ),
+    "test_integration_health_does_not_contaminate_other_phases": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
+        "bench leaves the agent eligible in other phases"
+    ),
+    "test_other_phase_failure_does_not_contaminate_resolution": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
+        "development-phase failure leaves the agent eligible for resolution"
+    ),
     "test_resolver_falls_over_after_three_failures": (
         "the shared controller falls over to the next eligible candidate in the same round "
         "after a failed attempt instead of retrying the failed resolver three times, and one "
         "ambiguous failure leaves the primary resolver preferred for the next stop"
-    ),
-    "test_cross_phase_projection_through_public_integration_flow": (
-        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
-        "the single-cooldown invariant criteria: a failure recorded for an agent under one "
-        "phase makes that agent ineligible when queried from other phases on the shared "
-        "ledger, so the pipeline must skip the benched agent identically everywhere"
-    ),
-    "test_resolution_health_benches_agent_in_other_phases": (
-        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
-        "and is inverted by the single-cooldown invariant criteria: resolver-health benching "
-        "in the resolution phase makes the agent ineligible in other phases too"
-    ),
-    "test_other_phase_failure_benches_agent_in_resolution": (
-        "the test encoded the superseded phase-isolated contract ('does not contaminate') "
-        "and is inverted by the single-cooldown invariant criteria: a failure recorded under "
-        "another phase makes the agent ineligible in the resolution phase as well"
     ),
     "test_all_cooling_pending_state_preserves_rebase_state_then_resumes": (
         "a stop whose every resolver is cooling down ends pending; the resume is a "
@@ -169,7 +161,7 @@ def test_all_cooling_pending_state_preserves_rebase_state_then_resumes(
             consecutive_limit=1,
             base_cooldown_seconds=30.0,
         )
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
 
         def _resolve() -> bool:
             return driver_module.run_conflict_resolution_pipeline(
@@ -222,7 +214,7 @@ def test_all_demoted_candidates_preserve_pending_rebase_state(
             consecutive_limit=1,
             total_limit=1,
         )
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -246,7 +238,7 @@ def test_all_demoted_candidates_preserve_pending_rebase_state(
         reset_executors(token)
 
 
-def test_cross_phase_projection_through_public_integration_flow(
+def test_phase_isolation_through_public_integration_flow(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     resolved = False
@@ -274,7 +266,7 @@ def test_cross_phase_projection_through_public_integration_flow(
                 )
             )
         assert not ledger.is_available("development", "agentA")
-        assert not ledger.status(driver_module.PHASE_RESOLUTION, "agentA").is_eligible
+        assert ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
 
         invocations: list[str] = []
 
@@ -285,7 +277,7 @@ def test_cross_phase_projection_through_public_integration_flow(
             resolved = True
             return True
 
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
@@ -301,11 +293,11 @@ def test_cross_phase_projection_through_public_integration_flow(
         )
 
         assert succeeded is True
-        assert invocations == ["agentB"]
+        assert invocations == ["agentA"]
         assert not ledger.is_available("development", "agentA")
 
         resolved = False
-        session2 = _session_with_ledger(ledger, clock)
+        session2 = ResolutionSession(ledger=ledger)
         invocations2: list[str] = []
 
         def _invoke_b(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -358,7 +350,7 @@ def test_all_candidates_cooling_down_reports_pending_wait(
     assert choice_after.agent == "agentA"
 
 
-def test_resolution_health_benches_agent_in_other_phases() -> None:
+def test_integration_health_does_not_contaminate_other_phases() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -369,13 +361,10 @@ def test_resolution_health_benches_agent_in_other_phases() -> None:
     assert res_choice.agent == "agentB"
 
     dev_choice = controller.preferred_agent_index("development", ("agentA", "agentB"))
-    assert dev_choice.agent == "agentB"
-    assert controller.agent_eligibility("development", "agentA").is_eligible is False
+    assert dev_choice.agent == "agentA"
 
 
-def test_other_phase_failure_benches_agent_in_resolution() -> None:
-    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-
+def test_other_phase_failure_does_not_contaminate_resolution() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -392,8 +381,7 @@ def test_other_phase_failure_benches_agent_in_resolution() -> None:
     assert dev_choice.agent == "agentB"
 
     res_choice = choose_resolver(controller, ("agentA", "agentB"))
-    assert res_choice.agent == "agentB"
-    assert controller.agent_eligibility(PHASE_RESOLUTION, "agentA").is_eligible is False
+    assert res_choice.agent == "agentA"
 
 
 def test_clear_resolver_resets_resolution_history() -> None:
@@ -447,9 +435,8 @@ def test_changing_resolver_reaches_total_limit_instead_of_consecutive(
             consecutive_limit=3,
             total_limit=5,
         )
-        session = _session_with_ledger(
-            ledger,
-            clock,
+        session = ResolutionSession(
+            ledger=ledger,
             workspace=workspace,
             workspace_probe=probe,
         )
@@ -537,7 +524,7 @@ def test_fake_clock_shows_no_invocation_before_eligibility(
             consecutive_limit=1,
             base_cooldown_seconds=100.0,
         )
-        session = _session_with_ledger(ledger, frozen_clock)
+        session = ResolutionSession(ledger=ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -586,7 +573,7 @@ def test_false_positive_resolver_success_remains_unproductive_and_demotes(
     token = install_executors(clock=clock)
     try:
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -655,7 +642,7 @@ def test_resolver_restart_mid_streak_honors_configured_limit(
             agent_b_attempts += 1
             return True
 
-        session_2 = _session_with_ledger(ledger_2, fresh_clock)
+        session_2 = ResolutionSession(ledger=ledger_2)
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
@@ -707,7 +694,7 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
             consecutive_limit=1,
             base_cooldown_seconds=60.0,
         )
-        session = _session_with_ledger(ledger, clock)
+        session = ResolutionSession(ledger=ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,

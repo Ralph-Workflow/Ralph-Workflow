@@ -31,8 +31,6 @@ LEGACY_IDENTITY_UNATTRIBUTABLE_REASON: Final[str] = "legacy_identity_unattributa
 
 LEDGER_SNAPSHOT_MALFORMED_REASON: Final[str] = "ledger_snapshot_malformed"
 
-_PHASE_AGENT_KEY_PARTS: Final[int] = 2
-
 _DEFAULT_CONSECUTIVE_LIMIT: Final[int] = 3
 _DEFAULT_TOTAL_LIMIT: Final[int] = 9
 _DEFAULT_BASE_COOLDOWN_SECONDS: Final[float] = 60.0
@@ -264,37 +262,17 @@ def _project_eligibility(
     now_ms: int,
 ) -> AgentStatus:
     entries = snapshot.get("entries")
-    if not isinstance(entries, Mapping):
+    raw = entries.get(f"{phase}:{agent}") if isinstance(entries, Mapping) else None
+    if not isinstance(raw, Mapping):
         return Eligible()
-    raw = entries.get(f"{phase}:{agent}")
-    if isinstance(raw, Mapping):
-        status = _projected_status(
-            is_spent=bool(raw.get("is_spent")),
-            spent_reason=_optional_str(raw.get("spent_reason")),
-            cooldown_until_ms=_optional_int(raw.get("cooldown_until_ms")),
-            cooldown_reason=_optional_str(raw.get("cooldown_reason")),
-            unavailable_reason=_optional_str(raw.get("unavailable_reason")),
-            now_ms=now_ms,
-        )
-        if not status.is_eligible:
-            return status
-
-    for key, other_raw in entries.items():
-        if isinstance(key, str) and isinstance(other_raw, Mapping):
-            parts = key.split(":", 1)
-            if len(parts) == _PHASE_AGENT_KEY_PARTS and parts[1] == agent and parts[0] != phase:
-                status = _projected_status(
-                    is_spent=bool(other_raw.get("is_spent")),
-                    spent_reason=_optional_str(other_raw.get("spent_reason")),
-                    cooldown_until_ms=_optional_int(other_raw.get("cooldown_until_ms")),
-                    cooldown_reason=_optional_str(other_raw.get("cooldown_reason")),
-                    unavailable_reason=_optional_str(other_raw.get("unavailable_reason")),
-                    now_ms=now_ms,
-                )
-                if not status.is_eligible:
-                    return status
-
-    return Eligible()
+    return _projected_status(
+        is_spent=bool(raw.get("is_spent")),
+        spent_reason=_optional_str(raw.get("spent_reason")),
+        cooldown_until_ms=_optional_int(raw.get("cooldown_until_ms")),
+        cooldown_reason=_optional_str(raw.get("cooldown_reason")),
+        unavailable_reason=_optional_str(raw.get("unavailable_reason")),
+        now_ms=now_ms,
+    )
 
 
 def project_eligibility(
@@ -459,34 +437,22 @@ class AgentFailureLedger:
 
     def _status_locked(self, phase: str, agent: str, now_ms: int) -> AgentStatus:
         entry = self._entries.get((phase, agent))
-        if entry is not None:
-            self._sync_cooldown_expiry(entry, now_ms)
-            status = _projected_status(
-                is_spent=entry.is_spent,
-                spent_reason=entry.spent_reason or _SPENT_REASON_TOTAL,
-                cooldown_until_ms=entry.cooldown_until_ms,
-                cooldown_reason=entry.cooldown_reason,
-                unavailable_reason=entry.unavailable_reason,
-                now_ms=now_ms,
-            )
-            if not status.is_eligible:
-                return status
+        if entry is None:
+            return Eligible()
 
-        for (p, a), other in self._entries.items():
-            if a == agent and p != phase:
-                self._sync_cooldown_expiry(other, now_ms)
-                status = _projected_status(
-                    is_spent=other.is_spent,
-                    spent_reason=other.spent_reason or _SPENT_REASON_TOTAL,
-                    cooldown_until_ms=other.cooldown_until_ms,
-                    cooldown_reason=other.cooldown_reason,
-                    unavailable_reason=other.unavailable_reason,
-                    now_ms=now_ms,
-                )
-                if not status.is_eligible:
-                    return status
+        if entry.is_spent:
+            return Spent(reason=entry.spent_reason or _SPENT_REASON_TOTAL)
 
-        return Eligible()
+        self._sync_cooldown_expiry(entry, now_ms)
+
+        return _projected_status(
+            is_spent=False,
+            spent_reason=None,
+            cooldown_until_ms=entry.cooldown_until_ms,
+            cooldown_reason=entry.cooldown_reason,
+            unavailable_reason=entry.unavailable_reason,
+            now_ms=now_ms,
+        )
 
     def status(self, phase: str, agent: str) -> AgentStatus:
         with self._lock:
@@ -580,15 +546,6 @@ class AgentFailureLedger:
             entry.unavailable_reason = reason
             entry.cooldown_until_ms = None
             entry.cooldown_reason = None
-
-    def mark_cooldown(self, phase: str, agent: str, *, until_ms: int, reason: str) -> None:
-        with self._lock:
-            entry = self._entries.get((phase, agent))
-            if entry is None:
-                entry = _LedgerEntry()
-                self._entries[(phase, agent)] = entry
-            entry.cooldown_until_ms = until_ms
-            entry.cooldown_reason = reason
 
     def earliest_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         if not agents:

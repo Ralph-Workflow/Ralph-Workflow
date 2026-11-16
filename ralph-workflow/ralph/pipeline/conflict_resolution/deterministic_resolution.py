@@ -317,9 +317,6 @@ def _execute_deterministic_resolution(
 ) -> bool:
     gitlinks, mode_only_paths, mode_only_stages, text_paths = partition
 
-    if not gitlinks and not mode_only_paths:
-        return False
-
     if gitlinks and not mode_only_paths and not text_paths:
         stages = [entries[p] for p in gitlinks]
         return _resolve_gitlinks(root, tuple(gitlinks), stages, gitlink_policy)

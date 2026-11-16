@@ -394,30 +394,27 @@ def test_free_retry_category_treated_identically() -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_tracking_projects_across_phases": (
-        "the test encoded the superseded phase-isolated ledger contract and is inverted by "
-        "the single-cooldown invariant criteria: a cooldown recorded for an agent under one "
-        "phase makes that agent ineligible when queried from other phases on the shared "
-        "ledger, while the benched agent's own (phase, agent) entry retains its own cooldown "
-        "status and reason"
+    "test_independent_tracking_per_phase_and_agent": (
+        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
+        "recorded; 563e5204f inverted it while its message described an unrelated "
+        "deterministic-resolution refactor, and its cross-phase projection broke the "
+        "in-gate demotion contract of "
+        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a cooldown "
+        "recorded under one phase leaves the agent eligible in another"
     ),
 }
 
 
-def test_tracking_projects_across_phases() -> None:
+def test_independent_tracking_per_phase_and_agent() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
     for _ in range(3):
         ledger.record(AttemptFact(phase="p1", agent="a", artifact_valid=False))
 
-    own_status = ledger.status("p1", "a")
-    assert isinstance(own_status, Cooldown)
-    assert own_status.reason == "consecutive_unproductive_limit_reached"
+    assert isinstance(ledger.status("p1", "a"), Cooldown)
     assert isinstance(ledger.status("p1", "b"), Eligible)
-    projected = ledger.status("p2", "a")
-    assert not projected.is_eligible
-    assert not ledger.is_available("p2", "a")
+    assert isinstance(ledger.status("p2", "a"), Eligible)
 
 
 def test_snapshot_round_trip() -> None:

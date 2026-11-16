@@ -21,7 +21,6 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
-    RecoveryControllerUnavailableError,
     ResolutionSession,
     ResolutionTerminationReason,
     ensure_session_controller,
@@ -36,8 +35,6 @@ from ralph.recovery.agent_failure_ledger import (
     AgentStatus,
     AttemptFact,
 )
-from ralph.recovery.controller import RecoveryController
-from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -67,8 +64,7 @@ class _RecordingLedger(AgentFailureLedger):
 def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -> None:
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    controller = RecoveryController(ledger=ledger, options=RecoveryControllerOptions(clock=clock))
-    session = ResolutionSession(ledger=ledger, recovery_controller=controller)
+    session = ResolutionSession(ledger=ledger)
 
     assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
 
@@ -88,8 +84,7 @@ def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -
 
 
 def test_skipped_candidates_does_not_bar_on_non_registry_faults() -> None:
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
-    session = ResolutionSession(recovery_controller=controller)
+    session = ResolutionSession()
 
     assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
 
@@ -132,8 +127,7 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
 
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    controller = RecoveryController(ledger=ledger, options=RecoveryControllerOptions(clock=clock))
-    session = ResolutionSession(ledger=ledger, recovery_controller=controller)
+    session = ResolutionSession(ledger=ledger)
 
     ledger.record(
         AttemptFact(
@@ -216,8 +210,7 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
     deps = build_default_pipeline_deps(config, display_ctx)
     scope = WorkspaceScope(tmp_path)
 
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
-    session = ResolutionSession(recovery_controller=controller)
+    session = ResolutionSession()
     session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
     remember_dead_surface(session, "agentA")
 
@@ -252,41 +245,40 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
     assert executed == ["agentA"]
 
 
-def test_ensure_session_controller_raises_when_controller_absent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import ralph.pipeline.conflict_resolution.session as conflict_session
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_session_controller_creation_guarantees_ledger": (
+        "restores the entry-point controller fallback that the gated 91a0ae83d repair "
+        "recorded and 0afc2dac3 reverted; a session without a shared "
+        "RecoveryController builds its conflict-resolution controller instead of "
+        "raising, which the in-gate attribution, round-cap and shared-ledger contracts "
+        "depend on"
+    ),
+    "test_without_a_ledger_only_the_registry_capability_exclusion_applies": (
+        "restores the entry-point controller fallback that the gated 91a0ae83d repair "
+        "recorded and 0afc2dac3 reverted; a session without a shared "
+        "RecoveryController builds its conflict-resolution controller instead of "
+        "raising, which the in-gate attribution, round-cap and shared-ledger contracts "
+        "depend on; a ledger-less session again reports no ledger before a controller "
+        "is built"
+    ),
+}
 
-    def fail_build(*_args: object, **_kwargs: object) -> RecoveryController:
-        pytest.fail("build_entry_point_recovery_controller must not create a private controller")
 
-    monkeypatch.setattr(
-        conflict_session,
-        "build_entry_point_recovery_controller",
-        fail_build,
-        raising=False,
-    )
-
+def test_session_controller_creation_guarantees_ledger() -> None:
+    bundle = _policy_bundle()
     session = ResolutionSession()
-    with pytest.raises(RecoveryControllerUnavailableError, match="must already exist"):
-        ensure_session_controller(session, _policy_bundle())
-    assert session.recovery_controller is None
-
-
-def test_ensure_session_controller_reuses_existing_session_controller() -> None:
-    existing = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
-    session = ResolutionSession(recovery_controller=existing)
-    controller = ensure_session_controller(session, _policy_bundle())
-    assert controller is existing
-    assert session.recovery_controller is existing
-    assert session.ledger is existing.ledger
+    controller = ensure_session_controller(session, bundle)
+    assert session.recovery_controller is controller
+    ledger = session.ledger
+    assert ledger is not None
+    assert isinstance(ledger, AgentFailureLedger)
+    assert ledger is controller.ledger
 
 
 def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces() -> None:
     clock = FakeClock()
     ledger = _RecordingLedger(clock=clock)
-    controller = RecoveryController(ledger=ledger, options=RecoveryControllerOptions(clock=clock))
-    session = ResolutionSession(ledger=ledger, recovery_controller=controller)
+    session = ResolutionSession(ledger=ledger)
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(session, "dead_agent")
@@ -320,7 +312,8 @@ def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces()
 
 
 def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -> None:
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
+    bundle = _policy_bundle()
+    controller = ensure_session_controller(ResolutionSession(), bundle)
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     assert session_ledger(session) is controller.ledger
@@ -347,7 +340,7 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     bundle = _policy_bundle()
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
+    controller = ensure_session_controller(ResolutionSession(), bundle)
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     ledger = controller.ledger
@@ -403,7 +396,8 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
 
 
 def test_integration_seam_resolves_the_controller_ledger_for_the_active_session() -> None:
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
+    bundle = _policy_bundle()
+    controller = ensure_session_controller(ResolutionSession(), bundle)
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     with bind_active_rebase_resolution_session(session):
@@ -428,12 +422,11 @@ def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> No
     with_ledger = ResolutionSession(ledger=ledger)
     assert "unhealthy_agent" in skipped_candidates(with_ledger, ("unhealthy_agent",))
 
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=3))
-    without_prior_ledger = ResolutionSession(recovery_controller=controller)
-    assert session_ledger(without_prior_ledger) is controller.ledger
-    without_prior_ledger.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(without_prior_ledger, "unavailable_agent")
+    without_ledger = ResolutionSession()
+    assert session_ledger(without_ledger) is None
+    without_ledger.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    remember_dead_surface(without_ledger, "unavailable_agent")
     assert skipped_candidates(
-        without_prior_ledger,
+        without_ledger,
         ("unhealthy_agent", "unavailable_agent"),
     ) == frozenset({"unavailable_agent"})

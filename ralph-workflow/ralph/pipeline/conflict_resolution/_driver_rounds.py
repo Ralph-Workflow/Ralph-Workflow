@@ -446,9 +446,6 @@ def _run_one_round(
         if succeeded and (not session.unresolved_paths or progress.count_dropped):
             return attempt
         if succeeded:
-            _driver_mod._classify_incomplete_success(
-                attempt, session, round_index, candidates, policy_bundle
-            )
             attempt = replace(attempt, succeeded=False)
         visited.add(selected)
     return attempt
