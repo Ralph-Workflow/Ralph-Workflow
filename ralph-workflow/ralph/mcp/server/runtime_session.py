@@ -44,6 +44,7 @@ from ralph.mcp.protocol.session import (
     session_has_capability,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._session_payload_type_error import SessionPayloadTypeError
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 

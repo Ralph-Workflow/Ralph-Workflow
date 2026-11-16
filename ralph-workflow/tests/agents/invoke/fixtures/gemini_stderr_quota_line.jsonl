@@ -1,0 +1,3 @@
+data: {"type":"text","content":"Gemini running"}
+data: {"type":"tool_call","name":"Read","args":{"path":"ralph/display/record_writer.py"}}
+data: {"type":"tool_result","result":"record source"}

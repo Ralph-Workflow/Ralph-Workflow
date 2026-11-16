@@ -1,0 +1,4 @@
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Claude starts operation."}]}}
+{"type": "content_block_start", "content_block": {"type": "tool_use", "name": "Read", "input": {"path": "nonexistent.txt"}}}
+{"type": "assistant", "message": {"content": [{"type": "tool_result", "content": [{"type": "text", "text": "file not found"}], "name": "Read", "is_error": true}]}}
+{"type": "error", "error": {"type": "process_error", "message": "fatal error during execution"}}

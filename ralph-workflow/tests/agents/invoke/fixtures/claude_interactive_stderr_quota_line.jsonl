@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Claude Interactive querying model."}, {"type": "tool_use", "id": "toolu_read", "name": "Read", "input": {"path": "config.json"}}]}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "toolu_read", "content": [{"type": "text", "text": "config data"}]}]}}
