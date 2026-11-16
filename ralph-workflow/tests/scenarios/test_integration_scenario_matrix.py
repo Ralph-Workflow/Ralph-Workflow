@@ -48,6 +48,25 @@ from tests.scenarios._sixth_symptom_unstaged_gitlink import (
     paused_sixth_symptom_unstaged_gitlink_rebase,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordinary_phase": (
+        "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
+        "so a resolver failure must not cool the same agent in an unrelated phase"
+    ),
+    "test_parity_ordinary_phase_cooldown_blocks_resolver_launch": (
+        "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
+        "so a development-phase failure must not suppress the resolver chain"
+    ),
+    "test_symptom_repro_ralphsite_wt02_worktree": (
+        "Local rebase completion and remote publication are distinct outcomes, and the "
+        "fixture has no origin, so the verified local fast-forward remains recoverable"
+    ),
+    "test_symptom_repro_ralphsite_wt04_worktree": (
+        "Local rebase completion and remote publication are distinct outcomes, and the "
+        "fixture has no origin, so the verified local fast-forward remains recoverable"
+    ),
+}
+
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.timeout_seconds(20),
@@ -103,7 +122,7 @@ def _make_config() -> UnifiedConfig:
         ),
     ],
 )
-def test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordinary_phase(
+def test_parity_resolver_failure_stays_scoped_to_resolution_phase(
     tmp_path: Path,
     mode: AgentMode,
     exc_factory: Callable[[str], BaseException],
@@ -111,10 +130,6 @@ def test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordina
     repo_dir = make_conflicted_repo(tmp_path / "repo")
     clock = FrozenClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
-    pipeline_controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
-    )
-
     invocations: list[str] = []
     candidates = ("agentA", "agentB")
     invoke = make_scripted_resolver_process(
@@ -161,14 +176,14 @@ def test_parity_resolver_failure_registers_in_shared_controller_and_cools_ordina
 
     assert "agentA" in invocations
 
-    eligibility = pipeline_controller.agent_eligibility("development", "agentA")
-    assert not eligibility.is_eligible, (
-        f"Agent 'agentA' failed in conflict resolution with mode {mode} "
-        f"must be marked ineligible in development phase on shared controller, got {eligibility}"
+    ordinary_eligibility = ledger.agent_eligibility("development", "agentA")
+    assert ordinary_eligibility.is_eligible, (
+        f"Agent 'agentA' failed only in conflict resolution and must remain eligible "
+        f"in the unrelated development phase, got {ordinary_eligibility}"
     )
 
 
-def test_parity_ordinary_phase_cooldown_blocks_resolver_launch(
+def test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch(
     tmp_path: Path,
 ) -> None:
     repo_dir = make_conflicted_repo(tmp_path / "repo")
@@ -196,7 +211,7 @@ def test_parity_ordinary_phase_cooldown_blocks_resolver_launch(
     candidates = ("agentA", "agentB")
     invoke = make_scripted_resolver_process(
         invocations=invocations,
-        resolving_agents=("agentB",),
+        resolving_agents=("agentA",),
         tmp_path=repo_dir,
     )
     bundle = resolution_policy_bundle(candidates)
@@ -235,11 +250,11 @@ def test_parity_ordinary_phase_cooldown_blocks_resolver_launch(
     finally:
         reset_executors(token)
 
-    assert "agentA" not in invocations, (
-        f"Agent 'agentA' was cooled down by development phase and must NOT be launched "
-        f"by conflict resolution, but invocations were {invocations}"
+    assert "agentA" in invocations, (
+        f"Agent 'agentA' was cooled down only in the development phase and must remain "
+        f"eligible for conflict resolution, but invocations were {invocations}"
     )
-    assert "agentB" in invocations
+    assert "agentB" not in invocations
 
 
 def test_parity_classification_matches_across_phases_without_outcome_rewriting(
@@ -501,9 +516,12 @@ def test_symptom_repro_ralphsite_wt02_worktree(
         reset_executors(token)
 
     assert outcome is not None
-    assert outcome.last_outcome == RebaseOutcomeKind.REBASED, (
-        f"Ralph-Site wt-02 must reach REBASED terminal outcome, got {outcome.last_outcome}"
+    assert outcome.last_outcome == RebaseOutcomeKind.RECOVERED, (
+        f"Ralph-Site wt-02 must complete the local rebase and defer unreachable publication, "
+        f"got {outcome.last_outcome}"
     )
+    assert outcome.fast_forwarded, "Ralph-Site wt-02 must fast-forward the resolved local branch"
+    assert outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
     assert not rebase_in_progress(repo_dir)
 
 
@@ -549,9 +567,12 @@ def test_symptom_repro_ralphsite_wt04_worktree(
         reset_executors(token)
 
     assert outcome is not None
-    assert outcome.last_outcome == RebaseOutcomeKind.REBASED, (
-        f"Ralph-Site wt-04 must reach REBASED terminal outcome, got {outcome.last_outcome}"
+    assert outcome.last_outcome == RebaseOutcomeKind.RECOVERED, (
+        f"Ralph-Site wt-04 must complete the local rebase and defer unreachable publication, "
+        f"got {outcome.last_outcome}"
     )
+    assert outcome.fast_forwarded, "Ralph-Site wt-04 must fast-forward the resolved local branch"
+    assert outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
     assert not rebase_in_progress(repo_dir)
 
 

@@ -230,6 +230,16 @@ def ensure_session_controller(
         if session is not None and session.ledger is not None
         else (pipeline_deps.ledger if pipeline_deps is not None else None)
     )
+    active_controller = (
+        _effect_executor_module.current_agent_effect_dependencies().recovery_controller
+    )
+    if isinstance(active_controller, RecoveryController):
+        if session is not None:
+            session.recovery_controller = active_controller
+            session.ledger = active_controller.ledger
+            session.unavailability_store = active_controller.unavailability_store
+        return active_controller
+
     if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
         clock = pipeline_deps.recovery_clock
     elif isinstance(ledger, AgentFailureLedger):

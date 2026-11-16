@@ -42,6 +42,9 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         "ralph.pipeline.attempt_runner.production_dead_agent_probe_runner",
         lambda config: None,
     )
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.recovery.controller import RecoveryController
+
     prompt = Path("/repo/prompt.md")
     invoke_resolution_agent(
         agent_name="claude",
@@ -52,6 +55,7 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         policy_bundle=PolicyBundle.model_construct(),
         display=None,
         display_context=None,
+        session=ResolutionSession(recovery_controller=RecoveryController()),
     )
     assert captured == [False]
 
@@ -149,6 +153,9 @@ def test_a_markerless_decision_demands_declared_completion(
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_kwargs: prompt)
     monkeypatch.setattr(Path, "unlink", lambda _path: None)
 
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.recovery.controller import RecoveryController
+
     with pytest.raises(_FirstInvocationSeen):
         driver_module.run_conflict_resolution_pipeline(
             root=root,
@@ -159,6 +166,7 @@ def test_a_markerless_decision_demands_declared_completion(
             policy_bundle=bundle,
             display=None,
             display_context=None,
+            session=ResolutionSession(recovery_controller=RecoveryController()),
         )
     assert captured, "the resolver must be invoked for a markerless decision"
     assert all(captured), "and it must be required to declare its decision"

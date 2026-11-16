@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
+from ralph.git.errors import GitOperationError
 from ralph.git.merge import (
     ConflictStageEntries,
     conflict_stage_entries,
@@ -338,7 +339,7 @@ def _append_only_paths(root: Path, paths: tuple[str, ...]) -> set[str]:
             cwd=root,
             label="git-append-only-attributes",
         )
-    except (SubprocessError, OSError, RuntimeError, ValueError):
+    except (SubprocessError, GitOperationError, OSError, RuntimeError, ValueError):
         return set()
     if result.returncode != 0:
         return set()

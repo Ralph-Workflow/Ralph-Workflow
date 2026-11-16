@@ -75,7 +75,9 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
     monkeypatch: pytest.MonkeyPatch,
     reason: ResolutionTerminationReason,
 ) -> None:
-    session = ResolutionSession()
+    from ralph.recovery.controller import RecoveryController
+
+    session = ResolutionSession(recovery_controller=RecoveryController())
 
     def execute(effect: InvokeAgentEffect, *_args: object, **_kwargs: object) -> PipelineEvent:
         assert effect.activity_status_listener is None
@@ -139,7 +141,9 @@ def test_one_quoted_fault_does_not_escalate_on_repeated_watchdog_ticks() -> None
 def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = ResolutionSession()
+    from ralph.recovery.controller import RecoveryController
+
+    session = ResolutionSession(recovery_controller=RecoveryController())
 
     def execute(*_args: object, **_kwargs: object) -> PipelineEvent:
         raise SupervisionInfrastructureError("resolver", "activity relay sender: timed out")

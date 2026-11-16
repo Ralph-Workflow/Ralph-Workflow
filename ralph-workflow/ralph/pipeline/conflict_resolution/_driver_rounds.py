@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from git.exc import GitError
 from loguru import logger
 
 from ralph.agents.invoke import AgentInvocationError
+from ralph.git.errors import GitOperationError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_attempt_outcome as _emit_attempt_outcome,
@@ -267,7 +270,16 @@ def _execute_single_candidate(
             session.last_failure_cause = ResolutionFailureCause.NONE
         else:
             _record_invoker_outcome(session, invoker_result)
-    except (AgentInvocationError, OSError, RuntimeError, ValueError) as exc:
+    except (
+        AgentInvocationError,
+        GitError,
+        GitOperationError,
+        subprocess.SubprocessError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+    ) as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
         )

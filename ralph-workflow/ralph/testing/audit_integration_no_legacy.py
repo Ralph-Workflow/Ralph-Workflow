@@ -34,6 +34,16 @@ _LEGACY_CONFLICT_CLASSIFIER_NAMES: frozenset[str] = frozenset({"classify_conflic
 _REMOVED_RESOLUTION_CAP_NAMES: frozenset[str] = frozenset({"total_resolution_cap_seconds"})
 _LEGACY_GITLINK_ESCALATION_NAMES: frozenset[str] = frozenset({"escalate_gitlink_on_sight"})
 _LEGACY_OUTCOME_CLASS_NAMES: frozenset[str] = frozenset({"ResolutionOutcome"})
+_LEGACY_DEAD_OUTCOME_MODULE_NAMES: Final[frozenset[str]] = frozenset(
+    f"_resolution_{kind}_" + "outcome"
+    for kind in ("resolved", "config_failure", "waiting", "next_strategy", "unknown")
+)
+_LEGACY_OUTCOME_MODULE_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        "ralph/pipeline/conflict_resolution/resolution_outcome.py",
+        *(f"ralph/pipeline/{name}.py" for name in _LEGACY_DEAD_OUTCOME_MODULE_NAMES),
+    }
+)
 LEGACY_OUTCOME_MODULE: str = "ralph/pipeline/conflict_resolution/resolution_outcome.py"
 _SELF_AUDIT_MODULES: frozenset[str] = frozenset(
     {
@@ -113,6 +123,8 @@ _INTEGRATION_SIDE_FAILURE_CLASSIFIER_NAMES: Final[frozenset[str]] = frozenset(
     {
         "classify_conflict_attempt",
         "classify_agent_failure",
+        "time_agent_retry",
+        "compute_agent_retry_delay",
     }
 )
 _LOCAL_COOLDOWN_WRITE_TARGETS: Final[frozenset[str]] = frozenset(
@@ -120,6 +132,16 @@ _LOCAL_COOLDOWN_WRITE_TARGETS: Final[frozenset[str]] = frozenset(
         "cooldown_until_ms",
         "cooldown_until_epoch_ms",
         "_cooldown_until",
+    }
+)
+_SEALED_OUTCOME_CLASSES: Final[frozenset[str]] = frozenset(
+    {
+        "ResolvedOutcome",
+        "WaitingOutcome",
+        "RetryLaterOutcome",
+        "NextStrategyOutcome",
+        "ConfigFailureOutcome",
+        "UnknownOutcome",
     }
 )
 
@@ -315,6 +337,41 @@ def _legacy_tuple_violations(path: str, tree: ast.Module) -> list[Violation]:
     return violations
 
 
+def _exhaustive_match_violations(rel: str, tree: ast.Module) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Match):
+            continue
+        matched_classes: set[str] = set()
+        has_fallback = False
+        for case in node.cases:
+            for pattern in ast.walk(case.pattern):
+                if isinstance(pattern, ast.MatchClass):
+                    cls_name = (
+                        pattern.cls.id
+                        if isinstance(pattern.cls, ast.Name)
+                        else (pattern.cls.attr if isinstance(pattern.cls, ast.Attribute) else "")
+                    )
+                    if cls_name in _SEALED_OUTCOME_CLASSES:
+                        matched_classes.add(cls_name)
+                elif isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+                    has_fallback = True
+        if matched_classes and not has_fallback and matched_classes != _SEALED_OUTCOME_CLASSES:
+            missing = sorted(_SEALED_OUTCOME_CLASSES - matched_classes)
+            violations.append(
+                Violation(
+                    path=rel,
+                    line=node.lineno,
+                    rule="non-exhaustive outcome match",
+                    detail=(
+                        "match statement over StopResolutionOutcome is non-exhaustive; "
+                        f"missing variants: {', '.join(missing)} without a fallback case"
+                    ),
+                )
+            )
+    return violations
+
+
 def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[Violation]:
     package_key = _package_key(rel)
     identifier_lines = _identifier_lines(tree)
@@ -334,6 +391,14 @@ def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[
             "integration-side failure classification",
             "agent failure classification is owned by ralph/recovery/agent_failure_ledger.py "
             "and must not be re-added to integration",
+        ),
+        *_forbidden_identifier_violations(
+            rel,
+            identifier_lines,
+            _LEGACY_DEAD_OUTCOME_MODULE_NAMES,
+            "legacy resolution outcome module reappeared",
+            "legacy dead outcome modules must stay deleted; the canonical sealed union lives "
+            "in ralph/pipeline/resolution_outcome.py",
         ),
         *_forbidden_identifier_violations(
             rel,
@@ -365,14 +430,14 @@ def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[
         )
         if any(token in source for token in _RESOLUTION_OUTCOME_TOKENS):
             violations.extend(_legacy_tuple_violations(rel, tree))
-    if package_key == LEGACY_OUTCOME_MODULE:
+    if package_key in _LEGACY_OUTCOME_MODULE_PATHS:
         violations.append(
             Violation(
                 path=rel,
                 line=1,
                 rule="legacy resolution outcome module reappeared",
                 detail=(
-                    f"{LEGACY_OUTCOME_MODULE} must stay deleted; the canonical sealed union lives "
+                    f"{package_key} must stay deleted; the canonical sealed union lives "
                     "in ralph/pipeline/resolution_outcome.py"
                 ),
             )
@@ -424,13 +489,19 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
             )
         if isinstance(node, ast.Compare) and _string_cause_match(node):
             violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
-        if isinstance(node, ast.Call) and package_key not in _ALLOWED_PRIVATE_RESOLVER_CALLERS:
+        if isinstance(node, ast.Call):
             callee = (
                 node.func.id
                 if isinstance(node.func, ast.Name)
                 else (node.func.attr if isinstance(node.func, ast.Attribute) else "")
             )
-            if callee in _PRIVATE_RESOLVER_NAMES:
+            if (
+                callee == "_resolve_rebase_with_config"
+                and package_key != "ralph/pipeline/_stop_resolution_entry.py"
+            ) or (
+                callee == "_resolve_rebase_in_progress"
+                and package_key not in _ALLOWED_PRIVATE_RESOLVER_CALLERS
+            ):
                 violations.append(
                     Violation(
                         rel,
@@ -469,6 +540,7 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
                                 ),
                             )
                         )
+    violations.extend(_exhaustive_match_violations(rel, tree))
     return violations
 
 
@@ -677,6 +749,26 @@ def selftest() -> int:
             LEGACY_OUTCOME_MODULE,
             "class ResolutionOutcome: pass\n",
             "legacy resolution outcome module reappeared",
+        ),
+        (
+            f"ralph/pipeline/{next(iter(_LEGACY_DEAD_OUTCOME_MODULE_NAMES))}.py",
+            "class Dummy: pass\n",
+            "legacy resolution outcome module reappeared",
+        ),
+        (
+            "ralph/pipeline/planted_non_exhaustive_match.py",
+            "match outcome:\n    case ResolvedOutcome(): pass\n",
+            "non-exhaustive outcome match",
+        ),
+        (
+            "ralph/pipeline/planted_retry_timer.py",
+            "def test(): return time_agent_retry()\n",
+            "integration-side failure classification",
+        ),
+        (
+            "ralph/pipeline/conflict_resolution/rebase_loop.py",
+            "def test(): return _resolve_rebase_with_config()\n",
+            "private resolver caller outside entry",
         ),
         (
             "ralph/pipeline/planted_cleanup.py",

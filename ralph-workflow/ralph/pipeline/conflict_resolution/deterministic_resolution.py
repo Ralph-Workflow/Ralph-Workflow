@@ -289,6 +289,8 @@ def _partition_deterministic_conflicts(
             text_paths.append(path)
         else:
             return None
+    if not gitlinks and not mode_only_paths:
+        return None
     return gitlinks, mode_only_paths, mode_only_stages, text_paths
 
 
@@ -325,8 +327,9 @@ def _execute_deterministic_resolution(
             and (root / p).stat().st_size > 0
             and not paths_with_conflict_markers(root, (p,))
         ]
-        if stageable:
-            stage_paths(root, tuple(stageable))
+        if len(stageable) != len(text_paths):
+            return False
+        stage_paths(root, tuple(stageable))
 
     remaining = unmerged_paths(root)
     return _UNMERGED_QUERY_FAILED not in remaining and not any(
