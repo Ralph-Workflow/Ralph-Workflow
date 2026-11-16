@@ -7,7 +7,6 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
-from ralph.agents.system_clock import SystemClock
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -46,7 +45,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from ralph.agents.timeout_clock import Clock
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -229,7 +227,6 @@ def ensure_session_controller(
         if session is not None and session.ledger is not None
         else (pipeline_deps.ledger if pipeline_deps is not None else None)
     )
-    clock: Clock
     if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
         clock = pipeline_deps.recovery_clock
     elif isinstance(ledger, AgentFailureLedger):
@@ -237,6 +234,8 @@ def ensure_session_controller(
     elif isinstance(store, AgentUnavailabilityTracker):
         clock = store.clock
     else:
+        from ralph.agents.system_clock import SystemClock
+
         clock = SystemClock()
     deps = AttemptRunnerDeps(
         clock=clock,
@@ -471,9 +470,10 @@ def invoke_resolution_agent(
         from ralph.display.context import make_display_context
 
         display_context = make_display_context()
-    effective_deps = pipeline_deps
-    if effective_deps is None:
-        effective_deps = _effect_executor_module.current_agent_effect_dependencies().pipeline_deps
+    caller_deps = pipeline_deps
+    if caller_deps is None:
+        caller_deps = _effect_executor_module.current_agent_effect_dependencies().pipeline_deps
+    effective_deps = caller_deps
     if effective_deps is None:
         from ralph.pipeline.factory import DefaultPipelineFactory
 
@@ -486,9 +486,13 @@ def invoke_resolution_agent(
     controller = ensure_session_controller(
         session,
         policy_bundle,
-        pipeline_deps=effective_deps,
+        pipeline_deps=caller_deps,
         config=config,
     )
+    if effective_deps.recovery_controller is None:
+        import dataclasses
+
+        effective_deps = dataclasses.replace(effective_deps, recovery_controller=controller)
     if _candidate_cannot_be_launched(agent_name, session):
         return _failed_invocation_outcome(
             RuntimeError(f"agent {agent_name} cannot be launched"),

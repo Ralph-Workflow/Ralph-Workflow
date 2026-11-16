@@ -143,6 +143,11 @@ def _repair_owned_merge(
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
 
+    if pipeline_deps.recovery_controller is None and controller is not None:
+        import dataclasses
+
+        pipeline_deps = dataclasses.replace(pipeline_deps, recovery_controller=controller)
+
     def invoke(agent: str, prompt: Path) -> bool:
         return bool(
             invoke_resolution_agent(

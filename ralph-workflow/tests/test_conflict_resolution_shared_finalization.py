@@ -1,13 +1,39 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+from ralph.pipeline.conflict_resolution import driver as driver_module
+from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
+from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
+from tests._conflict_resolution_phase_parity_seams import (
+    _config,
+    _CooldownClock,
+    _install_seams,
+    _policy_bundle,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "cooldown boundary test now drives full conflict resolution pipeline across non-identity boundaries": (
+        "extended boundary test from a standalone ledger snapshot check to execute "
+        "the real conflict resolution pipeline with mock boundaries, verifying cooldown "
+        "enforcement end-to-end"
+    ),
+}
 
 
 @pytest.mark.parametrize(
@@ -35,20 +61,121 @@ def test_failure_kinds_use_shared_finalization(issuer: TerminationIssuer, status
     assert controller.last_attempt_outcome is outcome
 
 
-@pytest.mark.parametrize("boundary", ("restated_prompt", "rung", "strategy", "restart"))
-def test_cooldown_survives_non_identity_boundaries(boundary: str) -> None:
-    del boundary
-    clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock, ledger=ledger))
-    controller.finalize_attempt(
-        PHASE_RESOLUTION,
-        "first",
-        facts=AttemptFacts(artifact_valid=False),
-        attempt_failed=True,
+@pytest.mark.parametrize(
+    "boundary",
+    ("restated_prompt", "rung", "strategy", "moved_target", "supervisor_restart"),
+)
+def test_cooldown_survives_non_identity_boundaries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    clock = _CooldownClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_entries={
+                "resolver-1": UnavailabilityEntry(
+                    unavailable_until_ms=7000,
+                    reason=UnavailabilityReason.PROCESS_EXITED,
+                    attempt=1,
+                    base_backoff_ms=5000,
+                    max_backoff_ms=18000000,
+                )
+            },
+        )
     )
-    restored = AgentFailureLedger.from_snapshot(ledger.snapshot(), clock=clock)
-    assert isinstance(restored.agent_eligibility(PHASE_RESOLUTION, "first"), Cooldown)
+    controller.ledger.record(
+        AttemptFact(phase=PHASE_RESOLUTION, agent="resolver-1", artifact_valid=False)
+    )
+
+    assert not controller.agent_eligibility(PHASE_RESOLUTION, "resolver-1").is_eligible
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["resolver-1"]) == 7000
+
+    clock.advance(2.0)
+    assert not controller.agent_eligibility(PHASE_RESOLUTION, "resolver-1").is_eligible
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["resolver-1"]) == 5000
+
+    target = "main"
+    strategy_history: tuple[str, ...] = ()
+    session_to_use = ResolutionSession(recovery_controller=controller)
+    restated_called: list[Path] = []
+
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("resolver-1",))
+
+    if boundary == "restated_prompt":
+
+        def custom_materializer(
+            *,
+            root: Path,
+            target: str,
+            conflicted_paths: Sequence[str],
+            round_index: int,
+            round_cap: int,
+            session: ResolutionSession,
+            stop: object,
+            strategy_history: tuple[str, ...],
+        ) -> Path | None:
+            _ = (target, conflicted_paths, round_cap, session, stop, strategy_history)
+            p = root / f"restated_prompt_{round_index}.txt"
+            p.write_text("Restated problem prompt: please resolve cleanly.", encoding="utf-8")
+            restated_called.append(p)
+            return p
+
+        monkeypatch.setattr(driver_module, "materialize_round_prompt", custom_materializer)
+
+    elif boundary == "rung":
+        strategy_history = ("rebase:rung-1", "rebase:rung-2")
+
+    elif boundary == "strategy":
+        strategy_history = ("rebase", "merge")
+
+    elif boundary == "moved_target":
+        target = "main-moved-target"
+
+    elif boundary in ("supervisor_restart", "restart"):
+        snapshot = controller.snapshot()
+        restored_controller = RecoveryController.from_snapshot(snapshot, clock=clock)
+        assert isinstance(
+            restored_controller.agent_eligibility(PHASE_RESOLUTION, "resolver-1"), Cooldown
+        )
+        session_to_use = ResolutionSession(recovery_controller=restored_controller)
+
+    called_at: list[float] = []
+
+    def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        _ = (agent_name, prompt_path, round_index)
+        called_at.append(clock.monotonic())
+        return True
+
+    _install_seams(monkeypatch, surviving_per_round=[[]])
+    token = install_executors(clock=clock)
+    try:
+        resolved = run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target=target,
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=invoke,
+            session=session_to_use,
+            strategy_history=strategy_history,
+        )
+    finally:
+        reset_executors(token)
+
+    assert resolved is True
+    assert called_at == [7.0]
+    assert clock.monotonic() == 7.0
+    if boundary == "restated_prompt":
+        assert len(restated_called) == 1
+    assert session_to_use.recovery_controller is not None
+    assert session_to_use.recovery_controller.agent_eligibility(
+        PHASE_RESOLUTION, "resolver-1"
+    ).is_eligible
 
 
 def test_fall_over_then_wait_with_two_agents() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import functools
 import inspect
 import shutil
@@ -697,6 +698,7 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     )
     context = make_display_context(console=Console(file=StringIO()))
     deps = make_test_pipeline_deps(context)
+    deps = dataclasses.replace(deps, recovery_controller=make_resolver_controller())
     scope = WorkspaceScope(root)
     display = ParallelDisplay(context)
     resolver_kw = {
@@ -791,9 +793,11 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
+    controller = make_resolver_controller()
     deps = make_test_pipeline_deps(make_display_context(console=Console(file=StringIO())))
+    deps = dataclasses.replace(deps, recovery_controller=controller)
     assert repair_pending_merge(
-        controller=make_resolver_controller(),
+        controller=controller,
         workspace_scope=WorkspaceScope(feature),
         config=UnifiedConfig(),
         pipeline_deps=deps,

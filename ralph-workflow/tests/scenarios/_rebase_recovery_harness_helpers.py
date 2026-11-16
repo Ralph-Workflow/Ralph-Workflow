@@ -32,6 +32,7 @@ __all__ = [
     "_capture_log_records",
     "capture_operator_lines",
     "corrupted_config",
+    "paused_partial_out_of_reach_rebase",
     "scenario_config",
     "shared_executor_seam",
     "supervisor_restart",
@@ -220,6 +221,63 @@ def corrupted_config(root: Path) -> Path:
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[general\nauto_integrate_enabled = true\n", encoding="utf-8")
     return config
+
+
+def paused_partial_out_of_reach_rebase(root: Path) -> tuple[str, str, str]:
+    from ralph.git.rebase.rebase import rebase_in_progress
+    from tests._scenario_git import commit_file
+
+    commit_file(root, "init.txt", "init\n", "init")
+    base_oid = git(root, "rev-parse", "HEAD")
+    feature_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "feature link")
+    target_oid = git(root, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "target link")
+    commit_file(root, "deleted.txt", "base delete/modify\n", "declared base")
+    commit_file(root, "notes.txt", "base notes\n", "notes base")
+    git(root, "update-index", "--add", "--cacheinfo", f"160000,{base_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "declared gitlink base")
+
+    git(root, "checkout", "-q", "-b", "feature")
+    (root / "deleted.txt").write_text("feature keeps file\n", encoding="utf-8")
+    (root / "notes.txt").write_text("feature notes\n", encoding="utf-8")
+    git(root, "add", "deleted.txt", "notes.txt")
+    git(root, "update-index", "--cacheinfo", f"160000,{feature_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "feature fourth symptom set")
+
+    git(root, "checkout", "-q", "main")
+    git(root, "rm", "-q", "deleted.txt")
+    (root / "notes.txt").write_text("target notes\n", encoding="utf-8")
+    git(root, "add", "notes.txt")
+    git(root, "update-index", "--cacheinfo", f"160000,{target_oid},vendor/link")
+    git(root, "commit", "-q", "-m", "target fourth symptom set")
+
+    git(root, "checkout", "-q", "feature")
+    git(root, "rebase", "main", check=False)
+    index_info = (
+        f"160000 {base_oid} 1\tvendor/link\n"
+        f"160000 {target_oid} 2\tvendor/link\n"
+        f"160000 {feature_oid} 3\tvendor/link\n"
+    )
+    subprocess.run(
+        ("git", "update-index", "--index-info"),
+        input=index_info,
+        cwd=root,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+    if not rebase_in_progress(root):
+        raise AssertionError("partial out of reach fixture did not pause")
+
+    entries: dict[int, str] = {}
+    for line in git(root, "ls-files", "-u", "--", "vendor/link").splitlines():
+        metadata, _separator, _relative = line.partition("\t")
+        fields = metadata.split()
+        if len(fields) == 3:
+            entries[int(fields[2])] = fields[1]
+    s1, s2, s3 = entries.get(1, ""), entries.get(2, ""), entries.get(3, "")
+    if not (s1 and s2 and s3):
+        raise AssertionError(f"expected three gitlink stages for vendor/link, got {(s1, s2, s3)}")
+    return (s1, s2, s3)
 
 
 def supervisor_restart(root: Path) -> dict[str, object]:

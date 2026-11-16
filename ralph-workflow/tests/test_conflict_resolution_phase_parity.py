@@ -1236,3 +1236,134 @@ def test_conflict_invocations_skip_cooldown_and_restore_priority(
     restored_priority_calls = [at for agent, at in called if agent == "one"]
     assert restored_priority_calls
     assert all(at >= 5.0 for at in restored_priority_calls)
+
+
+def _step_ordinary(
+    state: object,
+    *,
+    scope: object,
+    config: object,
+    registry: object,
+    display: object,
+    display_ctx: object,
+    bundle: object,
+    controller: object,
+) -> object:
+    from ralph.config.enums import Verbosity
+    from ralph.pipeline import runner as runner_module
+
+    return runner_module.run_pipeline_step(
+        state=state,
+        policy_bundle=bundle,
+        workspace_scope=scope,
+        config=config,
+        display=display,
+        display_context=display_ctx,
+        verbosity=Verbosity.QUIET,
+        registry=registry,
+        pipeline_subscriber=None,
+        recovery_controller=controller,
+    )
+
+
+def test_ordinary_phase_two_agent_fall_over_then_wait(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ralph.agents.registry import AgentRegistry
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.state import AgentChainState, PipelineState, WaitReason
+    from ralph.workspace.scope import WorkspaceScope
+
+    readme = tmp_path / "README.md"
+    readme.write_text("hello\n", encoding="utf-8")
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (agent_dir / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
+
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    bundle = _policy_bundle()
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, ledger=ledger, policy_bundle=bundle)
+    )
+
+    phase = "development"
+    agents = ["first", "second"]
+    config = UnifiedConfig(agents={name: AgentConfig(cmd=name) for name in agents})
+    registry = AgentRegistry.from_config(config)
+    display_ctx = make_display_context()
+    display = ParallelDisplay(workspace_root=tmp_path, display_context=display_ctx, is_quiet=True)
+    scope = WorkspaceScope(tmp_path)
+    state = PipelineState(
+        phase=phase,
+        phase_chains={phase: AgentChainState(agents=agents, current_index=0, retries=0)},
+        last_connectivity_state="online",
+    )
+
+    invoked: list[tuple[str, float]] = []
+
+    def stub_agent(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
+        agent_name = getattr(effect, "agent_name", "")
+        invoked.append((agent_name, clock.monotonic()))
+        return PipelineEvent.AGENT_FAILURE
+
+    token = install_agent_effect_dependencies(
+        agent_runner=stub_agent, recovery_controller=controller
+    )
+    try:
+        step_kw = {
+            "scope": scope,
+            "config": config,
+            "registry": registry,
+            "display": display,
+            "display_ctx": display_ctx,
+            "bundle": bundle,
+            "controller": controller,
+        }
+        step1_state = _step_ordinary(state, **step_kw)
+        assert invoked == [("first", 0.0)]
+        chain_after_1 = step1_state.chain_for_phase(phase)
+        assert chain_after_1 is not None
+        assert chain_after_1.current_index == 1
+        assert step1_state.is_waiting_state is False
+
+        step2_state = _step_ordinary(step1_state, **step_kw)
+        assert invoked == [("first", 0.0), ("second", 0.0)]
+        assert step2_state.is_waiting_state is True
+        assert step2_state.wait_reason is WaitReason.ALL_AGENTS_UNAVAILABLE
+        assert step2_state.last_retry_delay_ms == 60_000
+
+        selection = controller.preferred_agent_index(phase, agents)
+        assert selection.agent is None
+        assert controller.earliest_available_wait_ms(phase, agents) == 60_000
+        assert selection.skipped_reasons == (
+            (
+                "first",
+                "cooldown (60000ms remaining, reason=consecutive_unproductive_limit_reached)",
+            ),
+            (
+                "second",
+                "cooldown (60000ms remaining, reason=consecutive_unproductive_limit_reached)",
+            ),
+        )
+
+        assert invoked == [("first", 0.0), ("second", 0.0)]
+
+        clock.advance(30.0)
+        _step_ordinary(step2_state, **step_kw)
+        assert invoked == [("first", 0.0), ("second", 0.0)]
+
+        clock.advance(30.1)
+        resumed_selection = controller.preferred_agent_index(phase, agents)
+        assert resumed_selection.agent == "first"
+
+        _step_ordinary(step2_state.clear_waiting(), **step_kw)
+        assert invoked == [("first", 0.0), ("second", 0.0), ("first", 60.1)]
+    finally:
+        reset_agent_effect_dependencies(token)

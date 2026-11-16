@@ -35,6 +35,7 @@ from tests.scenarios._rebase_recovery_harness_helpers import (
     _capture_log_records,
     capture_operator_lines,
     corrupted_config,
+    paused_partial_out_of_reach_rebase,
     scenario_config,
     shared_executor_seam,
     supervisor_restart,
@@ -287,7 +288,7 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
     from tests.scenarios._content_equivalence import assert_content_equivalence
 
     target_before = git(root, "rev-parse", "main")
-    stages = paused_declared_decisions_and_gitlink_rebase(root)
+    stages = paused_partial_out_of_reach_rebase(root)
     feature_sha = git(root, "rev-parse", "feature")
     policy = load_policy(default_dir())
     controller = RecoveryController(options=RecoveryControllerOptions())
@@ -298,6 +299,8 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
 
     def invoke(agent_name: str, _prompt_path: Path, round_index: int) -> bool:
         invoked.append(f"{agent_name}:{round_index}")
+        (root / "deleted.txt").write_text("resolved deleted\n", encoding="utf-8")
+        (root / "notes.txt").write_text("resolved notes\n", encoding="utf-8")
         return True
 
     def materializer(
@@ -325,8 +328,8 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
 
     stop = RebaseStop(
         sha=git(root, "rev-parse", "REBASE_HEAD"),
-        subject="feature declared set",
-        conflicted_files=("deleted.txt", "docs/decision.md", "vendor/link"),
+        subject="feature fourth symptom set",
+        conflicted_files=("deleted.txt", "notes.txt", "vendor/link"),
         stop_index=1,
         stop_cap=4,
     )
@@ -350,12 +353,19 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
             session=session,
             prompt_materializer=materializer,
         )
+
+    assert any(
+        "entering rebase conflict resolution" in line.content and "vendor/link" in line.content
+        for line in driver_lines
+    )
+    assert any(
+        "conflict(s) git could not write markers into" in line.content
+        and "deleted.txt: delete/modify declaration" in line.content
+        for line in driver_lines
+    )
+
     runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
-    with (
-        shared_executor_seam(runner),
-        capture_operator_lines() as landing_lines,
-        _capture_log_records() as logs,
-    ):
+    with shared_executor_seam(runner):
         state = integrate_before_planning(
             scenario_config(),
             WorkspaceScope(root),
@@ -372,10 +382,6 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         source_refs=(target_before,),
         excluded_paths=("vendor/link",),
     )
-    policy_lines = [
-        content for _name, content in logs if "gitlink policy path=vendor/link" in content
-    ]
-    all_lines = (*driver_lines, *landing_lines)
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     terminal = (
@@ -386,13 +392,16 @@ def run_declared_decisions_and_gitlink_resolution(root: Path) -> ScenarioResult:
         and equivalence.satisfied
         else "retained"
     )
+    assert terminal in {"landed", "waiting"}
+    assert head == target
+    assert equivalence.satisfied
+
     return ScenarioResult(
         runner.launches,
-        all_lines,
+        tuple(driver_lines),
         terminal,
         {
             "stage_shas": ",".join(stages),
-            "policy_lines": "\n".join(policy_lines),
             "prompted_paths": ",".join(prompted[0] if prompted else ()),
             "driver_invocations": str(len(invoked)),
             "driver_resolved": str(isinstance(driver_outcome, ResolvedOutcome)).lower(),

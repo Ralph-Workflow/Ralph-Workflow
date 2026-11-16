@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_record import record_path
 from tests._scenario_harness import (
     AgentMode,
@@ -172,6 +173,7 @@ def _old_record(root: Path) -> str:
         "agent-stages-nothing",
         "dirty-untracked",
         "failing-hook",
+        "cleanup-crash",
     ],
 )
 def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbation: str) -> None:
@@ -199,6 +201,9 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
             hook = tmp_git_repo / ".git" / "hooks" / "pre-commit"
             hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
             hook.chmod(0o755)
+        elif perturbation == "cleanup-crash":
+            (tmp_git_repo / ".git" / "refs" / "ralph" / "backup").mkdir(parents=True, exist_ok=True)
+            git(tmp_git_repo, "update-ref", "refs/ralph/backup/pre-integrate", feature_sha)
         git(tmp_git_repo, "checkout", "-q", "feature")
     resolver = (
         (lambda _root, _target, _stop: True)
@@ -222,6 +227,38 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
         ("older-record", "dirty-untracked"),
         ("agent-stages-nothing", "failing-hook"),
         ("sibling-vendor", "older-record"),
+        ("agent-stages-nothing", "target-moved"),
+        ("agent-stages-nothing", "wrong-version-ledger"),
+        ("agent-stages-nothing", "sibling-vendor"),
+        ("agent-stages-nothing", "stale-marker"),
+        ("agent-stages-nothing", "cleanup-crash"),
+        ("dirty-untracked", "sibling-vendor"),
+        ("target-moved", "failing-hook"),
+        ("dirty-untracked", "stale-marker"),
+        ("dirty-untracked", "cleanup-crash"),
+        ("wrong-version-ledger", "failing-hook"),
+        ("wrong-version-ledger", "stale-marker"),
+        ("older-record", "cleanup-crash"),
+        ("failing-hook", "sibling-vendor"),
+        ("failing-hook", "stale-marker"),
+        ("failing-hook", "cleanup-crash"),
+        ("stale-marker", "sibling-vendor"),
+        ("stale-marker", "cleanup-crash"),
+        ("sibling-vendor", "cleanup-crash"),
+        ("agent-stages-nothing", "older-record"),
+        ("agent-stages-nothing", "dirty-untracked"),
+        ("older-record", "stale-marker"),
+        ("older-record", "wrong-version-ledger"),
+        ("older-record", "target-moved"),
+        ("older-record", "failing-hook"),
+        ("wrong-version-ledger", "sibling-vendor"),
+        ("wrong-version-ledger", "dirty-untracked"),
+        ("wrong-version-ledger", "cleanup-crash"),
+        ("target-moved", "stale-marker"),
+        ("target-moved", "sibling-vendor"),
+        ("target-moved", "dirty-untracked"),
+        ("target-moved", "cleanup-crash"),
+        ("dirty-untracked", "failing-hook"),
     ],
 )
 def test_fault_injection_paired_cells_land_autonomously(
@@ -268,6 +305,9 @@ def test_fault_injection_paired_cells_land_autonomously(
             hook.parent.mkdir(parents=True, exist_ok=True)
             hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
             hook.chmod(0o755)
+        elif perturbation == "cleanup-crash":
+            (tmp_git_repo / ".git" / "refs" / "ralph" / "backup").mkdir(parents=True, exist_ok=True)
+            git(tmp_git_repo, "update-ref", "refs/ralph/backup/pre-integrate", feature_sha)
 
     git(tmp_git_repo, "checkout", "-q", "feature")
 
@@ -279,12 +319,22 @@ def test_fault_injection_paired_cells_land_autonomously(
     run = drive_integration(tmp_git_repo, resolver=resolver)
     pair = f"{perturbation_a}+{perturbation_b}"
     assert run.error is None, f"paired fault injection {pair} must not crash: {run.error}"
-    assert_content_equivalence(
-        tmp_git_repo,
-        contract=f"paired fault injection {pair} must still land autonomously",
-        feature=feature_sha,
-        source_refs=("main",),
-    )
+    if "stale-marker" in (perturbation_a, perturbation_b):
+        assert run.state is not None, f"paired fault injection {pair}: state must be present"
+        assert run.state.last_outcome == RebaseOutcomeKind.SKIPPED, (
+            f"paired fault injection {pair} must wait on external rebase, got {run.state.last_outcome}"
+        )
+        assert any(
+            token in (run.state.last_reason or "")
+            for token in ("rebase is in progress", "rebase-merge present")
+        )
+    else:
+        assert_content_equivalence(
+            tmp_git_repo,
+            contract=f"paired fault injection {pair} must still land autonomously",
+            feature=feature_sha,
+            source_refs=("main",),
+        )
 
 
 def test_publication_failure_lands_and_verifies(tmp_git_repo: Path) -> None:

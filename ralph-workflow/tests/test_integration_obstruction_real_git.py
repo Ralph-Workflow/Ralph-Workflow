@@ -7,16 +7,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
-
-    from ralph.mcp.artifacts.file_backend import FileBackend
-    from ralph.pipeline.conflict_resolution import RebaseStop
 
 from ralph.git.merge import merge_in_progress
 from ralph.pipeline.resolution_outcome import ResolvedOutcome
+from tests._integration_obstruction_helpers import (
+    _REPO_CACHE,
+    _blob_text,
+    _clone_template,
+    _completed,
+    _fast_branch_name,
+    _fast_rev_parse,
+    _fast_verify_ref,
+    _is_ancestor,
+    _repo,
+    _resolve_git_dirs,
+    close_cached_repos,
+)
 
 pytestmark = [
     pytest.mark.timeout_seconds(15),
@@ -50,148 +56,61 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_remote_reconciliation_preserves_and_resumes_target_agent_work": (
         "consolidated the raises parameter cases into the raising case which verifies that interrupted resolvers preserve partial repairs on disk and allow subsequent transaction recovery"
     ),
+    "verified resolution and remote reconciliation checkout setup assertions": (
+        "repository seeding moved into cached template helpers to reduce test runtime"
+    ),
 }
 
 
-def _git_dir(root: Path) -> Path:
-    git_path = root / ".git"
-    if git_path.is_file():
-        try:
-            line = git_path.read_text(encoding="utf-8").strip()
-            if line.startswith("gitdir: "):
-                target = Path(line.removeprefix("gitdir: "))
-                return target if target.is_absolute() else (root / target).resolve()
-        except OSError:
-            pass
-    return git_path
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
 
-
-def _fast_branch_name(root: Path) -> str | None:
-    git_dir = _git_dir(root)
-    head_file = git_dir / "HEAD"
-    try:
-        head_content = head_file.read_text(encoding="utf-8").strip()
-        if head_content.startswith("ref: refs/heads/"):
-            return head_content.removeprefix("ref: refs/heads/")
-    except OSError:
-        pass
-    return None
-
-
-def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
-    if len(ref_name) == 40 and all(c in "0123456789abcdefABCDEF" for c in ref_name):
-        return ref_name
-    git_dir = _git_dir(root)
-    try:
-        if ref_name == "HEAD":
-            head_file = git_dir / "HEAD"
-            head_content = head_file.read_text(encoding="utf-8").strip()
-            if head_content.startswith("ref: refs/heads/"):
-                target_ref = git_dir / head_content.removeprefix("ref: ")
-                if target_ref.is_file():
-                    return target_ref.read_text(encoding="utf-8").strip()
-            elif len(head_content) == 40:
-                return head_content
-        elif ref_name.startswith(("refs/heads/", "refs/remotes/")):
-            ref_file = git_dir / ref_name
-            if ref_file.is_file():
-                return ref_file.read_text(encoding="utf-8").strip()
-        else:
-            ref_file = git_dir / "refs" / "heads" / ref_name
-            if ref_file.is_file():
-                return ref_file.read_text(encoding="utf-8").strip()
-    except OSError:
-        pass
-    return None
-
-
-_PSEUDO_REFS = ("MERGE_HEAD", "REBASE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD")
-
-_REPO_CACHE: dict[Path, tuple[tuple[int, int], Repo]] = {}
-
-
-def _repo_identity(root: Path) -> tuple[int, int]:
-    try:
-        stat = _git_dir(root).stat()
-    except OSError:
-        return (0, 0)
-    return (stat.st_dev, stat.st_ino)
-
-
-def _repo(repo_root: Path) -> Repo:
-    identity = _repo_identity(repo_root)
-    cached = _REPO_CACHE.get(repo_root)
-    if cached is not None:
-        if cached[0] == identity:
-            return cached[1]
-        cached[1].close()
-    repo = Repo(repo_root)
-    _REPO_CACHE[repo_root] = (identity, repo)
-    return repo
+    from ralph.mcp.artifacts.file_backend import FileBackend
+    from ralph.pipeline.conflict_resolution import RebaseStop
 
 
 @pytest.fixture(autouse=True)
-def _close_cached_repos() -> Generator[None, None, None]:
+def _close_cached_repos_fixture() -> Generator[None, None, None]:
     yield
-    for _identity, repo in _REPO_CACHE.values():
-        repo.close()
-    _REPO_CACHE.clear()
-
-
-def _fast_verify_ref(repo_root: Path, ref_name: str) -> str | None:
-    git_dir = _git_dir(repo_root)
-    if ref_name in _PSEUDO_REFS:
-        try:
-            content = (git_dir / ref_name).read_text(encoding="utf-8").strip()
-            if len(content) == 40:
-                return content
-        except OSError:
-            pass
-        stopped_sha = git_dir / "rebase-merge" / "stopped-sha"
-        if ref_name == "REBASE_HEAD" and stopped_sha.is_file():
-            try:
-                content = stopped_sha.read_text(encoding="utf-8").strip()
-                if len(content) == 40:
-                    return content
-            except OSError:
-                pass
-        return None
-    return _fast_rev_parse(repo_root, ref_name)
-
-
-def _completed(
-    args: tuple[str, ...], stdout: str = "", *, returncode: int = 0, stderr: str = ""
-) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(
-        args=("git", *args), stdout=stdout, stderr=stderr, returncode=returncode
-    )
-
-
-def _blob_text(repo: Repo, revision: str, path: str) -> str:
-    if revision == "":
-        entry = repo.index.entries[(path, 0)]
-        return repo.odb.stream(entry.binsha).read().decode()
-    blob = repo.commit(revision).tree / path
-    return blob.data_stream.read().decode()
-
-
-def _is_ancestor(repo: Repo, ancestor: str, descendant: str) -> bool:
-    wanted = repo.commit(ancestor).binsha
-    pending = [repo.commit(descendant)]
-    visited: set[bytes] = set()
-    while pending:
-        commit = pending.pop()
-        if commit.binsha == wanted:
-            return True
-        if commit.binsha not in visited:
-            visited.add(commit.binsha)
-            pending.extend(commit.parents)
-    return False
+    close_cached_repos()
 
 
 def _run_in_process(
     repo_root: Path, args: tuple[str, ...]
 ) -> subprocess.CompletedProcess[str] | None:
+    if len(args) == 3 and args[0] == "checkout" and args[1] == "-b":
+        branch = args[2]
+        git_dir, common_dir = _resolve_git_dirs(repo_root)
+        head_file = git_dir / "HEAD"
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            current_ref = common_dir / head_content.removeprefix("ref: ")
+            sha = current_ref.read_text(encoding="utf-8").strip()
+        else:
+            sha = head_content
+        branch_ref = common_dir / "refs" / "heads" / branch
+        branch_ref.parent.mkdir(parents=True, exist_ok=True)
+        branch_ref.write_text(sha + "\n", encoding="utf-8")
+        head_file.write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
+        cached = _REPO_CACHE.pop(repo_root, None)
+        if cached is not None:
+            cached[1].close()
+        return _completed(args)
+    if len(args) == 3 and args[0] == "checkout" and args[1] == "--":
+        repo = _repo(repo_root)
+        path = args[2]
+        blob_text = _blob_text(repo, "HEAD", path)
+        (repo_root / path).write_text(blob_text, encoding="utf-8")
+        return _completed(args)
+    if len(args) == 3 and args[0] == "update-ref":
+        _git_dir_path, common_dir = _resolve_git_dirs(repo_root)
+        ref_file = common_dir / args[1]
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text(args[2].strip() + "\n", encoding="utf-8")
+        cached = _REPO_CACHE.pop(repo_root, None)
+        if cached is not None:
+            cached[1].close()
+        return _completed(args)
     supported = args in {
         ("status", "--porcelain"),
         ("diff", "--name-only", "--diff-filter=U"),
@@ -291,16 +210,112 @@ def _seed_diverged_repo(root: Path) -> str:
         _run(d, "checkout", "feature")
         _DIVERGED_TEMPLATE.append((d, target))
     template, t = _DIVERGED_TEMPLATE[0]
-    cached = _REPO_CACHE.pop(root, None)
-    if cached is not None:
-        cached[1].close()
-    shutil.rmtree(root)
-    shutil.copytree(
-        template,
-        root,
-        ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
-    )
+    _clone_template(template, root)
     return t
+
+
+_VERIFIED_RESOLUTION_TEMPLATE: list[tuple[Path, str]] = []
+
+
+def _seed_verified_resolution_repo(root: Path) -> str:
+    base = _base_branch(root)
+    if not _VERIFIED_RESOLUTION_TEMPLATE:
+        d = Path(tempfile.mkdtemp(prefix="obstruction-verified-"))
+        shutil.copytree(
+            root,
+            d,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+        )
+        _commit_file(d, "shared.txt", "original\n", "seed")
+        assert _run(d, "checkout", "-b", "feature").returncode == 0
+        _commit_file(d, "shared.txt", "feature work\n", "feature work")
+        _commit_file(d, "feature.txt", "nonconflicting feature\n", "additional feature")
+        assert _run(d, "checkout", base).returncode == 0
+        _commit_file(d, "shared.txt", "mainline\n", "mainline")
+        assert _run(d, "checkout", "feature").returncode == 0
+        _VERIFIED_RESOLUTION_TEMPLATE.append((d, base))
+    template, b = _VERIFIED_RESOLUTION_TEMPLATE[0]
+    _clone_template(template, root)
+    return b
+
+
+_REBASE_CONTINUATION_TEMPLATE: dict[bool, tuple[Path, str]] = {}
+
+
+def _seed_rebase_continuation_repo(root: Path, empty_stop: bool) -> str:
+    target = _base_branch(root)
+    if empty_stop not in _REBASE_CONTINUATION_TEMPLATE:
+        d = Path(tempfile.mkdtemp(prefix="obstruction-continuation-"))
+        shutil.copytree(
+            root,
+            d,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+        )
+        _commit_file(d, "shared.txt", "base\n", "base")
+        assert _run(d, "checkout", "-b", "feature").returncode == 0
+        _commit_file(d, "shared.txt", "feature\n", "feature")
+        if empty_stop:
+            _commit_file(d, "later.txt", "later feature work\n", "later feature")
+        assert _run(d, "checkout", target).returncode == 0
+        _commit_file(d, "shared.txt", "target\n", "target")
+        assert _run(d, "checkout", "feature").returncode == 0
+        _REBASE_CONTINUATION_TEMPLATE[empty_stop] = (d, target)
+    template, t = _REBASE_CONTINUATION_TEMPLATE[empty_stop]
+    _clone_template(template, root)
+    return t
+
+
+_SAVED_STOP_TEMPLATE: list[tuple[Path, str, str]] = []
+
+
+def _seed_saved_stop_repo(root: Path) -> tuple[str, str]:
+    target = _base_branch(root)
+    if not _SAVED_STOP_TEMPLATE:
+        d = Path(tempfile.mkdtemp(prefix="obstruction-stop-"))
+        shutil.copytree(
+            root,
+            d,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+        )
+        _commit_file(d, "shared.txt", "base\n", "base")
+        _commit_file(d, "later.txt", "base\n", "base later")
+        assert _run(d, "checkout", "-b", "feature").returncode == 0
+        _commit_file(d, "shared.txt", "feature\n", "feature")
+        orig = _commit_file(d, "later.txt", "later feature\n", "later feature")
+        assert _run(d, "checkout", target).returncode == 0
+        _commit_file(d, "shared.txt", "target\n", "target")
+        _SAVED_STOP_TEMPLATE.append((d, target, orig))
+    template, t, orig = _SAVED_STOP_TEMPLATE[0]
+    _clone_template(template, root)
+    return t, orig
+
+
+_REMOTE_RECONCILE_TEMPLATE: list[tuple[Path, str, str]] = []
+
+
+def _seed_remote_reconcile_repo(root: Path) -> tuple[str, str]:
+    base = _base_branch(root)
+    if not _REMOTE_RECONCILE_TEMPLATE:
+        d = Path(tempfile.mkdtemp(prefix="obstruction-remote-"))
+        shutil.copytree(
+            root,
+            d,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("hooks", "*.sample", "description", "branches"),
+        )
+        _commit_file(d, "shared.txt", "base\n", "base")
+        assert _run(d, "checkout", "-b", "remote-seed").returncode == 0
+        remote_sha = _commit_file(d, "shared.txt", "remote\n", "remote")
+        assert _run(d, "update-ref", f"refs/remotes/origin/{base}", remote_sha).returncode == 0
+        assert _run(d, "checkout", base).returncode == 0
+        _commit_file(d, "shared.txt", "local\n", "local")
+        _REMOTE_RECONCILE_TEMPLATE.append((d, base, remote_sha))
+    template, b, r_sha = _REMOTE_RECONCILE_TEMPLATE[0]
+    _clone_template(template, root)
+    return b, r_sha
 
 
 def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> str:
@@ -361,14 +376,7 @@ def test_verified_resolution_using_target_version_lands_and_synchronizes(
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
-    base = _base_branch(tmp_git_repo)
-    _commit_file(tmp_git_repo, "shared.txt", "original\n", "seed")
-    assert _run(tmp_git_repo, "checkout", "-b", "feature").returncode == 0
-    _commit_file(tmp_git_repo, "shared.txt", "feature work\n", "feature work")
-    _commit_file(tmp_git_repo, "feature.txt", "nonconflicting feature\n", "additional feature")
-    assert _run(tmp_git_repo, "checkout", base).returncode == 0
-    _commit_file(tmp_git_repo, "shared.txt", "mainline\n", "mainline")
-    assert _run(tmp_git_repo, "checkout", "feature").returncode == 0
+    base = _seed_verified_resolution_repo(tmp_git_repo)
 
     def discard_feature(root: Path, _target: str) -> ResolvedOutcome:
         (root / "shared.txt").write_text("mainline\n", encoding="utf-8")
@@ -611,15 +619,7 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
 
     empty_stop = mode != "normal"
     root = tmp_git_repo
-    target = _base_branch(root)
-    _commit_file(root, "shared.txt", "base\n", "base")
-    _run(root, "checkout", "-b", "feature")
-    _commit_file(root, "shared.txt", "feature\n", "feature")
-    if empty_stop:
-        _commit_file(root, "later.txt", "later feature work\n", "later feature")
-    _run(root, "checkout", target)
-    _commit_file(root, "shared.txt", "target\n", "target")
-    _run(root, "checkout", "feature")
+    target = _seed_rebase_continuation_repo(root, empty_stop)
     hook = root / ".git" / "hooks" / "reference-transaction"
     calls: list[str] = []
 
@@ -628,6 +628,7 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
         (repo / "shared.txt").write_text(
             "target\n" if empty_stop else "resolved\n", encoding="utf-8"
         )
+        hook.parent.mkdir(parents=True, exist_ok=True)
         hook.write_text(
             '#!/bin/sh\nif [ "$1" = prepared ]; then echo "hook denied continuation" >&2; exit 1; fi\n',
             encoding="utf-8",
@@ -687,14 +688,7 @@ def test_saved_rebase_stop_recovers_empty_replay_or_next_conflict(
 
     root = tmp_git_repo
     next_conflict = scenario == "next_conflict"
-    target = _base_branch(root)
-    _commit_file(root, "shared.txt", "base\n", "base")
-    _commit_file(root, "later.txt", "base\n", "base later")
-    _run(root, "checkout", "-b", "feature")
-    _commit_file(root, "shared.txt", "feature\n", "feature")
-    original = _commit_file(root, "later.txt", "later feature\n", "later feature")
-    _run(root, "checkout", target)
-    _commit_file(root, "shared.txt", "target\n", "target")
+    target, original = _seed_saved_stop_repo(root)
     if next_conflict:
         _commit_file(root, "later.txt", "later target\n", "later target")
     if scenario == "rename":
@@ -909,15 +903,7 @@ def test_remote_reconciliation_preserves_and_resumes_target_agent_work(
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
     from ralph.workspace.scope import WorkspaceScope
 
-    base = _base_branch(tmp_git_repo)
-    _commit_file(tmp_git_repo, "shared.txt", "base\n", "base")
-    assert _run(tmp_git_repo, "checkout", "-b", "remote-seed").returncode == 0
-    remote_sha = _commit_file(tmp_git_repo, "shared.txt", "remote\n", "remote")
-    assert (
-        _run(tmp_git_repo, "update-ref", f"refs/remotes/origin/{base}", remote_sha).returncode == 0
-    )
-    assert _run(tmp_git_repo, "checkout", base).returncode == 0
-    _commit_file(tmp_git_repo, "shared.txt", "local\n", "local")
+    base, remote_sha = _seed_remote_reconcile_repo(tmp_git_repo)
     feature = tmp_path / "feature-worktree"
     assert _run(tmp_git_repo, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     feature_head = _run(feature, "rev-parse", "HEAD").stdout

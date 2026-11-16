@@ -12,6 +12,7 @@ from tests.scenarios._rebase_recovery_harness import (
     ScenarioResult,
     run_completed_rebase_promotion,
     run_corrupted_config,
+    run_declared_decisions_and_gitlink_resolution,
     run_detached_head_probe_quietness,
     run_empty_resolution_stop,
     run_marker_resolution,
@@ -79,6 +80,10 @@ def _detached_head_probe_quietness(root: Path) -> ScenarioResult:
     return run_detached_head_probe_quietness(root)
 
 
+def _partial_out_of_reach_and_declared_decision(root: Path) -> ScenarioResult:
+    return run_declared_decisions_and_gitlink_resolution(root)
+
+
 def _marker_leaving_resolver_bounded(root: Path) -> ScenarioResult:
     return run_marker_resolution_bounded(root)
 
@@ -128,6 +133,11 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
         "detached-head-probe-quietness",
         _detached_head_probe_quietness,
         Expected(0, 0, None, None, "quiet"),
+    ),
+    (
+        "partial-out-of-reach-and-declared-decision",
+        _partial_out_of_reach_and_declared_decision,
+        Expected(1, 6, "WARNING", "out_of_reach", "landed"),
     ),
     (
         "marker-leaving-resolver-bounded",

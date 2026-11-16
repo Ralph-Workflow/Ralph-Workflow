@@ -4,6 +4,7 @@ import functools
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
@@ -15,6 +16,11 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.policy.models import PolicyBundle
+
+
+class _CooldownClock(FakeClock):
+    def now(self) -> float:
+        return self.monotonic()
 
 
 _CONFLICTED = ["src/alpha.py"]
