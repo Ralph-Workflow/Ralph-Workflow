@@ -20,7 +20,6 @@ from ralph.display.context import make_display_context
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
-from ralph.pipeline.conflict_resolution.driver import stop_outcome_from_attempt_result
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -39,14 +38,10 @@ from tests._session_registry_instance import _RegistryInstance
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_output": (
-        "the conflict-session API returns the raw attempt result; the typed "
-        "resolution outcome is produced by the driver's single conversion "
-        "stop_outcome_from_attempt_result, so the case asserts that conversion"
+        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
     "test_silent_infrastructure_failure_does_not_charge_conflict_budget": (
-        "the conflict-session API returns the raw attempt result; the typed "
-        "resolution outcome is produced by the driver's single conversion "
-        "stop_outcome_from_attempt_result, so the case asserts that conversion"
+        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
 }
 
@@ -94,7 +89,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    attempt = invoke_resolution_agent(
+    resolved = invoke_resolution_agent(
         agent_name="resolver",
         prompt_path=Path("/workspace/prompt.md"),
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -105,9 +100,8 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         display_context=None,
         session=session,
     )
-    outcome = stop_outcome_from_attempt_result(session, attempt, agent_name="resolver")
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert not isinstance(outcome, ResolvedOutcome)
+    assert isinstance(resolved, RetryLaterOutcome)
+    assert not isinstance(resolved, ResolvedOutcome)
     assert session.terminal_reason is reason
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
     assert session.charge_conflict_budget is False
@@ -160,7 +154,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    attempt = invoke_resolution_agent(
+    resolved = invoke_resolution_agent(
         agent_name="resolver",
         prompt_path=Path("/workspace/prompt.md"),
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -171,9 +165,8 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         display_context=None,
         session=session,
     )
-    outcome = stop_outcome_from_attempt_result(session, attempt, agent_name="resolver")
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert not isinstance(outcome, ResolvedOutcome)
+    assert isinstance(resolved, RetryLaterOutcome)
+    assert not isinstance(resolved, ResolvedOutcome)
     assert session.charge_conflict_budget is False
     assert session.terminal_reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
     assert isinstance(session.last_attempt_failure, SupervisionInfrastructureError)
