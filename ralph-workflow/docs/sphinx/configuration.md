@@ -33,6 +33,8 @@ Ralph Workflow uses layered configuration. Settings are resolved in this order, 
 4. **User-global config** — `~/.config/ralph-workflow.toml`
 5. **Bundled defaults** — shipped in `ralph/policy/defaults/`
 
+A worktree-local or project `[agent_chains]` table that is an unedited copy of the bundled template's table does not override chains set in a lower layer; Ralph Workflow logs a warning naming that file and ignores that file's template `[agent_chains]` and `[agent_drains]` tables.
+
 ## The files most operators care about
 
 Ralph Workflow manages a standard config set across two scopes.

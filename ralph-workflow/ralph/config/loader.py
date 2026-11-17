@@ -32,6 +32,11 @@ if TYPE_CHECKING:
 GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 GLOBAL_AGENTS_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow-agents.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
+_BUNDLED_TEMPLATE_CONFIG_PATH = (
+    Path(__file__).parents[1] / "policy" / "defaults" / "ralph-workflow.toml"
+)
+_AGENT_CHAINS_KEY = "agent_chains"
+_TEMPLATE_AGENT_TABLE_KEYS = frozenset({_AGENT_CHAINS_KEY, "agent_drains"})
 
 CLI_ONLY_CONFIG_FIELDS: frozenset[str] = frozenset({"developer_agent", "developer_model"})
 
@@ -416,6 +421,30 @@ def _load_agents_layer(agents_path: Path, *, strict: bool) -> dict[str, object]:
         return {}
 
 
+def _without_template_agent_tables(
+    lower_layers: dict[str, object], layer: dict[str, object], *, source: str
+) -> dict[str, object]:
+    template = load_toml(_BUNDLED_TEMPLATE_CONFIG_PATH)
+    template_chains = template.get(_AGENT_CHAINS_KEY)
+    lower_chains = lower_layers.get(_AGENT_CHAINS_KEY)
+    if (
+        layer.get(_AGENT_CHAINS_KEY) != template_chains
+        or not lower_chains
+        or lower_chains == template_chains
+    ):
+        return layer
+    logger.warning(
+        "Ignoring [agent_chains] in {}: it is an unedited copy of the bundled template; "
+        "using the chains from your other Ralph Workflow config",
+        source,
+    )
+    return {
+        key: value
+        for key, value in layer.items()
+        if key not in _TEMPLATE_AGENT_TABLE_KEYS or value != template.get(key)
+    }
+
+
 def load_config(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
@@ -473,8 +502,17 @@ def load_config(
     _drop_cli_only_fields(agents_data, global_data, propagated_data, local_data)
 
     merged = deep_merge(agents_data, global_data)
-    merged = deep_merge(merged, propagated_data)
-    merged = deep_merge(merged, local_data)
+    merged = deep_merge(
+        merged,
+        _without_template_agent_tables(
+            merged,
+            propagated_data,
+            source=", ".join(str(path) for path, _data in propagated_entries),
+        ),
+    )
+    merged = deep_merge(
+        merged, _without_template_agent_tables(merged, local_data, source=str(local_path))
+    )
 
     merged = _apply_cli_overrides(merged, cli_overrides)
 
