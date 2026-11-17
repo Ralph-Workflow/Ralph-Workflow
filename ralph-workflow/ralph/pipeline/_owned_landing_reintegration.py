@@ -43,8 +43,16 @@ if TYPE_CHECKING:
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 
 
+def git_shows_no_operation(root: Path) -> bool:
+    kind = read_in_progress_kind(root)
+    if not kind.is_known_good or kind.value is not InProgressKind.NONE:
+        return False
+    unmerged = observe_unmerged_paths(root)
+    return unmerged.query_ok and not unmerged.paths
+
+
 def retained_resolution_is_stale(root: Path, record: IntegrationRecord) -> bool:
-    return _git_shows_no_operation(root) and _work_is_not_contained(root, record.target)
+    return git_shows_no_operation(root) and _work_is_not_contained(root, record.target)
 
 
 def replay_stale_resolution(
@@ -168,14 +176,6 @@ def _release_for_commit_review(root: Path, record: IntegrationRecord) -> RebaseS
             f"in place for commit review and a normal commit, and is preserved in {backup_ref}"
         ),
     )
-
-
-def _git_shows_no_operation(root: Path) -> bool:
-    kind = read_in_progress_kind(root)
-    if not kind.is_known_good or kind.value is not InProgressKind.NONE:
-        return False
-    unmerged = observe_unmerged_paths(root)
-    return unmerged.query_ok and not unmerged.paths
 
 
 def _work_is_not_contained(root: Path, target: str) -> bool:

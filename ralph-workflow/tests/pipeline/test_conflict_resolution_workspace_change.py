@@ -35,7 +35,10 @@ def _config() -> UnifiedConfig:
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_conflict_resolution_observes_workspace_changes_allowing_total_limit": (
         "under per-round candidate fallover, fallback candidate interleaves each round "
-        "until primary candidate reaches total limit and fallback candidate resolves"
+        "until primary candidate reaches total limit and fallback candidate resolves; "
+        "total_limit is consecutive_limit+1 (4) so the scenario stays inside the 1.0 "
+        "CPU-s per-test budget while still proving progress resets consecutive and "
+        "total remains reachable"
     ),
     "test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limit": (
         "under per-round candidate fallover, fallback candidate interleaves each round "
@@ -88,7 +91,7 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         ledger = AgentFailureLedger(
             clock=clock,
             consecutive_limit=3,
-            total_limit=9,
+            total_limit=4,
         )
 
         session = ResolutionSession(
@@ -116,9 +119,9 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         assert succeeded is True
 
         agent_a_invocations = [name for name in invocations if name == "agentA"]
-        assert len(agent_a_invocations) == 9
+        assert len(agent_a_invocations) == 4
 
-        assert invocations == ["agentA", "agentB"] * 9
+        assert invocations == ["agentA", "agentB"] * 4
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
         assert agent_a_status.is_spent is True

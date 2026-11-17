@@ -34,9 +34,9 @@ class ShardManifest:
         if path in self._path_set:
             return False
         prefix = f"{path}/"
-        if any(selected == path or selected.startswith(prefix) for selected in self._path_set):
-            return False
-        return True
+        return not any(
+            selected == path or selected.startswith(prefix) for selected in self._path_set
+        )
 
 
 def _is_collectable_test_module(path: str) -> bool:

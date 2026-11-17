@@ -44,6 +44,7 @@ _ANSWER_LABELS = (
     "operation_evidence:merge_object_resolvable",
     "operation_evidence:rebase_object_resolvable",
     "planning-residue:ref-exists",
+    "recovery:feature-tip-exists",
     "recovery:head-symbolic-ref",
     "repair:commit-controls",
     "repair:proposed-path",
@@ -66,6 +67,7 @@ _NEW_ANSWER_LABELS = (
     "operation_evidence:merge_object_resolvable",
     "operation_evidence:rebase_object_resolvable",
     "planning-residue:ref-exists",
+    "recovery:feature-tip-exists",
     "recovery:head-symbolic-ref",
     "repair:commit-controls",
     "repair:proposed-path",
@@ -73,30 +75,25 @@ _NEW_ANSWER_LABELS = (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_every_emitted_label_has_an_exit_code_decision": (
-        "the reviewed inventory gains the two integration-preservation reapply labels, whose "
-        "nonzero exits keep the loud default, and drops the retired "
-        "recovery:recorded-identity-status probe, which disappeared with the dirty-tree half "
-        "of the recorded-identity check; it also drops the hardening:porcelain-z probe, "
-        "which disappeared with the unmerged-path helpers retired from ralph.git.hardening"
+        "the reviewed inventory gains recovery:feature-tip-exists, a cat-file -e probe whose "
+        "rc=1 means the recorded feature tip is absent and is therefore an expected answer; "
+        "prior notes still cover the integration-preservation reapply labels and the retired "
+        "recovery:recorded-identity-status and hardening:porcelain-z probes"
     ),
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "a3f73fa478282b2337a89bef567569035e04b3423e2ea91cbf6cf6443ee44ba6"
+    "1cdac078d9d6eebe691c2a5f47b6c92663ac254fdb33828b0dffc6902cd834ca"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory replaces git-rebase:diff with the four "
-    "git-rebase:set-aside-* operations, removes the retired integration-gate:* "
-    "probe, and adds operation-snapshot:index-tree, auto-integrate:update-feature-ref, "
-    "git-completion-in-place, git-append-only-attributes, git-rm-resolved, "
-    "the recovery:completed-rebase-* receipt checks, pending-rebase:land-commit, and "
-    "pending-rebase:land-ref, and the integration-preservation:reapply-work-diff and "
-    "integration-preservation:reapply-work-diff-cached reapply steps. It also removes the "
-    "retired recovery:recorded-identity-status probe, which disappeared with the "
-    "dirty-tree half of the recorded-identity check, and the hardening:porcelain-z probe, "
-    "which disappeared with the unmerged-path helpers retired from ralph.git.hardening. These are "
-    "real recovery and conflict-resolution operations whose nonzero exits must retain the "
-    "loud default."
+    "The reviewed inventory adds recovery:feature-tip-exists (cat-file -e of a recorded "
+    "feature tip; rc=1 is an expected answer when the tip is gone) alongside the prior "
+    "replacements for git-rebase:diff, operation-snapshot:index-tree, "
+    "auto-integrate:update-feature-ref, git-completion-in-place, git-append-only-attributes, "
+    "git-rm-resolved, recovery:completed-rebase-*, pending-rebase:land-*, and "
+    "integration-preservation:reapply-work-diff*. Retired probes recovery:recorded-identity-status "
+    "and hardening:porcelain-z remain absent. Real recovery and conflict-resolution operations "
+    "whose nonzero exits are not answers keep the loud default."
 )
 
 

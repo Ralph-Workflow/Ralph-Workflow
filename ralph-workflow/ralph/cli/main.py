@@ -68,6 +68,7 @@ from ralph.workspace.scope import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from types import TracebackType
 
     from rich.console import Console
 
@@ -216,7 +217,10 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
             except Exception as exc:
                 boundary = _CLI_RESTORE_STATE.exception_boundary
                 if boundary is None:
-                    boundary = install_sanitizing_excepthook()
+                    boundary = install_sanitizing_excepthook(
+                        sys_setter=_set_sys_excepthook,
+                        thread_setter=_set_threading_excepthook,
+                    )
                 boundary.handle_main_thread_exception(type(exc), exc, exc.__traceback__)
                 if standalone_mode:
                     raise SystemExit(1) from None
@@ -544,6 +548,18 @@ class _CLIRestoreState:
 _CLI_RESTORE_STATE = _CLIRestoreState()
 
 
+def _set_sys_excepthook(
+    hook: Callable[[type[BaseException], BaseException, TracebackType | None], None],
+) -> None:
+    sys.excepthook = hook
+
+
+def _set_threading_excepthook(
+    hook: Callable[[threading.ExceptHookArgs], None],
+) -> None:
+    threading.excepthook = hook
+
+
 def ensure_cli_terminal_restore(
     *,
     register_fn: Callable[[Callable[[], None]], None] | None = None,
@@ -554,7 +570,10 @@ def ensure_cli_terminal_restore(
         snapshot_terminal_modes()
         reg = register_fn if register_fn is not None else atexit.register
         reg(restore_terminal)
-        _CLI_RESTORE_STATE.exception_boundary = install_sanitizing_excepthook()
+        _CLI_RESTORE_STATE.exception_boundary = install_sanitizing_excepthook(
+            sys_setter=_set_sys_excepthook,
+            thread_setter=_set_threading_excepthook,
+        )
         _CLI_RESTORE_STATE.registered = True
     if (
         _CLI_RESTORE_STATE.signals_registered

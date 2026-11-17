@@ -128,10 +128,10 @@ def _scan_proc(
 ) -> Literal["live", "dead", "unknown"]:
     pids = _list_pids(proc_root)
     try:
-        lock_resolved = str(lock.resolve())
+        lock_resolved: str | None = str(lock.resolve())
     except OSError:
-        return "unknown"
-    if not pids:
+        lock_resolved = None
+    if lock_resolved is None or not pids:
         return "unknown"
 
     has_unknown = False
@@ -141,9 +141,7 @@ def _scan_proc(
     lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
     aged_orphan = lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S
 
-    fd_status = _scan_lock_fd_holders(
-        proc_root, lock_resolved, lock_ident, deadline=deadline
-    )
+    fd_status = _scan_lock_fd_holders(proc_root, lock_resolved, lock_ident, deadline=deadline)
     if fd_status == "live":
         return "live"
     if aged_orphan:

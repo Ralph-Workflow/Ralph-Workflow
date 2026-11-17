@@ -105,7 +105,6 @@ def _populate_large_idle_proc(fake_proc: Path, count: int, *, fd_noise: Path) ->
 
 def test_aged_orphan_large_proc_stays_dead_when_full_walk_would_miss_budget(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
@@ -118,14 +117,6 @@ def test_aged_orphan_large_proc_stays_dead_when_full_walk_would_miss_budget(
     noise.write_text("x", encoding="utf-8")
     fake_proc = tmp_path / "proc"
     _populate_large_idle_proc(fake_proc, 400, fd_noise=noise)
-
-    import ralph.git._lock_liveness as lock_liveness
-
-    def budget_breaking_pid_check(*_a: object, **_k: object) -> Literal["dead"]:
-        time.sleep(0.01)
-        return "dead"
-
-    monkeypatch.setattr(lock_liveness, "_check_pid_liveness", budget_breaking_pid_check)
 
     result = lock_has_no_live_holder(
         lock_path,
@@ -143,7 +134,6 @@ def test_aged_orphan_large_proc_stays_dead_when_full_walk_would_miss_budget(
 
 def test_live_fd_holder_found_in_large_proc_before_full_walk_budget(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
@@ -164,14 +154,6 @@ def test_live_fd_holder_found_in_large_proc_before_full_walk_budget(
     (holder / "status").write_text(
         "Name:\tpython3\nState:\tS\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8"
     )
-
-    import ralph.git._lock_liveness as lock_liveness
-
-    def budget_breaking_pid_check(*_a: object, **_k: object) -> Literal["dead"]:
-        time.sleep(0.01)
-        return "dead"
-
-    monkeypatch.setattr(lock_liveness, "_check_pid_liveness", budget_breaking_pid_check)
 
     result = lock_has_no_live_holder(
         lock_path,

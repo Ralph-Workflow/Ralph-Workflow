@@ -144,11 +144,9 @@ def _is_dead_process_os_error(e: OSError) -> bool:
     return any(isinstance(e, _t) for _t in (FileNotFoundError, ProcessLookupError)) or e.errno in (errno.ENOENT, errno.ESRCH)
 
 
-def _fd_path_is_lock(
-    fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None
-) -> bool:
+def _fd_path_is_lock(fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
     try:
-        target = os.readlink(fd_path)
+        target = str(Path(fd_path).readlink())
     except OSError:
         return False
     if target == lock_resolved:
@@ -158,7 +156,7 @@ def _fd_path_is_lock(
     if not (target.endswith(".lock") or ".lock" in target):
         return False
     try:
-        st = os.stat(fd_path)
+        st = Path(fd_path).stat()
     except OSError:
         return False
     return (st.st_dev, st.st_ino) == lock_ident

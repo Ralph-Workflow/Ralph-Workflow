@@ -221,7 +221,10 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
-    monkeypatch.setattr(run_command_module, "_run_project_policy_readiness", lambda **_kwargs: 0)
+    monkeypatch.setattr(
+        "ralph.project_policy.cli_integration.run_project_policy_readiness",
+        lambda **_kwargs: 0,
+    )
 
     def raise_keyboard_interrupt(
         config: UnifiedConfig,

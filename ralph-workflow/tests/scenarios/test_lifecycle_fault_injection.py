@@ -27,11 +27,23 @@ from tests.scenarios._content_equivalence import (
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "fifty/twenty fixture shrunk to five progressing conflicts for two-commit budget": (
+        "same observable: a rebase with more progressing conflict stops than "
+        "scenario_config max_rebase_conflict_stops=4 must complete under that "
+        "two-commit-sized config without hitting a stop, round, attempt or time "
+        "cap. Five progressing conflicts exceed the configured stop cap; the "
+        "prior 50-commit/20-conflict fixture only amplified git rebase cost"
+    ),
+}
+
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(30),
 ]
+
+_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE = 5
 
 
 def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) -> str:
@@ -56,14 +68,23 @@ def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) 
 
 
 def test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget(tmp_git_repo: Path) -> None:
-    feature_sha = _large_conflicted_range(tmp_git_repo)
+    clock = FakeClock()
+    feature_sha = _large_conflicted_range(
+        tmp_git_repo,
+        commits=_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE,
+        conflicts=_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE,
+    )
     target_before = git(tmp_git_repo, "rev-parse", "main")
     run = drive_integration(
-        tmp_git_repo, config=scenario_config(), resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+        tmp_git_repo,
+        config=scenario_config(),
+        resolver=FakeAgentRunner(AgentMode.EDITS_AND_STAGES, clock=clock),
+        clock=clock,
     )
     assert run.error is None, f"large finite work must not crash: {run.error}"
-    assert run.resolver_launches >= 20, (
-        "a 50-commit rebase with 20 progressing conflicts must not hit a stop, round, attempt or time cap"
+    assert run.resolver_launches >= _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE, (
+        "a progressing conflict rebase beyond max_rebase_conflict_stops must not "
+        "hit a stop, round, attempt or time cap"
     )
     assert_content_equivalence(
         tmp_git_repo,

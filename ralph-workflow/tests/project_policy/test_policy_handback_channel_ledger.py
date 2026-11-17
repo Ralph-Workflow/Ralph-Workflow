@@ -12,6 +12,7 @@ import pytest
 from rich.console import Console
 from rich.live import Live
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -154,10 +155,12 @@ def _blocking_policy_paths() -> set[str]:
     return paths
 
 
-@pytest.mark.timeout_seconds(20)
+@pytest.mark.timeout_seconds(10)
 def test_post_preflight_channel_ledger_records_six_channels(
     tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(cli_integration, "SystemClock", FakeClock)
     bundle = load_policy(default_dir())
     workspace = FsWorkspace(tmp_git_repo, allowed_roots=[tmp_git_repo])
 

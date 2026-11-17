@@ -27,6 +27,9 @@ from ralph.pipeline._integration_continuation import (
 )
 from ralph.pipeline._integration_log_dedupe import integration_outcome_log
 from ralph.pipeline._owned_landing_reintegration import (
+    git_shows_no_operation as _git_shows_no_operation,
+)
+from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
 from ralph.pipeline._owned_landing_reintegration import (
@@ -459,6 +462,13 @@ def _recover_unresolved_integrating(
             conflict_resolver,
             rebase_stop_resolver,
         )
+    if (
+        record.integrated_feature_sha is None
+        and _recorded_identity_moved(root, record)
+        and _git_shows_no_operation(root)
+        and not _recorded_feature_tip_exists(root, record)
+    ):
+        return _release_verifiably_landed_record(root, record, config)
     return _reintegrate_owned_landing(
         root,
         record,
@@ -467,6 +477,14 @@ def _recover_unresolved_integrating(
         rebase_stop_resolver,
         force_retry=force_retry,
     )
+
+
+def _recorded_feature_tip_exists(root: Path, record: IntegrationRecord) -> bool:
+    tip = record.pre_feature_sha
+    if not tip:
+        return False
+    probe = run_git(("cat-file", "-e", tip), cwd=root, label="recovery:feature-tip-exists")
+    return probe.returncode == 0
 
 
 def _recorded_identity_moved(root: Path, record: IntegrationRecord) -> bool:
