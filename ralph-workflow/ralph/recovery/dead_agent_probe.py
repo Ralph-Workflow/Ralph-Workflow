@@ -39,10 +39,19 @@ def build_dead_agent_probe_runner(
             return None
         probes_started += 1
         try:
-            return probe(config).outcome
+            result = probe(config)
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
             return None
+        logger.info(
+            "dead-agent probe phase={} agent={} outcome={} detail={} reason={}",
+            phase,
+            agent,
+            result.outcome.value,
+            result.detail,
+            result.reason,
+        )
+        return result.outcome
 
     return run
 

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _MODELED_FLAG_PARTS = 2
 _OPENCODE_MODEL_FLAG_NAMES: Final[frozenset[str]] = frozenset({"-m", "--model"})
 _PI_MODEL_FLAG_PARTS = 2
-_HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
+HEADLESS_CLAUDE_PRINT_FLAGS: Final[frozenset[str]] = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
@@ -196,8 +196,8 @@ def _format_session_flag(
     return shlex.split(formatted)
 
 
-def _command_already_enables_print_mode(cmd: list[str]) -> bool:
-    return any(part in _HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
+def command_already_enables_print_mode(cmd: list[str]) -> bool:
+    return any(part in HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
 
 
 def _tokenize_opencode_model_flag(model_flag: str) -> list[str]:
@@ -620,7 +620,7 @@ class DefaultCommandBuilder:
             ):
                 cmd.append(config.verbose_flag)
 
-        if config.print_flag and not _command_already_enables_print_mode(cmd):
+        if config.print_flag and not command_already_enables_print_mode(cmd):
             cmd.append(config.print_flag)
 
         if config.streaming_flag:
@@ -662,6 +662,7 @@ COMMAND_BUILDERS: dict[AgentTransport, type[CommandBuilder]] = {
 
 __all__ = [
     "COMMAND_BUILDERS",
+    "HEADLESS_CLAUDE_PRINT_FLAGS",
     "AgyCommandBuilder",
     "ClaudeInteractiveCommandBuilder",
     "CodexCommandBuilder",
@@ -672,4 +673,5 @@ __all__ = [
     "NanocoderCommandBuilder",
     "OpencodeCommandBuilder",
     "PiCommandBuilder",
+    "command_already_enables_print_mode",
 ]

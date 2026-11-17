@@ -388,10 +388,11 @@ Attribution rules classify the exit as `agent`, `runtime`, `task_or_environment`
 
 When attribution leaves an agent as suspect, Ralph Workflow runs a canary probe before issuing a dead-agent verdict:
 
-- **Task and isolation**: The probe executes the identical CLI, model, credentials, and environment on a fixed trivial marker-writing task inside a designated probe directory (`<repo-root>/.agent/tmp/canary-probe-<uuid>/`).
+- **Task and isolation**: The probe executes the identical CLI, model, credentials, and environment on a fixed trivial marker-writing task inside a designated probe directory (`<repo-root>/.agent/tmp/canary-probe-<uuid>/`). The scratch directory is created only under a pre-trusted parent; when none resolves, the probe creates no scratch and fails closed with the reason `no_pretrusted_workspace`.
+- **Launch contract**: The probe launches only a CLI whose resolved command carries a headless selection (the configuration's own print flag, `-p`, or `--print`). A transport that carries none is not probe-safe and fails closed with the reason `transport_not_probe_safe` instead of being launched.
 - **Time and budget limits**: The probe enforces a 30-second timeout and a budget cap of at most 3 canary probes per pipeline run.
-- **Positive proof**: The probe passes only when the expected marker file is written with exact content.
-- **Failures and unknowns**: A probe convicts an agent (`failed_reproducing_no_work`) only when positive evidence shows the agent ran (tool use, stream deltas, tool calls, or subagent activity) but failed to produce the marker. Any failure to run, timeout, crash, prompt-only output, or exhausted probe budget resolves to inconclusive (`unknown`). An unknown result never benches an agent.
+- **Positive proof**: The probe passes only when the expected marker file is written with exact content. The marker is read on every end, so a probe that wrote it is `passed` even when the CLI then exits nonzero or the timeout elapses.
+- **Failures and unknowns**: A probe convicts an agent (`failed_reproducing_no_work`) only when positive evidence shows the agent ran (a tool-use, tool-result or child-process event kind, a non-empty tool-call list, or subagent activity) but failed to produce the marker. Stream output alone is activity, not task evidence: a CLI that printed a dialog and exited 0 is not convicted. Any failure to run, timeout, crash, prompt-only output, or exhausted probe budget resolves to inconclusive (`unknown`) with the class `probe_could_not_run` and the reason that produced it. An unknown result never benches an agent.
 
 Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`, and `BrokenAgentExitError` prompt echoes) bench on first failure without running a canary probe.
 

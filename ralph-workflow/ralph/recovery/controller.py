@@ -136,9 +136,11 @@ def record_ledger_only_demotion(
     agent: str,
     workspace_changed: bool | None,
 ) -> tuple[bool, str | None]:
+    from ralph.recovery.controller_factory import build_recovery_controller
+
     owner = ledger.recovery_controller
     if not isinstance(owner, RecoveryController):
-        owner = RecoveryController(
+        owner = build_recovery_controller(
             ledger=ledger,
             options=RecoveryControllerOptions(
                 clock=ledger.clock,

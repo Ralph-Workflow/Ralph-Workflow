@@ -6,13 +6,31 @@ from ralph.agents.agent_activity_kind import AgentActivityKind
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe_judge import (
     AGENT_RAN_EVIDENCE_KINDS,
+    CANONICAL_DETAIL_VALUES,
     CanaryMarkerState,
     ProbeJudgeOutcome,
     judge_probe,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "missing_marker_with_stream_delta_only_is_inconclusive": (
+        "a stream delta is not task evidence, so a missing marker without task evidence "
+        "is inconclusive"
+    ),
+    "test_runtime_termination_reason_contains_issuer_and_return_code": (
+        "the runtime-termination string is the verdict reason and the detail is probe_could_not_run"
+    ),
+    "test_runtime_termination_reason_without_return_code": (
+        "the runtime-termination string is the verdict reason and the detail is probe_could_not_run"
+    ),
+    "test_all_runtime_issuers_yield_inconclusive_with_issuer_in_reason": (
+        "the runtime-termination string is the verdict reason and the detail is probe_could_not_run"
+    ),
+}
+
 _NO_EVIDENCE_KINDS = (
     AgentActivityKind.OUTPUT_LINE.value,
+    AgentActivityKind.STREAM_DELTA.value,
     AgentActivityKind.LIFECYCLE.value,
     AgentActivityKind.ERROR_LINE.value,
     AgentActivityKind.PROGRESS_REPORT.value,
@@ -21,7 +39,6 @@ _NO_EVIDENCE_KINDS = (
 _RAN_EVIDENCE_KINDS = (
     AgentActivityKind.TOOL_USE.value,
     AgentActivityKind.TOOL_RESULT.value,
-    AgentActivityKind.STREAM_DELTA.value,
     AgentActivityKind.CHILD_PROCESS.value,
     AgentActivityKind.CHILD_HEARTBEAT.value,
     AgentActivityKind.CHILD_PROGRESS.value,
@@ -57,13 +74,14 @@ def _facts(
 
 
 @pytest.mark.parametrize(
-    ("marker_state", "facts", "outcome", "detail"),
+    ("marker_state", "facts", "outcome", "detail", "reason"),
     [
         pytest.param(
             CanaryMarkerState.MATCHED,
             None,
             ProbeJudgeOutcome.PASSED,
             "marker_written",
+            None,
             id="matched_marker_without_facts_passes",
         ),
         pytest.param(
@@ -71,6 +89,7 @@ def _facts(
             _facts(),
             ProbeJudgeOutcome.PASSED,
             "marker_written",
+            None,
             id="matched_marker_with_empty_facts_passes",
         ),
         pytest.param(
@@ -78,6 +97,7 @@ def _facts(
             _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
             ProbeJudgeOutcome.PASSED,
             "marker_written",
+            None,
             id="matched_marker_with_evidence_passes",
         ),
         pytest.param(
@@ -89,6 +109,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.PASSED,
             "marker_written",
+            None,
             id="matched_marker_with_runtime_termination_passes",
         ),
         pytest.param(
@@ -100,6 +121,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_missing",
+            None,
             id="agent_exit_without_discrepancy_with_evidence_fails",
         ),
         pytest.param(
@@ -110,6 +132,7 @@ def _facts(
                 observed_returncode=-9,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:post_exit_watchdog:rc=-9",
             id="runtime_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -120,6 +143,7 @@ def _facts(
                 termination_issuer=TerminationIssuer.POST_EXIT_WATCHDOG,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:post_exit_watchdog",
             id="runtime_termination_without_rc_is_inconclusive",
         ),
@@ -131,6 +155,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="missing_termination_with_agent_evidence_is_inconclusive",
         ),
         pytest.param(
@@ -141,6 +166,7 @@ def _facts(
                 observed_returncode=137,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:unknown:rc=137",
             id="unknown_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -151,6 +177,7 @@ def _facts(
                 termination_issuer=TerminationIssuer.QUOTA_DETECTOR,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:quota_detector",
             id="quota_detector_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -162,6 +189,7 @@ def _facts(
                 observed_returncode=-15,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:supervisor_idle:rc=-15",
             id="supervisor_idle_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -173,6 +201,7 @@ def _facts(
                 observed_returncode=-9,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:recovery_timeout:rc=-9",
             id="recovery_timeout_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -184,6 +213,7 @@ def _facts(
                 observed_returncode=130,
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
             "probe_terminated_by_runtime:operator:rc=130",
             id="operator_termination_with_agent_evidence_is_inconclusive",
         ),
@@ -196,6 +226,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="agent_exit_with_return_code_discrepancy_is_inconclusive",
         ),
         pytest.param(
@@ -203,6 +234,7 @@ def _facts(
             _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_missing",
+            None,
             id="missing_marker_with_tool_use_fails",
         ),
         pytest.param(
@@ -210,6 +242,7 @@ def _facts(
             _facts(event_kinds=(AgentActivityKind.TOOL_RESULT.value,)),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_content_mismatch",
+            None,
             id="mismatched_marker_with_tool_result_fails",
         ),
         pytest.param(
@@ -217,6 +250,7 @@ def _facts(
             _facts(tool_calls=("Bash:ls",)),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_missing",
+            None,
             id="missing_marker_with_tool_calls_fails",
         ),
         pytest.param(
@@ -224,14 +258,16 @@ def _facts(
             _facts(subagent_activity_observed=True),
             ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
             "marker_missing",
+            None,
             id="missing_marker_with_subagent_activity_fails",
         ),
         pytest.param(
             CanaryMarkerState.MISSING,
             _facts(event_kinds=(AgentActivityKind.STREAM_DELTA.value,)),
-            ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK,
-            "marker_missing",
-            id="missing_marker_with_stream_delta_fails",
+            ProbeJudgeOutcome.INCONCLUSIVE,
+            "probe_could_not_run",
+            None,
+            id="missing_marker_with_stream_delta_only_is_inconclusive",
         ),
         pytest.param(
             CanaryMarkerState.UNREADABLE,
@@ -242,6 +278,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_with_runtime_termination_is_inconclusive",
         ),
         pytest.param(
@@ -249,6 +286,7 @@ def _facts(
             _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_with_tool_use_is_inconclusive",
         ),
         pytest.param(
@@ -256,6 +294,7 @@ def _facts(
             _facts(tool_calls=("Bash:ls",)),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_with_tool_calls_is_inconclusive",
         ),
         pytest.param(
@@ -263,6 +302,7 @@ def _facts(
             _facts(subagent_activity_observed=True),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_with_subagent_activity_is_inconclusive",
         ),
         pytest.param(
@@ -270,6 +310,7 @@ def _facts(
             None,
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_without_facts_is_inconclusive",
         ),
         pytest.param(
@@ -277,6 +318,7 @@ def _facts(
             _facts(),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="unreadable_marker_with_empty_facts_is_inconclusive",
         ),
         pytest.param(
@@ -284,6 +326,7 @@ def _facts(
             _facts(event_kinds=_NO_EVIDENCE_KINDS),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="missing_marker_output_and_lifecycle_only_is_inconclusive",
         ),
         pytest.param(
@@ -297,6 +340,7 @@ def _facts(
             ),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="mismatched_marker_error_liveness_only_is_inconclusive",
         ),
         pytest.param(
@@ -304,6 +348,7 @@ def _facts(
             None,
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="facts_none_is_inconclusive",
         ),
         pytest.param(
@@ -311,6 +356,7 @@ def _facts(
             _facts(observed_returncode=1),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="nonzero_rc_without_evidence_is_inconclusive",
         ),
         pytest.param(
@@ -318,6 +364,7 @@ def _facts(
             _facts(subagent_activity_observed=False),
             ProbeJudgeOutcome.INCONCLUSIVE,
             "probe_could_not_run",
+            None,
             id="subagent_activity_false_is_not_evidence",
         ),
     ],
@@ -327,10 +374,13 @@ def test_judge_probe_table(
     facts: AttemptFacts | None,
     outcome: ProbeJudgeOutcome,
     detail: str,
+    reason: str | None,
 ) -> None:
     verdict = judge_probe(marker_state, facts)
     assert verdict.outcome is outcome
     assert verdict.detail == detail
+    assert verdict.reason == reason
+    assert verdict.detail in CANONICAL_DETAIL_VALUES
     expected_marker_written = {
         ProbeJudgeOutcome.PASSED: True,
         ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK: False,
@@ -352,6 +402,13 @@ def test_allowlist_covers_agent_ran_kinds(kind: str) -> None:
 @pytest.mark.parametrize("kind", _NO_EVIDENCE_KINDS)
 def test_allowlist_excludes_non_evidence_kinds(kind: str) -> None:
     assert kind not in AGENT_RAN_EVIDENCE_KINDS
+    verdict = judge_probe(
+        CanaryMarkerState.MISSING,
+        _facts(event_kinds=(kind,)),
+    )
+    assert verdict.outcome is ProbeJudgeOutcome.INCONCLUSIVE
+    assert verdict.detail == "probe_could_not_run"
+    assert verdict.reason is None
 
 
 def test_allowlist_does_not_use_enum_members() -> None:
@@ -359,7 +416,75 @@ def test_allowlist_does_not_use_enum_members() -> None:
     assert AgentActivityKind.OUTPUT_LINE not in AGENT_RAN_EVIDENCE_KINDS
 
 
-def test_runtime_termination_detail_contains_issuer_and_return_code() -> None:
+def test_canonical_detail_values_hold_the_marker_states_and_probe_could_not_run() -> None:
+    assert (
+        frozenset(
+            {
+                "marker_written",
+                "marker_missing",
+                "marker_content_mismatch",
+                "marker_unreadable",
+                "probe_could_not_run",
+            }
+        )
+        == CANONICAL_DETAIL_VALUES
+    )
+
+
+@pytest.mark.parametrize(
+    ("marker_state", "facts", "detail"),
+    [
+        pytest.param(
+            CanaryMarkerState.MATCHED,
+            None,
+            "marker_written",
+            id="marker_written",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
+            "marker_missing",
+            id="marker_missing",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISMATCHED,
+            _facts(event_kinds=(AgentActivityKind.TOOL_RESULT.value,)),
+            "marker_content_mismatch",
+            id="marker_content_mismatch",
+        ),
+        pytest.param(
+            CanaryMarkerState.UNREADABLE,
+            _facts(event_kinds=(AgentActivityKind.TOOL_USE.value,)),
+            "probe_could_not_run",
+            id="marker_unreadable",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            _facts(event_kinds=(AgentActivityKind.STREAM_DELTA.value,)),
+            "probe_could_not_run",
+            id="missing_marker_with_stream_delta_only",
+        ),
+        pytest.param(
+            CanaryMarkerState.MISSING,
+            None,
+            "probe_could_not_run",
+            id="missing_marker_without_facts",
+        ),
+    ],
+)
+def test_verdict_reason_is_empty_outside_runtime_termination(
+    marker_state: CanaryMarkerState,
+    facts: AttemptFacts | None,
+    detail: str,
+) -> None:
+    verdict = judge_probe(marker_state, facts)
+
+    assert verdict.detail == detail
+    assert verdict.reason is None
+    assert verdict.detail in CANONICAL_DETAIL_VALUES
+
+
+def test_runtime_termination_reason_contains_issuer_and_return_code() -> None:
     verdict = judge_probe(
         CanaryMarkerState.MISSING,
         _facts(
@@ -369,13 +494,16 @@ def test_runtime_termination_detail_contains_issuer_and_return_code() -> None:
         ),
     )
     assert verdict.outcome is ProbeJudgeOutcome.INCONCLUSIVE
-    assert "post_exit_watchdog" in verdict.detail
-    assert "rc=-9" in verdict.detail
-    assert verdict.detail == "probe_terminated_by_runtime:post_exit_watchdog:rc=-9"
+    assert verdict.detail == "probe_could_not_run"
+    assert verdict.detail in CANONICAL_DETAIL_VALUES
+    assert verdict.reason is not None
+    assert "post_exit_watchdog" in verdict.reason
+    assert "rc=-9" in verdict.reason
+    assert verdict.reason == "probe_terminated_by_runtime:post_exit_watchdog:rc=-9"
     assert verdict.marker_written is None
 
 
-def test_runtime_termination_detail_without_return_code() -> None:
+def test_runtime_termination_reason_without_return_code() -> None:
     verdict = judge_probe(
         CanaryMarkerState.MISSING,
         _facts(
@@ -384,8 +512,10 @@ def test_runtime_termination_detail_without_return_code() -> None:
         ),
     )
     assert verdict.outcome is ProbeJudgeOutcome.INCONCLUSIVE
-    assert "post_exit_watchdog" in verdict.detail
-    assert verdict.detail == "probe_terminated_by_runtime:post_exit_watchdog"
+    assert verdict.detail == "probe_could_not_run"
+    assert verdict.reason is not None
+    assert "post_exit_watchdog" in verdict.reason
+    assert verdict.reason == "probe_terminated_by_runtime:post_exit_watchdog"
     assert verdict.marker_written is None
 
 
@@ -400,7 +530,7 @@ def test_runtime_termination_detail_without_return_code() -> None:
         TerminationIssuer.UNKNOWN,
     ],
 )
-def test_all_runtime_issuers_yield_inconclusive_with_issuer_in_detail(
+def test_all_runtime_issuers_yield_inconclusive_with_issuer_in_reason(
     issuer: TerminationIssuer,
 ) -> None:
     verdict = judge_probe(
@@ -412,9 +542,11 @@ def test_all_runtime_issuers_yield_inconclusive_with_issuer_in_detail(
         ),
     )
     assert verdict.outcome is ProbeJudgeOutcome.INCONCLUSIVE
-    assert issuer.value in verdict.detail
-    assert "rc=-15" in verdict.detail
-    assert verdict.detail == f"probe_terminated_by_runtime:{issuer.value}:rc=-15"
+    assert verdict.detail == "probe_could_not_run"
+    assert verdict.reason is not None
+    assert issuer.value in verdict.reason
+    assert "rc=-15" in verdict.reason
+    assert verdict.reason == f"probe_terminated_by_runtime:{issuer.value}:rc=-15"
 
 
 def test_matched_marker_always_passes_regardless_of_runtime_termination() -> None:

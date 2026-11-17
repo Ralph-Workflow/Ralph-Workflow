@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
 )
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
+from ralph.pipeline.agent_entry_point import AgentEntryPoint, registered_runners
 from ralph.pipeline.agent_retry_intent import (
     pop_last_captured_retry_intent,
     set_last_captured_retry_intent,
@@ -30,8 +30,8 @@ from ralph.pipeline.attempt_runner import (
     run_agent_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import (
-    PRODUCTION_INVOKE,
     AttemptRunnerDeps,
+    current_effect_runner,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
@@ -65,7 +65,7 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
@@ -82,7 +82,16 @@ _EXIT_SUCCESS: int = 0
 
 _EXIT_PREFLIGHT: int = 2
 
-execute_agent_effect = PRODUCTION_INVOKE
+
+def _resolve_effect_runner(
+    target: InvokeAgentEffect | AgentConfig,
+    *args: object,
+    **kwargs: object,
+) -> object:
+    return current_effect_runner()(target, *args, **kwargs)
+
+
+execute_agent_effect = _resolve_effect_runner
 
 
 EmitFn = Callable[[str], None]
@@ -324,8 +333,7 @@ def _make_production_invoke_agent(
                         )
                     }
                 )
-                result = run_agent_attempt(
-                    AgentEntryPoint.PROJECT_POLICY,
+                result = registered_runners()[AgentEntryPoint.PROJECT_POLICY](
                     effect=effect,
                     config=policy_config,
                     controller=controller,
@@ -354,28 +362,6 @@ def _make_production_invoke_agent(
     return typed
 
 
-def _run_project_policy_attempt_with_kwargs(
-    *,
-    effect: object | None,
-    invocation: object | None,
-    config: UnifiedConfig,
-    controller: RecoveryController,
-    deps: AttemptRunnerDeps,
-    state: object | None,
-    execute_kwargs: Mapping[str, object],
-) -> AttemptResult:
-    return run_agent_attempt(
-        AgentEntryPoint.PROJECT_POLICY,
-        effect=effect,
-        invocation=invocation,
-        config=config,
-        controller=controller,
-        deps=deps,
-        state=state,
-        **dict(execute_kwargs),
-    )
-
-
 def _run_project_policy_attempt(
     *,
     effect: object | None = None,
@@ -386,14 +372,15 @@ def _run_project_policy_attempt(
     state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
-    return _run_project_policy_attempt_with_kwargs(
+    return run_agent_attempt(
+        AgentEntryPoint.PROJECT_POLICY,
         effect=effect,
         invocation=invocation,
         config=config,
         controller=controller,
         deps=deps,
         state=state,
-        execute_kwargs=execute_kwargs,
+        **execute_kwargs,
     )
 
 

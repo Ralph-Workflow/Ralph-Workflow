@@ -9,6 +9,7 @@ from ralph.testing import repo_structure_boundary_rules as boundary_rules
 from ralph.testing.repo_structure_boundary_rules import (
     B4_ALLOWLIST,
     B11_ALLOWLIST,
+    B12_ALLOWLIST,
     RULE_PAIRINGS,
     allowlist_justification,
     collect_boundary_violations,
@@ -244,9 +245,11 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B9b",
         "B10",
         "B11",
+        "B12",
     }
     assert rule_pairing("B2") == "AC16"
     assert rule_pairing("B11") == "AC-matrix-completeness"
+    assert rule_pairing("B12") == "AC-matrix-completeness"
     assert rule_pairing("B8") == "AC4"
     assert rule_pairing("B9") == "AC3/AC15"
     assert rule_pairing("B9b") == "AC3/AC15"
@@ -753,6 +756,66 @@ def test_b9_leaves_module_level_signalling_to_b4() -> None:
 )
 def test_b9_skips_the_process_and_testing_trees(path: str) -> None:
     assert not any(" B9 " in item for item in collect_boundary_violations(path, "proc.terminate()"))
+
+
+@pytest.mark.parametrize(("module_path", "function_name", "justification"), B12_ALLOWLIST)
+def test_b12_allowlist_entries_carry_a_justification(
+    module_path: str, function_name: str, justification: str
+) -> None:
+    assert justification.strip()
+    assert module_path.startswith("ralph/")
+    assert function_name.startswith("_")
+
+
+def test_b12_rejects_agent_attempt_dispatch_outside_the_registered_wrappers() -> None:
+    source = "def dispatch():\n    return run_agent_attempt(entry_point)\n"
+    violations = collect_boundary_violations("ralph/pipeline/unregistered.py", source)
+    assert any(
+        " B12 agent attempt dispatch outside the registered wrapper allowlist" in item
+        for item in violations
+    )
+
+
+@pytest.mark.parametrize(("module_path", "function_name", "_justification"), B12_ALLOWLIST)
+def test_b12_accepts_the_registered_wrapper_dispatch(
+    module_path: str, function_name: str, _justification: str
+) -> None:
+    source = f"def {function_name}():\n    return run_agent_attempt(entry_point)\n"
+    violations = collect_boundary_violations(module_path, source)
+    assert not any(" B12 " in item for item in violations)
+
+
+def test_b12_rejects_a_dispatch_in_an_unregistered_function_of_a_registered_module() -> None:
+    source = "def bypass():\n    return run_agent_attempt(entry_point)\n"
+    violations = collect_boundary_violations("ralph/pipeline/runner.py", source)
+    assert any(" B12 " in item for item in violations)
+
+
+def test_b12_is_keyed_on_the_function_not_the_call_line() -> None:
+    source = "\n" * 40 + "def _run_main_phase_loop_attempt():\n    return run_agent_attempt(x)\n"
+    violations = collect_boundary_violations("ralph/pipeline/runner.py", source)
+    assert not any(" B12 " in item for item in violations)
+
+
+def test_b1_accepts_the_recovery_controller_factory() -> None:
+    source = "return RecoveryController(options=options, ledger=ledger)"
+    assert not any(
+        " B1 " in item
+        for item in collect_boundary_violations("ralph/recovery/controller_factory.py", source)
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "ralph/recovery/controller.py",
+        "ralph/pipeline/attempt_runner.py",
+        "ralph/pipeline/state.py",
+    ],
+)
+def test_b1_rejects_recovery_controller_construction_outside_the_factory(path: str) -> None:
+    source = "controller = RecoveryController(options=options)"
+    assert any(" B1 " in item for item in collect_boundary_violations(path, source))
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {

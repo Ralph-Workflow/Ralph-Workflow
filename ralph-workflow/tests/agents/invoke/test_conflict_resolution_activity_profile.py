@@ -222,9 +222,11 @@ def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivit
         _entry_point: object,
         *,
         effect: InvokeAgentEffect,
+        invocation: object = None,
         config: UnifiedConfig,
         controller: object,
         deps: object,
+        state: object = None,
         pipeline_deps: object,
         workspace_scope: object,
         display: object,
@@ -233,6 +235,8 @@ def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivit
         run_id: object,
     ) -> AttemptResult:
         del (
+            invocation,
+            state,
             controller,
             deps,
             pipeline_deps,

@@ -339,6 +339,23 @@ def test_all_documented_autodoc_targets_resolve_to_real_source() -> None:
     )
 
 
+def test_modules_rst_documents_each_autodoc_target_once() -> None:
+    modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
+    targets = re.findall(r"^\.\.\s+automodule::\s+(.+)$", modules_rst_text, re.MULTILINE)
+    counted: dict[str, int] = {}
+    for target in targets:
+        counted[target.strip()] = counted.get(target.strip(), 0) + 1
+    duplicated = sorted(name for name, count in counted.items() if count > 1)
+
+    assert not duplicated, (
+        "The following autodoc targets appear more than once in "
+        "docs/sphinx/modules.rst, which makes the Sphinx build warn about "
+        "duplicate object descriptions:\n"
+        + "\n".join(duplicated)
+        + "\n\nDocument each module exactly once."
+    )
+
+
 def test_modules_rst_has_no_stale_readme_package_map_claim() -> None:
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     assert "package map in ``ralph-workflow/README.md``" not in modules_rst_text, (

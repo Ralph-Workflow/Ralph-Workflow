@@ -253,14 +253,11 @@ def _reduce_result_event(
     if recovery is not None and isinstance(event, ExecutionResultEvent):
         current_agent = state.current_agent()
         if current_agent:
-            from ralph.recovery.agent_failure_ledger import AttemptFact
-
-            recovery.ledger.record(
-                AttemptFact(
-                    phase=event.phase,
-                    agent=current_agent,
-                    artifact_valid=True,
-                )
+            recovery.record_attempt_fact(
+                phase=event.phase,
+                agent=current_agent,
+                artifact_valid=True,
+                workspace_changed=False,
             )
     return _handle_execution_result(state, event, pipeline_policy, routing_timing)
 

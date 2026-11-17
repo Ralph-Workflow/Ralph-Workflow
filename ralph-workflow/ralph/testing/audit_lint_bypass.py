@@ -258,6 +258,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/prompts/materialize.py",
             "ralph/recovery/__init__.py",
             "ralph/recovery/canary_probe.py",
+            "ralph/recovery/controller.py",
             "ralph/recovery/failure_classifier.py",
             "ralph/recovery/canary_probe.py",
             "ralph/testing/_filesystem_write_scan.py",
@@ -274,7 +275,9 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "workspace-health maintenance read. The two MCP tool modules "
             "resolve their retry-hint and validation-banner dependencies at "
             "call time so the MCP module tree does not pull the "
-            "ralph.recovery module tree. The agents catalog, registry, and "
+            "ralph.recovery module tree. The recovery controller resolves "
+            "its controller-factory dependency at call time because the "
+            "factory imports the controller. The agents catalog, registry, and "
             "parser channels resolve their builtin-support, dynamic-agent, "
             "session-extraction, and user-prompt dependencies at call time "
             "so the agents package does not import itself cyclically. "

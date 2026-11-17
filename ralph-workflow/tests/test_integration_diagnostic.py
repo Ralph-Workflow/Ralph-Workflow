@@ -13,6 +13,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
@@ -20,10 +21,16 @@ from ralph.pipeline.operation_evidence import (
     OperationFact,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
 from tests._integration_ladder_fakes import _FakePlumbing
+from tests._resolver_controller import make_resolver_controller
 from tests.test_pending_merge_commit_recovery import _commit, _git
 from tests.test_pending_merge_repair import _retained_runtime_context
 
@@ -301,3 +308,78 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert s3.diagnostic_intervention_required is False
     assert getattr(collector, "calls", 0) == calls_before
     assert invoked == []
+
+
+def _diagnostic_resolution_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: StopResolutionOutcome,
+) -> tuple[list[bool], bool]:
+    root = tmp_path / "repo"
+    root.mkdir()
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="1" * 40,
+        integrated_feature_sha="2" * 40,
+        owning_worktree=str(root),
+    )
+    write_record(root, record)
+
+    ctx = _build_diagnostic_ctx(root)
+    ctx.registry = {agent: object() for agent in resolution_chain_agents(ctx.policy_bundle)}
+    ctx.controller = make_resolver_controller()
+
+    reported: list[bool] = []
+    handoff = diagnostic.handoff_integration_diagnostic
+
+    def observing_handoff(**kwargs: object) -> bool:
+        raw_invoke = kwargs["invoke"]
+        assert callable(raw_invoke), "the handoff must receive an invoke callable"
+
+        def observing_invoke(agent: str, prompt: Path) -> bool:
+            verdict = bool(raw_invoke(agent, prompt))
+            reported.append(verdict)
+            return verdict
+
+        return handoff(**{**kwargs, "invoke": observing_invoke})
+
+    monkeypatch.setattr(diagnostic, "handoff_integration_diagnostic", observing_handoff)
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session.invoke_resolution_agent",
+        lambda **_kwargs: outcome,
+    )
+
+    result = diagnostic.diagnose_retained_integration(
+        ctx,
+        "retained integration diagnostic probe",
+        collector=InMemoryOperationEvidenceCollector(
+            facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+        ),
+    )
+    return reported, result
+
+
+def test_public_diagnose_retained_integration_reports_resolved_outcome_as_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reported, result = _diagnostic_resolution_classification(
+        tmp_path, monkeypatch, ResolvedOutcome()
+    )
+    assert reported == [True]
+    assert result is False
+
+
+def test_public_diagnose_retained_integration_does_not_report_retry_later_outcome_as_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reported, result = _diagnostic_resolution_classification(
+        tmp_path,
+        monkeypatch,
+        RetryLaterOutcome(on_change="resolver_agent_eligibility_changed"),
+    )
+    assert reported == [False]
+    assert result is False

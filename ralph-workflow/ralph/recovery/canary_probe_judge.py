@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AGENT_RAN_EVIDENCE_KINDS",
+    "CANONICAL_DETAIL_VALUES",
     "CanaryMarkerState",
     "ProbeJudgeOutcome",
     "ProbeJudgeVerdict",
@@ -25,17 +26,29 @@ _REQUIRED_PROBE_JUDGE_OUTCOME_VALUES: Final[tuple[str, ...]] = (
     "inconclusive",
 )
 
+_PROBE_COULD_NOT_RUN: Final[str] = "probe_could_not_run"
+_RUNTIME_TERMINATION_REASON_PREFIX: Final[str] = "probe_terminated_by_runtime:"
+
 AGENT_RAN_EVIDENCE_KINDS: Final[frozenset[str]] = frozenset(
     kind.value
     for kind in (
         AgentActivityKind.TOOL_USE,
         AgentActivityKind.TOOL_RESULT,
-        AgentActivityKind.STREAM_DELTA,
         AgentActivityKind.CHILD_PROCESS,
         AgentActivityKind.CHILD_HEARTBEAT,
         AgentActivityKind.CHILD_PROGRESS,
         AgentActivityKind.CHILD_TERMINAL_ACK,
     )
+)
+
+CANONICAL_DETAIL_VALUES: Final[frozenset[str]] = frozenset(
+    {
+        "marker_written",
+        "marker_missing",
+        "marker_content_mismatch",
+        "marker_unreadable",
+        _PROBE_COULD_NOT_RUN,
+    }
 )
 
 
@@ -50,6 +63,13 @@ if tuple(outcome.value for outcome in _ProbeJudgeOutcome) != _REQUIRED_PROBE_JUD
         "ProbeJudgeOutcome must expose exactly passed, failed_reproducing_no_work, inconclusive"
     )
 
+if frozenset({_PROBE_COULD_NOT_RUN, *(state.value for state in CanaryMarkerState)}) != (
+    CANONICAL_DETAIL_VALUES
+):
+    raise RuntimeError(
+        "CANONICAL_DETAIL_VALUES must hold exactly the canary marker states and probe_could_not_run"
+    )
+
 
 ProbeJudgeOutcome = _ProbeJudgeOutcome
 
@@ -59,17 +79,18 @@ class ProbeJudgeVerdict:
     outcome: ProbeJudgeOutcome
     detail: str
     marker_written: bool | None = None
+    reason: str | None = None
 
 
-def _format_runtime_termination_detail(termination: TerminationRecord) -> str:
+def _format_runtime_termination_reason(termination: TerminationRecord) -> str:
     rc = (
         termination.observed_returncode
         if termination.observed_returncode is not None
         else termination.reported_returncode
     )
     if rc is not None:
-        return f"probe_terminated_by_runtime:{termination.issuer.value}:rc={rc}"
-    return f"probe_terminated_by_runtime:{termination.issuer.value}"
+        return f"{_RUNTIME_TERMINATION_REASON_PREFIX}{termination.issuer.value}:rc={rc}"
+    return f"{_RUNTIME_TERMINATION_REASON_PREFIX}{termination.issuer.value}"
 
 
 def judge_probe(
@@ -85,7 +106,7 @@ def judge_probe(
     if marker_state is CanaryMarkerState.UNREADABLE:
         return ProbeJudgeVerdict(
             outcome=ProbeJudgeOutcome.INCONCLUSIVE,
-            detail="probe_could_not_run",
+            detail=_PROBE_COULD_NOT_RUN,
             marker_written=None,
         )
     if facts is not None and _agent_ran(facts):
@@ -94,8 +115,9 @@ def judge_probe(
             if termination.issuer is not TerminationIssuer.AGENT_EXIT:
                 return ProbeJudgeVerdict(
                     outcome=ProbeJudgeOutcome.INCONCLUSIVE,
-                    detail=_format_runtime_termination_detail(termination),
+                    detail=_PROBE_COULD_NOT_RUN,
                     marker_written=None,
+                    reason=_format_runtime_termination_reason(termination),
                 )
             if not termination.return_code_discrepancy:
                 return ProbeJudgeVerdict(
@@ -105,7 +127,7 @@ def judge_probe(
                 )
     return ProbeJudgeVerdict(
         outcome=ProbeJudgeOutcome.INCONCLUSIVE,
-        detail="probe_could_not_run",
+        detail=_PROBE_COULD_NOT_RUN,
         marker_written=None,
     )
 

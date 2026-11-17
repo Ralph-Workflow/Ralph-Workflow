@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from ralph.testing._audit_scope import is_assign_or_ann, is_mutable_literal
 from ralph.testing.repo_structure_boundary_b11 import b11_violations
+from ralph.testing.repo_structure_boundary_b12 import b12_violations
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -15,9 +16,11 @@ __all__ = (
     "B4_ALLOWLIST",
     "B5_ALLOWLIST",
     "B11_ALLOWLIST",
+    "B12_ALLOWLIST",
     "RULE_PAIRINGS",
     "allowlist_justification",
     "b11_allowlist_justification",
+    "b12_allowlist_justification",
     "collect_boundary_violations",
     "rule_pairing",
 )
@@ -35,6 +38,7 @@ RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
     ("B9b", "AC3/AC15"),
     ("B10", "AC13"),
     ("B11", "AC-matrix-completeness"),
+    ("B12", "AC-matrix-completeness"),
 )
 _PAIRING_BY_RULE: Final[Mapping[str, str]] = MappingProxyType(dict(RULE_PAIRINGS))
 B4_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
@@ -99,7 +103,7 @@ _B3_ALLOWED_PATH_JUSTIFICATIONS: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 _B3_ALLOWED_PATHS = frozenset(_B3_ALLOWED_PATH_JUSTIFICATIONS)
-_ATTEMPT_RUNNER_PATH = "ralph/pipeline/attempt_runner.py"
+_B1_CONTROLLER_FACTORY_PATH = "ralph/recovery/controller_factory.py"
 _MUTABLE_CONSTRUCTORS = frozenset({"dict", "list", "set"})
 _B8_DETECTOR_PATHS = frozenset(
     {
@@ -155,6 +159,62 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
         "effect executor dispatch owned by the registered effect route",
     ),
 )
+B12_ALLOWLIST: Final[tuple[tuple[str, str, str], ...]] = (
+    (
+        "ralph/pipeline/runner.py",
+        "_run_main_phase_loop_attempt",
+        "wrapper registered as the MAIN_PHASE_LOOP entry point; it is the only "
+        "dispatch site for the main pipeline phase loop",
+    ),
+    (
+        "ralph/pipeline/parallel/worker_runtime.py",
+        "_run_parallel_worker_attempt",
+        "wrapper registered as the PARALLEL_WORKER entry point; it is the only "
+        "dispatch site for parallel workers",
+    ),
+    (
+        "ralph/pipeline/_integration_continuation.py",
+        "_run_integration_continuation_attempt",
+        "wrapper registered as the INTEGRATION_CONTINUATION entry point; it is "
+        "the only dispatch site for integration continuation",
+    ),
+    (
+        "ralph/pipeline/conflict_resolution/session.py",
+        "_run_conflict_resolution_attempt",
+        "wrapper registered as the CONFLICT_RESOLUTION entry point; it is the "
+        "only dispatch site for conflict resolution",
+    ),
+    (
+        "ralph/pipeline/plumbing/smoke_plumbing.py",
+        "_run_smoke_attempt",
+        "wrapper registered as the SMOKE entry point; it is the only dispatch "
+        "site for smoke plumbing",
+    ),
+    (
+        "ralph/pipeline/plumbing/commit_plumbing.py",
+        "_run_commit_generation_attempt",
+        "wrapper registered as the COMMIT_GENERATION entry point; it is the "
+        "only dispatch site for commit generation",
+    ),
+    (
+        "ralph/_session_runtime_runtime.py",
+        "_run_session_runtime_attempt",
+        "wrapper registered as the SESSION_RUNTIME entry point; it is the only "
+        "dispatch site for the session runtime",
+    ),
+    (
+        "ralph/recovery/canary_probe.py",
+        "_run_canary_probe_attempt",
+        "wrapper registered as the CANARY_PROBE entry point; it is the only "
+        "dispatch site for the canary probe",
+    ),
+    (
+        "ralph/project_policy/cli_integration.py",
+        "_run_project_policy_attempt",
+        "wrapper registered as the PROJECT_POLICY entry point; it is the only "
+        "dispatch site for the project-policy path",
+    ),
+)
 _BOUNDARY_TRIGGERS: Final[tuple[str, ...]] = (
     "RecoveryController",
     "current_allowance_spent",
@@ -174,6 +234,7 @@ _BOUNDARY_TRIGGERS: Final[tuple[str, ...]] = (
     "attempt_facts",
     "attach_attempt_facts",
     "attempt_facts_from_exception",
+    "run_agent_attempt",
 )
 
 
@@ -464,6 +525,16 @@ def b11_allowlist_justification(
     return None
 
 
+def b12_allowlist_justification(module_path: str, function_name: str | None) -> str | None:
+    for path, function, justification in B12_ALLOWLIST:
+        if path != module_path or function != function_name:
+            continue
+        if not justification.strip():
+            raise ValueError(f"B12 allowlist entry without justification: {path}:{function}")
+        return justification
+    return None
+
+
 def _allowlist_entries(rule: str) -> Mapping[str, str] | None:
     if rule == "B4":
         return B4_ALLOWLIST
@@ -536,10 +607,15 @@ def _enclosing_function_name(node: ast.AST, parents: dict[int, ast.AST]) -> str 
 
 
 def _b1_violations(relative_path: str, nodes: list[ast.AST]) -> list[str]:
-    if relative_path.startswith("ralph/recovery/") or relative_path == _ATTEMPT_RUNNER_PATH:
+    if relative_path == _B1_CONTROLLER_FACTORY_PATH:
         return []
     return [
-        _violation(relative_path, node, "B1", "RecoveryController construction outside its owners")
+        _violation(
+            relative_path,
+            node,
+            "B1",
+            "RecoveryController construction outside the controller factory",
+        )
         for node in nodes
         if _is_call(node, "RecoveryController")
     ]
@@ -993,4 +1069,5 @@ def collect_boundary_violations(relative_path: str, source: str) -> list[str]:
         + _b9b_violations(relative_path, nodes, tree, parents)
         + _b10_violations(relative_path, nodes)
         + b11_violations(relative_path, tree, source, nodes, b11_allowlist_justification)
+        + b12_violations(relative_path, tree, source, nodes, b12_allowlist_justification)
     )

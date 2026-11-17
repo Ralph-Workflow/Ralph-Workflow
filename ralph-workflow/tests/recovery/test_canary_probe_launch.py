@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.invoke import BuildCommandOptions, build_command
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 from ralph.recovery.canary_probe_launch import (
+    HEADLESS_CLAUDE_PRINT_FLAGS,
     PROBE_NONINTERACTIVE_FLAGS,
+    ProbeTransportNotSafeError,
     probe_command_builder,
     probe_launch_override,
 )
@@ -77,18 +81,14 @@ def test_probe_argv_inserts_the_print_flag_before_the_prompt_separator(tmp_path:
 
 
 def test_probe_argv_does_not_invent_a_print_flag_for_a_transport_without_one() -> None:
-    argv = probe_command_builder(
-        _interactive_config(transport=AgentTransport.GENERIC),
-        _PROMPT_FILE,
-        options=BuildCommandOptions(),
-    )
-    assert argv == ["claude", "--dangerously-skip-permissions", _PROMPT_FILE]
+    config = _interactive_config(transport=AgentTransport.GENERIC)
+    ordinary = build_command(config, _PROMPT_FILE, options=BuildCommandOptions())
+    assert ordinary == ["claude", "--dangerously-skip-permissions", _PROMPT_FILE]
 
 
 def test_only_documented_transports_carry_a_probe_print_flag() -> None:
     assert dict(PROBE_NONINTERACTIVE_FLAGS) == {
         AgentTransport.CLAUDE_INTERACTIVE: "-p",
-        AgentTransport.CLAUDE: "-p",
     }
 
 
@@ -99,3 +99,58 @@ def test_probe_launch_override_only_rewrites_the_overridden_build() -> None:
     ordinary = build_command(config, _PROMPT_FILE, options=BuildCommandOptions())
     assert overridden == ["claude", "--dangerously-skip-permissions", "-p", _PROMPT_FILE]
     assert ordinary == ["claude", "--dangerously-skip-permissions", _PROMPT_FILE]
+
+
+def test_the_headless_flag_set_is_the_command_builders_own() -> None:
+    assert frozenset({"-p", "--print"}) == HEADLESS_CLAUDE_PRINT_FLAGS
+
+
+def test_a_ccs_resolving_claude_config_never_receives_the_probe_print_flag() -> None:
+    config = AgentConfig(
+        cmd="ccs my-alias",
+        transport=AgentTransport.CLAUDE,
+        print_flag="--print",
+    )
+    argv = probe_command_builder(config, _PROMPT_FILE, options=BuildCommandOptions())
+    assert "--print" in argv
+    assert "-p" not in argv
+
+
+def test_a_claude_config_without_a_headless_selection_is_refused() -> None:
+    config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE)
+    with pytest.raises(ProbeTransportNotSafeError):
+        probe_command_builder(config, _PROMPT_FILE, options=BuildCommandOptions())
+
+
+def test_a_generic_transport_without_a_headless_selection_is_refused() -> None:
+    config = AgentConfig(cmd="fake-agent", transport=AgentTransport.GENERIC)
+    with pytest.raises(ProbeTransportNotSafeError):
+        probe_command_builder(config, _PROMPT_FILE, options=BuildCommandOptions())
+
+
+def test_the_nanocoder_transport_is_not_probe_safe(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "canary_probe_prompt.md"
+    prompt_file.write_text("canary probe task", encoding="utf-8")
+    config = AgentConfig(cmd="nanocoder", transport=AgentTransport.NANOCODER)
+    with pytest.raises(ProbeTransportNotSafeError):
+        probe_command_builder(config, str(prompt_file), options=BuildCommandOptions())
+
+
+def test_a_codex_transport_without_a_headless_selection_is_refused(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "canary_probe_prompt.md"
+    prompt_file.write_text("canary probe task", encoding="utf-8")
+    config = AgentConfig(cmd="codex exec", transport=AgentTransport.CODEX)
+    with pytest.raises(ProbeTransportNotSafeError):
+        probe_command_builder(config, str(prompt_file), options=BuildCommandOptions())
+
+
+def test_a_config_with_its_own_print_flag_is_probe_safe(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "canary_probe_prompt.md"
+    prompt_file.write_text("canary probe task", encoding="utf-8")
+    config = AgentConfig(
+        cmd="codex exec",
+        transport=AgentTransport.CODEX,
+        print_flag="--print",
+    )
+    argv = probe_command_builder(config, str(prompt_file), options=BuildCommandOptions())
+    assert "--print" in argv

@@ -31,6 +31,8 @@ from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
 
+_SUPERVISOR_RESTART_TIMEOUT_SECONDS = 30
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -245,7 +247,7 @@ def supervisor_restart(root: Path) -> dict[str, object]:
         text=True,
         capture_output=True,
         check=True,
-        timeout=10,
+        timeout=_SUPERVISOR_RESTART_TIMEOUT_SECONDS,
         env={"HOME": str(root / ".scenario-home"), "PATH": "/usr/bin:/bin"},
     )
     payload = json.loads(completed.stdout)

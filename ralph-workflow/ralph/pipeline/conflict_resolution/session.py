@@ -18,6 +18,7 @@ from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+    registered_runners,
 )
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import (
@@ -519,8 +520,7 @@ def invoke_resolution_agent(
         requires_completion_evidence=require_completion_evidence,
     )
     try:
-        attempt = run_agent_attempt(
-            AgentEntryPoint.CONFLICT_RESOLUTION,
+        attempt = registered_runners()[AgentEntryPoint.CONFLICT_RESOLUTION](
             effect=effect,
             config=config,
             controller=controller,

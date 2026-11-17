@@ -3918,6 +3918,13 @@ ralph.recovery.controller
    :members:
    :show-inheritance:
 
+ralph.recovery.controller_factory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.controller_factory
+   :members:
+   :show-inheritance:
+
 ralph.recovery.cycle_cap
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -5569,6 +5576,13 @@ ralph.recovery.termination_log_entry
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.termination_log_entry
+   :members:
+   :show-inheritance:
+
+ralph.testing.repo_structure_boundary_b12
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.repo_structure_boundary_b12
    :members:
    :show-inheritance:
 

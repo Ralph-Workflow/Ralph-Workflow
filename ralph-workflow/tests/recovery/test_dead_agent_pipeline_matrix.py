@@ -69,6 +69,10 @@ NON_PROBE_ENTRY_POINTS = tuple(
 )
 MAIN_PHASE_LOOP = AgentEntryPoint.MAIN_PHASE_LOOP
 ALL_SCENARIOS = (*SCENARIOS, *corpus_scenarios())
+_NEGATIVE_CORPUS_IDS = frozenset(case.id for case in corpus_cases() if case.label == "negative")
+NEGATIVE_CORPUS_SCENARIOS = tuple(
+    scenario for scenario in ALL_SCENARIOS if scenario.corpus_id in _NEGATIVE_CORPUS_IDS
+)
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 _BENCH_POLICY = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY[UnavailabilityReason.DEAD_AGENT_NO_PROGRESS]
 _PROBE_MODE_CONTRACT = (
@@ -355,24 +359,30 @@ def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_pr
     _assert_never_spent(observation, controller)
 
 
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
 def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
+    entry_point: AgentEntryPoint,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    negatives = [
-        scenario for scenario in corpus_scenarios() if _case_for(scenario).label == "negative"
-    ]
-    replays = [
-        run_matrix_scenario(entry_point, scenario)
-        for scenario in negatives
-        for entry_point in NON_PROBE_ENTRY_POINTS
-    ]
+    replays = [run_matrix_scenario(entry_point, scenario) for scenario in NEGATIVE_CORPUS_SCENARIOS]
     false_benches = [replay for replay, _controller, _clock in replays if not replay.availability]
     report = f"false_benches={len(false_benches)}/{len(replays)}"
+    matrix_sample = len(replays) * len(NON_PROBE_ENTRY_POINTS)
 
     with capsys.disabled():
-        print(f"\ndead-agent pipeline matrix corpus replay: {report}")
+        print(
+            f"\ndead-agent pipeline matrix corpus replay: {report} "
+            f"entry_point={entry_point.value} matrix_sample={matrix_sample}"
+        )
 
     assert report == f"false_benches=0/{len(replays)}"
+
+
+def test_ac9_the_genuine_positive_benches_on_the_first_attempt() -> None:
     agy_failed = next(
         scenario
         for scenario in corpus_scenarios()
@@ -410,6 +420,20 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     assert observation.invocations == (AGENT_A, AGENT_B)
     assert observation.invocations.count(AGENT_A) == 1
     assert observation.outcome_kinds == ("agent_dead", "completed")
+    if scenario_name == "ac1_chain_selects_b_after_bench":
+        record = observation.verdict_record
+        assert isinstance(record, dict)
+        facts = as_mapping(record).get("facts")
+        assert isinstance(facts, dict)
+        elapsed = facts.get("elapsed_to_terminal_ms")
+        assert isinstance(elapsed, int)
+        assert elapsed < 1000, (
+            "the failing attempt must have reached its terminal state within one "
+            f"second; observed elapsed_to_terminal_ms={elapsed!r}"
+        )
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent != AGENT_A, (
+        "a benched agent must not be re-selected at a later selection opportunity"
+    )
     store = controller.unavailability_store
     assert store.is_available(PHASE, AGENT_A) is False
     assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) > 0
@@ -700,6 +724,11 @@ def test_ac11_the_wait_listing_names_agent_reason_and_remaining_time(
     eligibility = dict(controller.chain_eligibility(PHASE, list(AGENTS)))
     assert eligibility[AGENT_A].reason == "dead_agent_no_progress"
     assert eligibility[AGENT_B].reason == "out_of_credits"
+    assert controller.cycle_cap == 200, (
+        "the recovery cap is unchanged: the controller waits with the agent, reason "
+        f"and remaining-time listing until cycle {controller.cycle_cap}, and the "
+        "existing cap is what terminates the run"
+    )
 
 
 @pytest.mark.parametrize(

@@ -56,10 +56,12 @@ def termination_facts(
     workspace_changed: bool | None = False,
     event_kinds: tuple[str, ...] = (),
     tool_calls: tuple[str, ...] = (),
+    elapsed_to_terminal_ms: int | None = None,
 ) -> AttemptFacts:
     return AttemptFacts(
         event_kinds=event_kinds,
         tool_calls=tool_calls,
+        elapsed_to_terminal_ms=elapsed_to_terminal_ms,
         artifact_valid=artifact_valid,
         workspace_changed=workspace_changed,
         exit_status=f"exit_{reported}" if reported is not None else None,
@@ -169,6 +171,7 @@ SCENARIOS = (
                     observed=0,
                     reported=0,
                     event_kinds=("error",),
+                    elapsed_to_terminal_ms=900,
                 ),
                 returncode=0,
                 message="provider rejected this request for an unprecedented reason",

@@ -32,6 +32,7 @@ from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+    registered_runners,
 )
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
@@ -241,8 +242,7 @@ class ManagedAgentSessionRuntime:
         base_session_id = session_id
 
         def _invoke_with_retry_session(retry_session_id: str | None) -> Iterable[str]:
-            result = run_agent_attempt(
-                AgentEntryPoint.SESSION_RUNTIME,
+            result = registered_runners()[AgentEntryPoint.SESSION_RUNTIME](
                 invocation=self._agent_config,
                 config=self._config,
                 controller=self._controller,

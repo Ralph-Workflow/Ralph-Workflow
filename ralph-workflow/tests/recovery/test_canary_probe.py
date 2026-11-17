@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 import pytest
+from loguru import logger
 
+from ralph.agents.invoke import AttemptEnded, BuildCommandOptions, build_command
 from ralph.config.agent_config import AgentConfig
+from ralph.git.errors import GitOperationError
+from ralph.git.operations import find_repo_root
+from ralph.pipeline.agent_entry_point import (
+    AgentEntryPoint,
+    EntryPointRunner,
+    registered_runners,
+)
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import (
     CANARY_MARKER_CONTENT,
     CANARY_MARKER_FILENAME,
@@ -19,11 +30,16 @@ from ralph.recovery.canary_probe import (
     ProbeResult,
     run_canary_probe,
 )
+from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from ralph.agents.invoke import InvokeOptions
+    from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.attempt_result import AttemptResult
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
+    from ralph.recovery.controller import RecoveryController
 
 
 class _FakeInvoke(Protocol):
@@ -48,6 +64,8 @@ class _Case:
     name: str
     behaviour: str
     expected: ProbeOutcome
+    expected_detail: str
+    expected_reason: str
     timeout_s: float = DEFAULT_PROBE_TIMEOUT_S
     budget_exhausted: bool = False
 
@@ -57,27 +75,37 @@ _CASES: tuple[_Case, ...] = (
         name="marker_written",
         behaviour="write_marker",
         expected=ProbeOutcome.PASSED,
+        expected_detail="marker_written",
+        expected_reason="",
     ),
     _Case(
         name="marker_missing_without_evidence",
         behaviour="no_marker",
         expected=ProbeOutcome.INCONCLUSIVE,
+        expected_detail="probe_could_not_run",
+        expected_reason="",
     ),
     _Case(
         name="infrastructure_error",
         behaviour="raise",
         expected=ProbeOutcome.INCONCLUSIVE,
+        expected_detail="probe_could_not_run",
+        expected_reason="invocation_error",
     ),
     _Case(
         name="timeout",
         behaviour="block",
         expected=ProbeOutcome.INCONCLUSIVE,
+        expected_detail="probe_could_not_run",
+        expected_reason="probe_timeout",
         timeout_s=0.1,
     ),
     _Case(
         name="budget_exhausted",
         behaviour="write_marker",
         expected=ProbeOutcome.INCONCLUSIVE,
+        expected_detail="probe_could_not_run",
+        expected_reason="budget_exhausted",
         budget_exhausted=True,
     ),
 )
@@ -129,6 +157,73 @@ def _unreadable_marker_invoke(calls: list[_Call]) -> _FakeInvoke:
     return _invoke
 
 
+def _marker_then_raise_invoke(calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        assert options is not None
+        workspace_path = options.workspace_path
+        assert workspace_path is not None
+        (workspace_path / CANARY_MARKER_FILENAME).write_text(
+            CANARY_MARKER_CONTENT, encoding="utf-8"
+        )
+        raise RuntimeError("the cli exited after writing the marker")
+
+    return _invoke
+
+
+def _marker_then_block_invoke(calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        assert options is not None
+        workspace_path = options.workspace_path
+        assert workspace_path is not None
+        (workspace_path / CANARY_MARKER_FILENAME).write_text(
+            CANARY_MARKER_CONTENT, encoding="utf-8"
+        )
+        threading.Event().wait(1.0)
+        return iter(())
+
+    return _invoke
+
+
+def _attempt_ended_invoke(facts: AttemptFacts, calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str]:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        yield ""
+        return AttemptEnded(facts=facts)
+
+    return _invoke
+
+
+def _command_building_invoke(calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        build_command(config, prompt_file, options=BuildCommandOptions())
+        return iter(())
+
+    return _invoke
+
+
 def _is_within(candidate: Path, parent: Path) -> bool:
     try:
         candidate.relative_to(parent)
@@ -151,7 +246,8 @@ def test_probe_reports_the_expected_outcome(case: _Case, tmp_path: Path) -> None
     )
     assert isinstance(result, ProbeResult)
     assert result.outcome == case.expected
-    assert result.detail
+    assert result.detail == case.expected_detail
+    assert result.reason == case.expected_reason
     if case.budget_exhausted:
         assert calls == []
         assert result.marker_written is None
@@ -244,7 +340,9 @@ def test_probe_rejects_scratch_elsewhere_inside_phase_workspace(tmp_path: Path) 
         phase_workspace=phase_workspace,
     )
     assert result.outcome == ProbeOutcome.INCONCLUSIVE
-    assert result.detail == "scratch_inside_phase_workspace"
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "probe_internal_error"
+    assert result.error == "scratch_inside_phase_workspace"
     assert calls == []
     assert scratch.exists()
 
@@ -290,7 +388,7 @@ def test_probe_places_scratch_under_the_trusted_parent_and_removes_it(
     assert not (workspace_path / CANARY_MARKER_FILENAME).exists()
 
 
-def test_probe_falls_back_to_mkdtemp_when_trusted_parent_resolution_fails(
+def test_probe_fails_closed_when_no_pretrusted_parent_resolves(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -303,14 +401,237 @@ def test_probe_falls_back_to_mkdtemp_when_trusted_parent_resolution_fails(
         _agent_config(),
         invoke_fn=_make_invoke("write_marker", calls),
     )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "no_pretrusted_workspace"
+    assert calls == []
+
+
+def test_probe_never_creates_a_scratch_outside_a_pretrusted_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _failing_find_repo_root(start: Path) -> Path:
+        raise RuntimeError("not inside a git repository")
+
+    def _forbidden_mkdtemp(*args: object, **kwargs: object) -> str:
+        raise AssertionError("the probe must not create a temporary directory")
+
+    monkeypatch.setattr("ralph.recovery.canary_probe.find_repo_root", _failing_find_repo_root)
+    monkeypatch.setattr(tempfile, "mkdtemp", _forbidden_mkdtemp)
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.reason == "no_pretrusted_workspace"
+    assert calls == []
+
+
+def test_probe_outside_a_repository_fails_closed_without_raising(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(GitOperationError):
+        find_repo_root(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "no_pretrusted_workspace"
+    assert calls == []
+
+
+def test_probe_passes_when_the_marker_was_written_before_the_invocation_failed(
+    tmp_path: Path,
+) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_marker_then_raise_invoke(calls),
+        workspace_factory=lambda: scratch,
+    )
     assert result.outcome == ProbeOutcome.PASSED
+    assert result.detail == "marker_written"
+    assert result.marker_written is True
     assert len(calls) == 1
+
+
+def test_probe_passes_when_the_marker_was_written_before_the_session_timed_out(
+    tmp_path: Path,
+) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_marker_then_block_invoke(calls),
+        workspace_factory=lambda: scratch,
+        timeout_s=0.1,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert result.detail == "marker_written"
+    assert result.marker_written is True
+    assert len(calls) == 1
+
+
+def test_probe_copies_the_runtime_termination_reason_from_the_judge(tmp_path: Path) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    facts = AttemptFacts(
+        event_kinds=("tool_use",),
+        artifact_valid=True,
+        termination=TerminationRecord.create(
+            TerminationIssuer.SUPERVISOR_IDLE,
+            observed_returncode=9,
+        ),
+    )
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_attempt_ended_invoke(facts, calls),
+        workspace_factory=lambda: scratch,
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "probe_terminated_by_runtime:supervisor_idle:rc=9"
+    assert len(calls) == 1
+
+
+def test_probe_refuses_to_launch_a_cli_without_a_headless_selection(tmp_path: Path) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_command_building_invoke(calls),
+        workspace_factory=lambda: scratch,
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "transport_not_probe_safe"
+    assert len(calls) == 1
+
+
+def test_probe_bounds_the_invoke_session_below_the_outer_join_timeout(tmp_path: Path) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+        workspace_factory=lambda: scratch,
+        timeout_s=5.0,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
     options = calls[0].options
     assert options is not None
-    workspace_path = options.workspace_path
-    assert workspace_path is not None
-    assert workspace_path.name.startswith("ralph-canary-probe-")
-    assert not workspace_path.exists()
+    assert options.idle_timeout_seconds is not None
+    assert options.max_session_seconds is not None
+    assert options.idle_timeout_seconds == options.max_session_seconds
+    assert options.idle_timeout_seconds < 5.0
+
+
+def test_probe_keeps_the_scratch_directory_while_a_timed_out_session_may_own_it(
+    tmp_path: Path,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("block", calls),
+        trusted_parent=trusted_parent,
+        timeout_s=0.1,
+    )
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.reason == "probe_timeout"
+    surviving = list((trusted_parent / ".agent" / "tmp").glob("canary-probe-*"))
+    assert len(surviving) == 1
+
+
+def test_probe_dispatches_its_attempt_through_the_registered_canary_runner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _agent_config()
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    dispatched: list[dict[str, object]] = []
+    registered = registered_runners()[AgentEntryPoint.CANARY_PROBE]
+
+    def _spy(
+        *,
+        effect: object | None = None,
+        invocation: object | None = None,
+        config: UnifiedConfig,
+        controller: RecoveryController,
+        deps: AttemptRunnerDeps,
+        state: object | None = None,
+        **execute_kwargs: object,
+    ) -> AttemptResult:
+        dispatched.append({"invocation": invocation, **execute_kwargs})
+        return registered(
+            effect=effect,
+            invocation=invocation,
+            config=config,
+            controller=controller,
+            deps=deps,
+            state=state,
+            **execute_kwargs,
+        )
+
+    def _fake_registered_runners() -> Mapping[AgentEntryPoint, EntryPointRunner]:
+        return {AgentEntryPoint.CANARY_PROBE: _spy}
+
+    monkeypatch.setattr("ralph.recovery.canary_probe.registered_runners", _fake_registered_runners)
+    result = run_canary_probe(
+        config,
+        invoke_fn=_make_invoke("write_marker", calls),
+        workspace_factory=lambda: scratch,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(dispatched) == 1
+    attempt = dispatched[0]
+    assert attempt["invocation"] is config
+    assert attempt["phase"] == CANARY_PROBE_PHASE
+    assert attempt["agent"] == "fake-agent"
+    assert Path(str(attempt["prompt_file"])).name == CANARY_PROMPT_FILENAME
+
+
+def test_probe_result_carries_a_reason_field_with_an_empty_default() -> None:
+    result = ProbeResult(outcome=ProbeOutcome.INCONCLUSIVE, detail="marker_missing")
+    assert result.reason == ""
+
+
+def test_dead_agent_probe_surfaces_the_probe_reason_for_the_post_mortem() -> None:
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="INFO", format="{message}")
+    try:
+        runner = build_dead_agent_probe_runner(
+            lambda name: AgentConfig(cmd="fake-agent"),
+            lambda config: ProbeResult(
+                outcome=ProbeOutcome.INCONCLUSIVE,
+                detail="probe_could_not_run",
+                reason="no_pretrusted_workspace",
+            ),
+        )
+        outcome = runner("development", "fake-agent")
+    finally:
+        logger.remove(sink_id)
+
+    assert outcome is ProbeOutcome.INCONCLUSIVE
+    assert any("no_pretrusted_workspace" in record for record in records), (
+        f"the probe reason must reach the post-mortem log (observed records: {records!r})"
+    )
 
 
 def test_inconclusive_maps_to_the_unknown_verdict_hint(tmp_path: Path) -> None:
@@ -353,6 +674,8 @@ def test_probe_reports_inconclusive_when_the_workspace_cannot_be_created(tmp_pat
         workspace_factory=_failing_factory,
     )
     assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == "probe_could_not_run"
+    assert result.reason == "probe_internal_error"
     assert result.error is not None
 
 

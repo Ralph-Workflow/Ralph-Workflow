@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from ralph.agents.invoke import AttemptEnded, InvokeOptions
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
+from ralph.pipeline import effect_executor
 from ralph.pipeline.attempt_runner import AttemptInvoke
-from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AgentFailureEvent, PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
@@ -171,7 +171,12 @@ class AttemptRunnerDeps:
     connectivity: Callable[[], ConnectivityState | None] | None
 
 
-PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(_as_effect_runner(execute_agent_effect))
+def current_effect_runner() -> AttemptInvoke:
+    runner = effect_executor.execute_agent_effect
+    return effect_attempt_invoke(_as_effect_runner(runner))
+
+
+PRODUCTION_INVOKE: AttemptInvoke = current_effect_runner()
 
 
 __all__ = (
@@ -180,6 +185,7 @@ __all__ = (
     "AttemptRunnerDeps",
     "EffectRunner",
     "RawAgentInvoke",
+    "current_effect_runner",
     "effect_attempt_invoke",
     "raw_attempt_invoke",
 )

@@ -145,6 +145,7 @@ def _pipe_config(mode: str) -> AgentConfig:
     return AgentConfig(
         cmd=f"{shlex.quote(sys.executable)} {shlex.quote(str(_PIPE_STUB))} {mode}",
         transport=AgentTransport.CLAUDE,
+        print_flag="--print",
         model="fake-model",
     )
 

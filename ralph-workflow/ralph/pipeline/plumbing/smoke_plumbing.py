@@ -59,6 +59,7 @@ from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+    registered_runners,
 )
 from ralph.pipeline.attempt_runner import (
     build_entry_point_recovery_controller,
@@ -1120,8 +1121,7 @@ def _execute_smoke_turns(
             unavailability_store=unavailability_store,
         )
         try:
-            attempt = run_agent_attempt(
-                AgentEntryPoint.SMOKE,
+            attempt = registered_runners()[AgentEntryPoint.SMOKE](
                 effect=effect,
                 config=params.unified_config,
                 controller=controller,

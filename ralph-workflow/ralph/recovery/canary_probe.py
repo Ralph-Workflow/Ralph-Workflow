@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -15,13 +14,16 @@ from loguru import logger
 import ralph.agents.invoke as agents_invoke
 from ralph._typed_attrs import read_attr
 from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
     AgentInvocationError,
+    IdleStreamTimeoutError,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
 )
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import UnifiedConfig
+from ralph.git.errors import GitOperationError
 from ralph.git.operations import find_repo_root
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -29,9 +31,18 @@ from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     register_entry_point,
     registered_entry_points,
+    registered_runners,
 )
-from ralph.recovery.canary_probe_judge import CanaryMarkerState, ProbeJudgeVerdict, judge_probe
-from ralph.recovery.canary_probe_launch import probe_launch_override
+from ralph.recovery.canary_probe_judge import (
+    CANONICAL_DETAIL_VALUES,
+    CanaryMarkerState,
+    ProbeJudgeVerdict,
+    judge_probe,
+)
+from ralph.recovery.canary_probe_launch import (
+    ProbeTransportNotSafeError,
+    probe_launch_override,
+)
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -55,6 +66,20 @@ PROBE_DIR_PREFIX: Final[str] = "canary-probe-"
 CANARY_PROBE_TASK: Final[str] = (
     f"Canary probe task.\nCreate one file named {CANARY_MARKER_FILENAME} in the current working directory.\nThe entire content of that file must be exactly this text:\n{CANARY_MARKER_CONTENT}\nCreate no other file, change no other file and run no other command.\nWhen the file exists, answer with the single line {CANARY_PROBE_REPLY}."
 )
+
+PROBE_COULD_NOT_RUN_DETAIL: Final[str] = "probe_could_not_run"
+PROBE_REASON_INVOCATION_ERROR: Final[str] = "invocation_error"
+PROBE_REASON_PROBE_TIMEOUT: Final[str] = "probe_timeout"
+PROBE_REASON_INTERNAL_ERROR: Final[str] = "probe_internal_error"
+PROBE_REASON_BUDGET_EXHAUSTED: Final[str] = "budget_exhausted"
+PROBE_REASON_NO_PRETRUSTED_WORKSPACE: Final[str] = "no_pretrusted_workspace"
+PROBE_REASON_TRANSPORT_NOT_PROBE_SAFE: Final[str] = "transport_not_probe_safe"
+PROBE_INNER_BUDGET_RATIO: Final[float] = 0.9
+
+if PROBE_COULD_NOT_RUN_DETAIL not in CANONICAL_DETAIL_VALUES:
+    raise RuntimeError(
+        "the canary probe detail vocabulary must stay inside the judge's canonical detail values"
+    )
 
 
 class _ProbeOutcome(StrEnum):
@@ -81,6 +106,7 @@ class _ProbeResult:
     elapsed_ms: int | None = None
     marker_written: bool | None = None
     error: str | None = None
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -127,7 +153,7 @@ def run_canary_probe(
             started=started,
         )
     except (AgentInvocationError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        return _inconclusive_result("probe_internal_error", started, error=_error_text(exc))
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
 
 
 def _run_canary_probe(
@@ -167,33 +193,64 @@ def _run_canary_probe(
         invoke = invoke_fn if invoke_fn is not None else _production_invoke()
         attempt = _invoke_with_timeout(invoke, config, prepared, general, timeout_s)
         timed_out = attempt.timed_out
-        if attempt.timed_out:
-            return _inconclusive_result("probe_timeout", started)
-        if attempt.error is not None:
-            return _inconclusive_result(
-                "invocation_error", started, error=_error_text(attempt.error)
-            )
         marker_state = _read_marker_state(workspace_path)
-        facts = attempt.result.facts if attempt.result is not None else None
-        return _verdict_result(judge_probe(marker_state, facts), started)
+        return _attempt_result(attempt, marker_state, started)
     finally:
         if owns_workspace and workspace_path is not None and (not timed_out):
             _remove_scratch_workspace(workspace_path)
+
+
+def _attempt_result(
+    attempt: _ProbeInvoke, marker_state: CanaryMarkerState, started: float
+) -> _ProbeResult:
+    facts = attempt.result.facts if attempt.result is not None else None
+    if marker_state is CanaryMarkerState.MATCHED:
+        return _verdict_result(judge_probe(marker_state, facts), started)
+    if attempt.timed_out:
+        return _inconclusive_result(PROBE_REASON_PROBE_TIMEOUT, started)
+    if attempt.error is not None:
+        return _inconclusive_result(
+            _failure_reason(attempt.error),
+            started,
+            error=_error_text(attempt.error),
+        )
+    return _verdict_result(judge_probe(marker_state, facts), started)
+
+
+def _failure_reason(error: BaseException) -> str:
+    if _error_chain_contains(error, ProbeTransportNotSafeError):
+        return PROBE_REASON_TRANSPORT_NOT_PROBE_SAFE
+    if _error_chain_contains(error, (AgentInactivityTimeoutError, IdleStreamTimeoutError)):
+        return PROBE_REASON_PROBE_TIMEOUT
+    return PROBE_REASON_INVOCATION_ERROR
+
+
+def _error_chain_contains(
+    error: BaseException, kinds: type[BaseException] | tuple[type[BaseException], ...]
+) -> bool:
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, kinds):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _preflight_failure(
     timeout_s: float, budget_exhausted: Callable[[], bool] | None, started: float
 ) -> _ProbeResult | None:
     if timeout_s <= 0:
-        return _inconclusive_result("invalid_timeout", started)
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error="invalid_timeout")
     if budget_exhausted is None:
         return None
     try:
         exhausted = bool(budget_exhausted())
     except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        return _inconclusive_result("budget_check_failed", started, error=_error_text(exc))
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
     if exhausted:
-        return _inconclusive_result("budget_exhausted", started)
+        return _inconclusive_result(PROBE_REASON_BUDGET_EXHAUSTED, started)
     return None
 
 
@@ -208,7 +265,9 @@ def _scratch_workspace(
     try:
         workspace_path = _create_scratch_workspace(workspace_factory, trusted_parent)
     except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        return _inconclusive_result("workspace_creation_failed", started, error=_error_text(exc))
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
+    if workspace_path is None:
+        return _inconclusive_result(PROBE_REASON_NO_PRETRUSTED_WORKSPACE, started)
     if (
         phase_workspace is not None
         and _is_within(workspace_path, phase_workspace)
@@ -216,7 +275,9 @@ def _scratch_workspace(
     ):
         if owns_workspace:
             _remove_scratch_workspace(workspace_path)
-        return _inconclusive_result("scratch_inside_phase_workspace", started)
+        return _inconclusive_result(
+            PROBE_REASON_INTERNAL_ERROR, started, error="scratch_inside_phase_workspace"
+        )
     return workspace_path
 
 
@@ -240,22 +301,22 @@ def _prepare_probe(
     try:
         options = _build_probe_options(config, workspace_path, general, extra_env, timeout_s)
     except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        return _inconclusive_result("options_build_failed", started, error=_error_text(exc))
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
     try:
         prompt_file = _write_prompt(workspace_path)
     except OSError as exc:
-        return _inconclusive_result("prompt_write_failed", started, error=_error_text(exc))
+        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
     return _PreparedProbe(options=options, prompt_file=prompt_file)
 
 
 def _create_scratch_workspace(
     factory: Callable[[], Path] | None, trusted_parent: Path | None
-) -> Path:
+) -> Path | None:
     if factory is not None:
         return Path(factory())
     parent = _resolve_trusted_parent(trusted_parent)
     if parent is None:
-        return Path(tempfile.mkdtemp(prefix="ralph-canary-probe-"))
+        return None
     probe_area = parent / PROBE_AREA_RELATIVE_DIR
     scratch = probe_area / f"{PROBE_DIR_PREFIX}{uuid4().hex}"
     scratch.mkdir(parents=True, exist_ok=False)
@@ -267,7 +328,14 @@ def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
         return trusted_parent
     try:
         return find_repo_root(Path.cwd())
-    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (
+        AttributeError,
+        GitOperationError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        KeyError,
+    ) as exc:
         logger.debug("canary probe trusted-parent resolution failed: {}", exc)
         return None
 
@@ -314,7 +382,12 @@ def _build_probe_options(
         requires_completion_evidence=False,
     )
     options = build_invoke_options_from_config(general, runtime)
-    return replace(options, idle_timeout_seconds=timeout_s, max_session_seconds=timeout_s)
+    inner_budget = timeout_s * PROBE_INNER_BUDGET_RATIO
+    return replace(
+        options,
+        idle_timeout_seconds=inner_budget,
+        max_session_seconds=inner_budget,
+    )
 
 
 def _write_prompt(workspace_path: Path) -> str:
@@ -335,7 +408,7 @@ def _invoke_with_timeout(
 
     def _run() -> None:
         try:
-            finished.append(_run_probe_attempt(invoke, config, prepared, general))
+            finished.append(_dispatch_probe_attempt(invoke, config, prepared, general))
         except (
             AgentInvocationError,
             TypeError,
@@ -360,6 +433,40 @@ def _invoke_with_timeout(
 
 def _production_invoke() -> RawAgentInvoke:
     return agents_invoke.invoke_agent
+
+
+def _dispatch_probe_attempt(
+    invoke: RawAgentInvoke, config: AgentConfig, prepared: _PreparedProbe, general: GeneralConfig
+) -> AttemptResult | None:
+    agent_name = _agent_name(config)
+    unified = UnifiedConfig(
+        general=general, agents={agent_name: config} if agent_name is not None else {}
+    )
+    from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, raw_attempt_invoke
+
+    deps = AttemptRunnerDeps(
+        clock=SystemClock(),
+        invoke=raw_attempt_invoke(invoke),
+        probe_runner=None,
+        workspace_probe=None,
+        connectivity=None,
+    )
+    controller = build_entry_point_recovery_controller(
+        AgentEntryPoint.CANARY_PROBE, config=unified, policy_bundle=None, deps=deps
+    )
+    result = registered_runners()[AgentEntryPoint.CANARY_PROBE](
+        invocation=config,
+        config=unified,
+        controller=controller,
+        deps=deps,
+        phase=CANARY_PROBE_PHASE,
+        agent=agent_name,
+        prompt_file=prepared.prompt_file,
+        options=prepared.options,
+    )
+    logger.info("canary probe attempt outcome: {}", result.outcome.kind)
+    return result
 
 
 def _run_canary_probe_attempt(
@@ -388,45 +495,6 @@ def _run_canary_probe_attempt(
         )
 
 
-def _run_probe_attempt(
-    invoke: RawAgentInvoke, config: AgentConfig, prepared: _PreparedProbe, general: GeneralConfig
-) -> AttemptResult | None:
-    agent_name = _agent_name(config)
-    unified = UnifiedConfig(
-        general=general, agents={agent_name: config} if agent_name is not None else {}
-    )
-    from ralph.pipeline.attempt_runner import (
-        build_entry_point_recovery_controller,
-        run_agent_attempt,
-    )
-    from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, raw_attempt_invoke
-
-    deps = AttemptRunnerDeps(
-        clock=SystemClock(),
-        invoke=raw_attempt_invoke(invoke),
-        probe_runner=None,
-        workspace_probe=None,
-        connectivity=None,
-    )
-    controller = build_entry_point_recovery_controller(
-        AgentEntryPoint.CANARY_PROBE, config=unified, policy_bundle=None, deps=deps
-    )
-    with probe_launch_override():
-        result = run_agent_attempt(
-            AgentEntryPoint.CANARY_PROBE,
-            invocation=config,
-            config=unified,
-            controller=controller,
-            deps=deps,
-            phase=CANARY_PROBE_PHASE,
-            agent=agent_name,
-            prompt_file=prepared.prompt_file,
-            options=prepared.options,
-        )
-    logger.info("canary probe attempt outcome: {}", result.outcome.kind)
-    return result
-
-
 if AgentEntryPoint.CANARY_PROBE not in registered_entry_points():
     register_entry_point(AgentEntryPoint.CANARY_PROBE, _run_canary_probe_attempt)
 
@@ -450,6 +518,7 @@ def _verdict_result(verdict: ProbeJudgeVerdict, started: float) -> _ProbeResult:
         detail=verdict.detail,
         elapsed_ms=_elapsed_ms(started),
         marker_written=verdict.marker_written,
+        reason=verdict.reason or "",
     )
 
 
@@ -461,13 +530,14 @@ def _error_text(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _inconclusive_result(detail: str, started: float, *, error: str | None = None) -> _ProbeResult:
+def _inconclusive_result(reason: str, started: float, *, error: str | None = None) -> _ProbeResult:
     return _ProbeResult(
         outcome=_ProbeOutcome.INCONCLUSIVE,
-        detail=detail,
+        detail=PROBE_COULD_NOT_RUN_DETAIL,
         elapsed_ms=_elapsed_ms(started),
         marker_written=None,
         error=error,
+        reason=reason,
     )
 
 
@@ -479,7 +549,14 @@ __all__ = [
     "CANARY_PROBE_TASK",
     "CANARY_PROMPT_FILENAME",
     "DEFAULT_PROBE_TIMEOUT_S",
+    "PROBE_COULD_NOT_RUN_DETAIL",
     "PROBE_INCONCLUSIVE_VERDICT",
+    "PROBE_REASON_BUDGET_EXHAUSTED",
+    "PROBE_REASON_INTERNAL_ERROR",
+    "PROBE_REASON_INVOCATION_ERROR",
+    "PROBE_REASON_NO_PRETRUSTED_WORKSPACE",
+    "PROBE_REASON_PROBE_TIMEOUT",
+    "PROBE_REASON_TRANSPORT_NOT_PROBE_SAFE",
     "ProbeOutcome",
     "ProbeResult",
     "run_canary_probe",

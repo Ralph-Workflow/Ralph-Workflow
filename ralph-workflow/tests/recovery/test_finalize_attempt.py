@@ -138,6 +138,13 @@ def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() 
     assert outcome.kind is AttemptOutcomeKind.UNKNOWN
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert controller.false_bench_feedback.count == 0
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.ledger.registered_agents(PHASE) == (AGENT_A,), (
+        "a probe that could not run charges the ordinary ledger entry for the "
+        "agent; observed ledger agents: "
+        f"{controller.ledger.registered_agents(PHASE)!r}"
+    )
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
 
 
 def test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure() -> None:
@@ -174,6 +181,13 @@ def test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_fai
     assert _cooldown_until_ms(controller, AGENT_A) is not None
     assert isinstance(controller.ledger.status(PHASE, AGENT_B), Eligible)
     assert controller.unavailability_store.is_available(PHASE, AGENT_B) is True
+    assert first.benches_agent is False
+    first_reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
+    assert first_reasons.get(AGENT_A) != str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS), (
+        "the first peer must not be benched for a dead-agent verdict when it only "
+        f"cools down; observed reasons: {first_reasons!r}"
+    )
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
 
 
 def test_ac8_a_failed_attempt_with_a_valid_artifact_is_a_task_or_environment_failure() -> None:

@@ -26,6 +26,8 @@ from ralph.recovery.dead_agent_verdict import (
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.policy.models import PipelinePolicy
 
 from tests.recovery._corpus_derive import CorpusCase, load_corpus, load_fixtures
@@ -52,13 +54,11 @@ def _policy() -> PipelinePolicy:
         return load_policy(Path(directory) / ".agent").pipeline
 
 
-def _agent_of(case_id: str) -> str:
-    fixtures = {str(fixture["id"]): fixture for fixture in load_fixtures()}
-    return str(fixtures[case_id]["agent"])
+def _agents_by_case() -> dict[str, str]:
+    return {str(fixture["id"]): str(fixture["agent"]) for fixture in load_fixtures()}
 
 
-def _replay(case: CorpusCase, probe_outcome: ProbeOutcome | None) -> Replay:
-    agent = _agent_of(case.id)
+def _replay(case: CorpusCase, agent: str, probe_outcome: ProbeOutcome | None) -> Replay:
     probes: list[str] = []
 
     def probe_runner(_phase: str, probed_agent: str) -> ProbeOutcome | None:
@@ -103,19 +103,48 @@ def _outcomes_for(case: CorpusCase) -> tuple[ProbeOutcome | None, ...]:
     return HEALTHY_AGENT_PROBE_OUTCOMES if unattributed else EVERY_PROBE_OUTCOME
 
 
-def _negative_replays() -> list[Replay]:
-    return [
-        _replay(case, outcome)
-        for case in load_corpus()
+@pytest.fixture(scope="module")
+def corpus() -> tuple[CorpusCase, ...]:
+    return load_corpus()
+
+
+@pytest.fixture(scope="module")
+def corpus_replays(
+    corpus: tuple[CorpusCase, ...],
+) -> dict[tuple[str, ProbeOutcome | None], Replay]:
+    agents = _agents_by_case()
+    return {
+        (case.id, outcome): _replay(case, agents[case.id], outcome)
+        for case in corpus
+        for outcome in _outcomes_for(case)
+    }
+
+
+@pytest.fixture(scope="module")
+def negative_replays(
+    corpus: tuple[CorpusCase, ...],
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
+) -> tuple[Replay, ...]:
+    return tuple(
+        corpus_replays[(case.id, outcome)]
+        for case in corpus
         if case.label == "negative"
         for outcome in _outcomes_for(case)
-    ]
+    )
+
+
+def _negative_replays_for(
+    case: CorpusCase,
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
+) -> list[Replay]:
+    return [corpus_replays[(case.id, outcome)] for outcome in _outcomes_for(case)]
 
 
 def test_replaying_the_labelled_corpus_yields_zero_false_benches_and_reports_the_rate(
     capsys: pytest.CaptureFixture[str],
+    negative_replays: tuple[Replay, ...],
 ) -> None:
-    replays = _negative_replays()
+    replays = negative_replays
     false_benches = [replay for replay in replays if replay.benched]
     report = f"false_benches={len(false_benches)}/{len(replays)}"
 
@@ -128,23 +157,31 @@ def test_replaying_the_labelled_corpus_yields_zero_false_benches_and_reports_the
     )
 
 
-def test_no_negative_is_ever_marked_spent_or_left_unavailable() -> None:
-    offenders = [replay for replay in _negative_replays() if replay.spent]
+def test_no_negative_is_ever_marked_spent_or_left_unavailable(
+    negative_replays: tuple[Replay, ...],
+) -> None:
+    offenders = [replay for replay in negative_replays if replay.spent]
 
     assert offenders == []
 
 
-def test_the_genuine_positive_case_is_cleared_by_a_passing_probe() -> None:
-    agy = next(case for case in load_corpus() if case.label == "positive")
+def test_the_genuine_positive_case_is_cleared_by_a_passing_probe(
+    corpus: tuple[CorpusCase, ...],
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
+) -> None:
+    agy = next(case for case in corpus if case.label == "positive")
 
-    assert _replay(agy, ProbeOutcome.PASSED).benched is False
+    assert corpus_replays[(agy.id, ProbeOutcome.PASSED)].benched is False
 
 
-def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails() -> None:
-    positives = [case for case in load_corpus() if case.label == "positive"]
+def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails(
+    corpus: tuple[CorpusCase, ...],
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
+) -> None:
+    positives = [case for case in corpus if case.label == "positive"]
 
     assert [case.id for case in positives] == ["agy_quota_error_step"]
-    replay = _replay(positives[0], ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
+    replay = corpus_replays[(positives[0].id, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)]
 
     assert replay.benched is True
     assert replay.spent is False
@@ -154,20 +191,25 @@ def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_f
 @pytest.mark.parametrize("outcome", [ProbeOutcome.INCONCLUSIVE, None])
 def test_the_genuine_positive_case_stays_unknown_when_the_probe_cannot_decide(
     outcome: ProbeOutcome | None,
+    corpus: tuple[CorpusCase, ...],
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
 ) -> None:
-    agy = next(case for case in load_corpus() if case.label == "positive")
+    agy = next(case for case in corpus if case.label == "positive")
 
-    assert _replay(agy, outcome).benched is False
+    assert corpus_replays[(agy.id, outcome)].benched is False
 
 
-def test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incident() -> None:
+def test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incident(
+    corpus: tuple[CorpusCase, ...],
+    corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
+) -> None:
     fixtures = load_fixtures()
     incidents: set[int] = set()
     for fixture in fixtures:
         declared = fixture.get("incidents") or [fixture.get("incident")]
         assert isinstance(declared, list)
         incidents.update(value for value in declared if isinstance(value, int))
-    negatives = [case for case in load_corpus() if case.label == "negative"]
+    negatives = [case for case in corpus if case.label == "negative"]
 
     assert incidents >= REQUIRED_INCIDENTS, (
         f"the corpus lacks incidents {sorted(REQUIRED_INCIDENTS - incidents)}"
@@ -176,15 +218,13 @@ def test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incide
     for case in negatives:
         assert case.expected_bench is False
         assert case.expected_verdict != "agent_dead"
-        assert not any(replay.benched for replay in _negative_replays_for(case))
+        assert not any(replay.benched for replay in _negative_replays_for(case, corpus_replays))
 
 
-def _negative_replays_for(case: CorpusCase) -> list[Replay]:
-    return [_replay(case, outcome) for outcome in _outcomes_for(case)]
-
-
-def test_a_new_fixture_is_replayed_without_editing_the_test() -> None:
-    ids = {case.id for case in load_corpus()}
+def test_a_new_fixture_is_replayed_without_editing_the_test(
+    corpus: tuple[CorpusCase, ...],
+) -> None:
+    ids = {case.id for case in corpus}
 
     assert {
         "claude_live_session_end_no_completion",
@@ -208,8 +248,11 @@ def test_the_labelled_corpus_covers_incidents_1_through_7() -> None:
     )
 
 
-def test_the_replay_sample_covers_every_negative_under_every_applicable_probe_outcome() -> None:
-    negatives = [case for case in load_corpus() if case.label == "negative"]
+def test_the_replay_sample_covers_every_negative_under_every_applicable_probe_outcome(
+    corpus: tuple[CorpusCase, ...],
+    negative_replays: tuple[Replay, ...],
+) -> None:
+    negatives = [case for case in corpus if case.label == "negative"]
 
     assert negatives
     unattributed = [
@@ -224,17 +267,19 @@ def test_the_replay_sample_covers_every_negative_under_every_applicable_probe_ou
         EVERY_PROBE_OUTCOME
     )
 
-    assert expected_total == len(_negative_replays()), (
+    assert expected_total == len(negative_replays), (
         "the reported false-bench rate must cover the full negative-by-outcome cross-product"
     )
     replayed_counts: dict[str, int] = {}
-    for replay in _negative_replays():
+    for replay in negative_replays:
         replayed_counts[replay.case_id] = replayed_counts.get(replay.case_id, 0) + 1
     assert replayed_counts == {case.id: len(_outcomes_for(case)) for case in negatives}
 
 
-def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination() -> None:
-    for case in load_corpus():
+def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination(
+    corpus: tuple[CorpusCase, ...],
+) -> None:
+    for case in corpus:
         for outcome in _outcomes_for(case):
             verdict = decide_dead_agent_verdict(
                 case.facts,
@@ -257,12 +302,14 @@ def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_terminat
                 assert verdict_benches_agent(verdict.verdict) is expected_bench
 
 
-def test_every_corpus_case_expected_attribution_matches_attribute_attempt() -> None:
+def test_every_corpus_case_expected_attribution_matches_attribute_attempt(
+    corpus: tuple[CorpusCase, ...],
+) -> None:
     from tests.recovery._corpus_derive import ALLOWED_ATTRIBUTIONS
 
     mismatches: list[tuple[str, str, str]] = []
     seen: set[str] = set()
-    for case in load_corpus():
+    for case in corpus:
         assert case.expected_attribution in ALLOWED_ATTRIBUTIONS
         seen.add(case.expected_attribution)
         recorded = attribute_attempt(case.facts)

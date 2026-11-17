@@ -23,7 +23,7 @@ from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import run_canary_probe
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller_factory import RecoveryController, build_recovery_controller
 from ralph.recovery.dead_agent_probe import (
     build_dead_agent_probe_runner,
     production_dead_agent_probe_runner,
@@ -182,7 +182,7 @@ def build_entry_point_recovery_controller(
                 else options.agent_max_total_unproductive
             ),
         )
-    return RecoveryController(options=options)
+    return build_recovery_controller(options=options)
 
 
 def run_agent_attempt(

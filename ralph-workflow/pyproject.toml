@@ -266,6 +266,7 @@ select = [
 "ralph/prompts/__init__.py" = ["PLC0415"]
 "ralph/prompts/materialize.py" = ["PLC0415"]
 "ralph/recovery/__init__.py" = ["N802", "PLC0415"]
+"ralph/recovery/controller.py" = ["PLC0415"]
 "ralph/recovery/failure_classifier.py" = ["PLC0415"]
 "ralph/skills/__init__.py" = ["PLC0415"]
 "ralph/supervising.py" = ["PLC0415"]
