@@ -31,7 +31,6 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
     resolve_rebase_in_progress,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
-from ralph.pipeline.conflict_resolution.sight import ConflictKind
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, UnknownOutcome
 
 if TYPE_CHECKING:
@@ -85,15 +84,6 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
     monkeypatch.setattr(deterministic_module, "conflict_stage_entries", lambda _root, _paths: {})
-
-    def _text_kinds(
-        _root: Path, paths: Sequence[str], _entries: object = None
-    ) -> dict[str, ConflictKind]:
-        return dict.fromkeys(paths, ConflictKind.TEXT)
-
-    monkeypatch.setattr(deterministic_module, "classify_conflict_kinds", _text_kinds)
-    monkeypatch.setattr(loop_module, "_stage_observed_resolutions", lambda _root, _paths: True)
-    monkeypatch.setattr(loop_module, "_remove_ort_residue", lambda _root, _paths: True)
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
         repo.staged.append(list(paths))

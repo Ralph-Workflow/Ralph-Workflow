@@ -487,7 +487,6 @@ def _revive_cooling_candidates(
     )
     state = state.copy_with(last_retry_delay_ms=wait_ms)
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
-    from ralph.pipeline.cooldown_wait_context import CooldownWaitContext
 
     run_loop.handle_cooldown_delay(
         state,

@@ -472,9 +472,10 @@ def _pre_pass_failure(
             "complete_in_place",
             RESUME_COMMAND,
         )
+        settled_key = _terminal_for_now_key(reason, _current_target_tip(root, record))
         target_record = target_record.with_resolution_terminal_marker(
             terminal_marker.as_record_value()
-        )
+        ).with_transition(BUMP_DIAGNOSTIC_ATTEMPT, repair_last_error=settled_key)
         write_record(root, target_record, backend=backend)
         logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
         return False
