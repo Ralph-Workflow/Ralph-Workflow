@@ -18,14 +18,10 @@ def _conflicted_section(rendered: str) -> str:
     return rest if next_heading < 0 else rest[:next_heading]
 
 
-def _stub_kinds(
-    monkeypatch: pytest.MonkeyPatch, kinds: dict[str, ConflictKind]
-) -> None:
+def _stub_kinds(monkeypatch: pytest.MonkeyPatch, kinds: dict[str, ConflictKind]) -> None:
     monkeypatch.setattr(
         "ralph.pipeline.conflict_resolution.sight.classify_conflict_kinds",
-        lambda _root, paths, entries=None: {
-            path: kinds[path] for path in paths if path in kinds
-        },
+        lambda _root, paths, entries=None: {path: kinds[path] for path in paths if path in kinds},
     )
 
 

@@ -353,9 +353,7 @@ def test_retained_continuation_and_ordinary_phase_share_one_controller_ledger(
     phase = "rebase_conflict_resolution"
     clock = FakeClock(start=10.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
-    shared = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
-    )
+    shared = RecoveryController(options=RecoveryControllerOptions(clock=clock, ledger=ledger))
     shared.register_phase_chain(phase, ["resolver-1", "resolver-2"])
 
     shared.finalize_attempt(

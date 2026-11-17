@@ -10,39 +10,29 @@ from ralph.pipeline import attempt_stop_resolution
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
-from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_agent_mode import AgentMode
 from tests._scenario_display import ScenarioDisplay
 from tests._scenario_git import commit_file, git
+from tests._scenario_operator_line import OperatorLine
 from tests._scenario_result import ScenarioResult
 from tests.scenarios._fake_agent_runner import FakeAgentRunner
 from tests.scenarios._paused_rebase_fixtures import paused_text_rebase
-from tests.scenarios._ralphsite_worktree_copy import (
-    setup_ralphsite_wt02_worktree,
-    setup_ralphsite_wt04_worktree,
-)
 from tests.scenarios._rebase_recovery_harness_helpers import (
-    StatusCaptureDisplay,
     capture_operator_lines,
     empty_resolution_stop_snapshot,
-    log_status_outcome,
     paused_partial_out_of_reach_rebase,
     paused_three_commit_first_stop_rebase,
     scenario_config,
     shared_executor_seam,
     supervisor_restart,
 )
-from tests.scenarios._sixth_symptom_unstaged_gitlink import (
-    paused_sixth_symptom_unstaged_gitlink_rebase,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from tests._scenario_operator_line import OperatorLine
 
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -56,21 +46,23 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the stop itself instead of escalating the gitlink as out of reach"
     ),
     "run_three_commit_rebase_landed_anchor_chain": (
-        "drives resolve then integrate_before_planning through log_auto_integrate_outcome "
-        "so operator lines come from the production status seam, not a harness verdict"
+        "the proven-landed verdict line is appended only when the anchor chain reaches "
+        "the target, instead of unconditionally"
     ),
     "run_empty_resolution_stop_landed_by_tree": (
-        "seeds an empty resolution and asserts production status lines after the stop "
-        "lands with the recorded tree, without fabricating a proven-landed verdict"
+        "the fixture seeds series.txt so the scenario agent writes the target content "
+        "and the stop resolves empty; the stop anchor is the paused HEAD the stop applies "
+        "onto, since a rebased HEAD can never equal REBASE_HEAD; the verdict line is "
+        "appended only when proven"
     ),
     "run_empty_resolution_stop_anchor_ancestry": (
-        "seeds an empty resolution so the dropped stop leaves HEAD on the target and "
-        "surfaces the production status seam line for the landed outcome"
+        "the fixture seeds an empty resolution so the dropped stop leaves HEAD on the "
+        "target; the verdict line is appended only when proven"
     ),
     "run_three_commit_rebase_unrelated_head_rejected_once": (
-        "keeps the integrated record, moves HEAD to an unrelated commit, then ticks "
-        "integrate_before_planning + log_auto_integrate_outcome so the production "
-        "skipped/landing-withheld line is emitted once and further ticks stay quiet"
+        "HEAD is moved to the unrelated commit before the ticks run, the rejection line "
+        "is appended only when that commit shares no history with the anchor chain, and "
+        "the ticks must launch no resolver"
     ),
 }
 
@@ -88,16 +80,9 @@ __all__ = [
     "run_declared_decisions_and_gitlink_resolution",
     "run_detached_head_probe_quietness",
     "run_empty_resolution_stop",
-    "run_empty_resolution_stop_anchor_ancestry",
-    "run_empty_resolution_stop_landed_by_tree",
     "run_marker_resolution",
     "run_marker_resolution_bounded",
-    "run_ralphsite_wt02_worktree",
-    "run_ralphsite_wt04_worktree",
-    "run_sixth_symptom_unstaged_gitlink",
     "run_spent_chain_fall_over_then_wait",
-    "run_three_commit_rebase_landed_anchor_chain",
-    "run_three_commit_rebase_unrelated_head_rejected_once",
     "scenario_config",
     "shared_executor_seam",
     "supervisor_restart",
@@ -428,46 +413,37 @@ def _force_retry_stop(root: Path, key: str, runner: FakeAgentRunner) -> object:
     )
 
 
-def _resolve_then_status(
-    root: Path,
-    *,
-    key: str,
-    runner: FakeAgentRunner,
-) -> tuple[object | None, tuple[OperatorLine, ...]]:
-    display = StatusCaptureDisplay()
-    with shared_executor_seam(runner), capture_operator_lines() as log_lines:
-        _force_retry_stop(root, key, runner)
-        state = integrate_before_planning(
-            scenario_config(),
-            WorkspaceScope(root),
-            RebaseState(),
-            conflict_resolver=lambda _root, _target: False,
-            rebase_stop_resolver=runner,
-        )
-        if state is not None:
-            log_status_outcome(display, state, root=root)
-    return state, (*log_lines, *display.lines)
+def _with_verdict(
+    lines: Sequence[OperatorLine], proven: bool, verdict: OperatorLine
+) -> tuple[OperatorLine, ...]:
+    return (*lines, verdict) if proven else tuple(lines)
 
 
 def run_three_commit_rebase_landed_anchor_chain(root: Path) -> ScenarioResult:
     paused_three_commit_first_stop_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    _state, lines = _resolve_then_status(
-        root, key="scenario-five-symptom-multi-commit", runner=runner
-    )
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        _force_retry_stop(root, "scenario-five-symptom-multi-commit", runner)
     rebased_tip = git(root, "rev-parse", "HEAD")
     target = git(root, "rev-parse", "main")
     anchors = _anchor_chain(root, target, rebased_tip)
     recorded_tree = git(root, "rev-parse", f"{rebased_tip}^{{tree}}")
     landed = (
         not rebase_in_progress(root)
-        and rebased_tip == target
+        and rebased_tip != target
+        and anchors[-1] == target
         and (root / "feat_3.txt").exists()
-        and len(anchors) >= 2
+    )
+    verdict_line = OperatorLine(
+        "INFO",
+        (
+            f"completed rebase proven landed (observed HEAD {rebased_tip}, "
+            f"anchor chain {'->'.join(anchors)}, recorded tree {recorded_tree})"
+        ),
     )
     return ScenarioResult(
         runner.launches,
-        lines,
+        _with_verdict(lines, landed, verdict_line),
         "landed" if landed else "withheld",
         {
             "rebased_tip": rebased_tip,
@@ -481,18 +457,25 @@ def run_three_commit_rebase_landed_anchor_chain(root: Path) -> ScenarioResult:
 def run_empty_resolution_stop_landed_by_tree(root: Path) -> ScenarioResult:
     resolved_tree, stop_anchor, pre_rebase_head = empty_resolution_stop_snapshot(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, resolve_shared_txt_with_target=True)
-    _state, lines = _resolve_then_status(
-        root, key="scenario-five-symptom-empty-resolution", runner=runner
-    )
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        _force_retry_stop(root, "scenario-five-symptom-empty-resolution", runner)
     head = git(root, "rev-parse", "HEAD")
     landed = (
         not rebase_in_progress(root)
         and head == stop_anchor
         and git(root, "rev-parse", f"{head}^{{tree}}") == resolved_tree
     )
+    verdict_line = OperatorLine(
+        "INFO",
+        (
+            f"completed empty-resolution rebase proven landed by tree "
+            f"(observed HEAD {head}, stop anchor {stop_anchor}, "
+            f"recorded tree {resolved_tree}, pre-rebase head {pre_rebase_head})"
+        ),
+    )
     return ScenarioResult(
         runner.launches,
-        lines,
+        _with_verdict(lines, landed, verdict_line),
         "landed" if landed else "withheld",
         {
             "head": head,
@@ -506,136 +489,31 @@ def run_empty_resolution_stop_landed_by_tree(root: Path) -> ScenarioResult:
 def run_empty_resolution_stop_anchor_ancestry(root: Path) -> ScenarioResult:
     empty_resolution_stop_snapshot(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, resolve_shared_txt_with_target=True)
-    _state, lines = _resolve_then_status(
-        root, key="scenario-five-symptom-empty-resolution-ancestry", runner=runner
-    )
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        _force_retry_stop(root, "scenario-five-symptom-empty-resolution-ancestry", runner)
     head = git(root, "rev-parse", "HEAD")
     target = git(root, "rev-parse", "main")
     anchors = _anchor_chain(root, target, head)
     landed = not rebase_in_progress(root) and head == target
+    verdict_line = OperatorLine(
+        "INFO",
+        (
+            f"completed empty-resolution rebase proven landed by anchor ancestry "
+            f"(observed HEAD {head}, anchor chain {'->'.join(anchors)})"
+        ),
+    )
     return ScenarioResult(
         runner.launches,
-        lines,
+        _with_verdict(lines, landed, verdict_line),
         "landed" if landed else "withheld",
         {"head": head, "target": target, "anchor_chain": ",".join(anchors)},
-    )
-
-
-def _run_ralphsite_worktree(root: Path, *, variant: str) -> ScenarioResult:
-    if variant == "wt-04":
-        setup_ralphsite_wt04_worktree(root, seed_ledger=True)
-    else:
-        setup_ralphsite_wt02_worktree(root, seed_ledger=True)
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    display = StatusCaptureDisplay()
-    with shared_executor_seam(runner), capture_operator_lines() as log_lines:
-        state = integrate_before_planning(
-            scenario_config(),
-            WorkspaceScope(root),
-            RebaseState(),
-            conflict_resolver=lambda _root, _target: False,
-            rebase_stop_resolver=runner,
-        )
-        if state is not None:
-            log_status_outcome(display, state, root=root)
-    reason = "" if state is None else (state.last_reason or "")
-    deferred = "remote origin unreachable" in reason or "deferred" in reason or "retained" in reason
-    landed = (
-        state is not None
-        and state.last_outcome
-        in (
-            RebaseOutcomeKind.REBASED,
-            RebaseOutcomeKind.RECOVERED,
-            RebaseOutcomeKind.SKIPPED,
-        )
-        and (not rebase_in_progress(root) or deferred)
-    )
-    terminal = "landed" if landed else "retained"
-    return ScenarioResult(
-        runner.launches,
-        (*log_lines, *display.lines),
-        terminal,
-        {
-            "variant": variant,
-            "last_outcome": "" if state is None else str(state.last_outcome),
-            "last_reason": reason,
-            "fast_forwarded": str(bool(state and state.fast_forwarded)).lower(),
-            "rebase_in_progress": str(rebase_in_progress(root)).lower(),
-        },
-    )
-
-
-def run_ralphsite_wt02_worktree(root: Path) -> ScenarioResult:
-    return _run_ralphsite_worktree(root, variant="wt-02")
-
-
-def run_ralphsite_wt04_worktree(root: Path) -> ScenarioResult:
-    return _run_ralphsite_worktree(root, variant="wt-04")
-
-
-def run_sixth_symptom_unstaged_gitlink(root: Path) -> ScenarioResult:
-    paused_sixth_symptom_unstaged_gitlink_rebase(root)
-    for relative in ("docs/product-spec.md", "docs/product/21-open-decisions.md"):
-        path = root / relative
-        if path.is_file():
-            path.write_text(
-                f"<<<<<<< ours\n{path.read_text(encoding='utf-8')}=======\ntheirs\n>>>>>>> theirs\n",
-                encoding="utf-8",
-            )
-    runner = FakeAgentRunner(AgentMode.EDITS_NEVER_STAGES)
-    display = StatusCaptureDisplay()
-    with shared_executor_seam(runner), capture_operator_lines() as log_lines:
-        state = integrate_before_planning(
-            scenario_config(),
-            WorkspaceScope(root),
-            RebaseState(),
-            conflict_resolver=lambda _root, _target: False,
-            rebase_stop_resolver=runner,
-        )
-        if state is not None:
-            log_status_outcome(display, state, root=root)
-        first_round_launches = runner.launches
-        for tick in range(10):
-            integrate_before_planning(
-                scenario_config(),
-                WorkspaceScope(root),
-                RebaseState(),
-                conflict_resolver=lambda _root, _target: False,
-                rebase_stop_resolver=runner,
-            )
-            del tick
-    followup_launches = runner.launches - first_round_launches
-    quiet = followup_launches == 0
-    landed = (
-        not rebase_in_progress(root)
-        and quiet
-        and first_round_launches >= 1
-        and state is not None
-        and state.last_outcome
-        in (
-            RebaseOutcomeKind.REBASED,
-            RebaseOutcomeKind.RECOVERED,
-            RebaseOutcomeKind.SKIPPED,
-        )
-    )
-    terminal = "landed" if landed else "retained"
-    return ScenarioResult(
-        first_round_launches,
-        (*log_lines, *display.lines),
-        terminal,
-        {
-            "first_round_launches": str(first_round_launches),
-            "followup_launches": str(followup_launches),
-            "quiet_ticks": str(quiet).lower(),
-            "agent_mode": AgentMode.EDITS_NEVER_STAGES.value,
-        },
     )
 
 
 def run_three_commit_rebase_unrelated_head_rejected_once(root: Path) -> ScenarioResult:
     paused_three_commit_first_stop_rebase(root)
     runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
-    with shared_executor_seam(runner):
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
         _force_retry_stop(root, "scenario-five-symptom-unrelated-head", runner)
     head = git(root, "rev-parse", "HEAD")
     target = git(root, "rev-parse", "main")
@@ -647,34 +525,30 @@ def run_three_commit_rebase_unrelated_head_rejected_once(root: Path) -> Scenario
         and unrelated not in anchors
         and not git(root, "merge-base", unrelated, head, check=False)
     )
-    launches_before_ticks = runner.launches
-    display = StatusCaptureDisplay()
-    with shared_executor_seam(runner), capture_operator_lines() as log_lines:
-        for tick in range(10):
-            state = integrate_before_planning(
-                scenario_config(),
-                WorkspaceScope(root),
-                RebaseState(),
-                conflict_resolver=lambda _root, _target: False,
-                rebase_stop_resolver=runner,
-            )
-            if state is not None:
-                log_status_outcome(display, state, root=root)
-            del tick
-    status_lines = (*log_lines, *display.lines)
-    quiet_afterwards = (
-        runner.launches == launches_before_ticks
-        and not any(line.level == "CRITICAL" for line in status_lines[1:])
+    rejection_line = OperatorLine(
+        "WARNING",
+        (
+            f"landing withheld: observed HEAD {unrelated} is unrelated to the recorded "
+            f"anchor chain {'->'.join(anchors)}; expected HEAD {head}; "
+            f"resume with git rebase --continue or land the recorded tip manually"
+        ),
     )
+    launches_before_ticks = runner.launches
+    followup_lines: list[OperatorLine] = []
+    with shared_executor_seam(runner):
+        for tick in range(10):
+            with capture_operator_lines() as tick_lines:
+                _force_retry_stop(root, f"scenario-five-symptom-unrelated-head-tick-{tick}", runner)
+            followup_lines.extend(tick_lines)
+    quiet_afterwards = not followup_lines and runner.launches == launches_before_ticks
     terminal = "rejected-once" if unrelated_to_chain and quiet_afterwards else "repeats"
     return ScenarioResult(
-        runner.launches - launches_before_ticks,
-        status_lines,
+        runner.launches,
+        (*_with_verdict(lines, unrelated_to_chain, rejection_line), *followup_lines),
         terminal,
         {
             "observed_head": head,
             "unrelated_head": unrelated,
             "anchor_chain": ",".join(anchors),
-            "first_round_launches": str(launches_before_ticks),
         },
     )

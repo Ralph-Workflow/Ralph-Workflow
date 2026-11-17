@@ -1961,10 +1961,7 @@ def _paused_rebase_failure_details(
             reason = on_change or (f"retry after {until}" if until is not None else None)
             cause = (
                 failure_cause.value
-                if (
-                    failure_cause is not None
-                    and failure_cause is not ResolutionFailureCause.NONE
-                )
+                if (failure_cause is not None and failure_cause is not ResolutionFailureCause.NONE)
                 else ResolutionFailureCause.AGENT_FAILURE.value
             )
             return reason, cause

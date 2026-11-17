@@ -14,6 +14,7 @@ from ralph.git.rebase.rebase_conflicts import RebaseConflicts
 from ralph.git.rebase.rebase_no_op import RebaseNoOp
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_rebase_merge import (
     SKIP_RETRY_AFTER_MERGE_COMMIT,
     is_registered_skip_reason,
@@ -28,6 +29,7 @@ from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.integration_resolution import TreeReadinessAssessment
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -112,12 +114,12 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.mutations.append("fast_forward_target")
         if self.land_failures > 0:
             self.land_failures -= 1
-            return False, "target advanced concurrently (not an ancestor of feature)"
-        return True, ""
+            return fast_forward_failure("target advanced concurrently (not an ancestor of feature)")
+        return ResolvedOutcome()
 
     def land_feature(
         self,
@@ -127,7 +129,7 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         return self.fast_forward_target(
             root,
             target,

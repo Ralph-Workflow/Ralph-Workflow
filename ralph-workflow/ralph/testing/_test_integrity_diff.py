@@ -44,6 +44,11 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "mirrored bundle; the retired package stays absent under "
         "tests/test_retired_skills_package_absent.py"
     ),
+    "ralph-workflow/tests/scenarios/test_integration_scenario_matrix_rebase_landing.py": (
+        "the module duplicated the gated symptom-4 and symptom-5 rebase-landing "
+        "scenarios; those tests now live unchanged in "
+        "tests/scenarios/test_integration_scenario_matrix.py"
+    ),
 }
 
 CATEGORY_TEST_WEAKENING = "test-weakening"

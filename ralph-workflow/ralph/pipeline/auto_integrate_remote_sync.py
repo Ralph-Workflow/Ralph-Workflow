@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -302,11 +302,6 @@ def _record_publication_failure(
     return new_state
 
 
-@runtime_checkable
-class _OutcomeWithSucceeded(Protocol):
-    succeeded: bool
-
-
 def _dispatch_ref_comparison(
     *,
     config: UnifiedConfig | None,
@@ -355,7 +350,7 @@ def _dispatch_ref_comparison(
                 last_refresh=REFRESH_UNREACHABLE,
                 publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
-        raw_outcome: object = fast_forward_target_to_remote(
+        ff_outcome = fast_forward_target_to_remote(
             repo_root,
             target,
             chosen_remote,
@@ -364,29 +359,11 @@ def _dispatch_ref_comparison(
         )
         from ralph.pipeline.resolution_outcome import (
             ResolvedOutcome,
-            RetryLaterOutcome,
-            WaitingOutcome,
+            stop_resolution_outcome_reason,
         )
 
-        if isinstance(raw_outcome, tuple):
-            advanced = bool(raw_outcome[0])
-            refusal = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
-        elif isinstance(raw_outcome, bool):
-            advanced, refusal = raw_outcome, "" if raw_outcome else "fast forward failed"
-        elif isinstance(raw_outcome, ResolvedOutcome):
-            advanced, refusal = True, ""
-        elif isinstance(raw_outcome, RetryLaterOutcome):
-            advanced, refusal = False, raw_outcome.on_change or ""
-        elif isinstance(raw_outcome, WaitingOutcome):
-            advanced, refusal = False, raw_outcome.external_condition
-        elif isinstance(raw_outcome, _OutcomeWithSucceeded):
-            advanced = bool(raw_outcome.succeeded)
-            on_change: object = getattr(raw_outcome, "on_change", None)
-            reason: object = getattr(raw_outcome, "reason", "")
-            refusal = str(on_change or reason or "")
-        else:
-            advanced, refusal = False, str(raw_outcome)
-        if advanced:
+        refusal = stop_resolution_outcome_reason(ff_outcome)
+        if isinstance(ff_outcome, ResolvedOutcome):
             return reconcile_remote_publication(
                 config,
                 repo_root,

@@ -358,7 +358,6 @@ def _resume_owned_operation(
     resumed = record.with_transition(transition, **kwargs)
     write_record(root, resumed)
     from ralph.pipeline.auto_integrate_recovery_record import _recover_pending_merge
-
     from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
     return _recover_pending_merge(

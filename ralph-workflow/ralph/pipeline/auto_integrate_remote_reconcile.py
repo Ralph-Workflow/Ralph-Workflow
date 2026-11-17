@@ -338,10 +338,9 @@ def _resolve_rebase_stop(
     if resolve_rebase_in_progress is not _DEFAULT_RESOLVE_REBASE_IN_PROGRESS:
         return _resolve_overridden_rebase(owner, target, resolver, config)
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
     controller = current_agent_effect_dependencies().recovery_controller
     attempt_result = attempt_stop_resolution(

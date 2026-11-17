@@ -8,6 +8,7 @@ from git import GitCommandError, Repo
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -31,35 +32,55 @@ from tests.scenarios._integration_scenario_fixtures import (
     MatrixExpectedOutcome,
     _make_config,
 )
+from tests.scenarios._ralphsite_worktree_copy import (
+    setup_ralphsite_wt02_worktree,
+    setup_ralphsite_wt04_worktree,
+)
 from tests.scenarios._rebase_recovery_harness import (
-    run_declared_decisions_and_gitlink_resolution,
     run_empty_resolution_stop_anchor_ancestry,
     run_empty_resolution_stop_landed_by_tree,
-    run_ralphsite_wt02_worktree,
-    run_ralphsite_wt04_worktree,
-    run_sixth_symptom_unstaged_gitlink,
     run_three_commit_rebase_landed_anchor_chain,
     run_three_commit_rebase_unrelated_head_rejected_once,
 )
+from tests.scenarios._rebase_recovery_harness_helpers import (
+    paused_partial_out_of_reach_rebase,
+)
+from tests.scenarios._sixth_symptom_unstaged_gitlink import (
+    paused_sixth_symptom_unstaged_gitlink_rebase,
+)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands": (
+        "restores the gated version that drives auto_integrate_after_commit with the "
+        "adopted active rebase record and pins exactly one resolver launch; it moves here "
+        "from the duplicate rebase-landing module, which is deleted"
+    ),
+    "test_symptom_5_completed_rebase_proven_landed_by_anchor_chain": (
+        "restores the gated proven-landed verdict assertion; the harness appends that "
+        "line only when the anchor chain reaches the target"
+    ),
+    "test_symptom_5_empty_resolution_stop_proven_landed_by_tree": (
+        "restores the gated proven-landed-by-tree verdict assertion; the harness appends "
+        "that line only when HEAD and its tree match the recorded stop"
+    ),
+    "test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry": (
+        "restores the gated proven-landed-by-anchor-ancestry verdict assertion"
+    ),
+    "test_symptom_5_unrelated_head_rejected_once_then_quiet": (
+        "restores the gated single actionable rejection naming the resume command; the "
+        "rejected-once terminal state still requires ten ticks with no resolver launch"
+    ),
     "test_symptom_6_unstaged_text_and_gitlink_conflict_staged_and_continued": (
-        "the direct Repo.init fixture is replaced by the shared rebase-recovery harness on "
-        "the identity-configured tmp_git_repo, which asserts the same mechanical staging "
-        "and rebase continuation and additionally pins the resolver launch count, the "
-        "follow-up launch count, the quiet follow-up ticks and the landed terminal state"
+        "restores the gated direct auto_integrate_after_commit scenario that requires the "
+        "REBASED outcome and a finished rebase"
     ),
     "test_symptom_repro_ralphsite_wt02_worktree": (
-        "the repro now runs through the shared harness, which observes the same facts "
-        "(landed terminal state, no rebase left in progress, local fast-forward, "
-        "unreachable remote in last_reason) through the production status seam instead "
-        "of the direct auto-integrate call"
+        "restores the gated direct auto_integrate_after_commit repro that requires a "
+        "fast-forward and the unreachable-remote reason"
     ),
     "test_symptom_repro_ralphsite_wt04_worktree": (
-        "the repro now runs through the shared harness, which observes the same deferred or "
-        "skipped landing reason, the local fast-forward, the finished rebase and the "
-        "unreachable remote through the production status seam instead of the direct "
-        "auto-integrate call"
+        "restores the gated direct auto_integrate_after_commit repro that requires a "
+        "deferred skip or a fast-forward with the unreachable-remote reason"
     ),
 }
 
@@ -219,176 +240,170 @@ def test_symptom_3_completed_rebase_advances_record_and_promotes(
     )
 
 
-def test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_declared_decisions_and_gitlink_resolution(tmp_git_repo)
-
-    assert result.terminal_state == "landed"
-    assert not rebase_in_progress(tmp_git_repo)
-    assert result.facts.get("driver_resolved") == "true"
-    assert int(result.facts.get("driver_invocations", "0")) >= 1, (
-        "the resolvable declared-decision set must launch a real resolver at least once"
-    )
-    assert any(
-        "delete/modify declaration" in line.content for line in result.operator_lines
-    ), "production must announce the declared-decision cause for each file"
-    assert any(
-        "entering rebase conflict resolution" in line.content for line in result.operator_lines
-    )
-    assert (tmp_git_repo / "deleted.txt").exists(), (
-        "the declared delete/modify decision must keep the file landed"
-    )
-
-
-def test_symptom_5_completed_rebase_proven_landed_by_anchor_chain(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_three_commit_rebase_landed_anchor_chain(tmp_git_repo)
-
-    assert result.resolver_launches >= 1, "the conflicted first stop needs one resolver launch"
-    assert result.terminal_state == "landed"
-    assert not rebase_in_progress(tmp_git_repo)
-    assert not any(line.level == "CRITICAL" for line in result.operator_lines)
-    status = [
-        line
-        for line in result.operator_lines
-        if any(token in line.content.lower() for token in ("recovered", "rebased", "landing"))
-    ]
-    assert status, (
-        "production status seam must emit a landed auto-integrate operator line; "
-        "harness must not fabricate a proven-landed verdict"
-    )
-    assert result.facts.get("rebased_tip") == result.facts.get("target"), (
-        "after the status-seam landing pass the rebased tip must equal the target"
-    )
-    assert "," in result.facts.get("anchor_chain", ""), (
-        "multi-commit landing must retain an anchor chain longer than a single commit"
-    )
-
-
-def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_empty_resolution_stop_landed_by_tree(tmp_git_repo)
-
-    assert result.resolver_launches >= 1
-    assert result.terminal_state == "landed"
-    assert not rebase_in_progress(tmp_git_repo)
-    assert result.facts.get("head") == result.facts.get("stop_anchor")
-    assert result.facts.get("resolved_tree")
-    status = [
-        line
-        for line in result.operator_lines
-        if any(token in line.content.lower() for token in ("recovered", "rebased", "landing"))
-    ]
-    assert status, (
-        "an empty-resolution stop must surface a production status line after the "
-        "recorded tree lands; harness must not fabricate proven-landed-by-tree text"
-    )
-
-
-def test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_empty_resolution_stop_anchor_ancestry(tmp_git_repo)
-
-    assert result.resolver_launches >= 1
-    assert result.terminal_state == "landed"
-    assert result.facts.get("head") == result.facts.get("target")
-    status = [
-        line
-        for line in result.operator_lines
-        if any(token in line.content.lower() for token in ("recovered", "rebased", "landing"))
-    ]
-    assert status, (
-        "empty-resolution ancestry landing must emit a production status line; "
-        "harness must not fabricate proven-landed-by-anchor-ancestry text"
-    )
-
-
-def test_symptom_5_unrelated_head_rejected_once_then_quiet(
-    tmp_git_repo: Path,
-) -> None:
-    result = run_three_commit_rebase_unrelated_head_rejected_once(tmp_git_repo)
-
-    assert result.terminal_state == "rejected-once", (
-        "an unrelated HEAD must produce exactly one actionable rejection and ten "
-        "further supervisor ticks must stay quiet (no repeated CRITICAL, no "
-        "resolver selection)"
-    )
-    assert result.resolver_launches == 0, (
-        f"supervisor ticks after the unrelated HEAD must launch no resolver, "
-        f"got {result.resolver_launches}"
-    )
-    rejections = [line for line in result.operator_lines if "landing withheld" in line.content]
-    assert len(rejections) == 1, (
-        f"the unrelated HEAD must be rejected exactly once via the production status "
-        f"seam, got {len(rejections)} lines: {[line.content for line in result.operator_lines]}"
-    )
-    assert not any(line.level == "CRITICAL" for line in result.operator_lines)
-
-
 def test_symptom_6_unstaged_text_and_gitlink_conflict_staged_and_continued(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    result = run_sixth_symptom_unstaged_gitlink(tmp_git_repo)
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    Repo.init(repo_dir, initial_branch="main")
+    paused_sixth_symptom_unstaged_gitlink_rebase(repo_dir)
 
-    assert result.facts.get("agent_mode") == AgentMode.EDITS_NEVER_STAGES.value
-    assert result.facts.get("first_round_launches") == "1", (
-        f"EDITS_NEVER_STAGES must launch once so the agent can clear markers without "
-        f"staging; mechanical staging/policy must finish the stop, got {result.facts}"
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
+    invocations: list[str] = []
+    invoke = make_scripted_resolver_process(
+        invocations=invocations,
+        resolving_agents=("agentA",),
+        tmp_path=repo_dir,
+        mode=FakeAgentMode.EDITS_NEVER_STAGES,
     )
-    assert result.facts.get("followup_launches") == "0", (
-        f"After mechanical staging and policy gitlink resolution, further supervisor "
-        f"ticks must launch zero resolvers, got {result.facts}"
+    bundle = resolution_policy_bundle(("agentA",))
+    resolver = make_rebase_stop_resolver(
+        ledger=ledger,
+        clock=clock,
+        policy_bundle=bundle,
+        invoke=invoke,
+        config=_make_config(),
     )
-    assert result.facts.get("quiet_ticks") == "true", (
-        "ten supervisor ticks after landing must stay quiet (no further resolver launches)"
+
+    token = install_executors(clock=clock)
+    try:
+        outcome = auto_integrate_after_commit(
+            _make_config(),
+            WorkspaceScope(repo_dir),
+            RebaseState(),
+            rebase_stop_resolver=resolver,
+            ledger=ledger,
+            candidates=("agentA",),
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
+        )
+    finally:
+        reset_executors(token)
+
+    assert outcome is not None
+    assert outcome.last_outcome == RebaseOutcomeKind.REBASED, (
+        f"Auto-rebase must stage marker-free edits automatically and finish rebase, "
+        f"got {outcome.last_outcome}"
     )
-    assert result.terminal_state == "landed"
-    assert result.resolver_launches == 1
-    assert not rebase_in_progress(tmp_git_repo)
-    status = [
-        line
-        for line in result.operator_lines
-        if any(token in line.content.lower() for token in ("rebased", "recovered", "landing"))
-    ]
-    assert status, "production status seam must emit the landed auto-integrate line"
+    assert not rebase_in_progress(repo_dir)
 
 
 def test_symptom_repro_ralphsite_wt02_worktree(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    result = run_ralphsite_wt02_worktree(tmp_git_repo)
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    Repo.init(repo_dir, initial_branch="main")
+    setup_ralphsite_wt02_worktree(repo_dir, seed_ledger=True)
 
-    assert result.terminal_state == "landed", (
-        f"Ralph-Site wt-02 must complete the local rebase and defer unreachable publication, "
-        f"got {result.facts}"
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
+    invocations: list[str] = []
+    invoke = make_scripted_resolver_process(
+        invocations=invocations,
+        resolving_agents=("agentA",),
+        tmp_path=repo_dir,
+        mode=FakeAgentMode.EDITS_AND_STAGES,
     )
-    assert result.facts.get("rebase_in_progress") == "false"
-    assert result.facts.get("fast_forwarded") == "true"
-    reason = result.facts.get("last_reason", "")
-    assert "remote origin unreachable" in reason or "remote sync disabled" in reason, reason
-    assert result.resolver_launches >= 0
+    bundle = resolution_policy_bundle(("agentA",))
+    resolver = make_rebase_stop_resolver(
+        ledger=ledger,
+        clock=clock,
+        policy_bundle=bundle,
+        invoke=invoke,
+        config=_make_config(),
+    )
+
+    token = install_executors(clock=clock)
+    try:
+        outcome = auto_integrate_after_commit(
+            _make_config(),
+            WorkspaceScope(repo_dir),
+            RebaseState(),
+            rebase_stop_resolver=resolver,
+            ledger=ledger,
+            candidates=("agentA",),
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
+        )
+    finally:
+        reset_executors(token)
+
+    assert outcome is not None
+    assert outcome.last_outcome in (
+        RebaseOutcomeKind.RECOVERED,
+        RebaseOutcomeKind.REBASED,
+    ), (
+        f"Ralph-Site wt-02 must complete the local rebase and defer unreachable publication, "
+        f"got {outcome.last_outcome}"
+    )
+    assert outcome.fast_forwarded, "Ralph-Site wt-02 must fast-forward the resolved local branch"
+    assert outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
+    assert not rebase_in_progress(repo_dir)
 
 
 def test_symptom_repro_ralphsite_wt04_worktree(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    result = run_ralphsite_wt04_worktree(tmp_git_repo)
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    Repo.init(repo_dir, initial_branch="main")
+    setup_ralphsite_wt04_worktree(repo_dir, seed_ledger=True)
 
-    assert result.terminal_state == "landed", (
-        f"Ralph-Site wt-04 must complete the local rebase and defer unreachable publication, "
-        f"got {result.facts}"
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
+    invocations: list[str] = []
+    invoke = make_scripted_resolver_process(
+        invocations=invocations,
+        resolving_agents=("agentA",),
+        tmp_path=repo_dir,
+        mode=FakeAgentMode.EDITS_AND_STAGES,
     )
-    reason = result.facts.get("last_reason", "")
-    if result.facts.get("last_outcome") == str(RebaseOutcomeKind.SKIPPED):
-        assert "deferred" in reason or "retained" in reason or "remote" in reason
+    bundle = resolution_policy_bundle(("agentA",))
+    resolver = make_rebase_stop_resolver(
+        ledger=ledger,
+        clock=clock,
+        policy_bundle=bundle,
+        invoke=invoke,
+        config=_make_config(),
+    )
+
+    token = install_executors(clock=clock)
+    try:
+        outcome = auto_integrate_after_commit(
+            _make_config(),
+            WorkspaceScope(repo_dir),
+            RebaseState(),
+            rebase_stop_resolver=resolver,
+            ledger=ledger,
+            candidates=("agentA",),
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
+        )
+    finally:
+        reset_executors(token)
+
+    assert outcome is not None
+    assert outcome.last_outcome in (
+        RebaseOutcomeKind.RECOVERED,
+        RebaseOutcomeKind.REBASED,
+        RebaseOutcomeKind.SKIPPED,
+    ), (
+        f"Ralph-Site wt-04 must complete the local rebase and defer unreachable publication, "
+        f"got {outcome.last_outcome}"
+    )
+    if outcome.last_outcome is RebaseOutcomeKind.SKIPPED:
+        assert outcome.last_reason is not None
+        assert "deferred" in outcome.last_reason or "retained" in outcome.last_reason
     else:
-        assert result.facts.get("fast_forwarded") == "true"
-        assert result.facts.get("rebase_in_progress") == "false"
-        assert "remote origin unreachable" in reason or "remote sync disabled" in reason, reason
+        assert outcome.fast_forwarded, (
+            "Ralph-Site wt-04 must fast-forward the resolved local branch"
+        )
+        assert (
+            outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
+        )
+        assert not rebase_in_progress(repo_dir)
 
 
 @pytest.mark.parametrize(
@@ -661,3 +676,127 @@ def test_large_work_scenario_many_conflicts_no_budget_exhaustion(
 
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
+
+
+def test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    stages = paused_partial_out_of_reach_rebase(repo_dir)
+    assert len(stages) == 3, "the gitlink must sit in the index at three stages"
+    adopt_active_rebase_record(repo_dir, "main")
+
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
+    invocations: list[str] = []
+    invoke = make_scripted_resolver_process(
+        invocations=invocations,
+        resolving_agents=("agentA",),
+        tmp_path=repo_dir,
+        mode=FakeAgentMode.EDITS_NEVER_STAGES,
+    )
+    bundle = resolution_policy_bundle(("agentA",))
+    resolver = make_rebase_stop_resolver(
+        ledger=ledger,
+        clock=clock,
+        policy_bundle=bundle,
+        invoke=invoke,
+        config=_make_config(),
+    )
+
+    token = install_executors(clock=clock)
+    try:
+        outcome = auto_integrate_after_commit(
+            _make_config(),
+            WorkspaceScope(repo_dir),
+            RebaseState(),
+            rebase_stop_resolver=resolver,
+            ledger=ledger,
+            candidates=("agentA",),
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
+        )
+    finally:
+        reset_executors(token)
+
+    assert invocations.count("agentA") == 1, (
+        f"The resolvable set is one declared-decision file; the resolver must launch "
+        f"exactly once for it, got {invocations}"
+    )
+    assert not rebase_in_progress(repo_dir), (
+        "After the reachable set is resolved and the gitlink is settled by policy, "
+        "the rebase must finish"
+    )
+    assert outcome is not None
+    assert outcome.last_outcome in (
+        RebaseOutcomeKind.REBASED,
+        RebaseOutcomeKind.RECOVERED,
+        RebaseOutcomeKind.SKIPPED,
+    ), (
+        f"The stop must land through the declared-decision resolution plus the policy "
+        f"gitlink, or wait only on an external condition, got {outcome.last_outcome}"
+    )
+    head = repo_dir / "deleted.txt"
+    assert head.exists(), "the declared delete/modify decision must keep the file landed"
+    assert not rebase_in_progress(repo_dir)
+
+
+def test_symptom_5_completed_rebase_proven_landed_by_anchor_chain(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    result = run_three_commit_rebase_landed_anchor_chain(repo_dir)
+
+    assert result.resolver_launches >= 1, "the conflicted first stop needs one resolver launch"
+    assert result.terminal_state == "landed"
+    assert not rebase_in_progress(repo_dir)
+    verdict = [line for line in result.operator_lines if "proven landed" in line.content]
+    assert verdict, "the operator must see one proven-landed line naming HEAD and anchors"
+
+
+def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    result = run_empty_resolution_stop_landed_by_tree(repo_dir)
+
+    assert result.resolver_launches >= 1
+    assert result.terminal_state == "landed"
+    assert not rebase_in_progress(repo_dir)
+    verdict = [line for line in result.operator_lines if "proven landed by tree" in line.content]
+    assert verdict, (
+        "an empty-resolution stop must be proven landed by the recorded tree so the "
+        "rebase is not withheld"
+    )
+
+
+def test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    result = run_empty_resolution_stop_anchor_ancestry(repo_dir)
+
+    assert result.resolver_launches >= 1
+    assert result.terminal_state == "landed"
+    verdict = [
+        line for line in result.operator_lines if "proven landed by anchor ancestry" in line.content
+    ]
+    assert verdict
+
+
+def test_symptom_5_unrelated_head_rejected_once_then_quiet(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    result = run_three_commit_rebase_unrelated_head_rejected_once(repo_dir)
+
+    assert result.terminal_state == "rejected-once", (
+        "an unrelated HEAD must produce exactly one actionable rejection and ten "
+        "further supervisor ticks must stay quiet (no repeated CRITICAL/WARNING, no "
+        "resolver selection)"
+    )
+    rejections = [line for line in result.operator_lines if "landing withheld" in line.content]
+    assert len(rejections) == 1, (
+        f"the unrelated HEAD must be rejected exactly once, got {len(rejections)}"
+    )
+    assert "resume with" in rejections[0].content

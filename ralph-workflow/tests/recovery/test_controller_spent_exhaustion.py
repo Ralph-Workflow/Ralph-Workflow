@@ -136,6 +136,7 @@ def drive_conflict_resolution_session(
             target="main",
             resolver=lambda *args: False,
             agent_runner=runner,
+            recovery_controller=session.recovery_controller,
         ),
     )
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult

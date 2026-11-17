@@ -915,9 +915,7 @@ def test_shared_controller_identity_links_ordinary_finalize_to_continuation_gate
     root, _cfg = _setup_repo_and_config(tmp_path)
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
-    ctrl = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
-    )
+    ctrl = RecoveryController(options=RecoveryControllerOptions(clock=clock, ledger=ledger))
     ctrl.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
     record = IntegrationRecord(
         phase="integrating",

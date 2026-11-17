@@ -341,9 +341,7 @@ def test_live_git_evidence_blocks_stale_resolved_state(
         lambda *_args, **_kwargs: GitRunResult((), 0, porcelain, ""),
     )
     if "UU" in porcelain:
-        _observe_unmerged(
-            monkeypatch, UnmergedPathsObservation(("src/a.py",), query_ok=True)
-        )
+        _observe_unmerged(monkeypatch, UnmergedPathsObservation(("src/a.py",), query_ok=True))
     else:
         _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
@@ -422,9 +420,7 @@ def test_a_stale_record_still_blocks_when_the_tree_cannot_be_read(tmp_path: Path
     assert verdict.status is EXHAUSTED
 
 
-def test_clean_repository_permits_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_clean_repository_permits_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
@@ -438,9 +434,7 @@ def test_clean_repository_permits_dispatch(
     assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
-def test_tree_readiness_assessment_fields(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_tree_readiness_assessment_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     assessment = assess_tree_readiness(
         tmp_path,

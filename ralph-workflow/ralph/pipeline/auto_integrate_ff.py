@@ -116,7 +116,7 @@ def fast_forward_target(
 ) -> StopResolutionOutcome:
     early_reason = _landing_gate_reason(repo_root, target, feature_sha)
     if early_reason:
-        return _fast_forward_failure(early_reason)
+        return fast_forward_failure(early_reason)
     primary_root = find_main_worktree_root(repo_root)
     verdict, wt = worktree_lookup(primary_root, target)
     if verdict == WORKTREE_QUERY_FAILED:
@@ -125,7 +125,7 @@ def fast_forward_target(
             "refusing to move the shared ref",
             target,
         )
-        return _fast_forward_failure(_TARGET_WORKTREE_QUERY_FAILED)
+        return fast_forward_failure(_TARGET_WORKTREE_QUERY_FAILED)
     if verdict == WORKTREE_FOUND and wt is not None:
         return _fast_forward_via_target_worktree(
             repo_root,
@@ -187,7 +187,7 @@ def _fast_forward_via_target_worktree(
         target,
         worktree_root,
     )
-    return _fast_forward_failure(_TARGET_CHECKED_OUT_REFUSED)
+    return fast_forward_failure(_TARGET_CHECKED_OUT_REFUSED)
 
 
 def _fast_forward_via_cas(
@@ -197,32 +197,27 @@ def _fast_forward_via_cas(
 ) -> StopResolutionOutcome:
     fresh_target_sha, reason = _observe_landable_target(repo_root, target, feature_sha)
     if fresh_target_sha is None:
-        return _fast_forward_failure(reason)
+        return fast_forward_failure(reason)
     if not compare_and_swap_branch(repo_root, target, fresh_target_sha, feature_sha):
-        return _fast_forward_failure(_TARGET_CAS_MISMATCH)
+        return fast_forward_failure(_TARGET_CAS_MISMATCH)
     return ResolvedOutcome()
 
 
-def _fast_forward_failure(reason: str) -> StopResolutionOutcome:
+def fast_forward_failure(reason: str) -> StopResolutionOutcome:
     if reason in _RETRYABLE_REASONS:
         return RetryLaterOutcome(on_change=reason)
     return WaitingOutcome(external_condition=reason, resumes_when="target branch exists")
 
 
-def is_retryable_fast_forward_failure(
-    outcome: StopResolutionOutcome | tuple[object, ...] | str | bool,
-) -> bool:
+def is_retryable_fast_forward_failure(outcome: object) -> bool:
     if isinstance(outcome, str):
         return outcome in _RETRYABLE_REASONS
-    if isinstance(outcome, tuple):
-        return bool(len(outcome) > 1 and not outcome[0] and outcome[1] in _RETRYABLE_REASONS)
-    if isinstance(outcome, bool):
-        return False
-    return bool(isinstance(outcome, RetryLaterOutcome))
+    return isinstance(outcome, RetryLaterOutcome)
 
 
 __all__ = [
     "RemoteClient",
+    "fast_forward_failure",
     "fast_forward_target",
     "is_retryable_fast_forward_failure",
     "retry_pending_remote_publish",

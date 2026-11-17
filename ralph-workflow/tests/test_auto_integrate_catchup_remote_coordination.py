@@ -19,6 +19,11 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    RetryLaterOutcome,
+    StopResolutionOutcome,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -120,11 +125,11 @@ def test_origin_ahead_advances_target_before_checkout(
         sha: str,
         *,
         reclaim_target_worktree: bool,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         assert sha == _REMOTE_SHA
         assert reclaim_target_worktree is False
         events.append("advance-target")
-        return True, ""
+        return ResolvedOutcome()
 
     monkeypatch.setattr(catchup, "fast_forward_target", _advance)
     original_checkout = catchup.fast_forward_via_worktree
@@ -150,7 +155,11 @@ def test_target_advance_refusal_does_not_touch_checkout(
         catchup, "refresh_target_from_remote", lambda *_args, **_kwargs: REFRESH_ORIGIN_AHEAD
     )
     monkeypatch.setattr(catchup, "observe_remote_target_sha", lambda *_args: _REMOTE_SHA)
-    monkeypatch.setattr(catchup, "fast_forward_target", lambda *_args, **_kwargs: (False, "cas"))
+    monkeypatch.setattr(
+        catchup,
+        "fast_forward_target",
+        lambda *_args, **_kwargs: RetryLaterOutcome(on_change="cas"),
+    )
 
     outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
 
@@ -171,7 +180,7 @@ def test_non_ahead_refresh_never_advances_target(
     monkeypatch.setattr(
         catchup,
         "fast_forward_target",
-        lambda *_args, **_kwargs: target_advances.append("advanced") or (True, ""),
+        lambda *_args, **_kwargs: target_advances.append("advanced") or ResolvedOutcome(),
     )
 
     catchup.attempt_catchup_fast_forward(_config(), tmp_path)

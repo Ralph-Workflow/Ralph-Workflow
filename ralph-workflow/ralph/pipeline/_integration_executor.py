@@ -39,6 +39,7 @@ class _LiveRebaseContinuationExecutor:
             attempt_stop_resolution,
             resolution_gate_record,
         )
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.resolution_outcome import (
             ConfigFailureOutcome,
@@ -49,8 +50,6 @@ class _LiveRebaseContinuationExecutor:
         )
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
         controller = current_agent_effect_dependencies().recovery_controller
         outcome = attempt_stop_resolution(

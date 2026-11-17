@@ -122,11 +122,7 @@ def _module_level_functions(
 ) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     if not isinstance(tree, ast.Module):
         return []
-    return [
-        node
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    return [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
 def _call_unmerged_index_violations(rel: str, node: ast.Call) -> list[Violation]:
@@ -150,17 +146,13 @@ def _xy_set_violations(rel: str, node: ast.AST, xy_names: set[str]) -> list[Viol
         and rel not in _SANCTIONED_XY_CONSUMERS
         and _unmerged_xy_comparisons(node, xy_names)
     ):
-        return [
-            Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")
-        ]
+        return [Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")]
     if (
         isinstance(node, ast.Assign)
         and rel not in _XY_DEFINITION_OWNERS
         and _unmerged_xy_set_definition(node)
     ):
-        return [
-            Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")
-        ]
+        return [Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")]
     return []
 
 
@@ -175,9 +167,7 @@ def _named_function_violations(
     if node.name in _LANDED_DEFINITIONS and rel != _LANDED_OWNER:
         found.append(Violation(rel, node.lineno, "operation landed has a second predicate"))
     if node.name in _RETIRED_PORCELAIN_PATH_EXTRACTORS:
-        found.append(
-            Violation(rel, node.lineno, "porcelain unmerged path extraction is retired")
-        )
+        found.append(Violation(rel, node.lineno, "porcelain unmerged path extraction is retired"))
     return found
 
 

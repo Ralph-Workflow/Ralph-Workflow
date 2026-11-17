@@ -217,94 +217,82 @@ def recover_incomplete_integration(
     recovery_controller: RecoveryController | None = None,
     force_retry: bool = False,
 ) -> RebaseState | None:
-    from ralph.pipeline.effect_executor import (
-        current_agent_effect_dependencies,
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
+    from ralph.pipeline._integration_recovery_controller import (
+        entry_recovery_controller,
+        shared_recovery_controller,
     )
 
-    if recovery_controller is None:
-        recovery_controller = current_agent_effect_dependencies().recovery_controller
-    ambient_token = None
-    if recovery_controller is not None:
-        current = current_agent_effect_dependencies()
-        if current.recovery_controller is not recovery_controller:
-            ambient_token = install_agent_effect_dependencies(
-                agent_runner=current.agent_runner,
-                recovery_controller=recovery_controller,
-                pipeline_deps=current.pipeline_deps,
+    recovery_controller = entry_recovery_controller(
+        Path(workspace_scope.root), config, recovery_controller
+    )
+    with (
+        shared_recovery_controller(recovery_controller),
+        integration_transaction(Path(workspace_scope.root)) as outcome,
+    ):
+        if not outcome.acquired:
+            return _record_skip(
+                reason=outcome.describe("integration worktree busy; recovery will retry"),
+                target=None,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+                record_retained=True,
             )
-    try:
-        with integration_transaction(Path(workspace_scope.root)) as outcome:
-            if not outcome.acquired:
-                return _record_skip(
-                    reason=outcome.describe("integration worktree busy; recovery will retry"),
-                    target=None,
-                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-                    record_retained=True,
-                )
-            startup_publication: RebaseState | None = None
-            if config is not None and remote_sync_enabled(config):
-                target_obj = _configured_target(config)
-                if isinstance(target_obj, str) and target_obj:
-                    startup_publication = reconcile_remote_publication(
-                        config,
-                        Path(workspace_scope.root),
-                        target_obj,
-                        remote=remote_target_name(config),
-                        rebase_stop_resolver=rebase_stop_resolver,
-                    )
-
-            record_outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
-            if record_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-                reason = (
-                    "durable integration record unreadable; escalating through the "
-                    "autonomous fallback ladder; record retained, bytes preserved"
-                ) + (
-                    f" ({record_outcome.unreadable_reason})"
-                    if record_outcome.unreadable_reason
-                    else ""
-                )
-                return RebaseState(
-                    last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
-                    last_reason=reason,
-                    last_target=None,
-                    recovery_record_retained=True,
-                    recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+        startup_publication: RebaseState | None = None
+        if config is not None and remote_sync_enabled(config):
+            target_obj = _configured_target(config)
+            if isinstance(target_obj, str) and target_obj:
+                startup_publication = reconcile_remote_publication(
+                    config,
+                    Path(workspace_scope.root),
+                    target_obj,
+                    remote=remote_target_name(config),
+                    rebase_stop_resolver=rebase_stop_resolver,
                 )
 
-            early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
-            if early is not None:
-                return early
-            record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
-            if isinstance(record, RebaseState):
-                return record
-            recovered = _recover_incomplete_integration_owned(
-                workspace_scope,
-                config=config,
-                conflict_resolver=conflict_resolver,
-                rebase_stop_resolver=rebase_stop_resolver,
-                backend=backend,
-                recovery_controller=recovery_controller,
-                force_retry=force_retry,
+        record_outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
+        if record_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+            reason = (
+                "durable integration record unreadable; escalating through the "
+                "autonomous fallback ladder; record retained, bytes preserved"
+            ) + (
+                f" ({record_outcome.unreadable_reason})" if record_outcome.unreadable_reason else ""
             )
-            if (
-                recovered is None
-                and startup_publication is not None
-                and (
-                    startup_publication.last_push_status == "pushed"
-                    or (
-                        startup_publication.last_publication_decision is not None
-                        and startup_publication.last_publication_decision
-                        != PublicationDecision.PUBLICATION_TERMINAL
-                    )
+            return RebaseState(
+                last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
+                last_reason=reason,
+                last_target=None,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+            )
+
+        early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
+        if early is not None:
+            return early
+        record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
+        if isinstance(record, RebaseState):
+            return record
+        recovered = _recover_incomplete_integration_owned(
+            workspace_scope,
+            config=config,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            backend=backend,
+            recovery_controller=recovery_controller,
+            force_retry=force_retry,
+        )
+        if (
+            recovered is None
+            and startup_publication is not None
+            and (
+                startup_publication.last_push_status == "pushed"
+                or (
+                    startup_publication.last_publication_decision is not None
+                    and startup_publication.last_publication_decision
+                    != PublicationDecision.PUBLICATION_TERMINAL
                 )
-            ):
-                return startup_publication
-            return recovered
-    finally:
-        if ambient_token is not None:
-            reset_agent_effect_dependencies(ambient_token)
+            )
+        ):
+            return startup_publication
+        return recovered
 
 
 def _recover_incomplete_integration_owned(

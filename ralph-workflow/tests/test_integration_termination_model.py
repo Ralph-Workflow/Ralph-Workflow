@@ -27,6 +27,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, stop_resolution_outcome_reason
 from ralph.pipeline.run_time_report import emit_run_time_report_safely, render_run_time_report
 from ralph.pipeline.state import PipelineState
 from tests._fake_git_agent_runner import FakeAgentRunner
@@ -297,12 +298,12 @@ class _TerminationModel:
             self.in_progress = InProgressKind.REBASE
 
     def _land(self) -> None:
-        landed, _reason = self.git_ops.fast_forward_target(
+        outcome = self.git_ops.fast_forward_target(
             self.root,
             self.env.target,
             self.env.feature_sha,
         )
-        if landed:
+        if isinstance(outcome, ResolvedOutcome):
             self.conflict = False
             self.in_progress = InProgressKind.NONE
 
@@ -495,11 +496,13 @@ def test_observed_case_no_merge_is_issued_while_an_agent_is_active(
         model.env.agent_active = True
         before = model.env.target_sha
 
-        landed, reason = model.git_ops.fast_forward_target(
+        outcome = model.git_ops.fast_forward_target(
             tmp_path,
             model.env.target,
             model.env.feature_sha,
         )
+        landed = isinstance(outcome, ResolvedOutcome)
+        reason = stop_resolution_outcome_reason(outcome)
 
         assert not landed, "the merge was issued while an agent was active"
         assert model.env.target_sha == before, "the target moved under an active agent"

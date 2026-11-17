@@ -296,116 +296,33 @@ def auto_integrate_after_commit(
     candidates: Sequence[str] = (),
     recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
-    from ralph.pipeline.effect_executor import (
-        current_agent_effect_dependencies,
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
+    from ralph.pipeline._integration_recovery_controller import (
+        entry_recovery_controller,
+        shared_recovery_controller,
     )
 
     executors_token = install_executors(git_ops, agent_runner)
-    ambient_token = None
     try:
-        from ralph.pipeline.integration_resolution import retained_integration_reason
-
-        if recovery_controller is None:
-            recovery_controller = current_agent_effect_dependencies().recovery_controller
-        if recovery_controller is not None:
-            current = current_agent_effect_dependencies()
-            if current.recovery_controller is not recovery_controller:
-                ambient_token = install_agent_effect_dependencies(
-                    agent_runner=current.agent_runner,
-                    recovery_controller=recovery_controller,
-                    pipeline_deps=current.pipeline_deps,
-                )
-        root = Path(workspace_scope.root)
-        target = resolve_integration_target(config, root) if (root / ".git").exists() else None
-        state = containment_release(root, target, state)
-        if retained_integration_reason(root) is None and (root / ".git").exists():
-            ctx = _auto_integrate_resolve_context(config, workspace_scope)
-            early_skip, _usable_ctx = _check_early_skips(
-                ctx,
-                missing_target=_configured_target(config),
-            )
-            if early_skip is not None:
-                handled, synced = _sync_remote_before_target_skip(
-                    config, ctx, state, rebase_stop_resolver=rebase_stop_resolver
-                )
-                if handled:
-                    return synced or carry_budget_through_skip(early_skip, prior=state)
-
-        identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
-        effective_ledger = resolve_failure_ledger(ledger)
-        allowed = (
-            _configured_resolver_allowed(
-                state,
-                target,
-                identity,
-                ledger=effective_ledger,
-                candidates=candidates,
-            )
-            if target
-            else True
-        )
-        effective_resolver = conflict_resolver if allowed else None
-        resolver_suppressed = conflict_resolver is not None and not allowed
-        repository_conflict_exhausted = bool(
-            resolver_suppressed
-            and target
-            and _repository_conflict_exhausted(state, target, identity)
-        )
-        agents_unavailable = resolver_suppressed and not repository_conflict_exhausted
-        recovered = _recover_before_attempt_probe(
+        controller = entry_recovery_controller(
+            Path(workspace_scope.root),
             config,
-            workspace_scope,
-            None,
-            effective_resolver,
-            rebase_stop_resolver if allowed else None,
-            recovery_controller=recovery_controller,
+            recovery_controller,
+            ledger=resolve_failure_ledger(ledger),
         )
-        if recovered is not None:
-            if target:
-                recovered = (
-                    _pending_for_unavailable_agents(
-                        recovered,
-                        prior=state,
-                        target=target,
-                        identity=identity,
-                    )
-                    if agents_unavailable
-                    else apply_completed_attempt_budget(
-                        recovered,
-                        prior=state,
-                        target=target,
-                        identity=identity,
-                        resolver_suppressed=resolver_suppressed,
-                    )
-                )
-            if repository_conflict_exhausted:
-                from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
-                from ralph.pipeline.auto_integrate_record import clear_record
-                from ralph.pipeline.auto_integrate_resolve import _abort_merge_safely
-
-                if merge_state(root) == MERGE_STATE_IN_PROGRESS:
-                    _abort_merge_safely(root)
-                    clear_record(root)
-                    recovered.clear_recovery_record_retained()
-            return preserve_unresolved_resolution_state(recovered, prior=state)
-        return preserve_unresolved_resolution_state(
-            _auto_integrate_after_commit_inner(
+        with shared_recovery_controller(controller):
+            return _auto_integrate_after_commit_entry(
                 config,
                 workspace_scope,
                 state,
-                conflict_resolver,
+                conflict_resolver=conflict_resolver,
                 rebase_stop_resolver=rebase_stop_resolver,
                 display=display,
                 sleep=sleep,
                 jitter=jitter,
-                ledger=effective_ledger,
+                ledger=ledger,
                 candidates=candidates,
-                recovery_controller=recovery_controller,
-            ),
-            prior=state,
-        )
+                recovery_controller=controller,
+            )
     except TerminalStateViolationError:
         raise
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
@@ -420,9 +337,112 @@ def auto_integrate_after_commit(
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
     finally:
-        if ambient_token is not None:
-            reset_agent_effect_dependencies(ambient_token)
         reset_executors(executors_token)
+
+
+def _auto_integrate_after_commit_entry(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    state: RebaseState,
+    *,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    display: ParallelDisplay | None,
+    sleep: Callable[[float], None] | None,
+    jitter: Callable[[], float] | None,
+    ledger: AgentFailureLedger | None,
+    candidates: Sequence[str],
+    recovery_controller: RecoveryController,
+) -> RebaseState | None:
+    from ralph.pipeline.integration_resolution import retained_integration_reason
+
+    root = Path(workspace_scope.root)
+    target = resolve_integration_target(config, root) if (root / ".git").exists() else None
+    state = containment_release(root, target, state)
+    if retained_integration_reason(root) is None and (root / ".git").exists():
+        ctx = _auto_integrate_resolve_context(config, workspace_scope)
+        early_skip, _usable_ctx = _check_early_skips(
+            ctx,
+            missing_target=_configured_target(config),
+        )
+        if early_skip is not None:
+            handled, synced = _sync_remote_before_target_skip(
+                config, ctx, state, rebase_stop_resolver=rebase_stop_resolver
+            )
+            if handled:
+                return synced or carry_budget_through_skip(early_skip, prior=state)
+
+    identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
+    effective_ledger = resolve_failure_ledger(ledger)
+    allowed = (
+        _configured_resolver_allowed(
+            state,
+            target,
+            identity,
+            ledger=effective_ledger,
+            candidates=candidates,
+        )
+        if target
+        else True
+    )
+    effective_resolver = conflict_resolver if allowed else None
+    resolver_suppressed = conflict_resolver is not None and not allowed
+    repository_conflict_exhausted = bool(
+        resolver_suppressed and target and _repository_conflict_exhausted(state, target, identity)
+    )
+    agents_unavailable = resolver_suppressed and not repository_conflict_exhausted
+    recovered = _recover_before_attempt_probe(
+        config,
+        workspace_scope,
+        None,
+        effective_resolver,
+        rebase_stop_resolver if allowed else None,
+        recovery_controller=recovery_controller,
+    )
+    if recovered is not None:
+        if target:
+            recovered = (
+                _pending_for_unavailable_agents(
+                    recovered,
+                    prior=state,
+                    target=target,
+                    identity=identity,
+                )
+                if agents_unavailable
+                else apply_completed_attempt_budget(
+                    recovered,
+                    prior=state,
+                    target=target,
+                    identity=identity,
+                    resolver_suppressed=resolver_suppressed,
+                )
+            )
+        if repository_conflict_exhausted:
+            from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
+            from ralph.pipeline.auto_integrate_record import clear_record
+            from ralph.pipeline.auto_integrate_resolve import _abort_merge_safely
+
+            if merge_state(root) == MERGE_STATE_IN_PROGRESS:
+                _abort_merge_safely(root)
+                clear_record(root)
+                recovered.clear_recovery_record_retained()
+        return preserve_unresolved_resolution_state(recovered, prior=state)
+    return preserve_unresolved_resolution_state(
+        _auto_integrate_after_commit_inner(
+            config,
+            workspace_scope,
+            state,
+            conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
+            sleep=sleep,
+            jitter=jitter,
+            ledger=effective_ledger,
+            candidates=candidates,
+            recovery_controller=recovery_controller,
+        ),
+        prior=state,
+    )
 
 
 def auto_integrate_on_phase_transition(
@@ -439,22 +459,31 @@ def auto_integrate_on_phase_transition(
     agent_runner: AgentRunner | None = None,
     recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
+    from ralph.pipeline._integration_recovery_controller import (
+        entry_recovery_controller,
+        shared_recovery_controller,
+    )
+
     executors_token = install_executors(git_ops, agent_runner)
     try:
-        return preserve_unresolved_resolution_state(
-            _auto_integrate_on_phase_transition_inner(
-                config,
-                workspace_scope,
-                state,
-                conflict_resolver=conflict_resolver,
-                rebase_stop_resolver=rebase_stop_resolver,
-                display=display,
-                sleep=sleep,
-                jitter=jitter,
-                recovery_controller=recovery_controller,
-            ),
-            prior=state,
+        controller = entry_recovery_controller(
+            Path(workspace_scope.root), config, recovery_controller
         )
+        with shared_recovery_controller(controller):
+            return preserve_unresolved_resolution_state(
+                _auto_integrate_on_phase_transition_inner(
+                    config,
+                    workspace_scope,
+                    state,
+                    conflict_resolver=conflict_resolver,
+                    rebase_stop_resolver=rebase_stop_resolver,
+                    display=display,
+                    sleep=sleep,
+                    jitter=jitter,
+                    recovery_controller=controller,
+                ),
+                prior=state,
+            )
     finally:
         reset_executors(executors_token)
 
@@ -469,12 +498,8 @@ def _auto_integrate_on_phase_transition_inner(
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
-    recovery_controller: RecoveryController | None = None,
+    recovery_controller: RecoveryController,
 ) -> RebaseState | None:
-    if recovery_controller is None:
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-        recovery_controller = current_agent_effect_dependencies().recovery_controller
     try:
         root = Path(workspace_scope.root)
         if not (root / ".git").exists():

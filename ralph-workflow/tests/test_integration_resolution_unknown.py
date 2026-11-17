@@ -11,6 +11,7 @@ from ralph.git.merge import (
     MERGE_STATE_NONE,
     MERGE_STATE_UNKNOWN,
     UNMERGED_PATH_QUERY_FAILED,
+    UnmergedPathsObservation,
     observe_unmerged_paths,
 )
 from ralph.pipeline.auto_integrate_record import (
@@ -111,6 +112,7 @@ def test_timing_out_merge_state_read_is_unknown_not_blocking(tmp_path: Path) -> 
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: False,
         merge_status=_raises(OSError("index.lock contention")),
     )
@@ -124,6 +126,7 @@ def test_merge_state_unknown_verdict_is_unknown_not_blocking(tmp_path: Path) -> 
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_UNKNOWN,
     )
@@ -137,6 +140,7 @@ def test_timing_out_rebase_state_read_is_unknown_not_blocking(tmp_path: Path) ->
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=_raises(_ProbeError("rebase-merge/gitdir busy")),
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -150,6 +154,7 @@ def test_proven_block_outranks_a_failed_probe(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, "UU src/a.py\n"),
+        observe_unmerged=lambda _: UnmergedPathsObservation(("src/a.py",)),
         rebase_active=lambda _: (_ for _ in ()).throw(OSError("busy")),
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -166,6 +171,7 @@ def test_genuinely_conflicted_tree_is_still_blocked(tmp_path: Path, porcelain_co
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, f"{porcelain_code} src/a.py\n"),
+        observe_unmerged=lambda _: UnmergedPathsObservation(("src/a.py",)),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -193,6 +199,7 @@ def test_in_progress_merge_state_still_blocks(
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: False,
         merge_status=lambda _: merge_status,
     )
@@ -206,6 +213,7 @@ def test_active_rebase_still_blocks_with_its_own_kind(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: True,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -268,6 +276,7 @@ def test_landed_durable_receipt_does_not_outrank_live_git_facts(
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -329,6 +338,7 @@ def test_unproven_receipts_still_own_dispatch(
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=lambda _: UnmergedPathsObservation(()),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )

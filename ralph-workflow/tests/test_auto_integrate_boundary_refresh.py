@@ -21,6 +21,7 @@ from ralph.pipeline.auto_integrate_sync import (
 )
 from ralph.pipeline.integration_resolution import TreeReadinessAssessment
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -425,7 +426,7 @@ def _install_recovery_seams(
     monkeypatch.setattr(
         landing,
         "fast_forward_target",
-        lambda _root, _target, _sha, **_kwargs: events.append("fast_forward") or (True, ""),
+        lambda _root, _target, _sha, **_kwargs: events.append("fast_forward") or ResolvedOutcome(),
     )
     monkeypatch.setattr(landing, "post_attempt_verify", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(landing, "_delete_rebase_backup_refs", lambda _root, _ref: None)

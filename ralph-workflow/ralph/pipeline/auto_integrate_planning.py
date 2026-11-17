@@ -148,11 +148,43 @@ def integrate_before_planning(
     force_retry: bool = False,
     recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
-    root = scope.root
-    if recovery_controller is None:
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+    from ralph.pipeline._integration_recovery_controller import (
+        entry_recovery_controller,
+        shared_recovery_controller,
+    )
 
-        recovery_controller = current_agent_effect_dependencies().recovery_controller
+    controller = entry_recovery_controller(scope.root, config, recovery_controller)
+    with shared_recovery_controller(controller):
+        return _integrate_before_planning(
+            config,
+            scope,
+            state,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
+            readiness=readiness,
+            sleep=sleep,
+            jitter=jitter,
+            force_retry=force_retry,
+            recovery_controller=controller,
+        )
+
+
+def _integrate_before_planning(
+    config: UnifiedConfig,
+    scope: WorkspaceScope,
+    state: RebaseState,
+    *,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    display: ParallelDisplay | None,
+    readiness: TreeReadinessAssessment | None,
+    sleep: Callable[[float], None] | None,
+    jitter: Callable[[], float] | None,
+    force_retry: bool,
+    recovery_controller: RecoveryController,
+) -> RebaseState | None:
+    root = scope.root
     retained = retained_integration_reason(root)
     if retained is not None:
         from ralph.pipeline._integration_continuation import config_for_owned_integration
@@ -300,7 +332,7 @@ def _finish_paused_rebase(
     resolver: RebaseStopResolver | None,
     *,
     force_retry: bool = False,
-    recovery_controller: RecoveryController | None = None,
+    recovery_controller: RecoveryController,
 ) -> RebaseState | None:
     try:
         if not rebase_in_progress(root):
@@ -327,11 +359,6 @@ def _finish_paused_rebase(
     )
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-    if recovery_controller is None:
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-        recovery_controller = current_agent_effect_dependencies().recovery_controller
 
     result = attempt_stop_resolution(
         None,

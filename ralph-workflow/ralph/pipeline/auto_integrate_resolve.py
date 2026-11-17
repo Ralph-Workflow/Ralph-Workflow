@@ -119,10 +119,9 @@ def _launch_stop_resolution(
             attempt_stop_resolution,
             resolution_gate_record,
         )
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
         recovery_controller = current_agent_effect_dependencies().recovery_controller
         raw_resolution = attempt_stop_resolution(

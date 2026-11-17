@@ -133,11 +133,6 @@ def _parse_ff_status(raw_outcome: object) -> _FastForwardStatus:
             return _FastForwardStatus(ok=False, skip_reason=on_change or "")
         case WaitingOutcome(external_condition=cond):
             return _FastForwardStatus(ok=False, skip_reason=cond or "")
-        case tuple():
-            reason = str(raw_outcome[1]) if len(raw_outcome) > 1 else ""
-            return _FastForwardStatus(bool(raw_outcome[0]), reason)
-        case bool():
-            return _FastForwardStatus(raw_outcome, "")
         case _:
             return _FastForwardStatus(ok=False, skip_reason=str(raw_outcome))
 

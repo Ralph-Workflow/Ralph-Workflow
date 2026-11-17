@@ -40,6 +40,7 @@ from ralph.pipeline.integration_ladder import (
     run_ladder_rung,
 )
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
+from ralph.recovery.controller import RecoveryController
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs, _ledger
 from tests._scenario_git import commit_file, git
@@ -61,6 +62,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the removed source-AST membership and index assertions were replaced by calls_site1 "
         "and calls_site2 exact runtime sequences, which observably prove both calls occur once "
         "and finish_resolved_rebase_stops precedes attempt_stop_resolution at both live entries"
+    ),
+    "test_integrate_before_planning_retained_integration_reason_forces_retry": (
+        "planning recovery now forwards the run's shared RecoveryController instead of "
+        "None, so the test passes one and requires that same controller to reach "
+        "recover_incomplete_integration"
     ),
 }
 
@@ -467,6 +473,7 @@ def test_integrate_before_planning_retained_integration_reason_forces_retry(
         mock_state = MagicMock()
         mock_conflict_resolver = MagicMock()
         mock_stop_resolver = MagicMock()
+        shared_controller = RecoveryController()
 
         result = integrate_before_planning(
             mock_config,
@@ -474,6 +481,7 @@ def test_integrate_before_planning_retained_integration_reason_forces_retry(
             mock_state,
             conflict_resolver=mock_conflict_resolver,
             rebase_stop_resolver=mock_stop_resolver,
+            recovery_controller=shared_controller,
         )
 
         assert result is expected_state
@@ -482,6 +490,6 @@ def test_integrate_before_planning_retained_integration_reason_forces_retry(
             config=mock_config,
             conflict_resolver=mock_conflict_resolver,
             rebase_stop_resolver=mock_stop_resolver,
-            recovery_controller=None,
+            recovery_controller=shared_controller,
             force_retry=True,
         )

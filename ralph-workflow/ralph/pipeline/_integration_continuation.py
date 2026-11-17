@@ -384,33 +384,21 @@ def continue_retained_resolution(
     force_retry: bool = False,
     stop_identity: str | None = None,
 ) -> IntegrationRecord | str | RetryLaterOutcome:
-    from ralph.pipeline.effect_executor import (
-        current_agent_effect_dependencies,
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
-    )
+    from ralph.pipeline._integration_recovery_controller import shared_recovery_controller
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
     if recovery_controller is None:
         recovery_controller = current_agent_effect_dependencies().recovery_controller
-    ambient_token = None
     if recovery_controller is not None:
-        resolver_available = (
-            conflict_resolver is not None
-            if record.resolving_merge
-            else rebase_stop_resolver is not None
-        )
         recovery_controller.set_phase_launch_gate(
             phase,
-            available=resolver_available,
+            available=(
+                conflict_resolver is not None
+                if record.resolving_merge
+                else rebase_stop_resolver is not None
+            ),
         )
-        current = current_agent_effect_dependencies()
-        if current.recovery_controller is not recovery_controller:
-            ambient_token = install_agent_effect_dependencies(
-                agent_runner=current.agent_runner,
-                recovery_controller=recovery_controller,
-                pipeline_deps=current.pipeline_deps,
-            )
-    try:
+    with shared_recovery_controller(recovery_controller):
         return _run_retained_resolution(
             root,
             record,
@@ -424,9 +412,6 @@ def continue_retained_resolution(
             force_retry=force_retry,
             stop_identity=stop_identity,
         )
-    finally:
-        if ambient_token is not None:
-            reset_agent_effect_dependencies(ambient_token)
 
 
 def _run_retained_resolution(

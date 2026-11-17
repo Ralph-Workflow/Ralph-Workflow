@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.git.merge import MERGE_STATE_NONE
+from ralph.git.merge import MERGE_STATE_NONE, UnmergedPathsObservation
 from ralph.pipeline import run_loop
 from ralph.pipeline.integration_resolution import (
     UnknownKind,
@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 def _porcelain_clean(root: Path) -> tuple[bool, str]:
     return True, ""
+
+
+def _unmerged_clean(root: Path) -> UnmergedPathsObservation:
+    return UnmergedPathsObservation()
 
 
 def _rebase_clean(root: Path) -> bool:
@@ -60,6 +64,7 @@ def test_clean_live_tree_with_unresolved_record_writes_correction_back() -> None
         _unresolved_state(),
         write_back=received.append,
         porcelain=_porcelain_clean,
+        observe_unmerged=_unmerged_clean,
         rebase_active=_rebase_clean,
         merge_status=_merge_clean,
     )
@@ -94,6 +99,7 @@ def test_dirty_tree_with_unresolved_record_writes_nothing() -> None:
         _unresolved_state(),
         write_back=received.append,
         porcelain=lambda _: (True, " M tracked.py"),
+        observe_unmerged=_unmerged_clean,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -113,6 +119,7 @@ def test_unknown_kinds_with_clean_porcelain_fail_closed_via_rebase_probe() -> No
         _unresolved_state(),
         write_back=received.append,
         porcelain=_porcelain_clean,
+        observe_unmerged=_unmerged_clean,
         rebase_active=_rebase_probe_down,
         merge_status=_merge_clean,
     )
@@ -135,6 +142,7 @@ def test_correction_only_when_state_carries_evidence(state: RebaseState, changed
         state,
         write_back=received.append,
         porcelain=_porcelain_clean,
+        observe_unmerged=_unmerged_clean,
         rebase_active=_rebase_clean,
         merge_status=_merge_clean,
     )
@@ -183,6 +191,7 @@ def test_gate_pass_persists_correction_through_the_checkpoint_seam(
         state: RebaseState,
         *,
         porcelain: Callable[[Path], tuple[bool, str]] | None = None,
+        observe_unmerged: Callable[[Path], UnmergedPathsObservation] | None = None,
         rebase_active: Callable[[Path], bool] | None = None,
         merge_status: Callable[[Path], str] | None = None,
         write_back: Callable[[RebaseState], None] | None = None,
@@ -191,6 +200,9 @@ def test_gate_pass_persists_correction_through_the_checkpoint_seam(
             root,
             state,
             porcelain=porcelain if porcelain is not None else _porcelain_clean,
+            observe_unmerged=(
+                observe_unmerged if observe_unmerged is not None else _unmerged_clean
+            ),
             rebase_active=rebase_active if rebase_active is not None else _rebase_clean,
             merge_status=merge_status if merge_status is not None else _merge_clean,
             write_back=write_back,

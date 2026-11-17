@@ -19,10 +19,12 @@ from ralph.pipeline.auto_integrate_catchup import (
     AutoIntegrateCatchupWorker,
     process_agent_phases,
 )
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_sync import REFRESH_ALREADY_CURRENT, REFRESH_ORIGIN_AHEAD
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -87,10 +89,10 @@ def _open_ticker_gates(
 
     def _advance(
         _root: Path, target: str, sha: str, *, reclaim_target_worktree: bool
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         assert reclaim_target_worktree is False
         advances.append((target, sha))
-        return True, ""
+        return ResolvedOutcome()
 
     def _lease_free(_root: Path) -> bool:
         return False
@@ -184,12 +186,12 @@ def _publication_gates(
         *,
         reclaim_target_worktree: bool,
         remote_sha: str | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         advances.append((remote, remote_sha, reclaim_target_worktree))
         if not advance_ok:
-            return False, "target owner refused merge --ff-only"
+            return fast_forward_failure("target owner refused merge --ff-only")
         local[target] = _REMOTE
-        return True, ""
+        return ResolvedOutcome()
 
     def _catchup_tick(*_args: object, **_kwargs: object) -> str:
         raise AssertionError("publication must not delegate to the throttled catch-up tick")
@@ -311,11 +313,11 @@ def _open_agent_gates(
 
     def _advance(
         _root: Path, target: str, sha: str, *, reclaim_target_worktree: bool
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         assert reclaim_target_worktree is False
         checkouts.target_moves.append(sha)
         checkouts.branches[target] = sha
-        return True, ""
+        return ResolvedOutcome()
 
     def _checkout_ff(root: Path, sha: str) -> bool:
         checkouts.checkout_moves.append((root, sha))

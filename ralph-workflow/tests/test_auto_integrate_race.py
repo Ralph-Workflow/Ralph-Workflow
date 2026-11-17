@@ -8,7 +8,26 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome, WaitingOutcome
 from ralph.workspace.scope import WorkspaceScope
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_fast_forward_target_missing_branch_is_reported": (
+        "fast_forward_target returns a sealed outcome instead of an (ok, reason) tuple; "
+        "the not-landed check is the WaitingOutcome variant and the reason is its "
+        "external_condition"
+    ),
+    "test_unreadable_target_is_retryable_but_a_missing_one_is_not": (
+        "fast_forward_target returns a sealed outcome instead of an (ok, reason) tuple; "
+        "the unreadable target is the RetryLaterOutcome variant and the missing target is "
+        "the WaitingOutcome variant, each fed whole to is_retryable_fast_forward_failure"
+    ),
+    "test_fast_forward_target_non_ancestor_is_reported": (
+        "fast_forward_target returns a sealed outcome instead of an (ok, reason) tuple; "
+        "the not-landed check is the RetryLaterOutcome variant and the reason is its "
+        "on_change"
+    ),
+}
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
@@ -116,11 +135,13 @@ def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> N
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
-    ok, reason = fast_forward_target(tmp_git_repo, "definitely-not-a-branch", feature_sha)
-    assert ok is False, f"AC-08 ff: missing target branch must report ok=False, got ok={ok!r}"
-    assert reason == "target branch missing at fast-forward time", (
+    outcome = fast_forward_target(tmp_git_repo, "definitely-not-a-branch", feature_sha)
+    assert isinstance(outcome, WaitingOutcome), (
+        f"AC-08 ff: missing target branch must wait for the branch, got {outcome!r}"
+    )
+    assert outcome.external_condition == "target branch missing at fast-forward time", (
         f"AC-08 ff: defensive reason for missing branch must match"
-        f" the producer literal, got {reason!r}"
+        f" the producer literal, got {outcome.external_condition!r}"
     )
 
 
@@ -135,17 +156,16 @@ def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
 
-    unreadable_ok, unreadable_reason = fast_forward_target(tmp_path, "main", feature_sha)
-    assert unreadable_ok is False
-    assert is_retryable_fast_forward_failure(unreadable_reason), (
-        f"an unreadable target must be retried, got reason={unreadable_reason!r}"
+    unreadable = fast_forward_target(tmp_path, "main", feature_sha)
+    assert isinstance(unreadable, RetryLaterOutcome)
+    assert is_retryable_fast_forward_failure(unreadable), (
+        f"an unreadable target must be retried, got {unreadable!r}"
     )
 
-    _missing_ok, missing_reason = fast_forward_target(
-        tmp_git_repo, "definitely-not-a-branch", feature_sha
-    )
-    assert missing_reason == "target branch missing at fast-forward time"
-    assert not is_retryable_fast_forward_failure(missing_reason), (
+    missing = fast_forward_target(tmp_git_repo, "definitely-not-a-branch", feature_sha)
+    assert isinstance(missing, WaitingOutcome)
+    assert missing.external_condition == "target branch missing at fast-forward time"
+    assert not is_retryable_fast_forward_failure(missing), (
         "a genuinely absent target must NOT burn the attempt budget"
     )
 
@@ -242,11 +262,13 @@ def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> Non
     )
     feature_sha = _run(tmp_git_repo, "rev-parse", "refs/heads/feature").stdout.strip()
 
-    ok, reason = fast_forward_target(tmp_git_repo, base, feature_sha)
-    assert ok is False, f"AC-08 ff: non-ancestor target must report ok=False, got ok={ok!r}"
-    assert reason == ("target advanced concurrently (not an ancestor of feature)"), (
+    outcome = fast_forward_target(tmp_git_repo, base, feature_sha)
+    assert isinstance(outcome, RetryLaterOutcome), (
+        f"AC-08 ff: non-ancestor target must be retried later, got {outcome!r}"
+    )
+    assert outcome.on_change == ("target advanced concurrently (not an ancestor of feature)"), (
         f"AC-08 ff: defensive reason for non-ancestor target must"
-        f" match the producer literal, got {reason!r}"
+        f" match the producer literal, got {outcome.on_change!r}"
     )
     base_ref_after = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     assert base_ref_after == base_ref_before, (

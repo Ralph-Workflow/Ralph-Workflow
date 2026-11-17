@@ -500,9 +500,7 @@ def resolve_repository_root(start: Path) -> Path:
     return current
 
 
-def _sealed_outcome_tuple_protocol_violations(
-    rel: str, node: ast.ClassDef
-) -> list[Violation]:
+def _sealed_outcome_tuple_protocol_violations(rel: str, node: ast.ClassDef) -> list[Violation]:
     if node.name not in _SEALED_OUTCOME_CLASSES:
         return []
     legacy_member = _legacy_protocol_member(node)

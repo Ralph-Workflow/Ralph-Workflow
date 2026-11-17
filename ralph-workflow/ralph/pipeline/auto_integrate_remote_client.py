@@ -358,29 +358,17 @@ def _fast_forward_local_target_to_remote(
     remote: str,
     config: UnifiedConfig | None,
 ) -> None:
-    outcome: object = fast_forward_target_to_remote(
+    outcome = fast_forward_target_to_remote(
         repo_root,
         target,
         remote,
         reclaim_target_worktree=reclaim_target_worktree_enabled(config),
     )
-    if isinstance(outcome, tuple) and len(outcome) >= 1:
-        if not outcome[0]:
-            raise RuntimeError(str(outcome[1]) if len(outcome) > 1 else "fast forward failed")
-        return
-    if isinstance(outcome, bool):
-        if not outcome:
-            raise RuntimeError("fast forward failed")
-        return
-    from ralph.pipeline.resolution_outcome import ResolvedOutcome
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome, stop_resolution_outcome_reason
 
-    if (
-        outcome is True
-        or (isinstance(outcome, tuple) and bool(outcome[0]))
-        or isinstance(outcome, ResolvedOutcome)
-    ):
+    if isinstance(outcome, ResolvedOutcome):
         return
-    raise RuntimeError(str(outcome))
+    raise RuntimeError(stop_resolution_outcome_reason(outcome) or str(outcome))
 
 
 def fast_forward_target_to_remote(

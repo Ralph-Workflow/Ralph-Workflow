@@ -398,11 +398,10 @@ def _reconcile_in_progress_rebase(
             resolution_gate_record,
         )
         from ralph.pipeline.auto_integrate_record import read_record
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
         controller = current_agent_effect_dependencies().recovery_controller
         result = attempt_stop_resolution(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,6 +15,7 @@ from ralph.pipeline.auto_integrate import (
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
@@ -21,6 +23,9 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
@@ -890,8 +895,8 @@ def test_recovery_honors_target_reclaim_opt_out(
         integrated_feature_sha="c" * 40,
     )
 
-    def refused(*_args: object, **kwargs: object) -> tuple[bool, str]:
-        return False, str(kwargs["reclaim_target_worktree"])
+    def refused(*_args: object, **kwargs: object) -> StopResolutionOutcome:
+        return fast_forward_failure(str(kwargs["reclaim_target_worktree"]))
 
     from ralph.pipeline import _recovery_fast_forward_landing as landing
 

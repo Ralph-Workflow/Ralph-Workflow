@@ -21,6 +21,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 
 
 def _config(*, enabled: bool = True, interval: float = 0.0):
@@ -159,10 +160,10 @@ def test_remote_ahead_fast_forwards_through_the_public_git_boundary(
         *,
         reclaim_target_worktree: bool,
         remote_sha: str | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         del reclaim_target_worktree, remote_sha
         calls.append((root, target, remote))
-        return True, ""
+        return ResolvedOutcome()
 
     monkeypatch.setattr(auto_integrate_remote_client, "fast_forward_target_to_remote", fast_forward)
     outcome = pull_and_reconcile_target(

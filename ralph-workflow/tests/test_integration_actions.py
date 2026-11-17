@@ -21,6 +21,15 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_mutation_seams_route_to_the_installed_executor": (
+        "the installed executor's fast_forward_target returns the sealed ResolvedOutcome "
+        "instead of the retired (True, '') tuple, so the routed result is compared with "
+        "ResolvedOutcome()"
+    ),
+}
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -88,9 +97,9 @@ class _RecordingGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.calls.append("fast_forward_target")
-        return True, ""
+        return ResolvedOutcome()
 
     def land_feature(
         self,
@@ -100,9 +109,9 @@ class _RecordingGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.calls.append("land_feature")
-        return True, ""
+        return ResolvedOutcome()
 
     def create_backup_ref(
         self,
@@ -197,7 +206,7 @@ def test_the_mutation_seams_route_to_the_installed_executor() -> None:
     token = install_executors(fake_git_ops)
     try:
         assert create_backup_ref(root, "feature-sha", _OWNER) == "refs/rebase-backup/fake"
-        assert fast_forward_target(root, _TARGET, "feature-sha") == (True, "")
+        assert fast_forward_target(root, _TARGET, "feature-sha") == ResolvedOutcome()
         delete_backup_ref(root, "refs/rebase-backup/fake")
     finally:
         reset_executors(token)

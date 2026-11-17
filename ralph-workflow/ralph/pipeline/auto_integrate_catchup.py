@@ -645,43 +645,18 @@ def _advance_observed_target(
     effective_clock = clock if clock is not None else default_clock()
     try:
         from ralph.pipeline.resolution_outcome import (
-            ConfigFailureOutcome,
-            NextStrategyOutcome,
             ResolvedOutcome,
-            RetryLaterOutcome,
-            UnknownOutcome,
-            WaitingOutcome,
             stop_resolution_outcome_reason,
         )
 
-        outcome: object = fast_forward_target(
+        outcome = fast_forward_target(
             root,
             target,
             remote_sha,
             reclaim_target_worktree=False,
         )
-        if isinstance(outcome, tuple):
-            advanced = bool(outcome[0])
-            refusal_reason = str(outcome[1]) if len(outcome) > 1 and not advanced else ""
-        elif isinstance(outcome, bool):
-            advanced = outcome
-            refusal_reason = ""
-        elif isinstance(
-            outcome,
-            (
-                ResolvedOutcome,
-                WaitingOutcome,
-                RetryLaterOutcome,
-                NextStrategyOutcome,
-                ConfigFailureOutcome,
-                UnknownOutcome,
-            ),
-        ):
-            advanced = isinstance(outcome, ResolvedOutcome)
-            refusal_reason = "" if advanced else stop_resolution_outcome_reason(outcome)
-        else:
-            advanced = False
-            refusal_reason = str(outcome)
+        advanced = isinstance(outcome, ResolvedOutcome)
+        refusal_reason = stop_resolution_outcome_reason(outcome)
     except (
         subprocess.SubprocessError,
         GitError,

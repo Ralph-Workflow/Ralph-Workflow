@@ -21,6 +21,7 @@ from ralph.pipeline.conflict_resolution import (
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
@@ -66,6 +67,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
         "so a development-phase failure must not suppress the resolver chain"
+    ),
+    "_assert_structural_parity": (
+        "ruff format wraps the chained selection-token comparison in parentheses; the "
+        "compared values and the expected token tuple are unchanged"
     ),
 }
 
@@ -358,10 +363,10 @@ class _NoOpGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: object = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         del root, target, feature_sha, reclaim_target_worktree, on_reclaimed
         self.calls.append("fast_forward_target")
-        return True, ""
+        return ResolvedOutcome()
 
     def land_feature(
         self,
@@ -371,10 +376,10 @@ class _NoOpGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: object = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         del root, target, feature_sha, reclaim_target_worktree, on_reclaimed
         self.calls.append("land_feature")
-        return True, ""
+        return ResolvedOutcome()
 
     def create_backup_ref(
         self,
@@ -700,10 +705,14 @@ def _assert_structural_parity(resolver: _ParitySideResult, ordinary: _ParitySide
     assert ordinary.controller.earliest_available_wait_ms("development", _PARITY_AGENTS) > 0
     resolver_selection = tuple(token for token in resolver.status_tokens if token != "wait")
     ordinary_selection = tuple(token for token in ordinary.status_tokens if token != "wait")
-    assert resolver_selection == ordinary_selection == (
-        "select:first",
-        "select:second",
-        "none-available",
+    assert (
+        resolver_selection
+        == ordinary_selection
+        == (
+            "select:first",
+            "select:second",
+            "none-available",
+        )
     ), (
         f"selection/fall-over status tokens must match, got "
         f"resolver={resolver_selection} ordinary={ordinary_selection}"

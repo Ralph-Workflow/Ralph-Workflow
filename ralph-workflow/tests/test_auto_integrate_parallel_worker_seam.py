@@ -191,8 +191,9 @@ def _record_seams(
         conflict_resolver: object = None,
         rebase_stop_resolver: object = None,
         display: object = None,
+        recovery_controller: object = None,
     ) -> RebaseState | None:
-        del config, state, display
+        del config, state, display, recovery_controller
         events.append("integrate")
         calls.append(
             _IntegrationCall(

@@ -10,6 +10,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import RebaseSuccess
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcome,
     RecordReadOutcomeDisposition,
@@ -23,6 +24,7 @@ from ralph.pipeline.integration_actions import (
     reset_executors,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -94,9 +96,13 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.mutations.append("fast_forward_target")
-        return self.landed, "" if self.landed else "target advanced concurrently"
+        return (
+            ResolvedOutcome()
+            if self.landed
+            else fast_forward_failure("target advanced concurrently")
+        )
 
     def land_feature(
         self,
@@ -106,9 +112,13 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.mutations.append("land_feature")
-        return self.landed, "" if self.landed else "target advanced concurrently"
+        return (
+            ResolvedOutcome()
+            if self.landed
+            else fast_forward_failure("target advanced concurrently")
+        )
 
     def create_backup_ref(
         self,

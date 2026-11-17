@@ -19,6 +19,7 @@ from ralph.pipeline.auto_integrate import (
     auto_integrate_on_phase_transition,
 )
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_rebase_merge import (
     _REASON_ALL_EMPTY,
     _REASON_MERGE_COMMITS,
@@ -39,6 +40,7 @@ from ralph.pipeline.integration_actions import (
     reset_executors,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -111,9 +113,13 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.mutations.append("fast_forward_target")
-        return self.landed, "" if self.landed else "target advanced concurrently"
+        return (
+            ResolvedOutcome()
+            if self.landed
+            else fast_forward_failure("target advanced concurrently")
+        )
 
     def land_feature(
         self,
@@ -123,7 +129,7 @@ class _TraceRecorder:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.mutations.append("land_feature")
         return self.fast_forward_target(
             root,

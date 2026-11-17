@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from ralph.git.rebase.rebase import RebaseFailed, RebaseResult, RebaseSuccess
 from ralph.git.rebase.rebase_conflicts import RebaseConflicts
 from ralph.git.rebase.rebase_kinds import classify_rebase_error
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 from tests._fake_git_fault import FaultKind, classification_for
 
 if TYPE_CHECKING:
@@ -88,7 +90,7 @@ class FakeGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.env.calls.append("fast_forward_target")
         self.env.observe()
         fault = self.env.take_fault("landing", match_any=True)
@@ -98,17 +100,17 @@ class FakeGitOps:
                 self._crash(classification.reason)
             if classification.effect == "concurrent_advance":
                 self.env.target_sha = f"{self.env.target_sha}-concurrent"
-                return False, classification.reason
+                return fast_forward_failure(classification.reason)
             if classification.effect in ("refuse", "fail"):
-                return False, classification.reason
+                return fast_forward_failure(classification.reason)
         if self.env.agent_active:
-            return False, classification_for(FaultKind.AGENT_ACTIVE).reason
+            return fast_forward_failure(classification_for(FaultKind.AGENT_ACTIVE).reason)
 
         self.env.target_sha = feature_sha
         self.env.publish_remote()
         if fault is not None and classification_for(fault).effect == "crash_after":
             self._crash(classification_for(fault).reason)
-        return True, ""
+        return ResolvedOutcome()
 
     def land_feature(
         self,
@@ -118,7 +120,7 @@ class FakeGitOps:
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         self.env.calls.append("land_feature")
         return self.fast_forward_target(
             root,

@@ -19,6 +19,11 @@ from ralph.pipeline.integration_resolution import (
     IntegrationResolutionVerdict,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.resolution_outcome import (
+    ResolvedOutcome,
+    StopResolutionOutcome,
+    WaitingOutcome,
+)
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 from tests.test_run_loop_failed_ladder_terminal import run_recovery_scenario
@@ -208,9 +213,12 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
 @pytest.mark.parametrize(
     ("ff_result", "retained"),
     [
-        ((True, ""), False),
+        (ResolvedOutcome(), False),
         (
-            (False, "target advanced concurrently"),
+            WaitingOutcome(
+                external_condition="target advanced concurrently",
+                resumes_when="target branch exists",
+            ),
             True,
         ),
     ],
@@ -218,7 +226,7 @@ def test_a_transient_fast_forward_failure_retains_the_record_structurally(
 def test_landing_outcome_reports_whether_recovery_remains_owned(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
-    ff_result: tuple[bool, str],
+    ff_result: StopResolutionOutcome,
     retained: bool,
 ) -> None:
     recovery = _recovery_module()

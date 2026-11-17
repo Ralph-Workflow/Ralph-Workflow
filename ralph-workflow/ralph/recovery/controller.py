@@ -2019,8 +2019,7 @@ class RecoveryController:
             unavail_reason = "unknown"
             logged_reason = None
         reason = (
-            f"all agents unavailable (last reason: {unavail_reason});"
-            " waiting for cooldown expiry"
+            f"all agents unavailable (last reason: {unavail_reason}); waiting for cooldown expiry"
             if logged_reason is not None
             else "all agents unavailable; waiting for cooldown expiry"
         )

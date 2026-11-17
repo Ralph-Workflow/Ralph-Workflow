@@ -23,6 +23,7 @@ from ralph.pipeline import (
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_backoff import RETRY_BASE_DELAY_SECONDS
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+from ralph.pipeline.auto_integrate_ff import fast_forward_failure
 from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcome,
     RecordReadOutcomeDisposition,
@@ -56,6 +57,7 @@ from ralph.pipeline.integration_observation import (
     read_in_progress_kind,
 )
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome, stop_resolution_outcome_reason
 from ralph.workspace.scope import WorkspaceScope
 from tests._fake_git_agent_runner import FakeAgentRunner
 from tests._fake_git_clock import FakeClock
@@ -70,6 +72,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
@@ -120,11 +123,11 @@ class _LandingRaceOps(FakeGitOps):
         *,
         reclaim_target_worktree: bool = True,
         on_reclaimed: Callable[[ReclaimResult], None] | None = None,
-    ) -> tuple[bool, str]:
+    ) -> StopResolutionOutcome:
         if self.landing_races > 0:
             self.landing_races -= 1
             self.env.calls.append("fast_forward_target")
-            return False, _LANDING_RACE_REASON
+            return fast_forward_failure(_LANDING_RACE_REASON)
         return super().fast_forward_target(
             root,
             target,
@@ -319,7 +322,9 @@ def test_observed_incident_no_merge_during_active_agent(tmp_path: Path) -> None:
     token = install_executors(git_ops, agent_runner, clock=clock)
     try:
         env.agent_active = True
-        landed, reason = git_ops.fast_forward_target(tmp_path, env.target, env.feature_sha)
+        outcome = git_ops.fast_forward_target(tmp_path, env.target, env.feature_sha)
+        landed = isinstance(outcome, ResolvedOutcome)
+        reason = stop_resolution_outcome_reason(outcome)
         assert not landed
         assert "refused: agent is currently active" in reason
     finally:
