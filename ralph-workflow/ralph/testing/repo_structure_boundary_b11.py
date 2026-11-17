@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from typing import TYPE_CHECKING, Final
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -39,7 +41,7 @@ def _target_root_names(target: ast.AST) -> set[str]:
 
 
 def _violation(path: str, node: ast.AST, rule: str, reason: str) -> str:
-    return f"{path}:{getattr(node, 'lineno', 1)} {rule} {reason}"
+    return f"{path}:{read_attr(node, 'lineno', 1)} {rule} {reason}"
 
 
 def _b11_names_agent_type(node: ast.AST) -> bool:

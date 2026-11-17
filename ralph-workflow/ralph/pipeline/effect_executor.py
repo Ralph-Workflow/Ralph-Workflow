@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -149,7 +150,7 @@ class _InvokeAgentFn(Protocol):
         prompt_file: str,
         *,
         options: InvokeOptions | None = None,
-    ) -> object: ...
+    ) -> Iterable[object]: ...
 
 
 @runtime_checkable
@@ -212,7 +213,7 @@ def _is_uri_provider(value: object) -> TypeGuard[_UriProvider]:
 
 
 def _as_exception_type(value: object) -> type[Exception] | None:
-    if isinstance(value, type) and issubclass(value, Exception):
+    if isinstance(value, type(Exception)) and issubclass(value, Exception):
         return value
     return None
 
@@ -714,11 +715,7 @@ def _pipeline_profile(policy_bundle: PolicyBundle | None) -> str:
         raw_phase_names = {}
     if not isinstance(raw_phase_names, dict):
         return "custom"
-    return (
-        "default"
-        if all(name in _DEFAULT_PHASE_NAMES for name in raw_phase_names)
-        else "custom"
-    )
+    return "default" if all(name in _DEFAULT_PHASE_NAMES for name in raw_phase_names) else "custom"
 
 
 def _registry_from_pipeline_deps(
@@ -1080,9 +1077,7 @@ def _demotion_after_finalization(
         status = controller.ledger.status(phase, agent)
         demoted = not status.is_eligible
         demotion_reason = (
-            status.reason
-            if any(isinstance(status, _t) for _t in (Cooldown, Spent))
-            else None
+            status.reason if any(isinstance(status, _t) for _t in (Cooldown, Spent)) else None
         )
         return demoted, demotion_reason
     if ledger is not None:
@@ -1229,7 +1224,7 @@ def _resolve_bridge_and_run_id(
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
-        bridge_run_id: object = getattr(bridge, "run_id", effective_run_id)
+        bridge_run_id: object = read_attr(bridge, "run_id", effective_run_id)
         if _is_text(bridge_run_id):
             effective_run_id = bridge_run_id
     return bridge, effective_run_id, own_bridge
@@ -1551,14 +1546,22 @@ def _materialize_master_prompt(
     )
     workspace_root = ctx.workspace_scope.root
     phase_name = str(ctx.effect.phase)
-    materialize_kwargs: dict[str, object] = {}
-    if _accepts_keyword(materialize, "worker_namespace"):
-        materialize_kwargs["worker_namespace"] = ctx.worker_namespace
-    if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
-        materialize_kwargs["planning_style"] = planning_style
-    if _accepts_keyword(materialize, "transport"):
-        materialize_kwargs["transport"] = ctx.agent_config.transport
-    return materialize(workspace_root, phase_name, **materialize_kwargs)
+    worker_namespace = (
+        ctx.worker_namespace if _accepts_keyword(materialize, "worker_namespace") else None
+    )
+    style = (
+        bool(planning_style)
+        if planning_style is not None and _accepts_keyword(materialize, "planning_style")
+        else False
+    )
+    transport = ctx.agent_config.transport if _accepts_keyword(materialize, "transport") else None
+    return materialize(
+        workspace_root,
+        phase_name,
+        worker_namespace=worker_namespace,
+        planning_style=style,
+        transport=transport,
+    )
 
 
 def _accepts_keyword(
@@ -2025,12 +2028,12 @@ def _resolve_recovery_session_id(
 ) -> str | None:
     if _failure_requires_fresh_session(exc, inactivity_error_type):
         return None
-    resumable_session_id: object = getattr(exc, "resumable_session_id", None)
+    resumable_session_id: object = read_attr(exc, "resumable_session_id", None)
     if _is_text(resumable_session_id) and resumable_session_id:
         return resumable_session_id
     if extracted_session_id:
         return extracted_session_id
-    parsed_output: object = getattr(exc, "parsed_output", None)
+    parsed_output: object = read_attr(exc, "parsed_output", None)
     if isinstance(parsed_output, list) and parsed_output:
         parsed_session_id = extract_transport_session_id(tuple(str(item) for item in parsed_output))
         if parsed_session_id:
@@ -2044,17 +2047,19 @@ def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfi
 
 def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
     del effect
-    return any(isinstance(exc, _t) for _t in (AgentInactivityTimeoutError, SupervisionInfrastructureError))
+    return any(
+        isinstance(exc, _t) for _t in (AgentInactivityTimeoutError, SupervisionInfrastructureError)
+    )
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
-    raw: object = getattr(config.general, "max_same_agent_retries", 10)
+    raw: object = read_attr(config.general, "max_same_agent_retries", 10)
     return raw if _is_plain_int(raw) and raw >= 0 else 10
 
 
 def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[Exception]) -> bool:
     if isinstance(exc, inactivity_error_type):
-        session_resume_safe: object = getattr(exc, "session_resume_safe", False)
+        session_resume_safe: object = read_attr(exc, "session_resume_safe", default=False)
         return session_resume_safe is not True
     return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
@@ -2125,7 +2130,7 @@ def _recovery_context_lines(
     _error_parts_fn = _fn or _recovery_error_parts
     if rendered_output:
         return _tail_recovery_context_lines(rendered_output, untruncated=untruncated)
-    parsed_output: object = getattr(exc, "parsed_output", None)
+    parsed_output: object = read_attr(exc, "parsed_output", None)
     if isinstance(parsed_output, list) and parsed_output:
         return _tail_recovery_context_lines(
             [str(item) for item in parsed_output], untruncated=untruncated

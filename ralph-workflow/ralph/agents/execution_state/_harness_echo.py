@@ -15,8 +15,8 @@ def _looks_like_chat_template_marker(line: str) -> bool:
 
 
 def _prompt_edge_sentences(prompt: str) -> tuple[str, ...]:
-    parts = list(_SENTENCE_BOUNDARY.split(prompt))
-    sentences = tuple(sentence.strip() for sentence in parts if sentence.strip())
+    parts: list[str] = _SENTENCE_BOUNDARY.split(prompt)
+    sentences: tuple[str, ...] = tuple(sentence.strip() for sentence in parts if sentence.strip())
     if len(sentences) < _MIN_SENTENCE_PAIR:
         return ()
     return sentences[0], sentences[-1]

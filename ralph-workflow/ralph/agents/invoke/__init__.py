@@ -118,6 +118,7 @@ from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.spec import AgentSpec
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
 from ralph.api.opencode import opencode_model_id_from_flag, validate_local_model_support
+from ralph.checked_accessors import as_object_dict
 from ralph.config._agent_overrides import agent_environment_value, opencode_binary_override
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
@@ -376,13 +377,15 @@ def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = N
             payload: object = json.loads(auth_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if isinstance(payload, dict):
-            credential_payload = {str(key): value for key, value in payload.items()}
-            if any(
-                isinstance(token := credential_payload.get(key), str) and token.strip()
-                for key in _CURSOR_AUTH_TOKEN_KEYS
-            ):
-                return True
+        try:
+            credential_payload = as_object_dict(payload)
+        except TypeError:
+            continue
+        if any(
+            isinstance(token := credential_payload.get(key), str) and token.strip()
+            for key in _CURSOR_AUTH_TOKEN_KEYS
+        ):
+            return True
     return False
 
 
@@ -519,9 +522,7 @@ def invoke_agent(
             (
                 _subagent_pid_registry,
                 subagent_pid_source,
-            ) = (
-                _registry_module()().build_subagent_pid_registry(transport_for_registry)
-            )
+            ) = _registry_module()().build_subagent_pid_registry(transport_for_registry)
         execution_strategy = strategy_for_command(
             config.cmd,
             transport_for_registry,

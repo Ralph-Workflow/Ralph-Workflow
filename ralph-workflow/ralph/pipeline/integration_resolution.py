@@ -23,6 +23,9 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
+from ralph.pipeline.integration_resolution_types import (
+    IntegrationResolutionVerdict,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 
@@ -35,17 +38,6 @@ if TYPE_CHECKING:
 RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 
 _PORCELAIN_MIN_ENTRY_LEN = 4
-
-
-@dataclass(frozen=True)
-class IntegrationResolutionVerdict:
-    status: IntegrationResolutionStatus
-    reasons: tuple[str, ...] = ()
-    recovery_executor: str | None = None
-
-    @property
-    def dispatch_allowed(self) -> bool:
-        return self.status is IntegrationResolutionStatus.RESOLVED
 
 
 RESOLVED = IntegrationResolutionStatus.RESOLVED
@@ -153,7 +145,7 @@ def _uncommitted_integration_reasons(porcelain_output: str) -> tuple[str, ...]:
 
 
 def _is_probe_error(exc: BaseException) -> bool:
-    if (any(isinstance(exc, _t) for _t in (OSError, RuntimeError, ValueError, KeyError))):
+    if any(isinstance(exc, _t) for _t in (OSError, RuntimeError, ValueError, KeyError)):
         return True
     return type(exc).__name__ in {"TimeoutExpired", "SubprocessError"}
 

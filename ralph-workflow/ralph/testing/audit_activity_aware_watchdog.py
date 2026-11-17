@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -363,7 +365,7 @@ class _ModuleVisitor(ast.NodeVisitor):
             if else_start is not None and else_end is not None:
                 legacy_line_ranges.append((else_start, else_end))
         for child in ast.walk(target):
-            line_raw: object = getattr(child, "lineno", None)
+            line_raw: object = read_attr(child, "lineno", None)
             if not isinstance(line_raw, int):
                 continue
             line: int = line_raw
@@ -392,15 +394,15 @@ class _ModuleVisitor(ast.NodeVisitor):
                 continue
             body_first = stmt.body[0] if stmt.body else stmt
             body_last = stmt.body[-1] if stmt.body else stmt
-            if_start_raw: object = getattr(body_first, "lineno", stmt.lineno)
+            if_start_raw: object = read_attr(body_first, "lineno", stmt.lineno)
             if_start: int = if_start_raw if isinstance(if_start_raw, int) else stmt.lineno
-            if_end_raw: object = getattr(body_last, "end_lineno", stmt.lineno)
+            if_end_raw: object = read_attr(body_last, "end_lineno", stmt.lineno)
             if_end: int = if_end_raw if isinstance(if_end_raw, int) else stmt.lineno
             if stmt.orelse:
                 else_first = stmt.orelse[0]
                 else_last = stmt.orelse[-1]
-                else_start_raw: object = getattr(else_first, "lineno", None)
-                else_end_raw: object = getattr(else_last, "end_lineno", None)
+                else_start_raw: object = read_attr(else_first, "lineno", None)
+                else_end_raw: object = read_attr(else_last, "end_lineno", None)
                 else_start: int | None = else_start_raw if isinstance(else_start_raw, int) else None
                 else_end: int | None = else_end_raw if isinstance(else_end_raw, int) else None
             else:

@@ -5,6 +5,7 @@ from dataclasses import replace
 from threading import Lock
 from typing import TYPE_CHECKING, Protocol
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.server._reserved_socket import _reserve_listening_socket
 
 if TYPE_CHECKING:
@@ -33,6 +34,7 @@ _log = logging.getLogger(__name__)
 
 
 class DynamicBindingMcpServerFactory:
+    _listening_socket: object
     __slots__ = (
         "_allocated_endpoints",
         "_allocation_lock",
@@ -91,7 +93,7 @@ class DynamicBindingMcpServerFactory:
             reserved_sock.close()
             self._release_endpoint(reserved_endpoint)
             raise
-        existing_socket: object | None = getattr(bridge, "_listening_socket", None)
+        existing_socket: object | None = read_attr(bridge, "_listening_socket", None)
         if existing_socket is None:
             object.__setattr__(bridge, "_listening_socket", reserved_sock)
         original_shutdown = bridge.shutdown

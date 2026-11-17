@@ -10,10 +10,11 @@ import threading
 import time
 import weakref
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, BinaryIO, Final
+from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.display._raw_log_break import RawLogBreak
 from ralph.display.raw_log_breaks import (
     HARNESS_PTY_INPUT_ECHO_LINES,
@@ -150,7 +151,7 @@ _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
 def _signature_token(raw: object) -> str:
-    enum_value: object = getattr(raw, "value", None)
+    enum_value: object = read_attr(raw, "value", None)
     if isinstance(enum_value, str):
         return enum_value
     if isinstance(raw, str):
@@ -395,7 +396,7 @@ class RawOverflowLog:
                     if not self._first_write and not self.path.exists():
                         self._file_bytes = 0
                     mode = "wb" if self._first_write else "ab"
-                    self._fh = self.path.open(mode, buffering=_BUFFER_BYTES)
+                    self._fh = cast("BinaryIO", self.path.open(mode, buffering=_BUFFER_BYTES))
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:

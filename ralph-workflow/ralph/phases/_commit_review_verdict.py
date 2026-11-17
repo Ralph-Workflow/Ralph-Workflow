@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph._typed_attrs import attr_or_none, read_attr
 from ralph.phases._commit_review_catalog import (
     COMMIT_REVIEW_IDENTITY_COUNTER,
     DEFAULT_IDENTITY_MAX,
@@ -178,7 +179,7 @@ def _attr_or(obj: object, name: str, default: object) -> object:
 
 
 def _identity_max_from_untyped_policy(policy: object) -> int:
-    counters = getattr(policy, "loop_counters", None)
+    counters = attr_or_none(policy, "loop_counters")
     if not isinstance(counters, dict):
         return DEFAULT_IDENTITY_MAX
     cfg_obj = counters.get(COMMIT_REVIEW_IDENTITY_COUNTER)
@@ -186,7 +187,7 @@ def _identity_max_from_untyped_policy(policy: object) -> int:
         return DEFAULT_IDENTITY_MAX
     if isinstance(cfg_obj, LoopCounterConfig):
         return cfg_obj.default_max
-    raw = getattr(cfg_obj, "default_max", DEFAULT_IDENTITY_MAX)
+    raw = read_attr(cfg_obj, "default_max", DEFAULT_IDENTITY_MAX)
     if isinstance(raw, bool) or not isinstance(raw, int):
         return DEFAULT_IDENTITY_MAX
     return raw

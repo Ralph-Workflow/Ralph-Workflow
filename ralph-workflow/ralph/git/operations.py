@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
@@ -71,7 +73,7 @@ def _raise_git_commit_error(detail: str) -> NoReturn:
 def _close_repo(repo: Repo | None) -> None:
     if repo is None:
         return
-    close: object = getattr(repo, "close", None)
+    close: object = read_attr(repo, "close", None)
     if callable(close):
         close()
 
@@ -334,9 +336,7 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            status_raw: object = _queued_git_call(
-                repo_root, repo, "status", ("--porcelain",)
-            )
+            status_raw: object = _queued_git_call(repo_root, repo, "status", ("--porcelain",))
             status_lines = [] if not isinstance(status_raw, str) else status_raw.splitlines()
         finally:
             _close_repo(repo)
@@ -730,7 +730,6 @@ def create_commit(
         raise GitOperationError("create_commit", str(exc)) from exc
     finally:
         _close_repo(repo)
-
 
 
 def _commit_parent_sha(repo_root: Path, commit_sha: str) -> str:

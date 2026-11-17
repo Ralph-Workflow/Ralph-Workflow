@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import attr_or_none
 from ralph.testing._banned_constructs_model import (
     CONFIG_ENV_MODULE,
     Finding,
@@ -238,7 +239,7 @@ def _loads_name(node: ast.AST, name: str) -> bool:
 
 
 def _node_line(node: ast.AST) -> int:
-    lineno: object = getattr(node, "lineno", None)
+    lineno: object = attr_or_none(node, "lineno")
     if isinstance(lineno, int):
         return lineno
     return 1

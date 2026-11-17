@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
+from ralph.checked_accessors import as_object_dict
 from ralph.pydantic_compat import RalphBaseModel
 
 
@@ -31,14 +32,14 @@ class RecoveryPolicy(RalphBaseModel):
     def _reject_legacy_route_fields(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        d = data
+        d = as_object_dict(data)
         if "terminal_recovery_route" in d:
             raise ValueError(
                 "recovery.terminal_recovery_route is deprecated; rename it to "
                 "recovery.failed_route. See docs/sphinx/concepts.md."
             )
         failed_route = d.get("failed_route")
-        if failed_route in ("phase_failed", "exit_failure"):
+        if isinstance(failed_route, str) and failed_route in ("phase_failed", "exit_failure"):
             raise ValueError(
                 f"recovery.failed_route: '{failed_route}' is no longer supported. "
                 "Declare a terminal failure phase with role='terminal' and "

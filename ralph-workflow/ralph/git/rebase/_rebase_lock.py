@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 class RebaseLock:
-    __slots__ = ('owns_lock',)
+    __slots__ = ("owns_lock",)
     _acquire_fn: ClassVar[Callable[[], None] | None] = None
     _release_fn: ClassVar[Callable[[], None] | None] = None
 

@@ -151,7 +151,9 @@ def _reconcile_owned_target(
         )
     try:
         outcome = rebase_onto(f"{remote}/{target}", repo_root=owner)
-        if (any(isinstance(outcome, _t) for _t in (RebaseSuccess, RebaseNoOp))) and not rebase_in_progress(owner):
+        if (
+            any(isinstance(outcome, _t) for _t in (RebaseSuccess, RebaseNoOp))
+        ) and not rebase_in_progress(owner):
             return _clear_successful_reconciliation_record(repo_root, target, remote)
         if rebase_in_progress(owner) and rebase_stop_resolver is not None:
             return _resolve_owned_reconciliation(
@@ -269,7 +271,17 @@ _DEFAULT_RESOLVE_REBASE_IN_PROGRESS = resolve_rebase_in_progress
 
 
 def _coerce_stop_resolution_outcome(raw_res: object) -> StopResolutionOutcome:
-    if (any(isinstance(raw_res, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if isinstance(
+        raw_res,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return raw_res
     if isinstance(raw_res, bool):
         return (

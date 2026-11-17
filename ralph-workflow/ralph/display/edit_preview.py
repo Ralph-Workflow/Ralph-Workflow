@@ -11,6 +11,7 @@ from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
 
+from ralph._typed_attrs import read_attr
 from ralph.display._edit_preview_render import (
     _ELISION_GLYPH,
     _MAX_PREVIEW_LINES,
@@ -146,11 +147,11 @@ class _BackgroundAwareCodeBlock(CodeBlock):
 
     @classmethod
     def create(cls, markdown: Markdown, token: object) -> _BackgroundAwareCodeBlock:
-        info_obj: object = getattr(token, "info", "")
+        info_obj: object = read_attr(token, "info", "")
         node_info = str(info_obj or "")
-        candidate: object = getattr(markdown, "terminal_bg_is_light", None)
+        candidate: object = read_attr(markdown, "terminal_bg_is_light", None)
         background = candidate if isinstance(candidate, bool) else None
-        surface_candidate: object = getattr(markdown, "surface_hex", None)
+        surface_candidate: object = read_attr(markdown, "surface_hex", None)
         surface_hex = surface_candidate if isinstance(surface_candidate, str) else None
         return cls(
             node_info.partition(" ")[0] or "text",

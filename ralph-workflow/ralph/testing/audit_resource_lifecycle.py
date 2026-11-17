@@ -4,6 +4,7 @@ import ast
 import sys
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.testing._audit_scope import build_parent_map, qualified_scope
 from ralph.testing._runtime_checks import require
 
@@ -447,7 +448,7 @@ def _canonical_name(
 def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
     result: set[ast.Call] = set()
     for parent in ast.walk(tree):
-        if (any(isinstance(parent, _t) for _t in (ast.With, ast.AsyncWith))):
+        if isinstance(parent, ast.With | ast.AsyncWith):
             for item in parent.items:
                 ctx = item.context_expr
                 if isinstance(ctx, ast.Call):
@@ -456,7 +457,9 @@ def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
 
 
 def _is_static_dict_key(node: ast.expr) -> bool:
-    return (any(isinstance(node, _t) for _t in (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))) or (
+    return (
+        any(isinstance(node, _t) for _t in (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))
+    ) or (
         isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
     )
 
@@ -571,7 +574,7 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
         if self._registered(node, category):
             return
-        lineno: int = getattr(node, "lineno", 0)
+        lineno: int = read_attr(node, "lineno", 0)
         self.violations.append(
             ResourceLifecycleViolation(
                 file_path=self.file_path,

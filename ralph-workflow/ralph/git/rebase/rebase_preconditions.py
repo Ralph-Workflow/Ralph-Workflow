@@ -8,6 +8,7 @@ from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git.merge import (
     WORKTREE_FOUND,
     WORKTREE_QUERY_FAILED,
@@ -274,7 +275,7 @@ def _git_dir(repo: Repo) -> Path:
 
 
 def _common_git_dir(repo: Repo) -> Path:
-    common: object = getattr(repo, "common_dir", None)
+    common: object = read_attr(repo, "common_dir", None)
     if isinstance(common, str) and common:
         return Path(common)
     return _git_dir(repo)

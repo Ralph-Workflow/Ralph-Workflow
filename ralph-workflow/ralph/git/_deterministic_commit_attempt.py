@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from git import GitCommandError
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git import scoped_auto_commit as _scoped
 from ralph.git._index_snapshots import _restore_pre_staged_index
 from ralph.git._transition_guard import drop_transition_conflicts
@@ -155,7 +156,7 @@ def _commit_selected_paths(
             route_git_method(repo, "reset", ("HEAD", "--", *stageable))
             _restore_pre_staged_index(repo, pre_staged_snapshots)
             error_message: str | None
-            error_attr: object = getattr(result, "error", None)
+            error_attr: object = read_attr(result, "error", None)
             if error_attr is not None:
                 error_message = str(error_attr)
             else:

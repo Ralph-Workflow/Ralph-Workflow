@@ -6,6 +6,7 @@ from pathlib import Path
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
+from ralph._typed_attrs import read_attr
 from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import _git_blob_sha
 from ralph.skills._agent_paths import (
@@ -80,7 +81,7 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
             paths = [line.strip() for line in raw.splitlines() if line.strip()]
             return sorted(set(paths))
         finally:
-            close = getattr(repo_obj, "close", None)
+            close = read_attr(repo_obj, "close", None)
             if callable(close):
                 close()
     except ImportError:
@@ -141,6 +142,6 @@ def _diff_written_paths(
                 written.append(path)
         return written
     finally:
-        close = getattr(repo, "close", None)
+        close = read_attr(repo, "close", None)
         if callable(close):
             close()

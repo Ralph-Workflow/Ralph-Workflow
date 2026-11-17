@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr, read_optional_instance_attr
+from ralph.checked_accessors import as_object_list
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.explore.ranking import (
     INDEXED_COMPONENT_NOT_AVAILABLE,
@@ -15,6 +17,7 @@ from ralph.mcp.explore.ranking import (
     sort_ranked,
 )
 from ralph.mcp.explore.serving import serving_metadata, staleness_probe
+from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -41,9 +44,8 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.store import EvidenceRow, ExploreStore
+    from ralph.mcp.explore.store import EvidenceRow
     from ralph.workspace import Workspace
-
 
 
 def _coerce_grep_line(line_raw: object) -> int:
@@ -73,7 +75,7 @@ def _freshness_for_grep(
             "dirty_paths_count": 0,
             "stale_paths_count": 0,
         }
-    store: ExploreStore | None = getattr(handle, "store", None)
+    store = read_optional_instance_attr(handle, "store", ExploreStore)
     if store is None:
         return {
             **meta,
@@ -334,8 +336,8 @@ def _live_grep(
     is_regex: bool,
     case_sensitive: bool,
     whole_word: bool,
-    include: object,
-    exclude: object,
+    include: Sequence[str] | None,
+    exclude: Sequence[str] | None,
     context_before: int,
     context_after: int,
     limit: int,
@@ -351,8 +353,8 @@ def _live_grep(
     matches: list[dict[str, object]] = []
     skipped_files = 0
     truncated = False
-    include_list: list[object] = list(include) if include is not None else []
-    exclude_list: list[object] = list(exclude) if exclude is not None else []
+    include_list: list[str] = list(include) if include is not None else []
+    exclude_list: list[str] = list(exclude) if exclude is not None else []
     for file_path in all_files:
         if include_list and not any(match_glob(file_path, str(p)) for p in include_list):
             continue
@@ -393,15 +395,15 @@ def handle_grep_files(
     case_sensitive = bool(params.get("case_sensitive", True))
     whole_word = bool(params.get("whole_word", False))
     include_param = params.get("include")
-    include = (
-        [str(p) for p in include_param]
-        if include_param and isinstance(include_param, list)
+    include: list[str] | None = (
+        [str(item) for item in as_object_list(include_param)]
+        if isinstance(include_param, list)
         else None
     )
     exclude_param = params.get("exclude")
-    exclude = (
-        [str(p) for p in exclude_param]
-        if exclude_param and isinstance(exclude_param, list)
+    exclude: list[str] | None = (
+        [str(item) for item in as_object_list(exclude_param)]
+        if isinstance(exclude_param, list)
         else None
     )
     context_before = _int_param(params, "context_before", 0)
@@ -433,7 +435,7 @@ def handle_grep_files(
     handle = resolve_explore_index(session)
     if handle is not None:
         try:
-            store_value: ExploreStore | None = getattr(handle, "store", None)
+            store_value = read_optional_instance_attr(handle, "store", ExploreStore)
         except (sqlite3.ProgrammingError, sqlite3.DatabaseError):
             store_value = None
     else:
@@ -461,7 +463,7 @@ def handle_grep_files(
         except (sqlite3.ProgrammingError, sqlite3.DatabaseError):
             store = None
             cold_index = False
-    workspace_raw: object = getattr(workspace, "root", None)
+    workspace_raw: object = read_attr(workspace, "root", None)
     workspace_root: Path | None = workspace_raw if isinstance(workspace_raw, Path) else None
     if cold_index and store is not None:
         fallback_reason = _cold_query_reason(store)

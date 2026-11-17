@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import suppress
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from git import GitError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
+from ralph._typed_attrs import attr_or_none, is_callable_obj
+from ralph.checked_accessors import type_as_object_type
 from ralph.git.git_command_queue import route_git_method
 from ralph.git.operations import _atomic_append_text, stage_all
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
@@ -37,11 +40,17 @@ def ensure_git_initialized(repo_root: Path | str) -> None:
         repo = Repo(repo_root, search_parent_directories=False)
         repo.close()
         return
-    new_repo = Repo.init(repo_root)
+    repo_cls = type_as_object_type(cast("object", Repo))
+    init_fn = attr_or_none(repo_cls, "init")
+    if not is_callable_obj(init_fn):
+        raise TypeError("Repo.init is not callable")
+    new_repo = cast("Callable[[Path | str], object]", init_fn)(repo_root)
     try:
         logger.info("Initialized git repository at {}", repo_root)
     finally:
-        new_repo.close()
+        close = attr_or_none(new_repo, "close")
+        if is_callable_obj(close):
+            cast("Callable[[], object]", close)()
 
 
 def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:

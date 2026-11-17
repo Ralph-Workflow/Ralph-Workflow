@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final, TypeGuard
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from ralph.checked_accessors import as_object_dict
 from ralph.config.enums import PipelinePhase
 from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
@@ -371,15 +372,11 @@ class PipelineState(RalphBaseModel):
 
         _raw_bc = d.get("budget_caps")
         budget_caps_data: dict[str, object] = (
-            {str(key): value for key, value in _raw_bc.items()}
-            if isinstance(_raw_bc, dict)
-            else {}
+            {str(key): value for key, value in _raw_bc.items()} if isinstance(_raw_bc, dict) else {}
         )
         _raw_op = d.get("outer_progress")
         outer_progress_data: dict[str, object] = (
-            {str(key): value for key, value in _raw_op.items()}
-            if isinstance(_raw_op, dict)
-            else {}
+            {str(key): value for key, value in _raw_op.items()} if isinstance(_raw_op, dict) else {}
         )
         _migrate_counter_field(d, budget_caps_data, "total_iterations", "iteration")
         _migrate_counter_field(d, budget_caps_data, "total_reviewer_passes", "reviewer_pass")
@@ -402,7 +399,7 @@ class PipelineState(RalphBaseModel):
 
         _raw_br = d.get("budget_remaining")
         if isinstance(_raw_br, dict):
-            legacy_br = {str(key): value for key, value in _raw_br.items()}
+            legacy_br = as_object_dict(_raw_br)
             for counter, remaining_val in legacy_br.items():
                 if counter not in outer_progress_data and counter in budget_caps_data:
                     cap = _as_int(budget_caps_data[counter])

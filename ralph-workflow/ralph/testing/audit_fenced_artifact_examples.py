@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
+from typing import cast
 
-from jinja2 import Environment, StrictUndefined, TemplateError, meta
+from jinja2 import Environment, StrictUndefined, TemplateError, Undefined, meta
 
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
@@ -154,7 +155,7 @@ def _set_blocks(source: str) -> tuple[_SetBlock, ...]:
 def _render_example_body(body: str) -> str:
     environment = Environment(
         autoescape=True,
-        undefined=StrictUndefined,
+        undefined=cast("type[Undefined]", StrictUndefined),
         keep_trailing_newline=True,
     )
     parsed = environment.parse(body)

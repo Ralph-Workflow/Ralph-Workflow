@@ -5,6 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.tools._cache_retention import prune_cache_files
 from ralph.mcp.tools.coordination import ToolContent, ToolResult
 
@@ -70,7 +71,7 @@ def format_or_spill(
     def _register(spill: Path) -> str:
         if exec_resource_resolver is None:
             return f"ralph://exec/{spill.name}"
-        register_method: object = getattr(exec_resource_resolver, "register", None)
+        register_method: object = read_attr(exec_resource_resolver, "register", None)
         if not callable(register_method):
             return f"ralph://exec/{spill.name}"
         raw_result: object = register_method(spill)

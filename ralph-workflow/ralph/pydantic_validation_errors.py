@@ -4,6 +4,8 @@ import difflib
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict
+
 if TYPE_CHECKING:
     from pydantic import ValidationError
 
@@ -245,5 +247,5 @@ def _string_length(value: object) -> int | None:
 
 def _as_mapping(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
-        return {str(k): v for k, v in value.items()}
+        return as_object_dict(value)
     return {}

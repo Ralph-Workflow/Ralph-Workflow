@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph._typed_attrs import attr_or_none, is_callable_obj
 from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol._startup_timeouts import _REGISTRY_BUILD_BUDGET_S
 from ralph.mcp.protocol.capability_mapping import McpCapability
@@ -83,6 +84,10 @@ _WORKER_READ_EXCEPTIONS = (
 )
 
 
+class _ReadableWorkspace(Protocol):
+    def read(self, path: str) -> str: ...
+
+
 def _read_workspace_policy(
     workspace: object,
     *,
@@ -90,9 +95,9 @@ def _read_workspace_policy(
     t0: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> str:
-    read_method = getattr(workspace, "read", None)
-    if not callable(read_method):
+    if not is_callable_obj(attr_or_none(workspace, "read")):
         raise TypeError("Workspace object has no 'read' method")
+    readable = cast("_ReadableWorkspace", workspace)
     effective_clock = clock_fn if clock_fn is not None else _clock
 
     result: list[str] = []
@@ -101,7 +106,7 @@ def _read_workspace_policy(
 
     def _worker() -> None:
         try:
-            result.append(read_method(DESIGN_SYSTEM_POLICY_RELPATH))
+            result.append(readable.read(DESIGN_SYSTEM_POLICY_RELPATH))
         except _WORKER_READ_EXCEPTIONS as exc:
             error.append(exc)
         finally:

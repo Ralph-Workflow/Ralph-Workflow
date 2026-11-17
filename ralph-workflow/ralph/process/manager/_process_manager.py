@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Final, Protocol, TypeGuard
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process._pty_process import _status_to_returncode
 from ralph.process._spawn_argv import sanitize_spawn_command
@@ -81,9 +82,9 @@ _sleep: Callable[[float], None] = _time.sleep
 
 def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
     for p in procs:
-        p_pid: object = getattr(p, "pid", None)
+        p_pid: object = read_attr(p, "pid", None)
         if p_pid == target_pid:
-            raw_rc: object = getattr(p, "returncode", None)
+            raw_rc: object = read_attr(p, "returncode", None)
             if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
                 return raw_rc
             break
@@ -118,8 +119,8 @@ def _is_popen(target: object) -> TypeGuard[_ReturncodeSlot]:
 def _collect_psutil_exit_pairs(procs: Sequence[object]) -> list[tuple[int, int]]:
     pairs: list[tuple[int, int]] = []
     for p in procs:
-        p_pid: object = getattr(p, "pid", None)
-        p_rc: object = getattr(p, "returncode", None)
+        p_pid: object = read_attr(p, "pid", None)
+        p_rc: object = read_attr(p, "returncode", None)
         if isinstance(p_pid, int) and isinstance(p_rc, int) and not isinstance(p_rc, bool):
             pairs.append((p_pid, p_rc))
     return pairs
@@ -153,7 +154,7 @@ def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
         return False
     if hasattr(proc, "master_fd"):
         return False
-    poll_fn: object = getattr(proc, "poll", None)
+    poll_fn: object = read_attr(proc, "poll", None)
     if callable(poll_fn):
         res: object = poll_fn()
         return res is not None
@@ -161,7 +162,7 @@ def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
 
 
 def _extract_proc_command(proc: object) -> str:
-    cmdline_fn: object = getattr(proc, "cmdline", None)
+    cmdline_fn: object = read_attr(proc, "cmdline", None)
     if callable(cmdline_fn):
         with contextlib.suppress(Exception):
             res: object = cmdline_fn()
@@ -170,7 +171,7 @@ def _extract_proc_command(proc: object) -> str:
                     return " ".join(str(x) for x in res)
                 case str() if res:
                     return res
-    name_fn: object = getattr(proc, "name", None)
+    name_fn: object = read_attr(proc, "name", None)
     if callable(name_fn):
         with contextlib.suppress(Exception):
             res_name: object = name_fn()
@@ -342,7 +343,7 @@ class ProcessManager:
     ) -> None:
         if record.returncode is None:
             record.returncode = rc
-        rec_proc: object = getattr(record, "proc", None)
+        rec_proc: object = read_attr(record, "proc", None)
         targets: list[object] = [
             rec_proc,
             proc,
@@ -352,10 +353,10 @@ class ProcessManager:
         ]
         for target in targets:
             if target is not None:
-                target_pid: object = getattr(target, "pid", None)
+                target_pid: object = read_attr(target, "pid", None)
                 if target_pid is not None and target_pid != record.pid:
                     continue
-                note_fn: object = getattr(target, "note_external_returncode", None)
+                note_fn: object = read_attr(target, "note_external_returncode", None)
                 if callable(note_fn):
                     with contextlib.suppress(Exception):
                         note_fn(rc)
@@ -473,7 +474,7 @@ class ProcessManager:
                         if reaped_pid == 0:
                             break
                 if harvested_rc is None:
-                    raw_rc: object = getattr(proc, "returncode", None)
+                    raw_rc: object = read_attr(proc, "returncode", None)
                     if isinstance(raw_rc, int) and not isinstance(raw_rc, bool):
                         harvested_rc = raw_rc
                 if harvested_rc is None and record.returncode is not None:
@@ -482,7 +483,7 @@ class ProcessManager:
                     self._note_proc_external_returncode(record, proc, harvested_rc)
         except (OSError, ProcessLookupError, ChildProcessError):
             if harvested_rc is None:
-                err_rc: object = getattr(proc, "returncode", None)
+                err_rc: object = read_attr(proc, "returncode", None)
                 if isinstance(err_rc, int) and not isinstance(err_rc, bool):
                     harvested_rc = err_rc
         if harvested_rc is None and record.returncode is not None:
@@ -569,7 +570,7 @@ class ProcessManager:
     def _harvest_owned_process(self, pid: int, rc: int) -> None:
         desc_rec = self._records.get(pid)
         if desc_rec is not None:
-            desc_proc: object = getattr(desc_rec, "proc", None)
+            desc_proc: object = read_attr(desc_rec, "proc", None)
             self._note_proc_external_returncode(desc_rec, desc_proc, rc)
             self._mark_killed(desc_rec, rc)
         else:
@@ -577,7 +578,7 @@ class ProcessManager:
                 self._pty_procs.get(pid) or self._sync_procs.get(pid) or self._async_procs.get(pid)
             )
             if handle is not None:
-                note_fn: object = getattr(handle, "note_external_returncode", None)
+                note_fn: object = read_attr(handle, "note_external_returncode", None)
                 if callable(note_fn):
                     with contextlib.suppress(Exception):
                         note_fn(rc)
@@ -587,11 +588,11 @@ class ProcessManager:
     ) -> int | None:
         root_rc: int | None = None
         for p in gone:
-            raw_pid: object = getattr(p, "pid", None)
+            raw_pid: object = read_attr(p, "pid", None)
             if not isinstance(raw_pid, int):
                 continue
             p_pid: int = raw_pid
-            raw_rc: object = getattr(p, "returncode", None)
+            raw_rc: object = read_attr(p, "returncode", None)
             if not isinstance(raw_rc, int) or isinstance(raw_rc, bool):
                 continue
             p_rc: int = raw_rc
@@ -1359,7 +1360,7 @@ class ProcessManager:
             dead: list[_PsutilProcessLike] = []
             alive: list[_PsutilProcessLike] = []
             for proc in procs:
-                raw_pid: object = getattr(proc, "pid", None)
+                raw_pid: object = read_attr(proc, "pid", None)
                 if not isinstance(raw_pid, int):
                     alive.append(proc)
                     continue

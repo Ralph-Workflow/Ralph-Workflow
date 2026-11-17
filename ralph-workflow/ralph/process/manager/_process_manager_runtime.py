@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final
 import psutil
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.process.manager._process_status import ProcessStatus
 
 if TYPE_CHECKING:
@@ -90,7 +91,7 @@ class _PsutilProcessAdapter:
 
     @property
     def returncode(self) -> int | None:
-        raw_rc: object = getattr(self.raw, "returncode", None)
+        raw_rc: object = read_attr(self.raw, "returncode", None)
         return int(raw_rc) if isinstance(raw_rc, int) and not isinstance(raw_rc, bool) else None
 
     @property

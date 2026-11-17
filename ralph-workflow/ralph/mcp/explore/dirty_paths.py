@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import time
-from typing import Protocol
+from collections.abc import Sequence
+from typing import Protocol, cast
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore._thread_state import LockBox
@@ -54,7 +56,7 @@ class ExploreStoreLike(Protocol):
         name: str | None = None,
         qualified_name: str | None = None,
         path: str | None = None,
-    ) -> list[_SymbolLike]: ...
+    ) -> Sequence[_SymbolLike]: ...
 
     def insert_evidence(self, row: object) -> None: ...
 
@@ -82,7 +84,7 @@ class NoOpExploreIndex:
 
 
 def resolve_explore_index(session: object) -> ExploreIndexLike | None:
-    handle: ExploreIndexLike | None = getattr(session, "explore_index", None)
+    handle = cast("ExploreIndexLike | None", attr_or_none(session, "explore_index"))
     if handle is None:
         return None
     return handle
@@ -168,7 +170,7 @@ def build_sqlite_index_handle(
 
         @property
         def store(self) -> ExploreStoreLike | None:
-            return store
+            return cast("ExploreStoreLike", store)
 
         @property
         def reindex_in_progress(self) -> bool:

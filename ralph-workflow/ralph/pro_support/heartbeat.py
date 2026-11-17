@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Protocol
 
 import httpx
 
+from ralph._typed_attrs import read_callable_attr
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
@@ -163,7 +165,7 @@ class ProHeartbeatClient:
                 )
                 return
         finally:
-            close_method: Callable[[], object] | None = getattr(client, "close", None)
+            close_method = read_callable_attr(client, "close", None)
             if callable(close_method):
                 try:
                     close_method()

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final
 from git import GitError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.git.commit_review import (
     add_to_git_exclude,
@@ -92,6 +93,8 @@ from ralph.policy.models._pipeline_policy import PipelinePolicy
 from ralph.recovery.classifier import FailureCategory
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
     from ralph.phases import PhaseContext
@@ -111,9 +114,13 @@ _APPROVED_DELETIONS_HEADING_LEVEL: Final[int] = 2
 def _close_repo(repo: Repo | None) -> None:
     if repo is None:
         return
-    close = getattr(repo, "close", None)
-    if callable(close):
-        close()
+    from typing import cast
+
+    from ralph._typed_attrs import attr_or_none, is_callable_obj
+
+    close = attr_or_none(repo, "close")
+    if is_callable_obj(close):
+        cast("Callable[[], object]", close)()
 
 
 def _path_exists_in_head(repo_root: Path, relative_path: str) -> bool:
@@ -211,15 +218,15 @@ def _resolve_run_id_and_iteration(
     ctx: PhaseContext,
     effect: Effect,
 ) -> tuple[str, str]:
-    run_id_val: object = getattr(ctx, "run_id", None)
+    run_id_val: object = read_attr(ctx, "run_id", None)
     if not isinstance(run_id_val, str) or not run_id_val:
-        run_id_val = getattr(effect, "run_id", None)
+        run_id_val = read_attr(effect, "run_id", None)
     if not isinstance(run_id_val, str) or not run_id_val:
         run_id_val = "run"
 
-    iteration_val: object = getattr(effect, "iteration", None)
+    iteration_val: object = read_attr(effect, "iteration", None)
     if not isinstance(iteration_val, str) or not iteration_val:
-        iteration_val = getattr(ctx, "iteration", None)
+        iteration_val = read_attr(ctx, "iteration", None)
     if not isinstance(iteration_val, str) or not iteration_val:
         iteration_val = "1"
 
@@ -246,7 +253,7 @@ def _resolve_policy_thresholds(
     thresholds = TripwireThresholds()
     allowed_dirs: list[str] | None = None
 
-    policy: object = getattr(ctx_or_policy, "pipeline_policy", ctx_or_policy)
+    policy: object = read_attr(ctx_or_policy, "pipeline_policy", ctx_or_policy)
     if isinstance(policy, PipelinePolicy):
         cr_policy = policy.commit_review
         thresholds = TripwireThresholds(

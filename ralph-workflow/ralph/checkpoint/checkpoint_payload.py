@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ralph.checked_accessors import as_object_dict
 from ralph.checkpoint.execution_history import ExecutionHistory
 from ralph.checkpoint.run_context import RunContext
 from ralph.pipeline.state import PipelineState
@@ -37,14 +38,14 @@ class CheckpointPayload:
 
         raw_context = data.get("run_context")
         if isinstance(raw_context, dict):
-            ctx_dict: dict[str, object] = {str(k): v for k, v in raw_context.items()}
+            ctx_dict: dict[str, object] = as_object_dict(raw_context)
             run_context = RunContext.from_dict(ctx_dict)
         else:
             run_context = RunContext.new()
 
         raw_history = data.get("execution_history")
         if isinstance(raw_history, dict):
-            hist_dict: dict[str, object] = {str(k): v for k, v in raw_history.items()}
+            hist_dict: dict[str, object] = as_object_dict(raw_history)
             execution_history = ExecutionHistory.from_dict(hist_dict)
         else:
             execution_history = ExecutionHistory.new()

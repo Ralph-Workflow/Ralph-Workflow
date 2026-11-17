@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -35,7 +37,7 @@ def _resolve_runner() -> _GitRunner:
         return run_git
     merge_mod = sys.modules.get("ralph.git.merge")
     if merge_mod is not None:
-        cand: object = getattr(merge_mod, "run_git", None)
+        cand: object = read_attr(merge_mod, "run_git", None)
         if _is_git_runner(cand) and cand is not _ORIGINAL_RUN_GIT:
             return cand
     return run_git
@@ -48,7 +50,8 @@ __all__ = [
 
 
 class ConflictStageEntries(dict[str, dict[int, tuple[str, str]]]):
-    __slots__ = ('failures',)
+    __slots__ = ("failures",)
+
     def __init__(
         self,
         mapping: dict[str, dict[int, tuple[str, str]]] | None = None,
@@ -155,7 +158,7 @@ def conflict_stage_entries(
     )
 
     if result.returncode != 0:
-        err_obj: object = getattr(result, "stderr", "")
+        err_obj: object = read_attr(result, "stderr", "")
         result_stderr = str(err_obj) if err_obj is not None else ""
         if "not a git repository" in result_stderr.lower():
             return ConflictStageEntries({})

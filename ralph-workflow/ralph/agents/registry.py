@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.agents import builtin as builtin_module
 from ralph.agents._codex_alias import resolve_codex_alias
 from ralph.agents.catalog import AgentCatalog, default_catalog
@@ -226,6 +227,7 @@ def _seed_catalog_with_builtins(catalog: AgentCatalog) -> None:
 
 
 class AgentRegistry:
+    _support: object
     __slots__ = ("_catalog", "_catalog_typed", "_ccs_defaults", "agents")
 
     def __init__(
@@ -303,7 +305,7 @@ class AgentRegistry:
     def register(self, name: str, config: AgentConfig) -> None:
         self.agents[name] = config
         logger.debug("Registered agent: {}", name)
-        support: object = getattr(config, "_support", None)
+        support: object = read_attr(config, "_support", None)
         if isinstance(support, AgentSupport):
             if self._catalog is not None and self._catalog.get(support.name) is None:
                 self._catalog.add(support)

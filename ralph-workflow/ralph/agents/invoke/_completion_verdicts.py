@@ -22,6 +22,7 @@ from ralph.agents.invoke._session import (
     extract_transport_session_id,
     extract_transport_session_id_with_visible_tui,
 )
+from ralph.checked_accessors import as_object_dict
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
@@ -62,7 +63,11 @@ def _raise_if_transport_reported_error(
             event: object = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(event, dict) and event.get("type") == "error":
+        try:
+            payload = as_object_dict(event)
+        except TypeError:
+            continue
+        if payload.get("type") == "error":
             raise AgentInvocationError(agent_name, int(handle.returncode or 0), "", output)
 
 

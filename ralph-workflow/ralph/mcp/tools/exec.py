@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ralph._typed_attrs import read_attr
+from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -102,7 +104,7 @@ def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
     raw = params.get("max_runtime_ms")
     if raw is None:
         return None
-    if (any(isinstance(raw, _t) for _t in (int, float))) and raw > 0:
+    if is_int_or_float(raw) and raw > 0:
         max_ms = int(raw)
         hard_max_ms = int(EXEC_JOB_CEILING_MAX_S * 1000)
         return min(max_ms, hard_max_ms)
@@ -147,7 +149,6 @@ def parse_exec_timeout(params: Mapping[str, object]) -> int:
         else DEFAULT_TIMEOUT_MS
     )
     return min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
-
 
 
 def _shell_source_text(command_value: object, argv_value: object) -> str | None:
@@ -380,7 +381,7 @@ def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) 
     if isinstance(workspace, str):
         return Path(workspace)
 
-    root_value: object | None = getattr(workspace, "root", None)
+    root_value: object | None = read_attr(workspace, "root", None)
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
@@ -674,7 +675,7 @@ def handle_exec_command(
         summary=summary,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
-        exec_resource_resolver=getattr(session, "exec_resource_resolver", None),
+        exec_resource_resolver=read_attr(session, "exec_resource_resolver", None),
     )
 
 

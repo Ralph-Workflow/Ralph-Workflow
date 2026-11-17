@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.checked_accessors import as_str
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -69,6 +70,7 @@ def read_commit_message_payload_from_path(
 
 def _payload_from_markdown_text(text: str) -> dict[str, object] | None:
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     content, diagnostics = parse_and_validate(text, get_spec(COMMIT_MESSAGE_TYPE))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
@@ -106,9 +108,9 @@ def render_commit_message_content(content: dict[str, object]) -> str:
     normalized = normalize_commit_message_content(content)
     kind = normalized["type"]
     if kind == _SKIP_KIND:
-        return f"{_SKIP_PREFIX} {normalized['reason']}"
+        return f"{_SKIP_PREFIX} {as_str(normalized['reason'], field='reason')}"
 
-    subject = normalized["subject"]
+    subject = as_str(normalized["subject"], field="subject")
     body = _render_commit_body(normalized)
     return subject if not body else f"{subject}\n\n{body}"
 

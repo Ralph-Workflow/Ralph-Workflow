@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from pydantic import ConfigDict, Field, model_validator
 
+from ralph.checked_accessors import as_object_dict
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
@@ -60,7 +61,7 @@ class RebaseState(RalphBaseModel):
     @classmethod
     def _coerce_legacy_action(cls, data: object) -> object:
         if isinstance(data, dict):
-            migrated: dict[str, object] = {str(k): v for k, v in data.items()}
+            migrated: dict[str, object] = as_object_dict(data)
             if "last_failure_cause" not in migrated or migrated.get("last_failure_cause") is None:
                 if migrated.get("last_reason") == _LEGACY_AGENT_FAILURE_REASON:
                     migrated["last_failure_cause"] = ResolutionFailureCause.AGENT_FAILURE
@@ -285,9 +286,7 @@ class RebaseState(RalphBaseModel):
 
     def set_retry_deadline(self, value: float | None) -> Self:
         if value is not None:
-            if isinstance(value, bool) or not (
-                any(isinstance(value, _t) for _t in (int, float))
-            ):
+            if isinstance(value, bool) or not (any(isinstance(value, _t) for _t in (int, float))):
                 raise ValueError(f"invalid retry_deadline: {value!r}")
             import math
 

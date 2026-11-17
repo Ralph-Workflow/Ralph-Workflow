@@ -394,6 +394,7 @@ def submit_artifact_canonical(
 
 def _registered_markdown_types() -> tuple[str, ...]:
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     return tuple(spec.artifact_type for spec in registered_specs())
 
@@ -454,6 +455,7 @@ def promote_fallback_artifact(
     handoff_dir: Path | None = None,
 ) -> SubmitResult | None:
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     try:
         spec = get_spec(artifact_type)

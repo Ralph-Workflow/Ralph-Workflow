@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -18,24 +19,24 @@ if TYPE_CHECKING:
 
 
 def _get_media_manifest(session: object) -> MediaManifest | None:
-    raw: object = getattr(session, "media_manifest", None)
+    raw: object = read_attr(session, "media_manifest", None)
     if isinstance(raw, MediaManifest):
         return raw
     return None
 
 
 def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
-    raw: object = getattr(session, "model_identity", None)
+    raw: object = read_attr(session, "model_identity", None)
     if isinstance(raw, MultimodalModelIdentity):
         return raw
     return UNKNOWN_IDENTITY
 
 
 def _get_session_capability_profile(session: object) -> ResolvedCapabilityProfile:
-    caller: object = getattr(session, "caller_capability_profile", None)
+    caller: object = read_attr(session, "caller_capability_profile", None)
     if isinstance(caller, ResolvedCapabilityProfile):
         return caller
-    raw: object = getattr(session, "capability_profile", None)
+    raw: object = read_attr(session, "capability_profile", None)
     if isinstance(raw, ResolvedCapabilityProfile):
         return raw
     return resolve_capability_profile(_get_session_model_identity(session))

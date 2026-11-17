@@ -38,6 +38,7 @@ def legacy_bridge_pids(kwargs: dict[str, object]) -> list[int]:
         item for item in raw if isinstance(item, int) and not isinstance(item, bool)
     ]
 
+
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
 if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:

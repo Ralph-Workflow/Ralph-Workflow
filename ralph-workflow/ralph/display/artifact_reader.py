@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict, as_object_list
 from ralph.display.plan_summary import PlanSummary
 from ralph.mcp.artifacts.markdown import parse_and_validate
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -32,20 +33,26 @@ def _load_text(path: Path) -> str | None:
 
 
 def _coerce_str_tuple(value: object, *, max_items: int = 64) -> tuple[str, ...]:
-    if not isinstance(value, list):
+    try:
+        entries = as_object_list(value)
+    except TypeError:
         return ()
     items: list[str] = []
-    for entry in value:
+    for entry in entries:
         if isinstance(entry, str):
             text = entry.strip()
             if text:
                 items.append(text)
-        if isinstance(entry, dict):
-            text_obj = entry.get("text")
+        try:
+            entry_dict = as_object_dict(entry)
+        except TypeError:
+            entry_dict = None
+        if entry_dict is not None:
+            text_obj = entry_dict.get("text")
             if isinstance(text_obj, str) and text_obj.strip():
                 items.append(text_obj.strip())
             else:
-                risk_obj = entry.get("risk")
+                risk_obj = entry_dict.get("risk")
                 if isinstance(risk_obj, str) and risk_obj.strip():
                     items.append(risk_obj.strip())
         if len(items) >= max_items:
@@ -73,10 +80,11 @@ def read_plan_artifact(
     summary_obj = content.get("summary")
     summary_text: str | None = None
     scope_items: tuple[str, ...] = ()
-    if isinstance(summary_obj, dict):
-        summary_dict = {
-            key: value for key, value in summary_obj.items() if isinstance(key, str)
-        }
+    try:
+        summary_dict = as_object_dict(summary_obj)
+    except TypeError:
+        summary_dict = None
+    if summary_dict is not None:
         ctx = summary_dict.get("context")
         if isinstance(ctx, str) and ctx.strip():
             summary_text = ctx.strip()
@@ -101,8 +109,10 @@ def read_plan_artifact(
                 summary_text = stripped
                 break
 
-    steps_obj = content.get("steps")
-    total_steps = len(steps_obj) if isinstance(steps_obj, list) else 0
+    try:
+        total_steps = len(as_object_list(content.get("steps")))
+    except TypeError:
+        total_steps = 0
 
     risks = _coerce_str_tuple(content.get("risks_mitigations"))
 

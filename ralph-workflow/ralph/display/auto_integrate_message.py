@@ -431,11 +431,11 @@ def _extract_rebase_params(
     last_outcome = raw_last_outcome if isinstance(raw_last_outcome, str) else None
 
     raw_display_state = _safe_attr(rebase, "operation_display_state")
-    operation_display_state = (
-        raw_display_state
-        if any(isinstance(raw_display_state, _t) for _t in (str, OperationDisplayState))
-        else None
-    )
+    operation_display_state: str | OperationDisplayState | None
+    if isinstance(raw_display_state, (str, OperationDisplayState)):
+        operation_display_state = raw_display_state
+    else:
+        operation_display_state = None
 
     integration_action: object | None = _safe_attr(rebase, "next_action") or _safe_attr(
         rebase, "integration_action"

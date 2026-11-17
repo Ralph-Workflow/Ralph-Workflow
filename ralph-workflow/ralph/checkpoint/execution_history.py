@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
+from ralph.checked_accessors import as_object_dict
 from ralph.checkpoint.execution_step import ExecutionStep
 
 
@@ -50,7 +51,7 @@ class ExecutionHistory:
         if isinstance(raw_steps, list):
             for s in raw_steps:
                 if isinstance(s, dict):
-                    step_dict: dict[str, object] = {str(k): v for k, v in s.items()}
+                    step_dict: dict[str, object] = as_object_dict(s)
                     steps.append(ExecutionStep.from_dict(step_dict))
         raw_snaps = data.get("file_snapshots")
         file_snapshots = (

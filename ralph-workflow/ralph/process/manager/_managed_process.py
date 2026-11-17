@@ -7,6 +7,7 @@ import threading
 import time as _time
 from typing import IO, TYPE_CHECKING, Literal
 
+from ralph._typed_attrs import read_attr
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._git_termination import git_aware_grace
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
@@ -122,7 +123,7 @@ class ManagedProcess:
         def _observe_descendants() -> None:
             while not stop_event.wait(0.05):
                 for proc in self._snapshot_live_descendants():
-                    raw_pid: object = getattr(proc, "pid", None)
+                    raw_pid: object = read_attr(proc, "pid", None)
                     if isinstance(raw_pid, int):
                         with observed_lock:
                             observed_descendants[raw_pid] = proc
@@ -150,7 +151,7 @@ class ManagedProcess:
             for proc in group:
                 if not self._is_live_psutil_process(psutil_mod, proc):
                     continue
-                raw_pid: object = getattr(proc, "pid", None)
+                raw_pid: object = read_attr(proc, "pid", None)
                 proc_pid = int(raw_pid) if isinstance(raw_pid, int) else id(proc)
                 if proc_pid in seen_pids:
                     continue
@@ -480,7 +481,7 @@ class ManagedProcess:
             for child in children:
                 if not self._is_live_psutil_process(psutil_mod, child):
                     continue
-                raw_pid: object = getattr(child, "pid", None)
+                raw_pid: object = read_attr(child, "pid", None)
                 child_pid = int(raw_pid) if isinstance(raw_pid, int) else id(child)
                 if child_pid in seen_pids:
                     continue
@@ -504,7 +505,7 @@ class ManagedProcess:
         root_rc = self._manager._harvest_gone_processes(gone, root_pid=self._record.pid)
         if root_rc is not None:
             self._record.returncode = root_rc
-            note_fn: object = getattr(self._proc, "note_external_returncode", None)
+            note_fn: object = read_attr(self._proc, "note_external_returncode", None)
             if callable(note_fn):
                 with contextlib.suppress(Exception):
                     note_fn(root_rc)
@@ -534,7 +535,7 @@ class ManagedProcess:
         root_rc = self._manager._harvest_gone_processes(gone, root_pid=self._record.pid)
         if root_rc is not None:
             self._record.returncode = root_rc
-            note_fn: object = getattr(self._proc, "note_external_returncode", None)
+            note_fn: object = read_attr(self._proc, "note_external_returncode", None)
             if callable(note_fn):
                 with contextlib.suppress(Exception):
                     note_fn(root_rc)

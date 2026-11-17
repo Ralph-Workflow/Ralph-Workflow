@@ -13,6 +13,7 @@ from typing import IO, TYPE_CHECKING, Protocol
 from rich.cells import cell_len
 from rich.text import Text
 
+from ralph._typed_attrs import read_attr
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.phase_status import (
     format_analysis_cycle,
@@ -897,7 +898,10 @@ class StatusBar:
     def _real_tty(self) -> bool:
         ctx = self._ctx()
         console = ctx.console
-        is_terminal_attr: bool | None = getattr(console, "is_terminal", None)
+        is_terminal_raw = read_attr(console, "is_terminal", None)
+        is_terminal_attr: bool | None = (
+            is_terminal_raw if isinstance(is_terminal_raw, bool) else None
+        )
         if not is_terminal_attr:
             return False
         file_obj: IO[str] = console.file
@@ -926,7 +930,7 @@ class StatusBar:
         )
 
     def _model_with_live_attention(self, model: StatusBarModel) -> StatusBarModel:
-        raw_attention: object = getattr(self._display, "watchdog_attention", None)
+        raw_attention: object = read_attr(self._display, "watchdog_attention", None)
         if raw_attention is None:
             return model
         if model.attention is not None:
@@ -936,7 +940,7 @@ class StatusBar:
         return dataclasses.replace(model, attention=raw_attention)
 
     def _live_console_is_interactive(self) -> bool:
-        is_interactive: object = getattr(self._ctx().console, "is_interactive", False)
+        is_interactive: object = read_attr(self._ctx().console, "is_interactive", default=False)
         return is_interactive is True
 
     def _fallback_render_once(self) -> None:

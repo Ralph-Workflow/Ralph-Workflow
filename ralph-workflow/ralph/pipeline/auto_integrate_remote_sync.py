@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git import remote_push as _remote_push_module
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline._integration_action import RebaseOutcomeKind
@@ -186,9 +187,13 @@ def _throttle_allows_pull(
     config: UnifiedConfig | None,
     clock: Callable[[], float],
 ) -> bool:
-    general: object = getattr(config, "general", config)
-    configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
-    interval = configured if (any(isinstance(configured, _t) for _t in (int, float))) else REMOTE_SYNC_INTERVAL_SECONDS
+    general: object = read_attr(config, "general", config)
+    configured: object = read_attr(general, "auto_integrate_remote_interval_seconds", 0.0)
+    interval: float = (
+        float(configured)
+        if isinstance(configured, (int, float)) and not isinstance(configured, bool)
+        else REMOTE_SYNC_INTERVAL_SECONDS
+    )
     return _REMOTE_PULL_THROTTLE.should_pull(
         repo_root,
         remote,

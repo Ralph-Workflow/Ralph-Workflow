@@ -12,6 +12,8 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+from ralph.checked_accessors import as_object_dict, loads_json
 from ralph.mcp.server._http_tools_list import _LIFECYCLE_MAX_RESPONSE_BYTES
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 
@@ -44,16 +46,11 @@ if not _PRIVATE_READINESS_TIMEOUT_S > 0:
     )
 
 
-
 def _as_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
+    try:
+        return as_object_dict(value)
+    except TypeError:
         return None
-    out: dict[str, object] = {}
-    for key, item in value.items():
-        if not isinstance(key, str):
-            return None
-        out[key] = item
-    return out
 
 
 def _tool_sort_key(t: dict[str, object]) -> str:
@@ -72,15 +69,16 @@ def canonical_tool_entries(raw_tools: object) -> list[dict[str, object]]:
         return []
     result: list[dict[str, object]] = []
     for item in raw_tools:
-        if not isinstance(item, dict):
+        entry = _as_object_dict(item)
+        if entry is None:
             continue
-        entry = item
-        schema = entry.get("inputSchema", {})
+        schema_raw: object = entry.get("inputSchema", {})
+        schema = _as_object_dict(schema_raw)
         result.append(
             {
                 "name": str(entry.get("name", "")),
                 "description": str(entry.get("description", "")),
-                "inputSchema": schema if isinstance(schema, dict) else {},
+                "inputSchema": schema if schema is not None else {},
             }
         )
     return result
@@ -158,11 +156,11 @@ def create_handover_socketpair() -> tuple[socket.socket, socket.socket]:
 
 
 def _resolve_raw_tools(mcp_server: object) -> list[object]:
-    registry: object = getattr(mcp_server, "_registry", None)
-    tools_attr: object = getattr(registry, "tools", None)
+    registry: object = read_attr(mcp_server, "_registry", None)
+    tools_attr: object = read_attr(registry, "tools", None)
     if isinstance(tools_attr, list):
         return tools_attr
-    list_defs: object = getattr(registry, "list_definitions", None)
+    list_defs: object = read_attr(registry, "list_definitions", None)
     if callable(list_defs):
         with contextlib.suppress(
             OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
@@ -170,14 +168,14 @@ def _resolve_raw_tools(mcp_server: object) -> list[object]:
             defs: object = list_defs()
             if isinstance(defs, list):
                 return defs
-    self_tools: object = getattr(mcp_server, "tools", None)
+    self_tools: object = read_attr(mcp_server, "tools", None)
     if isinstance(self_tools, list):
         return self_tools
     return []
 
 
 def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
-    handle_tools: object = getattr(mcp_server, "_handle_tools_list", None)
+    handle_tools: object = read_attr(mcp_server, "_handle_tools_list", None)
     if callable(handle_tools):
         with contextlib.suppress(
             OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
@@ -185,7 +183,7 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
             req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=1)
             raw_res: object = handle_tools(req)
             if isinstance(raw_res, tuple) and len(raw_res) >= 1:
-                res_dict: object = getattr(raw_res[0], "result", None)
+                res_dict: object = read_attr(raw_res[0], "result", None)
                 if isinstance(res_dict, dict):
                     tools_val: object = res_dict.get("tools")
                     if isinstance(tools_val, list):
@@ -199,9 +197,9 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
         if isinstance(item, dict):
             raw.append(item)
         else:
-            name_obj: object = getattr(item, "name", "")
-            desc_obj: object = getattr(item, "description", "")
-            schema_obj: object = getattr(item, "input_schema", {})
+            name_obj: object = read_attr(item, "name", "")
+            desc_obj: object = read_attr(item, "description", "")
+            schema_obj: object = read_attr(item, "input_schema", {})
             raw.append(
                 {
                     "name": str(name_obj),
@@ -222,12 +220,12 @@ def _handle_readiness_line(
     effective_config_fingerprint: str | None,
 ) -> bytes:
     try:
-        raw_req: object = json.loads(line.decode("utf-8"))
+        raw_req = loads_json(line.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return b""
-    if not isinstance(raw_req, dict):
+    req = _as_object_dict(raw_req)
+    if req is None:
         return b""
-    req = raw_req
     msg_id = req.get("id")
     method = req.get("method")
     if method == "initialize":

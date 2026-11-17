@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from ralph._typed_attrs import read_attr
 from ralph.process.manager import (
     ProcessManager,
     ProcessTerminationIssuer,
@@ -40,8 +41,8 @@ def _probe_spotlight(volume: Path, run_command: _SubprocessRunner) -> bool | Non
     except (OSError, subprocess.TimeoutExpired):
         return None
     result_obj: object = result
-    rc_obj: object = getattr(result_obj, "returncode", None)
-    stdout_obj: object = getattr(result_obj, "stdout", "") or ""
+    rc_obj: object = read_attr(result_obj, "returncode", None)
+    stdout_obj: object = read_attr(result_obj, "stdout", "") or ""
     rc_int: int | None = rc_obj if isinstance(rc_obj, int) else None
     if not isinstance(stdout_obj, str):
         return None

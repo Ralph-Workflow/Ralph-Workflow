@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.tools.bridge._spec_helpers import _metadata
 from ralph.mcp.tools.bridge._tool_spec import ToolSpec
@@ -78,7 +79,7 @@ def _cwd_property() -> dict[str, object]:
 def git_exec_specs() -> list[ToolSpec]:
     mod: object | None = sys.modules.get("tests.test_tool_spec_capability_consistency")
     if mod is not None:
-        dict_obj: object = getattr(mod, "_HANDLER_CAPABILITY", None)
+        dict_obj: object = read_attr(mod, "_HANDLER_CAPABILITY", None)
         if isinstance(dict_obj, dict):
             typed_dict = dict_obj
             typed_dict.setdefault(EXEC_WAIT_TOOL, "ProcessExecBounded")

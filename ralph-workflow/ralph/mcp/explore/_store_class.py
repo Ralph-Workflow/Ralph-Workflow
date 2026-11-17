@@ -6,7 +6,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
-from ralph.mcp.explore._narrowing import as_sqlite_rows
+from ralph.mcp.explore._narrowing import fetch_all_rows, fetch_many_rows, fetch_one_row
 from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
 from ralph.mcp.explore._store_class_file_rows import _FileRowMethods
 from ralph.mcp.explore._store_class_init import _InitializeMethods
@@ -64,7 +64,12 @@ _FTS_SEARCH_GREP_SQL = """
 """
 
 
-class ExploreStore:
+class ExploreStore(
+    _ContentCacheMethods,
+    _FileRowMethods,
+    _InitializeMethods,
+    _RetentionMethods,
+):
     __slots__ = (
         "_busy_timeout_ms",
         "_conn",
@@ -319,10 +324,10 @@ class ExploreStore:
         cur = self._conn.execute(sql, params)
         try:
             if glob_filter is None:
-                return as_sqlite_rows(cur.fetchall())
+                return fetch_all_rows(cur)
             selected: list[sqlite3.Row] = []
             while len(selected) < limit:
-                page = as_sqlite_rows(cur.fetchmany(_FTS_GLOB_PAGE_ROWS))
+                page = fetch_many_rows(cur, _FTS_GLOB_PAGE_ROWS)
                 if not page:
                     break
                 for row in page:
@@ -419,7 +424,7 @@ class ExploreStore:
 
     def get_evidence(self, evidence_id: str) -> EvidenceRow | None:
         cur = self._conn.execute("SELECT * FROM evidence WHERE evidence_id = ?", (evidence_id,))
-        row: sqlite3.Row | None = cur.fetchone()
+        row: sqlite3.Row | None = fetch_one_row(cur)
         if row is None:
             return None
         return _row_to_evidence(row)
@@ -540,13 +545,13 @@ class ExploreStore:
                 "SELECT * FROM spans WHERE path = ? ORDER BY start_line, start_col",
                 (path,),
             )
-        rows = as_sqlite_rows(cur.fetchall())
+        rows = fetch_all_rows(cur)
         for span_row in rows:
             yield _row_to_span(span_row)
 
     def get_span(self, span_id: str) -> SpanRow | None:
         cur = self._conn.execute("SELECT * FROM spans WHERE span_id = ?", (span_id,))
-        row: sqlite3.Row | None = cur.fetchone()
+        row: sqlite3.Row | None = fetch_one_row(cur)
         if row is None:
             return None
         return _row_to_span(row)
@@ -574,7 +579,7 @@ class ExploreStore:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, qualified_name, kind"
         cur = self._conn.execute(sql, tuple(params))
-        rows = as_sqlite_rows(cur.fetchall())
+        rows = fetch_all_rows(cur)
         return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
@@ -585,7 +590,7 @@ class ExploreStore:
                 "SELECT * FROM symbols WHERE path = ? ORDER BY qualified_name",
                 (path,),
             )
-        rows = as_sqlite_rows(cur.fetchall())
+        rows = fetch_all_rows(cur)
         for sym_row in rows:
             yield _row_to_symbol(sym_row)
 
@@ -608,7 +613,7 @@ class ExploreStore:
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, relation, source_id, target_id"
         cur = self._conn.execute(sql, params)
-        rows = as_sqlite_rows(cur.fetchall())
+        rows = fetch_all_rows(cur)
         for edge_row in rows:
             yield _row_to_edge(edge_row)
 
@@ -621,7 +626,7 @@ class ExploreStore:
         counts: dict[str, int] = {}
         for table, sql in queries.items():
             cur = self._conn.execute(sql)
-            row: sqlite3.Row | None = cur.fetchone()
+            row: sqlite3.Row | None = fetch_one_row(cur)
             counts[table] = _row_int_opt(row, 0) if row is not None else 0
         return counts
 
@@ -654,7 +659,7 @@ class ExploreStore:
     def consume_dirty_paths(self) -> list[str]:
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
-            rows = as_sqlite_rows(cur.fetchall())
+            rows = fetch_all_rows(cur)
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
@@ -669,13 +674,13 @@ class ExploreStore:
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
-        rows = as_sqlite_rows(cur.fetchall())
+        rows = fetch_all_rows(cur)
         return [_row_str(row, "path") for row in rows]
 
     def get_setting(self, key: str) -> str | None:
         self.maybe_reopen_after_swap()
         cur = self._conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
-        row: sqlite3.Row | None = cur.fetchone()
+        row: sqlite3.Row | None = fetch_one_row(cur)
         if row is None:
             return None
         value: object = row["value"]

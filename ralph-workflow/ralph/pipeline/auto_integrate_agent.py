@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ralph._typed_attrs import read_attr
+
 __doc__ = "Endpoint-merge mode creates a merge commit while rebase uses git rebase --continue."
 
 import re
@@ -154,7 +156,17 @@ def _wrap_stop_resolution_outcome(raw_obj: object) -> StopResolutionOutcome:
             if raw_obj
             else RetryLaterOutcome(on_change="rebase resolution failed")
         )
-    if (any(isinstance(raw_obj, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if isinstance(
+        raw_obj,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return raw_obj
     return UnknownOutcome(RuntimeError(f"unexpected resolution outcome {raw_obj!r}"))
 
@@ -364,10 +376,10 @@ _CONFIG_FILE_PATTERN = re.compile(
 
 
 def _exception_config_path(exc: BaseException) -> str | None:
-    file_val: object = getattr(exc, "file", None)
+    file_val: object = read_attr(exc, "file", None)
     if file_val is not None:
         return str(file_val)
-    path_val: object = getattr(exc, "path", None)
+    path_val: object = read_attr(exc, "path", None)
     if path_val is not None:
         return str(path_val)
     return None

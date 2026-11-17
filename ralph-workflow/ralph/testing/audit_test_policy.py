@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
     SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES,
@@ -242,7 +243,7 @@ class TestPolicyAuditor:
         self._check_calls()
 
     def _add_violation(self, node: ast.AST, category: str, detail: str) -> None:
-        lineno: int = getattr(node, "lineno", 0)
+        lineno: int = read_attr(node, "lineno", 0)
         self.violations.append(
             TestPolicyViolation(
                 file_path=self.file_path,

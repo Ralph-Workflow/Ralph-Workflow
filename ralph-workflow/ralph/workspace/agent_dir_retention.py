@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
 
+from ralph.checked_accessors import as_object_dict
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.mcp.artifacts.state_db import DB_RELPATH, RunStateDB
@@ -36,15 +37,16 @@ _METADATA_LOCK_RELPATH = ".agent/.retention-metadata.lock"
 
 class RetentionPassCoordinator:
     __slots__ = (
-        '_condition',
-        '_in_flight',
-        '_joiners',
-        '_late_joiners',
-        '_on_wave_acquired',
-        '_pass_count',
-        '_published_until',
-        '_wave',
+        "_condition",
+        "_in_flight",
+        "_joiners",
+        "_late_joiners",
+        "_on_wave_acquired",
+        "_pass_count",
+        "_published_until",
+        "_wave",
     )
+
     def __init__(self, *, on_wave_acquired: Callable[[], None] | None = None) -> None:
         self._condition = threading.Condition()
         self._pass_count = 0
@@ -139,8 +141,6 @@ class _ActiveRunRegistry:
         created = threading.Lock()
         cls._lock = created
         return created
-
-
 
 
 @contextlib.contextmanager
@@ -274,15 +274,24 @@ def _prune_missing_temporary_path_owners(workspace_root: Path) -> None:
 
 def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]:
     raw = _read_json(workspace_root / _OWNERSHIP_RELPATH)
-    if not isinstance(raw, dict):
+    try:
+        raw_dict = as_object_dict(raw)
+    except TypeError:
         return {}
     owners: dict[str, tuple[str, float]] = {}
-    for path, entry in raw.items():
-        if isinstance(path, str) and isinstance(entry, dict):
-            run_id = entry.get("run_id")
-            created_at = entry.get("created_at")
-            if isinstance(run_id, str) and (any(isinstance(created_at, _t) for _t in (int, float))):
-                owners[path] = (run_id, float(created_at))
+    for path, entry in raw_dict.items():
+        try:
+            entry_dict = as_object_dict(entry)
+        except TypeError:
+            continue
+        run_id = entry_dict.get("run_id")
+        created_at = entry_dict.get("created_at")
+        if (
+            isinstance(run_id, str)
+            and isinstance(created_at, int | float)
+            and not isinstance(created_at, bool)
+        ):
+            owners[path] = (run_id, float(created_at))
     return owners
 
 

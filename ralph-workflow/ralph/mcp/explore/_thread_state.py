@@ -4,16 +4,16 @@ import threading
 from collections.abc import Callable
 from typing import TypeVar
 
-FlagT = TypeVar("FlagT")
+FlagsT = TypeVar("FlagsT")
 
 
-class CancelFlagBox:
+class CancelFlagBox[FlagsT]:
     __slots__ = ("flags", "lock")
 
     def __init__(
         self,
         *,
-        flags: dict[str, FlagT],
+        flags: FlagsT,
         lock_factory: Callable[[], threading.Lock] | None = None,
     ) -> None:
         factory = threading.Lock if lock_factory is None else lock_factory

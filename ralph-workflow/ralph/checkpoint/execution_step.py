@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from ralph.checked_accessors import as_object_dict
 from ralph.checkpoint.step_outcome import StepOutcome
 
 
@@ -50,7 +51,7 @@ class ExecutionStep:
     def from_dict(cls, data: dict[str, object]) -> ExecutionStep:
         raw_outcome = data.get("outcome")
         if isinstance(raw_outcome, dict):
-            typed_outcome: dict[str, object] = {str(k): v for k, v in raw_outcome.items()}
+            typed_outcome: dict[str, object] = as_object_dict(raw_outcome)
             outcome = StepOutcome.from_dict(typed_outcome)
         else:
             outcome = StepOutcome.skipped("unknown")

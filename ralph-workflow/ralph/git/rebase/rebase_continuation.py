@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import PINNED_CONFIG_ARGS, scrub_git_env
 from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
@@ -311,9 +312,7 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
 
 
 def _close_repo(repo: Repo) -> None:
-    if repo is None:
-        return
-    close: object = getattr(repo, "close", None)
+    close: object = read_attr(repo, "close", None)
     if callable(close):
         close()
 

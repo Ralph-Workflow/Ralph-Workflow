@@ -211,7 +211,7 @@ def _read_legacy_sse_jsonrpc_message(lines: Iterable[str]) -> JsonRpcResponse:
                 ) from exc
             if not isinstance(payload, dict):
                 raise PermanentPreflightError("legacy SSE JSON-RPC payload is not an object")
-            return (as_object_dict(payload) or {})
+            return as_object_dict(payload) or {}
 
 
 def _read_sse_event(lines: Iterable[str]) -> tuple[str | None, str]:
@@ -408,8 +408,9 @@ def post_http_jsonrpc_with_session(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
         ) from exc
 
+    response_headers: Mapping[str, str] = response.headers
     if response.status_code == _HTTP_ACCEPTED and not response.content.strip():
-        next_session_id = response.headers.get("mcp-session-id")
+        next_session_id = response_headers.get("mcp-session-id")
         return {}, next_session_id or session_id
 
     if response.status_code != _HTTP_OK:
@@ -423,10 +424,9 @@ def post_http_jsonrpc_with_session(
         raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
     if not isinstance(response_payload, dict):
         raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    session_id = response.headers.get("mcp-session-id")
     return (
         (as_object_dict(response_payload) or {}),
-        session_id,
+        response_headers.get("mcp-session-id"),
     )
 
 

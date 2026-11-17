@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -274,7 +276,7 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         if key in self._exemptions:
             self.used_exemptions.add(key)
             return
-        lineno: int = getattr(node, "lineno", 0)
+        lineno: int = read_attr(node, "lineno", 0)
         self.violations.append(
             McpTimeoutViolation(
                 file_path=self.file_path,

@@ -17,6 +17,7 @@ from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
 from ralph._build_identity import build_identity
+from ralph._typed_attrs import read_attr, read_bool_attr
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
@@ -90,6 +91,7 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
     retained_integration_reason,
 )
+from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -542,7 +544,9 @@ def _emit_run_start(
     if not hasattr(ctx.active_display, "emit_run_start"):
         return
     with suppress(Exception):
-        _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
+        _prompt_path_raw: object = read_attr(
+            ctx.effective_pipeline_subscriber, "_prompt_path", None
+        )
         _prompt_path: str | None = _prompt_path_raw if _is_text(_prompt_path_raw) else None
         _dev_para = next(
             (
@@ -556,8 +560,8 @@ def _emit_run_start(
             _dev_para.max_parallel_workers if _dev_para is not None else None
         )
         _plan_present = plan_artifact_path(ctx.workspace_scope.root).exists()
-        _dev_agent_raw: object = getattr(ctx.config, "developer_agent", None)
-        _dev_model_raw: object = getattr(ctx.config, "developer_model", None)
+        _dev_agent_raw: object = read_attr(ctx.config, "developer_agent", None)
+        _dev_model_raw: object = read_attr(ctx.config, "developer_model", None)
         verbosity_str = (
             str(ctx.effective_verbosity.value)
             if hasattr(ctx.effective_verbosity, "value")
@@ -579,7 +583,7 @@ def _emit_run_start(
 
 
 def _target_worktree_path(ctx: LoopContext) -> str | None:
-    target: object = getattr(ctx.config.general, "auto_integrate_target", None)
+    target: object = read_attr(ctx.config.general, "auto_integrate_target", None)
     if not isinstance(target, str) or not target:
         return None
     _verdict, owner = target_worktree_lookup(ctx.workspace_scope.root, target)
@@ -660,7 +664,7 @@ def build_status_bar_model(
 ) -> StatusBarModel:
     entry = build_phase_entry_model_from_state(state.phase, state, policy_bundle.pipeline)
     phase_style = phase_style_for_phase(state.phase, policy_bundle.pipeline)
-    entry_agent_name: object = getattr(entry, "agent_name", None)
+    entry_agent_name: object = read_attr(entry, "agent_name", None)
     return StatusBarModel(
         workspace_root=str(workspace_root),
         phase_label=entry.human_label(),
@@ -746,7 +750,7 @@ def _integration_alert_for_state(state: PipelineState, root: Path | None = None)
 
 
 def _attention_state_for_state(state: PipelineState) -> str | None:
-    run_outcome: object = getattr(state, "run_outcome", None)
+    run_outcome: object = read_attr(state, "run_outcome", None)
     outcome_attention = {
         "failed": "failed",
         "error": "failed",
@@ -756,7 +760,7 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
     }
     if isinstance(run_outcome, str) and run_outcome in outcome_attention:
         return outcome_attention[run_outcome]
-    run_phase: object = getattr(state, "phase", None)
+    run_phase: object = read_attr(state, "phase", None)
     if isinstance(run_phase, str):
         if run_phase.startswith("waiting"):
             return "waiting"
@@ -764,7 +768,7 @@ def _attention_state_for_state(state: PipelineState) -> str | None:
             return "terminated"
         if run_phase in ("", "starting", "startup"):
             return "starting"
-    retrying: object = getattr(state, "retrying", None)
+    retrying: object = read_attr(state, "retrying", None)
     return "retrying" if isinstance(retrying, bool) and retrying else None
 
 
@@ -911,7 +915,9 @@ def _run_startup_integration(
                 else ()
             ),
         )
-        prior_rebase = state if state is not None and _is_exact_rebase_state(state) else RebaseState()
+        prior_rebase = (
+            state if state is not None and _is_exact_rebase_state(state) else RebaseState()
+        )
         from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 
         outcome = integrate_before_planning(
@@ -1420,7 +1426,7 @@ def _apply_legacy_heartbeat_override(
 
 
 def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
-    raw: object = getattr(
+    raw: object = read_attr(
         config.general,
         "agent_waiting_status_interval_seconds",
         WAITING_STATUS_INTERVAL_SECONDS,
@@ -1448,7 +1454,7 @@ def _apply_startup_rebase_outcomes(
     from ralph.pipeline.factory import PipelineDeps
 
     try:
-        candidate_deps = ctx.pipeline_deps
+        candidate_deps: object = ctx.pipeline_deps
     except AttributeError:
         candidate_deps = None
     pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
@@ -1662,7 +1668,7 @@ def _cold_capped_escalation_due(
             return False
     elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
         return False
-    session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
+    session_attempted = read_bool_attr(ctx, "cold_capped_escalation_attempted", default=False)
     if session_attempted:
         return False
     ctx.cold_capped_escalation_attempted = True
@@ -1733,7 +1739,7 @@ def _run_owned_integration_conflict_resolution(
         for agent in resolution_chain_agents(ctx.policy_bundle)
         if ctx.registry.get(agent) is not None
     )
-    controller_candidate: object = getattr(ctx, "controller", None)
+    controller_candidate: object = read_attr(ctx, "controller", None)
     ledger: AgentFailureLedger | None = (
         controller_candidate.ledger
         if isinstance(controller_candidate, RecoveryController)
@@ -2117,12 +2123,12 @@ def _is_planning_entry(state: PipelineState, ctx: LoopContext) -> bool:
 
 
 def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
-    config: object = getattr(ctx, "config", None)
-    general: object = getattr(config, "general", None)
+    config: object = read_attr(ctx, "config", None)
+    general: object = read_attr(config, "general", None)
     if general is None:
         return None
-    enabled: object = getattr(general, "auto_integrate_enabled", True)
-    target: object = getattr(general, "auto_integrate_target", None)
+    enabled: object = read_attr(general, "auto_integrate_enabled", default=True)
+    target: object = read_attr(general, "auto_integrate_target", None)
     if not enabled or not isinstance(target, str) or not target:
         return None
     root = Path(ctx.workspace_scope.root)
@@ -2413,9 +2419,9 @@ _public_dispatch_owner_ladder_rung_dispatch = dispatch_owner_ladder_rung
 
 
 def _configured_sync_remote(ctx: LoopContext) -> str | None:
-    config_obj: object = getattr(ctx, "config", None)
-    general_obj: object = getattr(config_obj, "general", None)
-    remote_obj: object = getattr(general_obj, "auto_integrate_remote", None)
+    config_obj: object = read_attr(ctx, "config", None)
+    general_obj: object = read_attr(config_obj, "general", None)
+    remote_obj: object = read_attr(general_obj, "auto_integrate_remote", None)
     return remote_obj if isinstance(remote_obj, str) and remote_obj.strip() else None
 
 
@@ -2565,7 +2571,7 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         for agent in resolution_chain_agents(ctx.policy_bundle)
         if ctx.registry.get(agent) is not None
     )
-    controller_candidate: object = getattr(ctx, "controller", None)
+    controller_candidate: object = read_attr(ctx, "controller", None)
     ledger: AgentFailureLedger | None = (
         controller_candidate.ledger
         if isinstance(controller_candidate, RecoveryController)
@@ -3006,7 +3012,7 @@ def _run_inner_loop(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[PipelineState, str, int | None]:
-    workspace_root_raw: object = getattr(ctx, "workspace_root", ctx.workspace_scope.root)
+    workspace_root_raw: object = read_attr(ctx, "workspace_root", ctx.workspace_scope.root)
     if isinstance(workspace_root_raw, Path):
         legacy_block = legacy_rebase_startup_block(workspace_root_raw)
         if legacy_block is not None:
@@ -3142,7 +3148,7 @@ def _wait_for_integration_retry(
         and not rebase.integration_unresolved
     )
     if not is_publication_deferred and rebase.resolution_exhausted:
-        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+        session_attempted = read_bool_attr(ctx, "_session_handoff_dispatched", default=False)
         if not session_attempted:
             rebase_before = (
                 ctx.latest_state[0].rebase
@@ -3216,7 +3222,7 @@ def _handle_intervention_required_retry(
         ctx.latest_state[:] = [state]
         return state.clear_waiting()
     bumped_conflicts = rebase.consecutive_conflicts + 1
-    session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+    session_attempted = read_bool_attr(ctx, "_session_handoff_dispatched", default=False)
     if not session_attempted:
         rebase_before = (
             ctx.latest_state[0].rebase
@@ -3286,8 +3292,8 @@ def _config_failure_watch_paths(
     if bad_path is not None:
         return (bad_path,)
     candidates: list[Path] = []
-    scope: object = getattr(ctx, "workspace_scope", None)
-    root: object = getattr(scope, "root", None)
+    scope: object = read_attr(ctx, "workspace_scope", None)
+    root: object = read_attr(scope, "root", None)
     if isinstance(root, str | Path):
         candidates.append(resolve_config_path_for_workspace(root))
     candidates.extend(watcher.tracked_paths)
@@ -3628,7 +3634,7 @@ def _emit_post_loop_result(
 ) -> None:
     if not is_quiet and _is_run_end_display(active_display):
         with suppress(Exception):
-            total_agent_calls_raw: object = getattr(state.metrics, "total_agent_calls", 0)
+            total_agent_calls_raw: object = read_attr(state.metrics, "total_agent_calls", 0)
             total_agent_calls = total_agent_calls_raw if _is_plain_int(total_agent_calls_raw) else 0
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
@@ -3684,11 +3690,11 @@ def _build_recovery_controller(
     pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[RecoveryController, int]:
     _cycle_cap: int = 200
-    _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
+    _raw_cycle_cap: object = read_attr(state, "recovery_cycle_cap", 200)
     if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
         _cycle_cap = _raw_cycle_cap
 
-    raw_consecutive: object = getattr(
+    raw_consecutive: object = read_attr(
         config.general,
         "agent_max_consecutive_unproductive",
         None,
@@ -3698,7 +3704,7 @@ def _build_recovery_controller(
         if isinstance(raw_consecutive, int) and raw_consecutive >= 1
         else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
     )
-    raw_total: object = getattr(
+    raw_total: object = read_attr(
         config.general,
         "agent_max_total_unproductive",
         None,
@@ -3786,8 +3792,7 @@ def _log_failure_recovery_event(evt: _FailureEvent) -> None:
 
 def _log_fallover_recovery_event(evt: _FalloverEvent) -> None:
     logger.bind(recovery=True).info(
-        "FALLOVER phase={} from={} to={} reason={}"
-        " watchdog_reason={} unavailability_reason={}",
+        "FALLOVER phase={} from={} to={} reason={} watchdog_reason={} unavailability_reason={}",
         evt.phase,
         evt.from_agent,
         evt.to_agent,
@@ -3981,9 +3986,7 @@ def _cleanup_pipeline(
         emit_final_summary(
             state,
             loop_ctx.workspace_scope.root,
-            subscriber=(
-                subscriber_raw if _is_pipeline_subscriber(subscriber_raw) else None
-            ),
+            subscriber=(subscriber_raw if _is_pipeline_subscriber(subscriber_raw) else None),
             display=loop_ctx.active_display,
             display_context=loop_ctx.display_context,
         )

@@ -51,7 +51,7 @@ class ExecResourceEntry:
 
 
 class ExecResourceResolver:
-    __slots__ = ('_entries', '_roots')
+    __slots__ = ("_entries", "_roots")
 
     def register(self, spill_path: Path) -> str:
         spill_path = spill_path.resolve()

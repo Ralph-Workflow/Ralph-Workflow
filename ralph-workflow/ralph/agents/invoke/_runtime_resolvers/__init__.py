@@ -45,17 +45,17 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
-
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
-def _env_get(base_env: Mapping[str, str] | None, key: str, default: str | None = None) -> str | None:
+def _env_get(
+    base_env: Mapping[str, str] | None, key: str, default: str | None = None
+) -> str | None:
     value = getenv(key, base_env)
     return default if value is None else value
-
 
 
 class _GetenvFallbackMapping(Mapping[str, str]):
@@ -78,13 +78,10 @@ class _GetenvFallbackMapping(Mapping[str, str]):
     def __len__(self) -> int:
         return 0 if self._base is None else len(self._base)
 
-    def get(self, key: str, default: str | None = None) -> str | None:
-        value = getenv(key, self._base)
-        return default if value is None else value
-
 
 def _resolve_base_env(base_env: Mapping[str, str] | None) -> Mapping[str, str]:
     return _GetenvFallbackMapping(base_env)
+
 
 @runtime_checkable
 class _InvokeCompatibilitySeam(Protocol):

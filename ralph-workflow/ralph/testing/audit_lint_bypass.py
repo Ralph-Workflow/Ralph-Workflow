@@ -134,8 +134,8 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/mcp/explore/**/*.py",
             "ralph/mcp/tools/workspace/**/*.py",
             "ralph/mcp/server/_host_contention_signal.py",
-                    "ralph/mcp/server/_in_memory_transport.py",
-],
+            "ralph/mcp/server/_in_memory_transport.py",
+        ],
         "reason": (
             "Tests legitimately use Path() at runtime for fixture "
             "construction (tmp_path / '...' join) and literal-path "
@@ -172,7 +172,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/mcp/upstream/tool_catalog_cache.py",
             "ralph/workspace/context.py",
             "tests/**/*.py",
-                    "ralph/agents/__init__.py",
+            "ralph/agents/__init__.py",
             "ralph/agents/_agy_upstream_diagnostic.py",
             "ralph/agents/catalog.py",
             "ralph/agents/invoke/__init__.py",
@@ -220,7 +220,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/skills/__init__.py",
             "ralph/supervising.py",
             "ralph/testing/_filesystem_write_scan.py",
-],
+        ],
         "reason": (
             "Lazy imports break specific cycles: explore<->workspace seam "
             "for the FTS/evidence substrate; workspace<->explore for the "
@@ -266,7 +266,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/multimodal/capabilities.py",
             "tests/test_integration_obstruction_real_git.py",
-                    "ralph/mcp/server/__init__.py",
+            "ralph/mcp/server/__init__.py",
             "ralph/display/__init__.py",
             "ralph/recovery/__init__.py",
             "ralph/agents/parsers/_ndjson_base.py",
@@ -274,7 +274,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/git/git_command_queue.py",
             "ralph/pipeline/reducer.py",
             "ralph/testing/_single_owner_rules.py",
-],
+        ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "
             "dispatch stay local; extracting the branches would obscure the "
@@ -289,12 +289,12 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/builtin_spec.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
-                    "ralph/mcp/server/__init__.py",
+            "ralph/mcp/server/__init__.py",
             "ralph/git/git_command_queue.py",
             "ralph/recovery/__init__.py",
             "ralph/pipeline/conflict_resolution/rebase_loop.py",
             "ralph/pipeline/factory.py",
-],
+        ],
         "reason": (
             "Short-circuit contract validation and transport/capture state "
             "dispatch stay local; extracting the branches would obscure the "
@@ -305,12 +305,12 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": [
             "ralph/mcp/tools/workspace/**/*.py",
             "ralph/mcp/explore/**/*.py",
-                    "ralph/mcp/server/__init__.py",
+            "ralph/mcp/server/__init__.py",
             "ralph/agents/invoke/_pty_line_reader.py",
             "ralph/pipeline/effect_executor.py",
             "ralph/pipeline/factory.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
-],
+        ],
         "reason": (
             "Indexed grep_files handler statements grew with the "
             "eligibility/fallback/evidence-id plumbing; per-branch "

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.checked_accessors import as_object_dict, as_sequence
 from ralph.config import _env
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -132,17 +133,21 @@ def _false_bench_line(state: PipelineState) -> str:
         return ""
     count = snapshot.get("count", 0)
     events = snapshot.get("events", ())
-    if not isinstance(count, int) or not (
-        any(isinstance(events, _t) for _t in (list, tuple))
-    ):
+    if not isinstance(count, int):
+        return "- [SG-4] False benches: 0.\n"
+    try:
+        event_items = as_sequence(events)
+    except TypeError:
         return "- [SG-4] False benches: 0.\n"
     labels: list[str] = []
-    for event in events:
-        if not isinstance(event, dict):
+    for event in event_items:
+        try:
+            event_dict = as_object_dict(event)
+        except TypeError:
             continue
-        agent = event.get("agent")
-        phase = event.get("phase")
-        fingerprint = event.get("config_fingerprint")
+        agent = event_dict.get("agent")
+        phase = event_dict.get("phase")
+        fingerprint = event_dict.get("config_fingerprint")
         if isinstance(agent, str) and isinstance(phase, str) and isinstance(fingerprint, str):
             labels.append(f"{_safe_text(agent)}@{_safe_text(phase)} [{_safe_text(fingerprint)}]")
     detail = f" ({', '.join(labels)})" if labels else ""

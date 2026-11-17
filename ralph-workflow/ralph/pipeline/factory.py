@@ -317,14 +317,98 @@ class PipelineDeps:
         validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None,
         recovery_clock: Clock | None = None,
     ) -> None:
-        effective_core = _resolve_pipeline_core(
-            core,
-            display_context=display_context,
-            model_identity=model_identity,
-            master_prompt_materializer=master_prompt_materializer,
-            phase_prompt_materializer=phase_prompt_materializer,
-            artifact_requirements_resolver=artifact_requirements_resolver,
-        )
+        override_display: DisplayContext | None = None
+        has_display_override = False
+        if display_context is not _UNSET:
+            if not _is_display_context(display_context):
+                raise TypeError("display_context must be DisplayContext")
+            override_display = display_context
+            has_display_override = True
+
+        override_model: MultimodalModelIdentity | None = None
+        has_model_override = False
+        if model_identity is not _UNSET:
+            if not _is_model_identity(model_identity):
+                raise TypeError("model_identity must be MultimodalModelIdentity or None")
+            override_model = model_identity
+            has_model_override = True
+
+        override_master: MaterializeMasterPromptFn | None = None
+        has_master_override = False
+        if master_prompt_materializer is not _UNSET:
+            if not _is_master_prompt_fn(master_prompt_materializer):
+                raise TypeError("master_prompt_materializer must be callable")
+            override_master = master_prompt_materializer
+            has_master_override = True
+
+        override_phase: PhasePromptMaterializerFn | None = None
+        has_phase_override = False
+        if phase_prompt_materializer is not _UNSET:
+            if not _is_phase_prompt_fn(phase_prompt_materializer):
+                raise TypeError("phase_prompt_materializer must be callable")
+            override_phase = phase_prompt_materializer
+            has_phase_override = True
+
+        override_artifact: ArtifactRequirementsResolverFn | None = None
+        has_artifact_override = False
+        if artifact_requirements_resolver is not _UNSET:
+            if not _is_artifact_resolver_fn(artifact_requirements_resolver):
+                raise TypeError("artifact_requirements_resolver must be callable")
+            override_artifact = artifact_requirements_resolver
+            has_artifact_override = True
+
+        if core is None:
+            if not has_display_override or override_display is None:
+                raise ValueError("display_context is required when core is not provided")
+            master_fn = (
+                override_master
+                if has_master_override and override_master is not None
+                else _materialize_master_prompt
+            )
+            phase_fn = (
+                override_phase
+                if has_phase_override and override_phase is not None
+                else _materialize_prompt_for_phase
+            )
+            artifact_fn = (
+                override_artifact
+                if has_artifact_override and override_artifact is not None
+                else _resolve_phase_required_artifact
+            )
+            effective_core = PipelineCore(
+                display_context=override_display,
+                model_identity=override_model if has_model_override else None,
+                master_prompt_materializer=master_fn,
+                phase_prompt_materializer=phase_fn,
+                artifact_requirements_resolver=artifact_fn,
+            )
+        else:
+            effective_core = core
+            if has_display_override and override_display is not None:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    display_context=override_display,
+                )
+            if has_model_override:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    model_identity=override_model,
+                )
+            if has_master_override and override_master is not None:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    master_prompt_materializer=override_master,
+                )
+            if has_phase_override and override_phase is not None:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    phase_prompt_materializer=override_phase,
+                )
+            if has_artifact_override and override_artifact is not None:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    artifact_requirements_resolver=override_artifact,
+                )
 
         object.__setattr__(self, "core", effective_core)
         object.__setattr__(self, "registry_factory", registry_factory)

@@ -13,13 +13,14 @@ _FRESHNESS_STATES = frozenset(
 
 class WorkspaceAwareness:
     __slots__ = (
-        '_cause',
-        '_dirty_paths',
-        '_freshness_override',
-        '_lock',
-        '_mode',
-        '_workspace_root',
+        "_cause",
+        "_dirty_paths",
+        "_freshness_override",
+        "_lock",
+        "_mode",
+        "_workspace_root",
     )
+
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._dirty_paths: OrderedDict[str, None] = OrderedDict()
@@ -115,6 +116,8 @@ class WorkspaceAwareness:
 
 
 _awareness_by_workspace: dict[str, WorkspaceAwareness] = {}
+
+
 class _AwarenessRegistry:
     __slots__ = ()
     _lock: ClassVar[threading.Lock | None] = None
@@ -127,8 +130,6 @@ class _AwarenessRegistry:
         created = threading.Lock()
         cls._lock = created
         return created
-
-
 
 
 def awareness_for_workspace(workspace_root: Path) -> WorkspaceAwareness:

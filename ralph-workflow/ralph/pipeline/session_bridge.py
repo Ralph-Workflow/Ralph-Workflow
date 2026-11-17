@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import threading
 import uuid
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph._typed_attrs import read_attr
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -230,7 +231,7 @@ def scoped_reset_tool_registry_callback(
         raise ValueError("a tool-registry reset requires an invocation scope")
     if bridge is None:
         return None
-    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
+    reset_tool_registry_obj: object = read_attr(bridge, "reset_tool_registry", None)
     if not callable(reset_tool_registry_obj):
         return None
 
@@ -243,7 +244,8 @@ def scoped_reset_tool_registry_callback(
                 return None
             _RESET_SCOPE.state.scope = scope_key
         try:
-            return reset_tool_registry_obj()
+            reset_fn = cast("Callable[[], object]", reset_tool_registry_obj)
+            return reset_fn()
         finally:
             with _RESET_SCOPE.lock:
                 _RESET_SCOPE.state.scope = None

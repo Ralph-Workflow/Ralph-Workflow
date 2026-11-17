@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -14,7 +16,7 @@ def failure_message_parts(exc: BaseException | str) -> list[str]:
     message = str(exc).strip()
     if message:
         parts.append(message)
-    stderr = getattr(exc, "stderr", None)
+    stderr = read_attr(exc, "stderr", None)
     if isinstance(stderr, str):
         stderr_text = stderr.strip()
         if stderr_text and stderr_text not in parts:
@@ -34,9 +36,9 @@ class FailureDetailParts(list[str]):
 def provider_message_parts(exc: BaseException | str) -> list[str]:
     if isinstance(exc, str):
         return failure_message_parts(exc)
-    parsed_output = getattr(exc, "parsed_output", None)
+    parsed_output = read_attr(exc, "parsed_output", None)
     carries_transcript = isinstance(parsed_output, list) and bool(parsed_output)
-    stderr = getattr(exc, "stderr", None)
+    stderr = read_attr(exc, "stderr", None)
     if isinstance(stderr, str) and stderr.strip():
         return [stderr.strip()]
     if carries_transcript:
@@ -49,7 +51,7 @@ def failure_detail_parts(exc: BaseException | str) -> FailureDetailParts:
     if isinstance(exc, str):
         return FailureDetailParts(failure_message_parts(exc), provider_parts)
     parts = failure_message_parts(exc)
-    parsed_output = getattr(exc, "parsed_output", None)
+    parsed_output = read_attr(exc, "parsed_output", None)
     if isinstance(parsed_output, list):
         for item in parsed_output:
             item_text = str(item).strip()

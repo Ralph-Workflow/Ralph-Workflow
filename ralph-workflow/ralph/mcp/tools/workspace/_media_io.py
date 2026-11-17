@@ -8,6 +8,7 @@ from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed
 from ralph.mcp.tools._cache_retention import prune_cache_files
@@ -41,7 +42,7 @@ _MEDIA_PRUNE_INTERVAL: int = 32
 
 
 class _MediaPruneCounter:
-    __slots__ = ('_counter', '_workspace_key')
+    __slots__ = ("_counter", "_workspace_key")
 
     def __init__(self, counter: Iterator[int] | int | None = None) -> None:
         self._counter = count(1) if counter is None else counter
@@ -211,7 +212,7 @@ def _persist_media_session_entry(
     workspace: Workspace,
     meta: dict[str, str],
 ) -> None:
-    drain: object = getattr(session, "drain", None)
+    drain: object = read_attr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
     path = media_session_path(phase)
     uri = meta["uri"]

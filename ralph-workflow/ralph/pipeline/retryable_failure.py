@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._agent_launch_error import AgentLaunchError
 from ralph.agents.invoke._completion_termination import AttemptEnded, attempt_facts_for_failure
 from ralph.recovery.attempt_facts import TerminationIssuer
@@ -108,7 +109,7 @@ def quota_termination_observed(exc: BaseException) -> bool:
 
 
 def _primary_recovery_error_text(exc: Exception) -> str:
-    stderr: object = getattr(exc, "stderr", "")
+    stderr: object = read_attr(exc, "stderr", "")
     if isinstance(stderr, str) and stderr.strip():
         return stderr
     parts = failure_message_parts(exc)

@@ -1,23 +1,33 @@
 from __future__ import annotations
 
+import dataclasses
+import json
+import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import IO, cast
 
 __all__ = [
     "as_bool",
     "as_int",
     "as_mapping",
+    "as_object_dict",
     "as_object_list",
     "as_path",
     "as_sequence",
     "as_str",
     "as_str_dict",
     "as_str_list",
+    "dataclass_field_names",
+    "loads_json",
+    "loads_toml",
+    "module_attr",
     "optional_bool",
     "optional_float",
     "optional_int",
     "optional_str",
     "optional_str_list",
+    "type_as_object_type",
 ]
 
 
@@ -59,7 +69,10 @@ def as_str_dict(value: object, *, field: str | None = None) -> dict[str, str]:
         msg = _field_message(field, f"expected dict[str, str], got {type(value).__name__}")
         raise TypeError(msg)
     result: dict[str, str] = {}
-    for k, v in value.items():
+    for k, v in cast("Mapping[object, object]", value).items():
+        if not isinstance(k, str):
+            msg = _field_message(field, f"dict keys must be str, got {type(k).__name__}")
+            raise TypeError(msg)
         if not isinstance(v, str):
             msg = _field_message(field, f"dict values must be str, got {type(v).__name__}")
             raise TypeError(msg)
@@ -67,22 +80,66 @@ def as_str_dict(value: object, *, field: str | None = None) -> dict[str, str]:
     return result
 
 
-def as_mapping(value: object, *, field: str | None = None) -> Mapping[str, object]:
-    if not isinstance(value, Mapping):
-        msg = _field_message(field, f"expected Mapping[str, object], got {type(value).__name__}")
+def loads_json(raw: str | bytes, *, strict: bool = True) -> object:
+    if isinstance(raw, bytes):
+        return cast("object", json.loads(raw))
+    return cast("object", json.loads(raw, strict=strict))
+
+
+def loads_toml(raw: IO[bytes]) -> object:
+    return cast("object", tomllib.load(raw))
+
+
+def module_attr(module: object, name: str) -> object:
+    return cast("object", getattr(module, name))
+
+
+def type_as_object_type(typ: object) -> type[object]:
+    builtins_mod = __import__("builtins")
+    type_obj = module_attr(builtins_mod, "type")
+    type_type = cast("type[object]", type_obj)
+    if not isinstance(typ, type_type):
+        msg = f"expected type, got {type(typ).__name__}"
         raise TypeError(msg)
-    for k in value:
+    return cast("type[object]", typ)
+
+
+def dataclass_field_names(instance: object) -> frozenset[str]:
+    fields_fn = module_attr(dataclasses, "fields")
+    if not callable(fields_fn):
+        msg = "dataclasses.fields is not callable"
+        raise TypeError(msg)
+    fields = cast("tuple[object, ...]", fields_fn(instance))
+    names: set[str] = set()
+    for field in fields:
+        name = cast("object | None", getattr(field, "name", None))
+        if isinstance(name, str):
+            names.add(name)
+    return frozenset(names)
+
+
+def as_object_dict(value: object, *, field: str | None = None) -> dict[str, object]:
+    if not isinstance(value, dict):
+        msg = _field_message(field, f"expected dict[str, object], got {type(value).__name__}")
+        raise TypeError(msg)
+    result: dict[str, object] = {}
+    for k, v in cast("Mapping[object, object]", value).items():
         if not isinstance(k, str):
-            msg = _field_message(field, f"mapping keys must be str, got {type(k).__name__}")
+            msg = _field_message(field, f"dict keys must be str, got {type(k).__name__}")
             raise TypeError(msg)
-    return value
+        result[k] = v
+    return result
+
+
+def as_mapping(value: object, *, field: str | None = None) -> Mapping[str, object]:
+    return as_object_dict(value, field=field)
 
 
 def as_object_list(value: object, *, field: str | None = None) -> list[object]:
     if not isinstance(value, list):
         msg = _field_message(field, f"expected list, got {type(value).__name__}")
         raise TypeError(msg)
-    return value
+    return list(cast("list[object]", value))
 
 
 def as_str_list(value: object, *, field: str | None = None) -> list[str]:
@@ -102,7 +159,7 @@ def as_sequence(value: object, *, field: str | None = None) -> Sequence[object]:
     if any(isinstance(value, _t) for _t in (str, bytes)) or not isinstance(value, Sequence):
         msg = _field_message(field, f"expected Sequence[object], got {type(value).__name__}")
         raise TypeError(msg)
-    return value
+    return cast("Sequence[object]", value)
 
 
 def optional_str(value: object, *, field: str | None = None) -> str | None:
@@ -123,7 +180,11 @@ def optional_float(value: object, *, field: str | None = None) -> float | None:
     del field
     if isinstance(value, bool):
         return None
-    return float(value)
+    if isinstance(value, int):
+        return float(value)
+    if isinstance(value, float):
+        return value
+    return None
 
 
 def optional_bool(value: object, *, field: str | None = None) -> bool | None:

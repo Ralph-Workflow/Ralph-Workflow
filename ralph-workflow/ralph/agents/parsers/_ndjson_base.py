@@ -4,7 +4,7 @@ import json
 import re
 from contextlib import suppress
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from ._object_dict import as_object_dict, as_object_list
 from .agent_output_line import AgentOutputLine
@@ -68,7 +68,7 @@ _JSON_DECODER = json.JSONDecoder(strict=False)
 
 def _decode_json_at(text: str, pos: int) -> tuple[object, int]:
     try:
-        decoded = _JSON_DECODER.raw_decode(text, pos)
+        decoded = cast("tuple[object, int]", _JSON_DECODER.raw_decode(text, pos))
     except (json.JSONDecodeError, ValueError):
         return None, -1
     value, end = decoded
@@ -85,7 +85,11 @@ def _redact_json_fragments(text: str) -> str:
         ch = text[i]
         if ch in {"{", "["}:
             parsed, end = _decode_json_at(text, i)
-            if parsed is not None and (any(isinstance(parsed, _t) for _t in (dict, list))) and end > i:
+            if (
+                parsed is not None
+                and (any(isinstance(parsed, _t) for _t in (dict, list)))
+                and end > i
+            ):
                 try:
                     redacted_obj = _redact_json_values(parsed)
                     redacted_text = json.dumps(redacted_obj, ensure_ascii=False)
@@ -128,7 +132,7 @@ def _tool_name_from_line(line: AgentOutputLine) -> str:
 
 
 class ParserTemplateBase:
-    __slots__ = ('_accumulators',)
+    __slots__ = ("_accumulators",)
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
     _accumulators: dict[str, TextAccumulator]
@@ -248,7 +252,6 @@ def _extract_pid_from_obj(obj: dict[str, object]) -> int | None:
     return None
 
 
-
 def _extract_source_timestamp(obj: dict[str, object]) -> str | None:
     for key in ("timestamp", "time", "ts"):
         raw = obj.get(key)
@@ -308,7 +311,8 @@ def _as_subagent_source_label(value: str) -> _SubagentSourceLabel:
 
 
 class NdjsonParserBase(ParserTemplateBase):
-    __slots__ = ('_subagent_pid_registry', '_subagent_source_label')
+    __slots__ = ("_subagent_pid_registry", "_subagent_source_label")
+
     def __init__(self) -> None:
         super().__init__()
         self._subagent_pid_registry: SubagentPidRegistry | None = None
@@ -463,7 +467,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.agents.idle_watchdog import SubagentPidRegistry
-
 
 
 _IDENTIFYING_PARAM_KEYS: tuple[str, ...] = ("TargetFile", "path", "file_path", "command", "query")
@@ -643,11 +646,12 @@ def _extract_fallback_payload(obj: dict[str, object]) -> str | None:
 
 class AgyParser(NdjsonParserBase):
     __slots__ = (
-        '_emitted_tool_use_ids',
-        '_has_prior_text_line',
-        '_pending_text_usage',
-        '_text_accumulator',
+        "_emitted_tool_use_ids",
+        "_has_prior_text_line",
+        "_pending_text_usage",
+        "_text_accumulator",
     )
+
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
@@ -960,15 +964,16 @@ def _content_block_fingerprint(block: dict[str, object]) -> str:
 
 class ClaudeParser(NdjsonParserBase):
     __slots__ = (
-        '_current_message_id',
-        '_emitted_text',
-        '_fallback_accumulator',
-        '_fallback_thinking_accumulator',
-        '_seen_content_blocks',
-        '_streamed_block_fingerprints',
-        '_text_accumulator',
-        '_thinking_accumulator',
+        "_current_message_id",
+        "_emitted_text",
+        "_fallback_accumulator",
+        "_fallback_thinking_accumulator",
+        "_seen_content_blocks",
+        "_streamed_block_fingerprints",
+        "_text_accumulator",
+        "_thinking_accumulator",
     )
+
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
@@ -1563,7 +1568,6 @@ def _parse_codex_object(
     yield from _CodexDispatch().dispatch(obj, stripped)
 
 
-
 def _codex_delta_content(delta_val: object) -> str:
     if isinstance(delta_val, dict):
         delta_obj = as_object_dict(delta_val)
@@ -1576,11 +1580,12 @@ def _codex_delta_content(delta_val: object) -> str:
 
 class _CodexDispatch:
     __slots__ = (
-        '_accumulators',
-        '_current_response_id',
-        '_owner',
-        '_stream_counter',
+        "_accumulators",
+        "_current_response_id",
+        "_owner",
+        "_stream_counter",
     )
+
     def __init__(self, owner: CodexParser | None = None) -> None:
         self._owner = owner
         self._accumulators: dict[str, TextAccumulator] = {}
@@ -1822,7 +1827,7 @@ def _item_result_content(result: object) -> str:
 
 
 class CodexParser(NdjsonParserBase):
-    __slots__ = ('_current_response_id', '_dispatcher', '_stream_counter')
+    __slots__ = ("_current_response_id", "_dispatcher", "_stream_counter")
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )
@@ -2014,7 +2019,8 @@ def _cursor_tool_result_is_error(obj: dict[str, object]) -> bool:
 
 
 class _CursorDispatch:
-    __slots__ = ('_owner',)
+    __slots__ = ("_owner",)
+
     def __init__(self, owner: CursorParser) -> None:
         self._owner = owner
 
@@ -2180,7 +2186,7 @@ class _CursorDispatch:
 
 
 class CursorParser(NdjsonParserBase):
-    __slots__ = ('_dispatcher', '_text_accumulator', '_thinking_accumulator')
+    __slots__ = ("_dispatcher", "_text_accumulator", "_thinking_accumulator")
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"result"})
 
     def __init__(
@@ -2216,8 +2222,6 @@ class CursorParser(NdjsonParserBase):
         yield from self._thinking_accumulator.flush(kind=_THINKING_KIND, require_strip=True)
 
 
-
-
 from typing import TYPE_CHECKING
 
 JsonValue = object
@@ -2230,7 +2234,8 @@ if TYPE_CHECKING:
 
 
 class _GeminiDispatch:
-    __slots__ = ('_owner',)
+    __slots__ = ("_owner",)
+
     def __init__(self, owner: GeminiParser) -> None:
         self._owner = owner
 
@@ -2396,7 +2401,7 @@ class _GeminiDispatch:
 
 
 class GeminiParser(NdjsonParserBase):
-    __slots__ = ('_dispatcher', '_text_accumulator')
+    __slots__ = ("_dispatcher", "_text_accumulator")
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
     def __init__(
@@ -2513,7 +2518,8 @@ def _tool_payload_declares_error(obj: dict[str, object]) -> bool:
 
 
 class KimiParser(NdjsonParserBase):
-    __slots__ = ('_text_accumulator',)
+    __slots__ = ("_text_accumulator",)
+
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,
@@ -2657,7 +2663,8 @@ if TYPE_CHECKING:
 
 
 class _OpenCodeDispatch:
-    __slots__ = ('_owner',)
+    __slots__ = ("_owner",)
+
     def __init__(self, owner: OpenCodeParser) -> None:
         self._owner = owner
 
@@ -2875,10 +2882,10 @@ class _OpenCodeDispatch:
 
 class OpenCodeParser(NdjsonParserBase):
     __slots__ = (
-        '_current_part_id',
-        '_dispatched_tool_call_ids',
-        '_dispatcher',
-        '_stream_counter',
+        "_current_part_id",
+        "_dispatched_tool_call_ids",
+        "_dispatcher",
+        "_stream_counter",
     )
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
 
@@ -3065,7 +3072,6 @@ def _make_passthrough(
     return _handler
 
 
-
 def _pi_retry_label(attempt: object, max_attempts: object) -> str:
     attempt_int = attempt if isinstance(attempt, int) and not isinstance(attempt, bool) else None
     max_int = (
@@ -3081,7 +3087,8 @@ def _pi_retry_label(attempt: object, max_attempts: object) -> str:
 
 
 class _PiDispatch:
-    __slots__ = ('_owner', '_sub_event_handlers', '_top_level_handlers')
+    __slots__ = ("_owner", "_sub_event_handlers", "_top_level_handlers")
+
     def __init__(self, owner: PiParser) -> None:
         self._owner = owner
         self._top_level_handlers: dict[
@@ -3527,7 +3534,7 @@ class _PiDispatch:
 
 
 class PiParser(NdjsonParserBase):
-    __slots__ = ('_dispatcher', 'saw_text_end_by_index', 'saw_thinking_end_by_index')
+    __slots__ = ("_dispatcher", "saw_text_end_by_index", "saw_thinking_end_by_index")
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(
@@ -3597,7 +3604,7 @@ def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
 
 
 class GenericParser(NdjsonParserBase):
-    __slots__ = ('_text_accumulator',)
+    __slots__ = ("_text_accumulator",)
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
     def __init__(
@@ -3772,7 +3779,8 @@ def _status_signature(text: str) -> str:
 
 
 class NanocoderParser(GenericParser):
-    __slots__ = ('_status_signatures', '_text_signatures')
+    __slots__ = ("_status_signatures", "_text_signatures")
+
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,

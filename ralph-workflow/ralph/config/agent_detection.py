@@ -8,12 +8,12 @@ import tomllib
 from contextlib import suppress
 from pathlib import Path
 from re import Match
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_mapping, as_object_dict
 from ralph.config import _env
 from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.agents_file_writer import write_agents_toml
@@ -238,7 +238,7 @@ def _agents_write_target(path: Path) -> Path:
 
 
 def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
-    parsed = dict(as_mapping(tomllib.loads(text)))
+    parsed = as_object_dict(cast("object", tomllib.loads(text)))
     raw_chains = parsed.get("agent_chains")
     if not isinstance(raw_chains, dict):
         return {}
@@ -329,7 +329,7 @@ def _inactive_agent_pattern(name: str) -> re.Pattern[str]:
 
 def _configured_agent_names(text: str) -> set[str]:
     try:
-        parsed = dict(as_mapping(tomllib.loads(text)))
+        parsed = as_object_dict(cast("object", tomllib.loads(text)))
     except (TypeError, ValueError):
         return set()
     agents = parsed.get("agents")

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_mapping, loads_json
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL
 from ralph.phases._commit_review_catalog import render_delete_decision_rules_markdown
 from ralph.phases.required_artifacts import retry_hint_path
@@ -73,7 +72,7 @@ def render_commit_review_prompt(
         )
         if context_file.is_file():
             try:
-                raw_dict = dict(as_mapping(json.loads(context_file.read_text(encoding="utf-8"))))
+                raw_dict = dict(as_mapping(loads_json(context_file.read_text(encoding="utf-8"))))
                 if proposal_ref is None:
                     ref_val = raw_dict.get("proposal_ref")
                     if isinstance(ref_val, str):

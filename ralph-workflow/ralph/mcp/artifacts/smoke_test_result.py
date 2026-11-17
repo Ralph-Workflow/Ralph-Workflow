@@ -52,6 +52,7 @@ def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None
     artifact_path = repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     try:
         from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
         _ = _markdown_specs
         markdown = artifact_path.read_text(encoding="utf-8")
         content, diagnostics = parse_and_validate(

@@ -119,6 +119,7 @@ def read_product_spec_artifact(repo_root: Path) -> dict[str, object] | None:
         return None
 
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     content, diagnostics = parse_and_validate(markdown, get_spec(PRODUCT_SPEC_ARTIFACT_TYPE))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):

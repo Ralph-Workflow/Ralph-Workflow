@@ -68,7 +68,7 @@ def _check_fast_path_placement() -> list[str]:
 
     target: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     for node in ast.walk(tree):
-        if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))) and node.name == (
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == (
             _FAST_PATH_TARGET_FUNCTION
         ):
             target = node

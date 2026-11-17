@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git import _deterministic_commit_attempt as _deterministic
 from ralph.git._dirty_paths import (
     _list_dirty_paths,
@@ -59,7 +60,7 @@ _HEAD_PROBE_FAILED: str = "__HEAD_PROBE_FAILED__"
 def _close_if_possible(repo: object | None) -> None:
     if repo is None:
         return
-    close: object = getattr(repo, "close", None)
+    close: object = read_attr(repo, "close", None)
     if callable(close):
         close()
 
@@ -347,7 +348,7 @@ def _scoped_commit_failure(
             reset_exc,
         )
     _restore_pre_staged_index(repo, pre_staged_blobs)
-    scope_error_attr: object = getattr(result, "error", None)
+    scope_error_attr: object = read_attr(result, "error", None)
     if scope_error_attr is not None:
         scope_error_message: str | None = str(scope_error_attr)
     else:

@@ -7,6 +7,7 @@ from typing import Final
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.config import _env
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_recovery_git_state import (
@@ -209,14 +210,14 @@ def _yield_nonempty_str(value: object) -> Iterator[str]:
 
 
 def _branch_names_from_config(config: object) -> Iterator[str]:
-    yield from _yield_nonempty_str(getattr(config, "feature_branch", None))
-    yield from _yield_nonempty_str(getattr(config, "branch", None))
-    yield from _yield_nonempty_str(getattr(config, "target_branch", None))
-    general_obj: object = getattr(config, "general", None)
+    yield from _yield_nonempty_str(read_attr(config, "feature_branch", None))
+    yield from _yield_nonempty_str(read_attr(config, "branch", None))
+    yield from _yield_nonempty_str(read_attr(config, "target_branch", None))
+    general_obj: object = read_attr(config, "general", None)
     if general_obj is None:
         return
-    yield from _yield_nonempty_str(getattr(general_obj, "feature_branch", None))
-    yield from _yield_nonempty_str(getattr(general_obj, "branch", None))
+    yield from _yield_nonempty_str(read_attr(general_obj, "feature_branch", None))
+    yield from _yield_nonempty_str(read_attr(general_obj, "branch", None))
 
 
 def _candidate_branch_names(repo_root: Path, opts: Mapping[str, object]) -> Iterator[str]:

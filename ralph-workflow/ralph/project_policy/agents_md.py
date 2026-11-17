@@ -67,25 +67,8 @@ _RALPH_MANAGED_SIGNATURE = "Readiness reports THREE dimensions, not two:"
 
 
 class _AgentsReadyTemplate(str):
-    def format(
-        self,
-        *,
-        begin: object,
-        end: object,
-        canonical_dir: object,
-        structure_complete: object = "unknown",
-        implementation_verified: object = "unknown",
-        outcome_evidence_reviewed: object = "unknown",
-    ) -> str:
-        return str.format(
-            self,
-            begin=begin,
-            end=end,
-            canonical_dir=canonical_dir,
-            structure_complete=structure_complete,
-            implementation_verified=implementation_verified,
-            outcome_evidence_reviewed=outcome_evidence_reviewed,
-        )
+    def format(self, *args: object, **kwargs: object) -> str:
+        return str.format(self, *args, **kwargs)
 
 
 _AGENTS_READY_TEMPLATE = _AgentsReadyTemplate(

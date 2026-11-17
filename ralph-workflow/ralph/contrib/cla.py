@@ -112,9 +112,7 @@ def evaluate_current_environment() -> ClaCheckResult:
             event = _read_json_file(Path(github_event_path))
         except (OSError, ValueError) as exc:
             return ClaCheckResult(ok=False, message=f"Could not load GitHub event payload: {exc}")
-        return evaluate_github_event(
-            event_name=config_env.getenv("GITHUB_EVENT_NAME"), event=event
-        )
+        return evaluate_github_event(event_name=config_env.getenv("GITHUB_EVENT_NAME"), event=event)
 
     return evaluate_codeberg_environment(config_env.environ())
 

@@ -96,7 +96,7 @@ def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
 
 
 class _PsutilLivenessProc:
-    __slots__ = ('_proc',)
+    __slots__ = ("_proc",)
 
     def __init__(self, proc: psutil.Process) -> None:
         self._proc = proc
@@ -124,7 +124,7 @@ class _PsutilLivenessProc:
 
 
 class _DefaultPsutilModule:
-    __slots__ = ('Process',)
+    __slots__ = ("Process",)
 
     def __init__(self) -> None:
         self.Process: Callable[[int], _LivenessProc] = self._get_process
@@ -167,7 +167,7 @@ class _ProgressSubscription:
 
 
 class _ExecJobError(Exception):
-    __slots__ = ('job_id', 'reason')
+    __slots__ = ("job_id", "reason")
 
     def __init__(self, job_id: str, reason: str) -> None:
         self.job_id = job_id
@@ -182,7 +182,45 @@ ExecJobError = _ExecJobError
 
 
 class _ActiveJob:
-    __slots__ = ('cancelled', 'capability', 'ceiling_ms', 'clock', 'command', 'cwd', 'done_event', 'handle', 'job_id', 'kill_cause', 'last_output_at', 'last_sample_time', 'last_wait_time', 'latest_verdict', 'liveness_config', 'lock', 'max_runtime_ms', 'output_lines', 'psutil_module', 'reader_threads', 'returncode', 'runner_thread', 'running', 'spill_dir', 'stall_integrator', 'start_time', 'stderr_head', 'stderr_tail', 'stdout_head', 'stdout_tail', 'suspicion_clock', 'suspicious_started_at', 'timeout_ms', 'total_stderr_bytes', 'total_stdout_bytes', 'tree_sampler', 'watcher_thread')
+    __slots__ = (
+        "cancelled",
+        "capability",
+        "ceiling_ms",
+        "clock",
+        "command",
+        "cwd",
+        "done_event",
+        "handle",
+        "job_id",
+        "kill_cause",
+        "last_output_at",
+        "last_sample_time",
+        "last_wait_time",
+        "latest_verdict",
+        "liveness_config",
+        "lock",
+        "max_runtime_ms",
+        "output_lines",
+        "psutil_module",
+        "reader_threads",
+        "returncode",
+        "runner_thread",
+        "running",
+        "spill_dir",
+        "stall_integrator",
+        "start_time",
+        "stderr_head",
+        "stderr_tail",
+        "stdout_head",
+        "stdout_tail",
+        "suspicion_clock",
+        "suspicious_started_at",
+        "timeout_ms",
+        "total_stderr_bytes",
+        "total_stdout_bytes",
+        "tree_sampler",
+        "watcher_thread",
+    )
 
     def __init__(
         self,
@@ -256,7 +294,21 @@ class _ActiveJob:
 
 
 class ExecJobRegistry:
-    __slots__ = ('_background_sampler', '_clock', '_finished_capabilities', '_finished_results', '_liveness_config', '_lock', '_pm', '_psutil_module', '_reader_drain_timeout_s', '_running_jobs', '_sample_interval_s', '_spill_dir', '_subscriptions')
+    __slots__ = (
+        "_background_sampler",
+        "_clock",
+        "_finished_capabilities",
+        "_finished_results",
+        "_liveness_config",
+        "_lock",
+        "_pm",
+        "_psutil_module",
+        "_reader_drain_timeout_s",
+        "_running_jobs",
+        "_sample_interval_s",
+        "_spill_dir",
+        "_subscriptions",
+    )
 
     def __init__(
         self,

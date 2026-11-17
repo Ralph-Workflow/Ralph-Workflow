@@ -272,7 +272,17 @@ def handle_unsuccessful_resolution(
     reason: str | None,
     conflicted: tuple[str, ...] = (),
 ) -> MergeResult:
-    if (any(isinstance(result, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if isinstance(
+        result,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return _handle_sealed_outcome(result, reason)
     if result is True:
         return MergeResult("success", failure_cause=ResolutionFailureCause.NONE)

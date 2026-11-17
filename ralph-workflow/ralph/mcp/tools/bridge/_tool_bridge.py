@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
 from ralph.mcp.tools.bridge._registered_tool import RegisteredTool
 from ralph.mcp.tools.bridge._spec_helpers import _is_approved
 from ralph.mcp.tools.bridge._tool_bridge_error import ToolBridgeError
 from ralph.mcp.tools.bridge._tool_dispatch_error import ToolDispatchError
 from ralph.mcp.tools.bridge._tool_registration_error import ToolRegistrationError
+from ralph.mcp.tools.bridge._types import as_tool_handler
 from ralph.mcp.tools.capability_denied_error import CapabilityDeniedError
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.tool_content import ToolContent
@@ -15,7 +17,6 @@ from ralph.mcp.tools.tool_error import ToolError
 from ralph.mcp.tools.tool_result import ToolResult
 
 if TYPE_CHECKING:
-
     from ralph.mcp.tools.bridge._registration_handler import RegistrationHandler
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
     from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
@@ -57,7 +58,7 @@ def _retired_replacement(name: str) -> str | None:
 
 
 class ToolBridge:
-    __slots__ = ('_session', '_tools')
+    __slots__ = ("_session", "_tools")
 
     def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
@@ -153,8 +154,8 @@ class ToolBridge:
         if effective_session is None:
             return True
 
-        checker = getattr(effective_session, "check_capability", None)
-        if not callable(checker):
+        checker_obj = attr_or_none(effective_session, "check_capability")
+        if checker_obj is None or not callable(checker_obj):
             return True
-
+        checker = as_tool_handler(checker_obj)
         return _is_approved(checker(metadata.required_capability))

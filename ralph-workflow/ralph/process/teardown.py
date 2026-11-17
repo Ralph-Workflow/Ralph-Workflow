@@ -30,6 +30,7 @@ _LOG = logging.getLogger(__name__)
 
 _MAX_ANCESTOR_WALK: int = 32
 
+
 def _new_lock() -> threading.Lock:
     return threading.Lock()
 

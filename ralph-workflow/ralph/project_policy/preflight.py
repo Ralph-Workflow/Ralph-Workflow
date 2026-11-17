@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git.operations import create_commit
 from ralph.git.scoped_auto_commit import (
     ScopedCommitStatus,
@@ -115,7 +116,7 @@ def _capture_pre_write_policy_paths(
 
 
 def _workspace_root(workspace: Workspace) -> Path | None:
-    root: object = getattr(workspace, "root", None)
+    root: object = read_attr(workspace, "root", None)
     if root is not None and isinstance(root, Path):
         return root
     return None

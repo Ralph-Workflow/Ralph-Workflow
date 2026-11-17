@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Final
 
 import ralph.timeout_defaults as td
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -106,7 +107,7 @@ def handle_exec_wait(
         raise InvalidParamsError("'job_id' must be a non-empty string")
 
     wait_ms_raw = params.get("wait_ms", EXEC_SOFT_REPLY_BUDGET_MS)
-    if (any(isinstance(wait_ms_raw, _t) for _t in (int, float))) and wait_ms_raw > 0:
+    if is_int_or_float(wait_ms_raw) and wait_ms_raw > 0:
         wait_ms = min(int(wait_ms_raw), EXEC_SOFT_REPLY_BUDGET_MS)
     else:
         wait_ms = EXEC_SOFT_REPLY_BUDGET_MS

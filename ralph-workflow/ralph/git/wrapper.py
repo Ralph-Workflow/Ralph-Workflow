@@ -43,10 +43,10 @@ HOOKS_DIR_NAME = "hooks"
 
 class GitHelpers:
     __slots__ = (
-        'real_git',
-        'worktree_lease',
-        'wrapper_dir',
-        'wrapper_repo_root',
+        "real_git",
+        "worktree_lease",
+        "wrapper_dir",
+        "wrapper_repo_root",
     )
     real_git: Path | None
     wrapper_dir: Path | None

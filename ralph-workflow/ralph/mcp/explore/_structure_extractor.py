@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final, Protocol
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore.structure import StructureExtraction
 
 DEFAULT_CROSSOVER_NODES: Final[int] = 200
@@ -103,7 +104,7 @@ def structure_extractor_name(extractor: PythonStructureExtractor) -> str:
         return IMPL_SCALAR
     if extractor is _accelerated_extract_python:
         return IMPL_ACCELERATED
-    raw_name: object = getattr(extractor, "name", "unknown")
+    raw_name: object = read_attr(extractor, "name", "unknown")
     return raw_name if isinstance(raw_name, str) else "unknown"
 
 

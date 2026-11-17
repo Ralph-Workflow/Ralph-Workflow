@@ -24,7 +24,16 @@ def _derive_evidence_id_for_span(
 
 
 class _EvidenceRowBuilder:
-    __slots__ = ('content_hash', 'end_line', 'evidence_id', 'evidence_kind', 'generation', 'path', 'source_tool', 'start_line')
+    __slots__ = (
+        "content_hash",
+        "end_line",
+        "evidence_id",
+        "evidence_kind",
+        "generation",
+        "path",
+        "source_tool",
+        "start_line",
+    )
 
     def __init__(
         self,

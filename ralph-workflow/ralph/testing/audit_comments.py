@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+from ralph.checked_accessors import as_str_list
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
@@ -784,8 +787,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     parsed = parser.parse_args(list(argv) if argv is not None else None)
-    paths: list[str] | None = getattr(parsed, "paths", None)
-    excludes: list[str] | None = getattr(parsed, "exclude", None)
+    paths_raw = read_attr(parsed, "paths", None)
+    excludes_raw = read_attr(parsed, "exclude", None)
+    paths: list[str] | None = as_str_list(paths_raw) if paths_raw is not None else None
+    excludes: list[str] | None = as_str_list(excludes_raw) if excludes_raw is not None else None
     path_list = list(paths) if paths is not None else []
     exclude_list = list(excludes) if excludes is not None else []
     try:

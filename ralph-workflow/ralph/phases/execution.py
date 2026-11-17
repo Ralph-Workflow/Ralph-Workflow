@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.development_result import DevelopmentResult
 from ralph.mcp.artifacts.md_draft_io import (
     md_draft_path,
@@ -59,7 +60,7 @@ from ralph.workspace.probe import WorkspaceChangeProbe, take_workspace_snapshot
 
 
 def _probe_from_context(ctx: PhaseContext) -> WorkspaceChangeProbe | None:
-    probe_candidate: object = getattr(ctx, "workspace_probe", None)
+    probe_candidate: object = read_attr(ctx, "workspace_probe", None)
     if isinstance(probe_candidate, WorkspaceChangeProbe):
         return probe_candidate
     return None

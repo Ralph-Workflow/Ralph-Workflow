@@ -321,7 +321,7 @@ def _attempt_cause_from_outcome(
     trigger: StopResolutionTrigger,
 ) -> ResolutionFailureCause:
     if (
-        any(isinstance(outcome, _t) for _t in (ResolvedOutcome, RetryLaterOutcome))
+        isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome))
         and outcome.failure_cause is not None
     ):
         return outcome.failure_cause
@@ -461,8 +461,16 @@ adopt_resolving_rebase_record = _adopt_active_rebase_record
 
 
 def _is_stop_resolution_outcome(value: object) -> TypeGuard[StopResolutionOutcome]:
-    return (
-        any(isinstance(value, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))
+    return isinstance(
+        value,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
     )
 
 

@@ -40,7 +40,6 @@ if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
 
 
-
 @runtime_checkable
 class _TerminalReasonHandle(Protocol):
     def original_terminal_reason(self) -> str | None: ...

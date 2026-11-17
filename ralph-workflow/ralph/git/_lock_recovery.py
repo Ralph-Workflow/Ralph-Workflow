@@ -318,7 +318,6 @@ def _stale_age_or_none(
     return age_seconds
 
 
-
 class _ReapThreadLock:
     __slots__ = ()
     _lock: ClassVar[threading.Lock | None] = None
@@ -331,8 +330,6 @@ class _ReapThreadLock:
         created = threading.Lock()
         cls._lock = created
         return created
-
-
 
 
 def _flock(fd: int, *, exclusive: bool) -> None:

@@ -72,10 +72,12 @@ class _WaitingKindLike(Protocol):
 
 
 def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKindLike]]:
+    from typing import cast
+
     from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 
-    event_cls: type[_WaitingEventLike] = WaitingStatusEvent
-    kind_cls: type[_WaitingKindLike] = WaitingStatusKind
+    event_cls = cast("type[_WaitingEventLike]", WaitingStatusEvent)
+    kind_cls = cast("type[_WaitingKindLike]", WaitingStatusKind)
     return event_cls, kind_cls
 
 
@@ -140,9 +142,7 @@ def _format_waiting_subagent_progress_line(
 ) -> str:
     live_count = event.diagnostic.get("live_subagent_count", 0)
     live_label = (
-        f"{live_count} alive"
-        if any(isinstance(live_count, _t) for _t in (int, float))
-        else "live"
+        f"{live_count} alive" if any(isinstance(live_count, _t) for _t in (int, float)) else "live"
     )
     base = (
         f"Background child work: subagent progress"

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore._recovery_types import HealthState, _RecoveryState
@@ -359,7 +360,7 @@ def run_recovery_action(
             start = _time.monotonic()
             result = reindex(store, Path(workspace_root), options=options)
             elapsed = _time.monotonic() - start
-            status_value: object = getattr(result, "status", "ok")
+            status_value: object = read_attr(result, "status", "ok")
             status = str(status_value) if status_value is not None else "ok"
             if status in {"ok", "skipped_no_changes"}:
                 scheduler.mark_healthy()

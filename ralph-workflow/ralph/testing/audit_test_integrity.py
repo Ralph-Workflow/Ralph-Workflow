@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.testing._audit_baseline import worktree_diff
 from ralph.testing._test_integrity_diff import (
     CATEGORY_TEST_WEAKENING,
@@ -157,7 +158,7 @@ def _detect_pytest_usage(source: str, file_path: str) -> list[TestIntegrityFindi
         detector = _pytest_detector(node, sys_names)
         if detector is None:
             continue
-        lineno: int = getattr(node, "lineno", 0)
+        lineno: int = read_attr(node, "lineno", 0)
         findings.append(
             TestIntegrityFinding(
                 file_path=file_path,

@@ -660,7 +660,7 @@ def _recover_pending_merge(
             force_retry=force_retry,
             stop_identity=stop_identity,
         )
-    if (any(isinstance(resumed, _t) for _t in (str, RetryLaterOutcome))):
+    if isinstance(resumed, (str, RetryLaterOutcome)):
         latest_record = read_record_outcome(root).record or record
         raw_reason: object = (
             resumed.terminal_reason
@@ -671,10 +671,11 @@ def _recover_pending_merge(
         terminal_reason = (
             raw_reason if isinstance(raw_reason, ResolutionTerminationReason) else None
         )
+        on_change = resumed if isinstance(resumed, str) else (resumed.on_change or "")
         return _resumed_failure_outcome(
             root,
             latest_record,
-            resumed if isinstance(resumed, str) else resumed.on_change or "",
+            on_change,
             terminal_reason=terminal_reason,
         )
     if isinstance(resumed, IntegrationRecord) and resumed.reintegrate_pending:
@@ -685,6 +686,8 @@ def _recover_pending_merge(
             conflict_resolver,
             rebase_stop_resolver,
         )
+    if not isinstance(resumed, IntegrationRecord):
+        raise TypeError(f"unexpected resume outcome: {type(resumed).__name__}")
     return _continue_fast_forward_from_record(
         root,
         resumed,

@@ -7,6 +7,7 @@ import weakref
 from collections import deque
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.invoke.attempt_supervision import _issuer_mapping
 from ralph.agents.invoke.attempt_supervision._signal_fn import _SignalFn
@@ -31,17 +32,17 @@ _OWNERS_BY_RECORDER_ID: weakref.WeakValueDictionary[int, AttemptSupervisor] = (
 
 
 def _signal_fn_of(handle: object) -> _SignalFn | None:
-    candidate: object = getattr(handle, "terminate", None)
+    candidate: object = read_attr(handle, "terminate", None)
     return candidate if isinstance(candidate, _SignalFn) else None
 
 
 def _wait_fn_of(handle: object) -> _WaitFn | None:
-    candidate: object = getattr(handle, "wait", None)
+    candidate: object = read_attr(handle, "wait", None)
     return candidate if isinstance(candidate, _WaitFn) else None
 
 
 def _handle_pid(handle: object) -> int | None:
-    pid: object = getattr(handle, "pid", None)
+    pid: object = read_attr(handle, "pid", None)
     if isinstance(pid, bool) or not isinstance(pid, int):
         return None
     return pid
@@ -58,8 +59,7 @@ def _coerce_returncode(value: object) -> int | None:
 
 
 def _recorded_returncode(handle: object) -> int | None:
-    return _coerce_returncode(getattr(handle, "returncode", None))
-
+    return _coerce_returncode(read_attr(handle, "returncode", None))
 
 
 @runtime_checkable

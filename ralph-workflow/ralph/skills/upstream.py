@@ -14,6 +14,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
+from ralph._typed_attrs import read_attr
+
 if sys.platform != "win32":
     import fcntl
 
@@ -149,7 +151,8 @@ HTTP_NOT_FOUND = 404
 
 NO_RELEASE_ERROR = "release-api-no-release"
 
-_NOFOLLOW_FLAG: int = getattr(os, "O_NOFOLLOW", 0)
+_NOFOLLOW_FLAG: int = read_attr(os, "O_NOFOLLOW", 0)
+
 
 def _new_lock() -> threading.Lock:
     return threading.Lock()

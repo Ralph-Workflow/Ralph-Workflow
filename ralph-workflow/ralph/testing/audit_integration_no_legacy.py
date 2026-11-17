@@ -211,7 +211,7 @@ def _tuple_subclass(node: ast.ClassDef) -> bool:
 
 def _legacy_protocol_member(node: ast.ClassDef) -> str | None:
     for statement in node.body:
-        if not (any(isinstance(statement, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
+        if not isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if statement.name in {"__len__", "__iter__", "__getitem__"}:
             return f"tuple protocol method '{statement.name}'"
@@ -235,9 +235,9 @@ def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
             identifier, line = (node.id, node.lineno)
         case _ if isinstance(node, ast.Attribute):
             identifier, line = (node.attr, node.lineno)
-        case _ if (any(isinstance(node, _t) for _t in (ast.arg, ast.keyword))):
+        case _ if isinstance(node, (ast.arg, ast.keyword)):
             identifier, line = (node.arg, node.lineno)
-        case _ if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))):
+        case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             identifier, line = (node.name, node.lineno)
     if identifier is None:
         return None

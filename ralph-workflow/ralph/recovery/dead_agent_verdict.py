@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from ralph.checked_accessors import as_object_dict
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
     TerminationRecord,
@@ -198,8 +199,11 @@ def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
     if migrated.get("schema_version") == _VERDICT_RECORD_SCHEMA_VERSION:
         return migrated
     termination = migrated.get("termination")
-    if isinstance(termination, dict):
-        migrated_termination = dict(termination)
+    try:
+        migrated_termination = as_object_dict(termination)
+    except TypeError:
+        migrated_termination = None
+    if migrated_termination is not None:
         issuer = migrated_termination.get("issuer")
         migrated_termination["log"] = (
             [{"issuer": issuer, "source": "v1"}] if isinstance(issuer, str) else []

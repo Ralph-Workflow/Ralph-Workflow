@@ -5,6 +5,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict, loads_json
+
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
@@ -33,11 +35,12 @@ def is_stale_since_invocation(workspace: Workspace, phase: str, artifact_path: s
         baseline_file = _baseline_path(phase)
         if not workspace.exists(baseline_file):
             return False
-        loaded: object = json.loads(workspace.read(baseline_file))
+        loaded = loads_json(workspace.read(baseline_file))
         if not isinstance(loaded, dict):
             return False
-        recorded_path = loaded.get("path")
-        before = loaded.get("fingerprint") if recorded_path == artifact_path else None
+        payload = as_object_dict(loaded)
+        recorded_path = payload.get("path")
+        before = payload.get("fingerprint") if recorded_path == artifact_path else None
         current = artifact_fingerprint(Path(workspace.absolute_path(artifact_path)))
         return before is not None and before == current
     except (OSError, RuntimeError, ValueError, KeyError):

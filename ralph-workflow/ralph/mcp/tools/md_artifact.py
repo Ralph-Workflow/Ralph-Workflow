@@ -4,6 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import Diagnostic, parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -374,8 +375,8 @@ def _submit_canonical(
         ),
         receipt_secret=session.broker_secret,
     )
-    worker_namespace_obj = getattr(session, "worker_namespace", None)
-    worker_artifact_dir_obj = getattr(session, "worker_artifact_dir", None)
+    worker_namespace_obj = read_attr(session, "worker_namespace", None)
+    worker_artifact_dir_obj = read_attr(session, "worker_artifact_dir", None)
     worker_namespace = worker_namespace_obj if isinstance(worker_namespace_obj, Path) else None
     worker_artifact_dir = (
         worker_artifact_dir_obj if isinstance(worker_artifact_dir_obj, Path) else None
@@ -425,6 +426,7 @@ def _params(params: dict[str, object]) -> tuple[str, str]:
 
 def _artifact_type_param(params: dict[str, object]) -> str:
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     artifact_type = params.get("artifact_type")
     if not isinstance(artifact_type, str) or not artifact_type:

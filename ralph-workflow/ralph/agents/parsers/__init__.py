@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import types
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.config.enums import AgentTransport, JsonParserType
 
@@ -76,8 +76,9 @@ def _parser_registry() -> Mapping[str, _ParserFactory]:
         return cached
     from ralph.agents.catalog import default_catalog
 
-    view: Mapping[str, _ParserFactory] = types.MappingProxyType(
-        default_catalog()._state.parsers
+    view = cast(
+        "Mapping[str, _ParserFactory]",
+        types.MappingProxyType(cast("dict[str, _ParserFactory]", default_catalog()._state.parsers)),
     )
     _REGISTRY.parsers = view
     return view
@@ -89,8 +90,11 @@ def _command_registry() -> Mapping[str, _ParserFactory]:
         return cached
     from ralph.agents.catalog import default_catalog
 
-    view: Mapping[str, _ParserFactory] = types.MappingProxyType(
-        default_catalog()._state.commands
+    view = cast(
+        "Mapping[str, _ParserFactory]",
+        types.MappingProxyType(
+            cast("dict[str, _ParserFactory]", default_catalog()._state.commands)
+        ),
     )
     _REGISTRY.commands = view
     return view

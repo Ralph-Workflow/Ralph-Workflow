@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from loguru import logger
 
-from ralph.agents.parsers.base import AgentParser
+from ralph._typed_attrs import read_attr
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
@@ -19,21 +19,20 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.agents.parsers.agent_output_line import AgentOutputLine
+    from ralph.agents.parsers.base import AgentParser
 
-PARSERS: dict[ActivityProvider, type] = {}
+PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
 
 
 class _SubagentEmitHook(Protocol):
-    def __call__(
-        self, line: AgentOutputLine, sink: Callable[[str], None], /
-    ) -> None: ...
+    def __call__(self, line: AgentOutputLine, sink: Callable[[str], None], /) -> None: ...
 
 
 def _is_subagent_emit_hook(value: object) -> TypeGuard[_SubagentEmitHook]:
     return callable(value)
 
 
-def _build_parsers() -> dict[ActivityProvider, type]:
+def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     from ralph.agents.parsers import (
         AgyParser,
         ClaudeInteractiveParser,
@@ -67,11 +66,7 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
     from ralph.agents.parsers import GenericParser
 
     parser_cls = PARSERS.get(provider, GenericParser)
-    parser = parser_cls()
-    if not isinstance(parser, AgentParser):
-        msg = f"parser {parser_cls!r} does not implement AgentParser"
-        raise TypeError(msg)
-    return parser
+    return parser_cls()
 
 
 def detect_provider_from_command(command: list[str]) -> ActivityProvider:
@@ -221,7 +216,7 @@ class ActivityRouter:
         unit_id: str,
         raw_reference: str | None,
     ) -> None:
-        emit_hook: object = getattr(parser, "emit_subagent_activity", None)
+        emit_hook: object = read_attr(parser, "emit_subagent_activity", None)
         if not _is_subagent_emit_hook(emit_hook):
             return
         captured: list[str] = []

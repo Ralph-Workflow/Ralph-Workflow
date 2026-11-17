@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph._typed_attrs import attr_or_none
 from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
 
 if TYPE_CHECKING:
@@ -21,7 +22,6 @@ class _WatchObserverProtocol(Protocol):
     def join(self, timeout: float | None = None) -> None: ...
 
 
-@runtime_checkable
 class ObserverProtocol(Protocol):
     _event_queue: Queue[object]
 
@@ -41,8 +41,18 @@ def create_watchdog_observer() -> ObserverProtocol | None:
         from watchdog.observers import Observer
     except ImportError:
         return None
-    observer = Observer()
-    if not isinstance(observer, ObserverProtocol):
+    raw: object = Observer()
+    object.__setattr__(raw, "_event_queue", DroppingEventQueue(MAX_WATCHDOG_EVENT_QUEUE))
+    schedule = attr_or_none(raw, "schedule")
+    start = attr_or_none(raw, "start")
+    stop = attr_or_none(raw, "stop")
+    join = attr_or_none(raw, "join")
+    if not (
+        callable(schedule)
+        and callable(start)
+        and callable(stop)
+        and callable(join)
+        and hasattr(raw, "event_queue")
+    ):
         return None
-    observer._event_queue = DroppingEventQueue(MAX_WATCHDOG_EVENT_QUEUE)
-    return observer
+    return cast("ObserverProtocol", raw)

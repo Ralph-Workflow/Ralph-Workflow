@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts._artifact_persistence import (
     DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactPersistence,
@@ -46,17 +47,17 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 
 def _resolve_artifact_dir(session: CoordinationSessionLike, workspace: WorkspaceLike) -> Path:
-    worker = getattr(session, "worker_artifact_dir", None)
+    worker = read_attr(session, "worker_artifact_dir", None)
     return worker if isinstance(worker, Path) else _artifact_dir(workspace)
 
 
 def _session_run_id(session: CoordinationSessionLike) -> str | None:
-    value = getattr(session, "run_id", None)
+    value = read_attr(session, "run_id", None)
     return value if isinstance(value, str) and value else None
 
 
 def _session_drain(session: CoordinationSessionLike) -> str | None:
-    value = getattr(session, "drain", None)
+    value = read_attr(session, "drain", None)
     return value if isinstance(value, str) else None
 
 

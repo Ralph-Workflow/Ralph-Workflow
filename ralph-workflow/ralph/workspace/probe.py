@@ -165,9 +165,14 @@ def _extract_tracked_dirty_paths(workspace: Workspace) -> list[str] | None:
 
     if isinstance(workspace, _HasRoot):
         root = workspace.root
-        if any(isinstance(root, _t) for _t in (Path, str)):
+        root_path: Path | None = None
+        if isinstance(root, Path):
+            root_path = root
+        elif isinstance(root, str):
+            root_path = Path(root)
+        if root_path is not None:
             with suppress(Exception):
-                key = str(Path(root).absolute())
+                key = str(root_path.absolute())
                 with _AwarenessRegistry.lock():
                     active = _awareness_by_workspace.get(key)
                 if active is not None:
@@ -274,7 +279,12 @@ WorkspaceChangeProbe = _WorkspaceChangeProbe
 
 
 class DefaultWorkspaceChangeProbe:
-    __slots__ = ('_baselines', '_max_files', '_version_baselines',)
+    __slots__ = (
+        "_baselines",
+        "_max_files",
+        "_version_baselines",
+    )
+
     def __init__(self, *, max_files: int = DEFAULT_MAX_SNAPSHOT_FILES) -> None:
         self._baselines: dict[str, dict[str, str]] = {}
         self._version_baselines: dict[str, str | None] = {}

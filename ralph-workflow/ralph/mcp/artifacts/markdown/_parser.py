@@ -28,8 +28,16 @@ _PARSER_ROUTING_CONSUMER = (
 )
 
 
+def _group_str(match: re.Match[str], group: str) -> str:
+    value = match.group(group)
+    if not isinstance(value, str):
+        msg = f"expected regex capture group {group!r} to be str"
+        raise TypeError(msg)
+    return value
+
+
 class _SectionBuilder:
-    __slots__ = ('block', 'block_lines', 'blocks', 'items', 'level', 'line', 'lines', 'name')
+    __slots__ = ("block", "block_lines", "blocks", "items", "level", "line", "lines", "name")
 
     def __init__(self, name: str, line: int, level: int) -> None:
         self.name = name
@@ -108,7 +116,7 @@ def parse_markdown_document(
     for line_number, line in enumerate(lines[start:], start=start + 1):
         block_heading = _BLOCK_HEADING.fullmatch(line)
         if block_heading is not None and (
-            allow_nested_headings or block_heading.group("marks") == "###"
+            allow_nested_headings or _group_str(block_heading, "marks") == "###"
         ):
             finish_item()
             if current is None:
@@ -122,22 +130,21 @@ def parse_markdown_document(
                 )
                 continue
             current.start_block(
-                block_heading.group("identifier"),
-                block_heading.group("title"),
+                _group_str(block_heading, "identifier"),
+                _group_str(block_heading, "title"),
                 line_number,
             )
             continue
         heading = _HEADING.fullmatch(line)
-        if heading is not None and (
-            allow_nested_headings or heading.group("marks") == "##"
-        ):
+        if heading is not None and (allow_nested_headings or _group_str(heading, "marks") == "##"):
             finish_item()
             if current is not None:
                 sections.append(current.finish())
+            marks = _group_str(heading, "marks")
             current = _SectionBuilder(
-                heading.group("name"),
+                _group_str(heading, "name"),
                 line_number,
-                len(heading.group("marks")),
+                len(marks),
             )
             continue
         if not line.strip():
@@ -169,9 +176,10 @@ def parse_markdown_document(
         if item is not None:
             finish_item()
             current.finish_block()
-            checkbox = item.group("checked")
-            identifier = item.group("identifier")
-            item_text = item.group("text")
+            checkbox_raw = item.group("checked")
+            checkbox = checkbox_raw if isinstance(checkbox_raw, str) else None
+            identifier = _group_str(item, "identifier")
+            item_text = _group_str(item, "text")
             last_item_box[0] = ParsedItem(
                 identifier=identifier,
                 text=item_text,

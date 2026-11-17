@@ -19,6 +19,7 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
     session_ledger,
     skipped_candidates,
 )
+from ralph.pipeline.conflict_resolution.driver import can_continue_rounds
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -246,6 +247,10 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_continue_rounds_without_controller_or_ledger_fails_closed": (
+        "can_continue_rounds refuses further resolution rounds when neither the shared "
+        "RecoveryController nor a ledger is bound, matching ensure_session_controller"
+    ),
     "test_session_controller_creation_guarantees_ledger": (
         "restores the entry-point controller fallback that the gated 91a0ae83d repair "
         "recorded and 0afc2dac3 reverted; a session without a shared "
@@ -430,3 +435,10 @@ def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> No
         without_ledger,
         ("unhealthy_agent", "unavailable_agent"),
     ) == frozenset({"unavailable_agent"})
+
+
+def test_continue_rounds_without_controller_or_ledger_fails_closed() -> None:
+    session = ResolutionSession()
+    assert session.recovery_controller is None
+    assert session_ledger(session) is None
+    assert can_continue_rounds(session, ("agentA", "agentB")) is False

@@ -65,8 +65,9 @@ class _FallbackHttpServer(ThreadingHTTPServer):
         client_address: tuple[str, int],
     ) -> None:
         error = sys.exc_info()[1]
-        if (
-            any(isinstance(error, _t) for _t in (BrokenPipeError, ConnectionAbortedError, ConnectionResetError))
+        if any(
+            isinstance(error, _t)
+            for _t in (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)
         ):
             return
         super().handle_error(request, client_address)

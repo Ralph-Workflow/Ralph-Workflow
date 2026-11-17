@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.clock import Clock as AgentClock
 from ralph.git.merge import (
     conflict_stage_entries,
@@ -266,6 +267,7 @@ __all__ = [
     "ResolutionInvoker",
     "RoundAttempt",
     "_sleep_seconds",
+    "can_continue_rounds",
     "classify_unmerged_conflicts",
     "declared_decision_paths",
     "emit_conflict_phase_line",
@@ -300,24 +302,24 @@ def _extract_clock_candidate(
     active_session: ResolutionSession, pipeline_deps: PipelineDeps | None
 ) -> object:
     if active_session.ledger is not None:
-        c1: object = getattr(active_session.ledger, "clock", None)
+        c1: object = read_attr(active_session.ledger, "clock", None)
         if c1 is not None:
             return c1
-        c2: object = getattr(active_session.ledger, "_clock", None)
+        c2: object = read_attr(active_session.ledger, "_clock", None)
         if c2 is not None:
             return c2
     if pipeline_deps is not None:
-        c3: object = getattr(pipeline_deps, "recovery_clock", None)
+        c3: object = read_attr(pipeline_deps, "recovery_clock", None)
         if c3 is not None:
             return c3
     store: object = active_session.unavailability_store
     if store is None and pipeline_deps is not None:
-        store = getattr(pipeline_deps, "unavailability_store", None)
+        store = read_attr(pipeline_deps, "unavailability_store", None)
     if store is not None:
-        c4: object = getattr(store, "clock", None)
+        c4: object = read_attr(store, "clock", None)
         if c4 is not None:
             return c4
-        c5: object = getattr(store, "_clock", None)
+        c5: object = read_attr(store, "_clock", None)
         if c5 is not None:
             return c5
     return None
@@ -988,7 +990,7 @@ def _execute_round_loop(
         if round_index >= round_cap:
             _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
         while round_index < round_cap:
-            if not _can_continue_rounds(session, candidates):
+            if not can_continue_rounds(session, candidates):
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
             round_index += 1
@@ -1076,7 +1078,7 @@ def _execute_round_loop(
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
                 break
-            if not _can_continue_rounds(session, candidates):
+            if not can_continue_rounds(session, candidates):
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
     finally:
@@ -1154,7 +1156,7 @@ def _ledger_can_continue(
     return ledger.any_eligible(PHASE_RESOLUTION, live)
 
 
-def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
+def can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
 
     skipped = skipped_candidates(session, candidates)
     live = [name for name in candidates if name not in skipped]
@@ -1169,7 +1171,7 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
     ledger = session_ledger(session)
     if ledger is not None:
         return _ledger_can_continue(ledger, live, session.rounds_spent)
-    return True
+    return False
 
 
 def _wait_for_eligible_agent(

@@ -6,6 +6,8 @@ import sys
 from collections import OrderedDict
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
+
 
 def _split_python_lines(source: str) -> list[str]:
     lines = [part + "\n" for part in source.split("\n")[:-1]]
@@ -61,10 +63,10 @@ def _split_lines(source: str) -> list[str]:
 
 
 def _get_source_segment_from_lines(lines: list[str], node: ast.AST) -> str | None:
-    lineno_val: object = getattr(node, "lineno", None)
-    end_lineno_val: object = getattr(node, "end_lineno", None)
-    col_offset_val: object = getattr(node, "col_offset", None)
-    end_col_offset_val: object = getattr(node, "end_col_offset", None)
+    lineno_val: object = read_attr(node, "lineno", None)
+    end_lineno_val: object = read_attr(node, "end_lineno", None)
+    col_offset_val: object = read_attr(node, "col_offset", None)
+    end_col_offset_val: object = read_attr(node, "end_col_offset", None)
     if (
         not isinstance(lineno_val, int)
         or not isinstance(end_lineno_val, int)
@@ -456,7 +458,7 @@ def logging_configurator_violations() -> list[str]:
     return [
         violation
         for invariant in _INVARIANTS
-        if (any(isinstance(invariant, _t) for _t in (Invariant, FunctionBodyInvariant, CallSiteInvariant)))
+        if (isinstance(invariant, (Invariant, FunctionBodyInvariant, CallSiteInvariant)))
         and invariant.rel_path in {"logging.py", "cli/main.py"}
         for violation in invariant.violations()
     ]

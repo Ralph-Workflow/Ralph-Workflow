@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple
 
+from ralph._typed_attrs import read_attr, read_callable_attr
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -13,7 +14,6 @@ from ralph.mcp.tools.coordination import (
 )
 
 if TYPE_CHECKING:
-
     from ralph.workspace import Workspace
 
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
@@ -36,16 +36,6 @@ _SUPPORTED_IMAGE_MIME_TYPES: dict[str, str] = {
 _GREP_DEFAULT_LIMIT = 1000
 _MAX_PATTERN_LENGTH = 1000
 FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
-
-
-def _attribute_value(
-    obj: object, attribute_name: str, default: object | None = None
-) -> object | None:
-    if attribute_name == "is_parallel_worker":
-        return getattr(obj, "is_parallel_worker", default)
-    if attribute_name == "check_edit_area":
-        return getattr(obj, "check_edit_area", default)
-    return default
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:
@@ -100,23 +90,35 @@ def list_dir_entries(workspace: Workspace, path: str) -> list[str]:
         raise ToolError(f"Failed to list directory '{path}': {exc}") from exc
 
 
+def _parallel_worker_default() -> object:
+    return False
+
+
+def _edit_area_allow(_path: str) -> object:
+    return True
+
+
 def is_parallel_worker(session: object) -> bool:
-    flag = _attribute_value(session, "is_parallel_worker", default=False)
-    if callable(flag):
-        try:
-            return bool(flag())
-        except TypeError:
-            return False
-    return bool(flag)
+    flag = read_attr(session, "is_parallel_worker", default=False)
+    if not callable(flag):
+        return bool(flag)
+    typed_flag: Callable[[], object] = read_callable_attr(
+        session, "is_parallel_worker", _parallel_worker_default
+    )
+    try:
+        result: object = typed_flag()
+        return bool(result)
+    except TypeError:
+        return False
 
 
 def check_edit_area_restriction(session: object, path: str) -> None:
     if not is_parallel_worker(session):
         return
-    checker = _attribute_value(session, "check_edit_area")
-    if not callable(checker):
-        return
-    outcome = checker(path)
+    typed_checker: Callable[[str], object] = read_callable_attr(
+        session, "check_edit_area", _edit_area_allow
+    )
+    outcome: object = typed_checker(path)
     if is_policy_approved(outcome):
         return
     raise CapabilityDeniedError(f"Write to '{path}' denied: edit area restriction")

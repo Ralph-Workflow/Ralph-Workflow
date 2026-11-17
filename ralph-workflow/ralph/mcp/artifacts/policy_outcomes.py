@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ralph._typed_attrs import read_attr
+
 APPROVED_POLICY_OUTCOMES = frozenset({"approved", "allow", "allowed"})
 
 
@@ -7,11 +9,11 @@ def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
     if attribute_name == "name":
-        return getattr(obj, "name", default)
+        return read_attr(obj, "name", default)
     if attribute_name == "value":
-        return getattr(obj, "value", default)
+        return read_attr(obj, "value", default)
     if attribute_name == "status":
-        return getattr(obj, "status", default)
+        return read_attr(obj, "status", default)
     return default
 
 

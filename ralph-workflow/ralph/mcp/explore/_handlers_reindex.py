@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
 from ralph.mcp.explore._narrowing import is_str_or_number
@@ -76,7 +77,7 @@ def handle_ralph_reindex(
                 raise InvalidParamsError(f"Invalid path_scope entry {p!r}: {exc}") from exc
         path_scope = tuple(normalized_scope)
 
-    workspace_root_obj2: object = getattr(workspace, "root", None)
+    workspace_root_obj2: object = read_attr(workspace, "root", None)
     workspace_root_raw2: object = workspace_root_obj2 or params.get("workspace_root", "")
     workspace_root_str2: str = str(workspace_root_raw2) if workspace_root_raw2 else ""
     workspace_root = Path(workspace_root_str2) if workspace_root_str2 else Path.cwd()
@@ -90,9 +91,9 @@ def handle_ralph_reindex(
         import contextlib
 
         with contextlib.suppress(Exception):
-            session.explore_index = handle
+            object.__setattr__(session, "explore_index", handle)
         with contextlib.suppress(Exception):
-            workspace.explore_index = handle
+            object.__setattr__(workspace, "explore_index", handle)
     _ = cold_built
 
     started_at = time.time()

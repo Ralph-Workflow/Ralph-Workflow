@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from jinja2 import (
     DictLoader,
@@ -12,6 +12,7 @@ from jinja2 import (
     Template,
     TemplateError,
     TemplateNotFound,
+    Undefined,
     select_autoescape,
 )
 
@@ -63,12 +64,14 @@ class TemplateRenderer:
             autoescape=select_autoescape(
                 enabled_extensions=(), default_for_string=False, default=False
             ),
-            undefined=StrictUndefined,
+            undefined=cast("type[Undefined]", StrictUndefined),
             keep_trailing_newline=True,
             cache_size=_MAX_COMPILED_TEMPLATES,
         )
-        self._environment.filters["split_items"] = self._split_items
-        self._environment.globals["raise_error"] = _raise_template_error
+        filters = cast("dict[str, object]", cast("object", self._environment.filters))
+        filters["split_items"] = self._split_items
+        globals_map = cast("dict[str, object]", cast("object", self._environment.globals))
+        globals_map["raise_error"] = _raise_template_error
         self._compiled_templates: _TemplateCache = OrderedDict()
         self._render_lock = threading.RLock()
         self._active_blank_line_token = ""

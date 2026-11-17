@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Final, Protocol
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore._bench_fixtures import (
     ALL_FIXTURES,
     EXTENDED_FIXTURES,
@@ -47,9 +48,9 @@ def _fixed_token_count(text: str) -> int:
 
 
 def _serialize_tool_spec(spec: object) -> str:
-    name_obj: object = getattr(spec, "name", None)
-    desc_obj: object = getattr(spec, "description", None)
-    schema_obj: object = getattr(spec, "input_schema", None)
+    name_obj: object = read_attr(spec, "name", None)
+    desc_obj: object = read_attr(spec, "description", None)
+    schema_obj: object = read_attr(spec, "input_schema", None)
     if isinstance(name_obj, str) and isinstance(desc_obj, str):
         if schema_obj is not None:
             try:
@@ -93,7 +94,7 @@ def tool_catalog_tokens(
                 description = _serialize_tool_spec(description_obj)
         else:
             serialized = _serialize_tool_spec(spec)
-            name_obj: object = getattr(spec, "name", None)
+            name_obj: object = read_attr(spec, "name", None)
             name = str(name_obj) if isinstance(name_obj, str) else serialized
             description = serialized
         tokens[name] = _fixed_token_count(description)

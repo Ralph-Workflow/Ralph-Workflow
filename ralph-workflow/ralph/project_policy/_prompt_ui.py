@@ -7,6 +7,8 @@ from typing import Protocol, TypeGuard
 import questionary
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
+
 
 @dataclass(frozen=True)
 class PromptChoice:
@@ -41,8 +43,8 @@ class _Questionary(Protocol):
 
 
 def _is_questionary(value: object) -> TypeGuard[_Questionary]:
-    choice = getattr(value, "Choice", None)
-    select_fn = getattr(value, "select", None)
+    choice = read_attr(value, "Choice", None)
+    select_fn = read_attr(value, "select", None)
     return callable(choice) and callable(select_fn)
 
 

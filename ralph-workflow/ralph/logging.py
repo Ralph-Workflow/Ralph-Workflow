@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.checked_accessors import as_int
 from ralph.display.log_sink import make_stderr_log_sink
 
 from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
@@ -21,7 +22,9 @@ class SinkAdder(Protocol):
 
 
 def _default_sink_adder(target: object, /, **kwargs: object) -> int:
-    return logger.add(target, **dict(kwargs))
+    adder = cast("SinkAdder", logger.add)
+    return as_int(adder(target, **kwargs), field="logger.add")
+
 
 _FILE_SINK_BUFFER_BYTES: int = 8192
 

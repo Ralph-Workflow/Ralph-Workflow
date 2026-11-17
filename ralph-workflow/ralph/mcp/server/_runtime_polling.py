@@ -4,7 +4,9 @@ import concurrent.futures
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from ralph._typed_attrs import read_attr
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -46,9 +48,10 @@ def _workspace_mcp_config_path(workspace_root: Path) -> Path:
 
 
 def _session_allowed_roots(session: object) -> tuple[Path, ...] | None:
-    roots = getattr(session, "allowed_roots", ())
-    if not isinstance(roots, tuple):
+    roots_obj = read_attr(session, "allowed_roots", None)
+    if not isinstance(roots_obj, tuple):
         return None
+    roots = cast("tuple[Path, ...]", roots_obj)
     path_roots = tuple(root for root in roots if isinstance(root, Path))
     if len(path_roots) != len(roots):
         return None

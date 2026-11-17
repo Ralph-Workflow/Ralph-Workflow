@@ -15,8 +15,8 @@ import ralph.mcp.transport.claude as _claude_transport
 import ralph.mcp.transport.codex as _codex_transport
 import ralph.mcp.transport.kimi as _kimi_transport
 import ralph.mcp.transport.opencode as _opencode_transport
+from ralph.checked_accessors import as_object_dict, as_object_list, loads_json
 from ralph.config.enums import AgentTransport
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol.startup import (
     PreflightError,
     initialize_request,
@@ -160,27 +160,28 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         codex_home = Path(codex_home_str)
         config_path = codex_home / "config.toml"
         config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-        parsed = (
-            (as_object_dict(tomllib.loads(config_text) or {})) if config_text.strip() else {}
-        )
+        if config_text.strip():
+            raw_parsed: object = tomllib.loads(config_text)
+            parsed = as_object_dict(raw_parsed) if isinstance(raw_parsed, dict) else {}
+        else:
+            parsed = {}
         mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
-        existing_servers = (
-            (as_object_dict(mcp_servers) or {}) if isinstance(mcp_servers, dict) else None
-        )
+        existing_servers = as_object_dict(mcp_servers) if isinstance(mcp_servers, dict) else None
         if existing_servers is None or server.name not in existing_servers:
             config_text = _augment_codex_config_with_server(config_text, server)
-            parsed = (as_object_dict(tomllib.loads(config_text) or {}))
+            raw_augmented: object = tomllib.loads(config_text)
+            parsed = as_object_dict(raw_augmented) if isinstance(raw_augmented, dict) else {}
         mcp_servers = parsed.get("mcp_servers")
         if not isinstance(mcp_servers, dict):
             raise AgentTransportProbeError(
                 "Codex config.toml missing [mcp_servers] table after probe synthesis"
             )
-        raw_entry = (as_object_dict(mcp_servers) or {}).get(server.name)
+        raw_entry = as_object_dict(mcp_servers).get(server.name)
         if not isinstance(raw_entry, dict):
             raise AgentTransportProbeError(
                 f"Codex config.toml missing [mcp_servers.{server.name}] table"
             )
-        entry = (as_object_dict(raw_entry) or {})
+        entry = as_object_dict(raw_entry)
         if server.transport == "http" and entry.get("url") != server.url:
             raise AgentTransportProbeError(
                 f"Codex config.toml mcp_servers.{server.name}.url mismatch"
@@ -200,11 +201,9 @@ def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServe
     if base_config.strip():
         parsed: object = tomllib.loads(base_config)
         if isinstance(parsed, dict):
-            config = (as_object_dict(parsed) or {})
+            config = as_object_dict(parsed)
     existing = config.get("mcp_servers")
-    servers: dict[str, object] = (
-        dict(as_object_dict(existing) or {}) if isinstance(existing, dict) else {}
-    )
+    servers: dict[str, object] = as_object_dict(existing) if isinstance(existing, dict) else {}
     entry: dict[str, object] = {}
     if server.transport == "http":
         entry["url"] = server.url or ""
@@ -241,11 +240,11 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
     mcp_section = parsed.get("mcp")
     if not isinstance(mcp_section, dict):
         raise AgentTransportProbeError("OpenCode config missing 'mcp' section")
-    typed_mcp = (as_object_dict(mcp_section) or {})
+    typed_mcp = as_object_dict(mcp_section)
     raw_ralph_entry = typed_mcp.get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_ralph_entry, dict):
         raise AgentTransportProbeError("OpenCode config missing Ralph mcp entry after synthesis")
-    ralph_entry = (as_object_dict(raw_ralph_entry) or {})
+    ralph_entry = as_object_dict(raw_ralph_entry)
     if ralph_entry.get("type") != "remote" or ralph_entry.get("url") != server.url:
         raise AgentTransportProbeError("OpenCode Ralph mcp entry shape mismatch (type/url)")
     http_handshake(server.url)
@@ -312,30 +311,33 @@ _KIMI_COMPOSITION_KEYWORDS: frozenset[str] = frozenset({"oneOf", "anyOf", "allOf
 def _kimi_schema_violations(schema: object, path: str) -> list[str]:
     if not isinstance(schema, dict):
         return []
+    typed_schema = as_object_dict(schema)
     violations: list[str] = []
-    has_type = "type" in schema
-    if has_type and any(k in schema for k in _KIMI_COMPOSITION_KEYWORDS):
+    has_type = "type" in typed_schema
+    if has_type and any(k in typed_schema for k in _KIMI_COMPOSITION_KEYWORDS):
         violations.append(f"{path}: 'type' mixed with a composition keyword")
-    if "enum" in schema and not has_type:
+    if "enum" in typed_schema and not has_type:
         violations.append(f"{path}: 'enum' without 'type'")
-    if "required" in schema and not has_type:
+    if "required" in typed_schema and not has_type:
         violations.append(f"{path}: 'required' without 'type'")
-    if ("oneOf" in schema or "anyOf" in schema) and not has_type:
+    if ("oneOf" in typed_schema or "anyOf" in typed_schema) and not has_type:
         violations.append(f"{path}: composition branch list without 'type'")
-    properties = schema.get("properties")
+    properties = typed_schema.get("properties")
     if isinstance(properties, dict):
-        for name, sub in (as_object_dict(properties) or {}).items():
+        for name, sub in as_object_dict(properties).items():
             violations.extend(_kimi_schema_violations(sub, f"{path}.properties.{name}"))
     for key in _KIMI_COMPOSITION_KEYWORDS:
-        seq = schema.get(key)
+        seq = typed_schema.get(key)
         if isinstance(seq, list):
-            for index, sub in enumerate(seq):
+            for index, sub in enumerate(as_object_list(seq)):
                 violations.extend(_kimi_schema_violations(sub, f"{path}.{key}[{index}]"))
         if isinstance(seq, dict):
-            violations.extend(_kimi_schema_violations(seq, f"{path}.{key}"))
-    items = schema.get("items")
+            seq_obj: object = seq
+            violations.extend(_kimi_schema_violations(seq_obj, f"{path}.{key}"))
+    items = typed_schema.get("items")
     if isinstance(items, dict):
-        violations.extend(_kimi_schema_violations(items, f"{path}.items"))
+        items_obj: object = items
+        violations.extend(_kimi_schema_violations(items_obj, f"{path}.items"))
     return violations
 
 
@@ -364,10 +366,10 @@ def _validate_mcp_json_and_handshake(
     mcp_servers = parsed.get("mcpServers")
     if not isinstance(mcp_servers, dict):
         raise AgentTransportProbeError(f"{label} missing 'mcpServers'")
-    raw_entry = (as_object_dict(mcp_servers) or {}).get(RALPH_MCP_SERVER_NAME)
+    raw_entry = as_object_dict(mcp_servers).get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_entry, dict):
         raise AgentTransportProbeError(f"{label} missing Ralph entry; injected wiring is broken")
-    entry = (as_object_dict(raw_entry) or {})
+    entry = as_object_dict(raw_entry)
     ralph_url = entry.get(ralph_url_key)
     if ralph_url != server.url:
         raise AgentTransportProbeError(
@@ -428,12 +430,12 @@ def _server_handshake(server: UpstreamMcpServer) -> None:
 
 def _parse_json_obj(text: str, label: str) -> dict[str, object]:
     try:
-        decoded: object = json.loads(text)
+        decoded: object = loads_json(text)
     except json.JSONDecodeError as exc:
         raise AgentTransportProbeError(f"{label} is not valid JSON: {exc}") from exc
     if not isinstance(decoded, dict):
         raise AgentTransportProbeError(f"{label} top-level is not an object")
-    return (as_object_dict(decoded) or {})
+    return as_object_dict(decoded)
 
 
 def _redact(server: UpstreamMcpServer, exc: BaseException) -> str:

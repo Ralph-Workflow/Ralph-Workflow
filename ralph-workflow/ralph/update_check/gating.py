@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict, loads_toml
 from ralph.telemetry._sentry import is_telemetry_disabled, is_telemetry_disabled_by_config
 
 if TYPE_CHECKING:
@@ -14,9 +14,10 @@ UPDATE_CHECK_DISABLE_ENV = "RALPH_DISABLE_UPDATE_CHECK"
 
 
 def _as_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
+    try:
+        return as_object_dict(value)
+    except TypeError:
         return None
-    return {str(key): item for key, item in value.items()}
 
 
 def _env_disables_update_check(environ: Mapping[str, str]) -> bool:
@@ -39,7 +40,7 @@ def _config_disables_update_check(environ: Mapping[str, str]) -> bool:
         if not config_path.exists():
             return False
         with config_path.open("rb") as handle:
-            data = _as_object_dict(tomllib.load(handle))
+            data = _as_object_dict(loads_toml(handle))
     except (OSError, ValueError):
         return False
     if data is None:

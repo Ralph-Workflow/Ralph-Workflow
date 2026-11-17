@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.checked_accessors import as_object_list
 from ralph.config._env import getenv
 from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import (
@@ -95,7 +96,7 @@ def build_opencode_provider_config(
     if not isinstance(permission_section_obj, dict):
         permission_section_obj = {}
         config_obj["permission"] = permission_section_obj
-    permission_section = (as_object_dict(permission_section_obj) or {})
+    permission_section = as_object_dict(permission_section_obj) or {}
     permission_section["ralph_*"] = "allow"
     permission_section["mcp__ralph__*"] = "allow"
     for tool_name in ALL_RALPH_TOOLS:
@@ -291,7 +292,7 @@ def _read_config_object(config_path: Path) -> dict[str, object] | None:
             config_path,
         )
         return None
-    return (as_object_dict(decoded) or {})
+    return as_object_dict(decoded) or {}
 
 
 def _mcp_servers_from_config(config: dict[str, object], config_path: Path) -> dict[str, object]:
@@ -313,7 +314,7 @@ def _normalize_opencode_server_entry(
 ) -> tuple[str, object] | None:
     if server_name == RALPH_MCP_SERVER_NAME or not isinstance(raw_entry, dict):
         return None
-    entry = (as_object_dict(raw_entry) or {})
+    entry = as_object_dict(raw_entry) or {}
     if entry.get("enabled") is False or entry.get("disabled") is True:
         return None
 
@@ -335,10 +336,10 @@ def _server_argv(entry: dict[str, object]) -> list[str]:
     command = entry.get("command")
     if isinstance(command, str):
         raw_args = entry.get("args")
-        args = list(raw_args) if isinstance(raw_args, list) else []
+        args = as_object_list(raw_args) if isinstance(raw_args, list) else []
         return [command, *(arg for arg in args if isinstance(arg, str))] if command else []
     if isinstance(command, list):
-        return [part for part in command if isinstance(part, str)]
+        return [part for part in as_object_list(command) if isinstance(part, str)]
     return []
 
 
@@ -411,7 +412,7 @@ def _parse_opencode_config_content(existing: str | None) -> dict[str, object]:
         return {}
     if not isinstance(decoded, dict):
         return {}
-    return (as_object_dict(decoded) or {})
+    return as_object_dict(decoded) or {}
 
 
 __all__ = [

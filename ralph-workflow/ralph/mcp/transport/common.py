@@ -200,9 +200,7 @@ def _load_upstreams_for_agent(
             return claude_transport.load_existing_claude_upstream_servers(workspace)
         elif agent_name == "agy":
             paths = agy_transport._agy_mcp_config_paths(workspace)
-            servers = _load_mcpservers_from_paths(
-                paths, agy_transport._normalize_agy_server_entry
-            )
+            servers = _load_mcpservers_from_paths(paths, agy_transport._normalize_agy_server_entry)
         elif agent_name == "cursor":
             paths = cursor_transport._cursor_paths_to_consider(workspace)
             servers = _load_mcpservers_from_paths(

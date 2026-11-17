@@ -4,13 +4,15 @@ import contextlib
 import json
 import re
 
+from ralph.checked_accessors import as_object_dict
 from ralph.display.vt_normalizer import normalize_vt_text
 
 
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
+    try:
+        return as_object_dict(value)
+    except TypeError:
         return None
-    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _require_str_object_dict(value: object) -> dict[str, object]:
@@ -78,11 +80,11 @@ def _extract_claude_message_tool_use(obj: dict[str, object]) -> dict[str, object
     content = _require_str_object_dict(message).get("content")
     if not isinstance(content, list):
         return None
-    blocks = [
-        _require_str_object_dict(block)
-        for block in content
-        if isinstance(block, dict) and block.get("type") == "tool_use"
-    ]
+    blocks: list[dict[str, object]] = []
+    for block_obj in content:
+        mapped = _as_str_object_dict(block_obj)
+        if mapped is not None and mapped.get("type") == "tool_use":
+            blocks.append(mapped)
     if len(blocks) != 1:
         return None
     return blocks[0]

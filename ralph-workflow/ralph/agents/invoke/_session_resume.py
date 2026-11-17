@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 
@@ -15,14 +16,31 @@ if TYPE_CHECKING:
     from ralph.pipeline.agent_retry_intent import AgentRetryAction
 
 
+def _is_workspace_monitor_factory(
+    value: object,
+) -> TypeGuard[Callable[[Path, WorkspaceChangeClassifier | None], object]]:
+    return callable(value)
+
+
+def _looks_like_workspace_monitor(value: object) -> TypeGuard[WorkspaceMonitor]:
+    return callable(read_attr(value, "set_on_event", None))
+
+
 def _as_workspace_monitor_factory(
     value: object,
 ) -> Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None]:
+    if not _is_workspace_monitor_factory(value):
+        raise TypeError("workspace_monitor_factory must be callable or None")
+
     def _factory(
         path: Path, classifier: WorkspaceChangeClassifier | None
     ) -> WorkspaceMonitor | None:
-        result = value(path, classifier)
-        return result if result is None or callable(getattr(result, "set_on_event", None)) else None
+        result: object = value(path, classifier)
+        if result is None:
+            return None
+        if not _looks_like_workspace_monitor(result):
+            return None
+        return result
 
     return _factory
 
@@ -36,14 +54,10 @@ def fresh_session_options(
     del prior_session_id
     if workspace_monitor_factory is _INVOKE_OPTS_UNSET:
         return replace(opts, session_id=None)
-    factory: (
-        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
-    )
+    factory: Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     if workspace_monitor_factory is None:
         factory = None
     else:
-        if not callable(workspace_monitor_factory):
-            raise TypeError("workspace_monitor_factory must be callable or None")
         factory = _as_workspace_monitor_factory(workspace_monitor_factory)
     return replace(opts, session_id=None, workspace_monitor_factory=factory)
 

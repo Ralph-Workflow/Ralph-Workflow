@@ -10,6 +10,7 @@ from rich.syntax import PygmentsSyntaxTheme, SyntaxTheme
 from rich.theme import Theme
 
 import ralph.display._identity as identity_helpers
+from ralph._typed_attrs import read_attr
 from ralph.display import _palette
 from ralph.display._identity import (
     _DEUTERANOPIA_MATRIX,
@@ -93,7 +94,7 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     if force_ascii in _RALPH_FORCE_ASCII_TRUTHY:
         return False
 
-    encoding: object = getattr(stream, "encoding", None)
+    encoding: object = read_attr(stream, "encoding", None)
     if encoding is not None:
         encoding_str = str(encoding).lower()
         if "utf" not in encoding_str:

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
 
 from ..secrets import resolve_secret
@@ -56,7 +57,7 @@ def _load_exa_type() -> _ExaType:
         raise WebSearchError(
             "backend 'exa' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    return Exa
+    return cast("_ExaType", Exa)
 
 
 def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
@@ -73,12 +74,14 @@ def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
 
 
 def _object_payload(value: object) -> Mapping[str, object]:
+    from ralph.checked_accessors import as_object_dict
+
     if isinstance(value, Mapping):
         return value
-    dunder_dict = getattr(value, "__dict__", None)
-    if not isinstance(dunder_dict, dict):
+    try:
+        return as_object_dict(attr_or_none(value, "__dict__"))
+    except TypeError:
         return {}
-    return {key: item for key, item in dunder_dict.items() if isinstance(key, str)}
 
 
 def _string_value(payload: Mapping[str, object], *keys: str) -> str:

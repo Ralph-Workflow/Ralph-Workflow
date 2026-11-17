@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Final
 
+from ralph._typed_attrs import read_attr
 from ralph.display.line_sanitizer import strip_terminal_control
 
 if TYPE_CHECKING:
@@ -27,11 +28,11 @@ _LEVEL_STYLE_ROLES: Final[dict[str, str]] = {
 
 
 def _style_role_for_message(message: str) -> str:
-    record: object = getattr(message, "record", None)
+    record: object = read_attr(message, "record", None)
     if not isinstance(record, dict):
         return "theme.log.info"
     level: object = record.get("level")
-    level_name: object = getattr(level, "name", None)
+    level_name: object = read_attr(level, "name", None)
     if not isinstance(level_name, str):
         return "theme.log.info"
     return _LEVEL_STYLE_ROLES.get(level_name, "theme.log.info")

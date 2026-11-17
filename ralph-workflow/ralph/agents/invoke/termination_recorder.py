@@ -4,6 +4,7 @@ import contextlib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._fire_reason_issuer import (
     fire_reason_from_value,
     termination_issuer_for_fire_reason,
@@ -77,19 +78,19 @@ def termination_issuer_for_teardown_issuer(issuer: str | None) -> TerminationIss
 
 
 def _exception_issuer_label(exc: BaseException) -> str | None:
-    label: object = getattr(exc, "issuer", None)
+    label: object = read_attr(exc, "issuer", None)
     return label if isinstance(label, str) and label else None
 
 
 def _exception_fire_reason(exc: BaseException) -> WatchdogFireReason | str | None:
-    reason: object = getattr(exc, "reason", None)
+    reason: object = read_attr(exc, "reason", None)
     if isinstance(reason, WatchdogFireReason):
         return reason
     return reason if isinstance(reason, str) and reason else None
 
 
 def _exception_returncode(exc: BaseException) -> int | None:
-    returncode: object = getattr(exc, "returncode", None)
+    returncode: object = read_attr(exc, "returncode", None)
     if isinstance(returncode, bool) or not isinstance(returncode, int):
         return None
     return returncode

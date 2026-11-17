@@ -217,9 +217,8 @@ class _RetainedBaselineEntry:
             raise BaselineStorageError("capture_run_id must be a non-empty string")
         if not isinstance(cycle_id, str) or not cycle_id:
             raise BaselineStorageError("cycle_id must be a non-empty string")
-        if (
-            not (any(isinstance(captured_at_unix, _t) for _t in (int, float)))
-            or isinstance(captured_at_unix, bool)
+        if not (any(isinstance(captured_at_unix, _t) for _t in (int, float))) or isinstance(
+            captured_at_unix, bool
         ):
             raise BaselineStorageError("captured_at_unix must be a number")
         if not isinstance(cells, list):

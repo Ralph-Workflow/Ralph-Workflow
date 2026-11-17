@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, assert_never
 
+from ralph._typed_attrs import read_attr
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -43,7 +44,7 @@ def reset_driver_events_state() -> None:
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    fn: object = getattr(driver_mod, "emit_conflict_phase_line", None)
+    fn: object = read_attr(driver_mod, "emit_conflict_phase_line", None)
     if callable(fn):
         fn(display, line)
         return
@@ -100,11 +101,11 @@ def emit_success(
 def _session_progress(status_session: ResolutionSession) -> str:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    build_fn: object = getattr(driver_mod, "build_session_integration_status", None)
+    build_fn: object = read_attr(driver_mod, "build_session_integration_status", None)
     if not callable(build_fn):
         return "(unknown)"
-    status = build_fn(status_session, cause="PROGRESS")
-    progress: object = getattr(status, "progress", "(unknown)")
+    status: object = build_fn(status_session, cause="PROGRESS")
+    progress: object = read_attr(status, "progress", "(unknown)")
     return progress if isinstance(progress, str) else "(unknown)"
 
 

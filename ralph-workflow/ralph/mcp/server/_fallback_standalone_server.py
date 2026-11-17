@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.config._env import getenv
 from ralph.mcp.artifacts._path_file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.protocol.env import (
@@ -135,9 +136,9 @@ class _FallbackStandaloneServer:
             )
             stage_id = self._env_getter(MCP_STAGE_ID_ENV, "") or ""
             session = self._mcp_server._session
-            session_id_obj: object = getattr(session, "session_id", "")
+            session_id_obj: object = read_attr(session, "session_id", "")
             session_id = str(session_id_obj) if session_id_obj is not None else ""
-            raw_secret: object = getattr(session, "broker_secret", None)
+            raw_secret: object = read_attr(session, "broker_secret", None)
             broker_fp: str | None = None
             if isinstance(raw_secret, str) and raw_secret:
                 broker_fp = hashlib.sha256(raw_secret[:8].encode()).hexdigest()

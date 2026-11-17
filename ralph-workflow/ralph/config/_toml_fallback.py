@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, overload
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -39,7 +41,7 @@ def _attach_config_parse_error(exc: BaseException, file: Path | str) -> None:
     chain = _cause_chain(exc)
     payload = config_parse_error(file, chain[-1])
     try:
-        exc.config_parse_error = payload
+        object.__setattr__(exc, "config_parse_error", payload)
     except (AttributeError, TypeError):
         return
 
@@ -47,11 +49,11 @@ def _attach_config_parse_error(exc: BaseException, file: Path | str) -> None:
 def config_parse_error_of(exc: BaseException) -> ConfigParseError | None:
     chain = _cause_chain(exc)
     for entry in chain:
-        payload: object = getattr(entry, "config_parse_error", None)
+        payload: object = read_attr(entry, "config_parse_error", None)
         if isinstance(payload, ConfigParseError):
             return payload
     for entry in chain:
-        file: object = getattr(entry, "file", None)
+        file: object = read_attr(entry, "file", None)
         match file:
             case str() | Path():
                 return config_parse_error(file, chain[-1])
@@ -66,8 +68,8 @@ def reset_fallback_warning_registry() -> None:
 
 def _format_error_detail(exc: BaseException) -> str:
     exc_msg = str(exc)
-    lineno: object = getattr(exc, "lineno", None)
-    colno: object = getattr(exc, "colno", None)
+    lineno: object = read_attr(exc, "lineno", None)
+    colno: object = read_attr(exc, "colno", None)
     match (lineno, colno):
         case (int(), int()):
             has_line = "line" in exc_msg.lower()

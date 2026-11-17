@@ -111,7 +111,7 @@ __all__ = [
     "tool_name_prefix_for_transport",
 ]
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.policy.models import PhaseDefinition
@@ -171,9 +171,7 @@ def _optional_multimodal_entries(
     entries: list[MultimodalSidecarEntry] = []
     for item in value:
         if not isinstance(item, MultimodalSidecarEntry):
-            raise TypeError(
-                f"expected MultimodalSidecarEntry, got {type(item).__name__}"
-            )
+            raise TypeError(f"expected MultimodalSidecarEntry, got {type(item).__name__}")
         entries.append(item)
     return entries
 
@@ -1398,9 +1396,13 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         except (OSError, RuntimeError, ValueError, AttributeError):
             untracked = ""
         finally:
-            close = getattr(repo, "close", None)
-            if callable(close):
-                close()
+            from typing import cast
+
+            from ralph._typed_attrs import attr_or_none, is_callable_obj
+
+            close = attr_or_none(repo, "close")
+            if is_callable_obj(close):
+                cast("Callable[[], object]", close)()
     else:
         untracked = _git_output(
             workspace_root, "ls-files", "--others", "--exclude-standard"

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
+from ralph.checked_accessors import as_object_list, as_sequence
 from ralph.mcp.artifacts._schema_version_type_error import SchemaVersionTypeError
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ def _coerce_hmac(row: object) -> str | None:
 
 
 class RunStateDB:
-    __slots__ = ('_closed', '_conn')
+    __slots__ = ("_closed", "_conn")
 
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
@@ -77,13 +78,17 @@ class RunStateDB:
         if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
         if version_value < _SCHEMA_VERSION:
-            rows = self._conn.execute("PRAGMA table_info(receipts)").fetchall()
+            rows = as_object_list(
+                cast("object", self._conn.execute("PRAGMA table_info(receipts)").fetchall())
+            )
 
-            columns = {
-                row[1]
-                for row in rows
-                if isinstance(row, tuple) and len(row) > 1 and isinstance(row[1], str)
-            }
+            columns: set[str] = set()
+            for row in rows:
+                if not isinstance(row, tuple) or len(row) <= 1:
+                    continue
+                name = as_sequence(row)[1]
+                if isinstance(name, str):
+                    columns.add(name)
             if "normalization_audit" not in columns:
                 self._conn.execute("ALTER TABLE receipts ADD COLUMN normalization_audit TEXT")
             if "submission_snapshot_path" not in columns:

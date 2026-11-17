@@ -69,6 +69,24 @@ def rows_from_fetchmany(cur: sqlite3.Cursor, size: int) -> list[sqlite3.Row]:
     return as_sqlite_rows(raw)
 
 
+def fetch_all_rows(cursor: sqlite3.Cursor) -> list[sqlite3.Row]:
+    return rows_from_cursor(cursor)
+
+
+def fetch_many_rows(cursor: sqlite3.Cursor, size: int) -> list[sqlite3.Row]:
+    return rows_from_fetchmany(cursor, size)
+
+
+def fetch_one_row(cursor: sqlite3.Cursor) -> sqlite3.Row | None:
+    row: object = cursor.fetchone()
+    if row is None:
+        return None
+    if not _is_sqlite_row(row):
+        msg = f"expected sqlite3.Row, got {type(row).__name__}"
+        raise TypeError(msg)
+    return row
+
+
 def coerce_int(value: object) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -99,6 +117,9 @@ __all__ = [
     "as_sqlite_rows",
     "coerce_float",
     "coerce_int",
+    "fetch_all_rows",
+    "fetch_many_rows",
+    "fetch_one_row",
     "is_int_or_float",
     "is_list_or_tuple",
     "is_str_or_bytes",

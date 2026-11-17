@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
+from ralph._typed_attrs import attr_or_none, is_callable_obj
+
 from .content_channel import ContentChannel, channel_of
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
+    from .agent_output_line import AgentOutputLine
 
 
 def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | None:
@@ -10,10 +19,11 @@ def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | N
         parser = get_parser(parser_key)
     except ValueError:
         return None
-    classify_line = getattr(parser, "classify_line", None)
-    if not callable(classify_line):
+    classify_line = attr_or_none(parser, "classify_line")
+    if not is_callable_obj(classify_line):
         return None
-    for output_line in classify_line(raw_line):
+    classify = cast("Callable[[str], Iterable[AgentOutputLine]]", classify_line)
+    for output_line in classify(raw_line):
         return output_line.channel
     return None
 

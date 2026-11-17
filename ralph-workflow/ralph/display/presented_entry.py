@@ -211,8 +211,10 @@ def outcome_is_failure(metadata: dict[str, object]) -> bool:
 def _code_value_is_failure(value: object) -> bool:
     if isinstance(value, bool):
         return value is False
-    if any(isinstance(value, _t) for _t in (int, float)):
-        return int(value) != 0
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, float):
+        return value != 0.0
     if isinstance(value, str):
         stripped = value.strip()
         return bool(stripped) and stripped != "0"

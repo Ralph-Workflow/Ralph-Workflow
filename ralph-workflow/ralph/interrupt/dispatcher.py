@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_callable_attr
 from ralph.interrupt._clock_type_error import ClockTypeError
 from ralph.interrupt.controller import (
     INTERRUPT_EXIT_CODE,
@@ -147,18 +148,16 @@ def _kill_records(records: list[ProcessRecord]) -> None:
 
 
 def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]) -> None:
-    kill_method: Callable[[int, int], None] | None = getattr(
-        process_manager, "kill_process_group", None
-    )
-    if callable(kill_method):
-        for record in records:
-            pgid = _signalable_pgid(record)
-            if pgid is None:
-                continue
-            with suppress(ProcessLookupError, PermissionError):
-                kill_method(pgid, signal.SIGKILL)
+    kill_raw = read_callable_attr(process_manager, "kill_process_group", None)
+    if not callable(kill_raw):
+        _kill_records(records)
         return
-    _kill_records(records)
+    for record in records:
+        pgid = _signalable_pgid(record)
+        if pgid is None:
+            continue
+        with suppress(ProcessLookupError, PermissionError):
+            kill_raw(pgid, signal.SIGKILL)
 
 
 @dataclass(frozen=True)

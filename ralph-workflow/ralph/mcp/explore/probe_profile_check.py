@@ -142,6 +142,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="ralph-probe-profile-") as raw_tmp:
         tmp = Path(raw_tmp)
         workspace, _index_dir, handle = _build_indexed_workspace(tmp)
+
         class _Session:
             __slots__ = ("explore_index",)
 

@@ -69,7 +69,6 @@ class _DispatchHandler(Protocol):
     def dispatch(self, event: object) -> None: ...
 
 
-
 class WorkspaceMonitor:
     __slots__ = (
         "__weakref__",
@@ -99,7 +98,6 @@ class WorkspaceMonitor:
     )
     _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}
     _shared_lock: ClassVar[threading.Lock | None] = None
-
 
     @classmethod
     def _lock(cls) -> threading.Lock:

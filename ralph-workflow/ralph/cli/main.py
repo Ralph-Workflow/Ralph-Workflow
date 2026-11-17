@@ -17,6 +17,7 @@ import typer.testing
 from loguru import logger
 
 from ralph._build_meta import build_provenance_line, flavored_version
+from ralph._typed_attrs import read_attr
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
@@ -117,7 +118,9 @@ _typer_get_command = typer.main.get_command
 
 
 def _is_click_command(value: object) -> TypeGuard[click.Command]:
-    return isinstance(value, click.Command)
+    from ralph.checked_accessors import module_attr, type_as_object_type
+
+    return isinstance(value, type_as_object_type(module_attr(click, "Command")))
 
 
 def _as_click_command(command: object) -> click.Command:
@@ -151,7 +154,10 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
 
 
 def _is_agent_registry_factory(value: object) -> TypeGuard[_AgentRegistryFactory]:
-    return isinstance(value, type) and callable(getattr(value, "from_config", None))
+    from ralph.checked_accessors import module_attr, type_as_object_type
+
+    builtins_type = type_as_object_type(module_attr(__import__("builtins"), "type"))
+    return isinstance(value, builtins_type) and callable(read_attr(value, "from_config", None))
 
 
 def _is_validate_custom_mcp_servers_fn(

@@ -5,11 +5,11 @@ import shutil
 import tomllib
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_object_dict
 from ralph.config._bootstrap_types import BootstrapResult
 from ralph.config._config_filenames import (
     _GLOBAL_AGENTS_FILENAME,
@@ -35,7 +35,7 @@ __all__ = [
 
 
 def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
-    namespace = dict(as_mapping(module.__dict__))
+    namespace = as_object_dict(cast("object", module.__dict__))
     return namespace.get(attribute)
 
 
@@ -131,18 +131,14 @@ def _agents_config_alias_reason(target: Path) -> str | None:
 
 def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
     try:
-        data = as_mapping(load_toml(target))
+        data = as_object_dict(load_toml(target))
     except (OSError, ValueError, TypeError, KeyError):
         return []
     raw_drains_obj: object = data.get("agent_drains")
     try:
-        raw_drains = as_mapping(raw_drains_obj)
+        drains = as_object_dict(raw_drains_obj)
     except TypeError:
         return []
-
-    drains: dict[str, object] = {
-        key: value for key, value in raw_drains.items() if isinstance(key, str)
-    }
     missing: list[tuple[str, str]] = []
     analysis_chain: object = drains.get("analysis")
     commit_chain: object = drains.get("commit")

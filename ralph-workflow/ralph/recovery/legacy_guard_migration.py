@@ -66,7 +66,7 @@ def _readable_legacy_field(field: str, raw: object) -> bool:
     if field == "streak":
         return _readable_streak(raw) is not None
     if field == "max_identical":
-        if isinstance(raw, bool) or not isinstance(raw, int | float | str):
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
             return False
         return _counter_value(raw) > 0
     return raw is None or isinstance(raw, bool)
@@ -141,7 +141,7 @@ def translate_legacy_entry(
     raw_streak = guard_data.get("streak", 0)
     streak = (
         int(raw_streak)
-        if isinstance(raw_streak, int | float | str) and (not isinstance(raw_streak, bool))
+        if isinstance(raw_streak, (int, float, str)) and (not isinstance(raw_streak, bool))
         else 0
     )
     streak = max(0, streak)

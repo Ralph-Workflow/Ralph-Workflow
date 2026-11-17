@@ -45,7 +45,7 @@ def normalize_upstream_mcp_servers(
         if not isinstance(raw_entry, Mapping):
             continue
 
-        entry = (as_object_dict(raw_entry) or {})
+        entry = as_object_dict(raw_entry) or {}
         url = entry.get("url")
         command = entry.get("command")
 
@@ -111,7 +111,7 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
     for item in decoded:
         if not isinstance(item, Mapping):
             continue
-        item_map = (as_object_dict(item) or {})
+        item_map = as_object_dict(item) or {}
         name = item_map.get("name")
         transport = item_map.get("transport")
         if not isinstance(name, str) or transport not in {"http", "stdio"}:

@@ -37,7 +37,6 @@ class CrossProcessWatchLock:
         cls._counter_lock = created
         return created
 
-
     @classmethod
     def try_acquire(cls, workspace_root: Path) -> str | None:
         key = str(workspace_root.absolute())

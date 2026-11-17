@@ -8,8 +8,9 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.explore.pipeline import (
     ReindexOptions,
 )
@@ -121,10 +122,7 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
 
 
 def _resolve_explore_index(session: object) -> ExploreIndex | None:
-    handle: ExploreIndex | None = getattr(session, "explore_index", None)
-    if handle is None:
-        return None
-    return handle
+    return cast("ExploreIndex | None", attr_or_none(session, "explore_index"))
 
 
 def _gitignore_coverage(workspace_root: Path) -> bool:
@@ -277,8 +275,6 @@ def __getattr__(name: str) -> object:
 
         return _gitignore_child_rule_present
     if name == "_gitignore_coverage":
-        from ralph.mcp.explore._handlers_index_status import _gitignore_coverage
-
         return _gitignore_coverage
     if name == "_gitignore_repair_payload":
         from ralph.mcp.explore._handlers_index_status import _gitignore_repair_payload

@@ -40,7 +40,7 @@ from ._helpers import (
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.agents.parsers.interactive_transcript_event import InteractiveTranscriptEvent
@@ -157,7 +157,8 @@ class CompletionEnforcingStrategy:
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
-        if "supports_completion_enforcement" in cls.__dict__:
+        own_namespace: Mapping[str, object] = cls.__dict__
+        if "supports_completion_enforcement" in own_namespace:
             msg = (
                 f"{cls.__name__} must not override supports_completion_enforcement(); "
                 "CompletionEnforcingStrategy is the sole source of truth"
@@ -359,7 +360,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         )
         self._subagent_activity_sink = subagent_activity_sink
         self._scoped_records_seen = False
-        self._open_step_messages = set()
+        self._open_step_messages: set[str] = set()
         self._anonymous_open_steps = 0
 
     def _active_label_prefix(self) -> str | None:

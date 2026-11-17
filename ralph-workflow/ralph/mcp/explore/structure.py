@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from ralph._typed_attrs import attr_or_none, read_attr
 from ralph.mcp.explore.store import EdgeRow, SpanRow, SymbolRow
 
 EXTRACTOR_VERSION: Final[str] = "phase2-structure-v1"
@@ -99,7 +100,6 @@ def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
     return (start_line, start_col, end_line, end_col)
 
 
-
 def _is_function_def(node: ast.AST) -> bool:
     if isinstance(node, ast.FunctionDef):
         return True
@@ -120,24 +120,19 @@ def _callee_from_call_func(func_obj: object) -> str | None:
         return attr_id if isinstance(attr_id, str) else None
     return None
 
+
 def _get_int_attr(node: ast.AST, attr: str, default: int) -> int:
     raw: object
-    if attr == "lineno":
-        raw = getattr(node, "lineno", default)
-    elif attr == "col_offset":
-        raw = getattr(node, "col_offset", default)
-    elif attr == "end_lineno":
-        raw = getattr(node, "end_lineno", default)
-    elif attr == "end_col_offset":
-        raw = getattr(node, "end_col_offset", default)
+    if attr in {"lineno", "col_offset", "end_lineno", "end_col_offset"}:
+        raw = attr_or_none(node, attr)
+        if raw is None:
+            return default
     else:
         raw = default
     if isinstance(raw, bool):
         return int(raw)
     if isinstance(raw, int):
         return raw
-    if raw is None:
-        return default
     if isinstance(raw, str):
         try:
             return int(raw)
@@ -194,7 +189,7 @@ def extract_python_scalar(
     def _walk(node: ast.AST, parent_qualified: str, container_span_id: str) -> None:
         kind_name = _node_kind(node)
         if kind_name is not None and hasattr(node, "name"):
-            name_obj: object = getattr(node, "name", "")
+            name_obj: object = read_attr(node, "name", "")
             name = name_obj if isinstance(name_obj, str) else str(name_obj)
             if name:
                 start_line, start_col, end_line, end_col = _line_col(node)
@@ -285,7 +280,7 @@ def extract_python_scalar(
                     )
                 if kind_name == "class" and isinstance(node, ast.ClassDef):
                     for base in node.bases:
-                        base_id_obj: object = getattr(base, "id", None)
+                        base_id_obj: object = read_attr(base, "id", None)
                         if isinstance(base_id_obj, str) and base_id_obj:
                             base_id: str | None = base_id_obj
                         else:
@@ -468,14 +463,14 @@ def extract_python_scalar(
                     if name in defined_names:
                         body_node_name: str = ""
                         if _is_def_or_class(body_node):
-                            raw_name: object = getattr(body_node, "name", "")
+                            raw_name: object = read_attr(body_node, "name", "")
                             body_node_name = raw_name if isinstance(raw_name, str) else ""
                         if body_node_name == name:
                             continue
                         ref_line, _, ref_end, ref_end_col = _line_col(sub)
                         if ref_line < body_start or ref_line > body_end:
                             continue
-                        raw_col: object = getattr(sub, "col_offset", 0)
+                        raw_col: object = read_attr(sub, "col_offset", 0)
                         ref_col_offset = (
                             int(raw_col)
                             if isinstance(raw_col, int) and not isinstance(raw_col, bool)
@@ -647,7 +642,7 @@ def extract_python_accelerated(
         active_body: tuple[int, int, str, str] | None = None
 
         if kind_name is not None and hasattr(node, "name"):
-            name_obj: object = getattr(node, "name", "")
+            name_obj: object = read_attr(node, "name", "")
             node_name = name_obj if isinstance(name_obj, str) else str(name_obj)
             if node_name:
                 start_line, start_col, end_line, end_col = _line_col(node)
@@ -740,7 +735,7 @@ def extract_python_accelerated(
                     )
                 if kind_name == "class" and isinstance(node, ast.ClassDef):
                     for base in node.bases:
-                        base_id_obj: object = getattr(base, "id", None)
+                        base_id_obj: object = read_attr(base, "id", None)
                         if isinstance(base_id_obj, str) and base_id_obj:
                             base_id: str | None = base_id_obj
                         else:
@@ -905,7 +900,7 @@ def extract_python_accelerated(
                         continue
                     if bs <= ref_line <= be:
                         target_name = frame_name
-                        raw_col: object = getattr(node, "col_offset", 0)
+                        raw_col: object = read_attr(node, "col_offset", 0)
                         ref_col_offset = (
                             int(raw_col)
                             if isinstance(raw_col, int) and not isinstance(raw_col, bool)

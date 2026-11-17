@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_mapping, loads_toml
 from ralph.config._env import resolve_environ
 
 if TYPE_CHECKING:
@@ -37,7 +36,7 @@ def _config_disables_skill_updates(environ: Mapping[str, str]) -> bool:
         if not config_path.exists():
             return False
         with config_path.open("rb") as handle:
-            data = dict(as_mapping(tomllib.load(handle)))
+            data = dict(as_mapping(loads_toml(handle)))
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
     raw_section = data.get(_CONFIG_SECTION)

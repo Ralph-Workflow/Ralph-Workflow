@@ -5,6 +5,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tool_contract import visible_tool_names_for_capabilities
@@ -261,13 +262,9 @@ def _policy_flag_value(flag: PolicyFlag) -> str:
 def _session_attribute(session: object, attribute: str) -> object | None:
     match attribute:
         case "capabilities":
-            if not hasattr(session, "capabilities"):
-                return None
-            return session.capabilities
+            return attr_or_none(session, "capabilities")
         case "policy_flags":
-            if not hasattr(session, "policy_flags"):
-                return None
-            return session.policy_flags
+            return attr_or_none(session, "policy_flags")
         case _:
             return None
 

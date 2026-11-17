@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore.store import row_str
 from ralph.mcp.tools.coordination import (
@@ -28,7 +29,7 @@ def handle_ralph_index_status(
     params: dict[str, object],
 ) -> ToolResult:
     require_capability(session, WORKSPACE_METADATA_READ_CAPABILITY, "Explore index status")
-    workspace_root_obj: object = getattr(workspace, "root", None)
+    workspace_root_obj: object = read_attr(workspace, "root", None)
     workspace_root_raw: object = workspace_root_obj or params.get("workspace_root", "")
     workspace_root_str: str = str(workspace_root_raw) if workspace_root_raw else ""
     workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()

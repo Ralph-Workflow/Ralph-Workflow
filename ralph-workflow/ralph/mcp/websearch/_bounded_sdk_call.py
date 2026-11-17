@@ -6,6 +6,7 @@ import contextlib
 import threading
 from typing import TYPE_CHECKING, Final
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.websearch.backends.base import WebSearchError
 from ralph.timeout_defaults import WEBSEARCH_SDK_TIMEOUT_SECONDS
 
@@ -23,8 +24,8 @@ def default_sdk_timeout_seconds() -> float:
 
 
 def _default_label(callable_: Callable[[], object]) -> str:
-    qualname: object = getattr(callable_, "__qualname__", None)
-    name: object = getattr(callable_, "__name__", "websearch")
+    qualname: object = read_attr(callable_, "__qualname__", None)
+    name: object = read_attr(callable_, "__name__", "websearch")
     if isinstance(qualname, str) and qualname:
         return qualname
     if isinstance(name, str) and name:

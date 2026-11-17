@@ -8,6 +8,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 import ralph.policy
+from ralph._typed_attrs import read_attr
 from ralph.checked_accessors import as_mapping, as_sequence, as_str, as_str_list
 from ralph.config._developer_override import apply_developer_override
 from ralph.config._env import resolve_config_home
@@ -338,7 +339,7 @@ def _resolve_artifacts_policy(
 
 
 def _config_defines_agent_policy(config: object) -> bool:
-    chains: object = getattr(config, "agent_chains", None)
+    chains: object = read_attr(config, "agent_chains", None)
     return isinstance(chains, Mapping) and bool(chains)
 
 
@@ -376,12 +377,12 @@ def _coerce_agent_drain_config(
 
 
 def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
-    general: object = getattr(config, "general", None)
-    retry_budget_value: object = getattr(general, "max_retries", 3)
-    retry_delay_ms_value: object = getattr(general, "retry_delay_ms", 1000)
+    general: object = read_attr(config, "general", None)
+    retry_budget_value: object = read_attr(general, "max_retries", 3)
+    retry_delay_ms_value: object = read_attr(general, "retry_delay_ms", 1000)
     retry_budget = retry_budget_value if isinstance(retry_budget_value, int) else 3
     retry_delay_ms = retry_delay_ms_value if isinstance(retry_delay_ms_value, int) else 1000
-    raw_agent_chains_obj: object = getattr(config, "agent_chains", {})
+    raw_agent_chains_obj: object = read_attr(config, "agent_chains", {})
     raw_agent_chains = (
         as_mapping(raw_agent_chains_obj) if isinstance(raw_agent_chains_obj, Mapping) else {}
     )
@@ -407,7 +408,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         "review_commit": "commit",
         "commit": "commit",
     }
-    raw_agent_drains_obj: object = getattr(config, "agent_drains", {})
+    raw_agent_drains_obj: object = read_attr(config, "agent_drains", {})
     raw_agent_drains = (
         as_mapping(raw_agent_drains_obj) if isinstance(raw_agent_drains_obj, Mapping) else {}
     )

@@ -6,6 +6,8 @@ from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
 
+from ralph._typed_attrs import attr_or_none, read_int_attr, read_str_attr
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -289,56 +291,56 @@ def _entry_path(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("path", "")
-    return getattr(entry, "path", "")
+    return read_str_attr(entry, "path", default="")
 
 
 def _entry_status(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("status", "")
-    return getattr(entry, "status", "")
+    return read_str_attr(entry, "status", default="")
 
 
 def _entry_size(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("size", 0)
-    return getattr(entry, "size", 0)
+    return read_int_attr(entry, "size", default=0)
 
 
 def _entry_old_mode(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("old_mode", None)
-    return getattr(entry, "old_mode", None)
+    return attr_or_none(entry, "old_mode")
 
 
 def _entry_new_mode(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("new_mode", None)
-    return getattr(entry, "new_mode", None)
+    return attr_or_none(entry, "new_mode")
 
 
 def _entry_content(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("content", None)
-    return getattr(entry, "content", None)
+    return attr_or_none(entry, "content")
 
 
 def _entry_is_binary(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("is_binary", None)
-    return getattr(entry, "is_binary", None)
+    return attr_or_none(entry, "is_binary")
 
 
 def _entry_base_tree_paths(entry: object) -> object:
     mapping = _entry_mapping(entry)
     if mapping is not None:
         return mapping.get("base_tree_paths", None)
-    return getattr(entry, "base_tree_paths", None)
+    return attr_or_none(entry, "base_tree_paths")
 
 
 def _is_binary_entry(entry: object, norm: PurePosixPath) -> bool:
@@ -439,7 +441,7 @@ def _is_path_collection(
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:
     for entry in entries:
         paths = _entry_base_tree_paths(entry)
-        if isinstance(paths, set | frozenset | list | tuple):
+        if isinstance(paths, (set, frozenset, list, tuple)):
             return frozenset(str(path) for path in paths)
     return None
 
@@ -449,9 +451,7 @@ def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
     membership = _collect_base_tree_paths(materialized)
     if membership is not None:
         return len(membership)
-    proposes_deletions = any(
-        _is_deleted(str(_entry_status(entry))) for entry in materialized
-    )
+    proposes_deletions = any(_is_deleted(str(_entry_status(entry))) for entry in materialized)
     if proposes_deletions:
         return None
     return 0

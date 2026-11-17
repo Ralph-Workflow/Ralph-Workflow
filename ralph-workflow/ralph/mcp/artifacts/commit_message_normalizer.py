@@ -97,6 +97,7 @@ def normalize_commit_message_draft(
 
 def _is_valid_safe_artifact(content: str) -> bool:
     from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+
     _ = _markdown_specs
     parsed, diagnostics = parse_and_validate(content, get_spec("commit_message"))
     if any(item.severity == "error" for item in diagnostics):

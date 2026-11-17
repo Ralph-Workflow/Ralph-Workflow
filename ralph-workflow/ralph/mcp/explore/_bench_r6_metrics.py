@@ -9,11 +9,12 @@ import time
 from collections.abc import Mapping, Sequence, Sized
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final
+from typing import Final, cast
 
+from ralph.checked_accessors import as_object_dict
 from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
 from ralph.mcp.explore._bench_product_baseline import _BaselineSession
-from ralph.mcp.explore._bench_r6_query_sampler import sample_query_latencies
+from ralph.mcp.explore._bench_r6_query_sampler import _QueryCallable, sample_query_latencies
 from ralph.mcp.explore._bench_r6_subprocess import run_build_subprocess
 from ralph.mcp.explore._bench_r6_validation import (
     _R6_2_METRICS,
@@ -237,7 +238,7 @@ def _measure_query_latency(
             raw_samples.append(time.perf_counter() - start)
         raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
         return sample_query_latencies(
-            grep_handler=handle_grep_files,
+            grep_handler=cast("_QueryCallable", handle_grep_files),
             session=session,
             workspace=ws,
             perf_counter=time.perf_counter,
@@ -494,17 +495,17 @@ def capture_baseline(
             raw_loaded: object = json.loads(output_path.read_text())
             if isinstance(raw_loaded, dict):
                 raw_dict: dict[object, object] = raw_loaded
-                existing = {str(k): v for k, v in raw_dict.items()}
+                existing = as_object_dict(raw_dict)
 
     existing_metrics: dict[str, object] = {}
     raw_m = existing.get("metrics")
     if isinstance(raw_m, dict):
-        existing_metrics = {str(k): v for k, v in raw_m.items()}
+        existing_metrics = as_object_dict(raw_m)
 
     existing_workloads: dict[str, object] = {}
     raw_w = existing.get("workloads")
     if isinstance(raw_w, dict):
-        existing_workloads = {str(k): v for k, v in raw_w.items()}
+        existing_workloads = as_object_dict(raw_w)
 
     existing_counts: dict[str, float] = {}
     raw_c = existing.get("file_counts")

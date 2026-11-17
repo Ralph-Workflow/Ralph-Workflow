@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_mapping, loads_json
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ def read_marker_file(workspace_root: Path | str) -> dict[str, object] | None:
         logger.debug("Pro marker not readable at %s: %s", marker_path, exc)
         return None
     try:
-        return dict(as_mapping(json.loads(raw)))
+        return dict(as_mapping(loads_json(raw)))
     except (TypeError, json.JSONDecodeError) as exc:
         logger.debug("Pro marker at %s is not a JSON object: %s", marker_path, exc)
         return None

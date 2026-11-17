@@ -13,6 +13,7 @@ from uuid import uuid4
 from loguru import logger
 
 import ralph.agents.invoke as agents_invoke
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeRuntimeOptions,
@@ -289,7 +290,7 @@ def _is_within(candidate: Path, parent: Path) -> bool:
 
 
 def _agent_name(config: AgentConfig) -> str | None:
-    cmd: object = getattr(config, "cmd", None)
+    cmd: object = read_attr(config, "cmd", None)
     if not isinstance(cmd, str):
         return None
     parts = cmd.split()

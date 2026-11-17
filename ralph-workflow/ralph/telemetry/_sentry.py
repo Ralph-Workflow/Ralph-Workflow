@@ -3,11 +3,10 @@ from __future__ import annotations
 import contextlib
 import sys
 import time
-import tomllib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeGuard, get_args, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, get_args, runtime_checkable
 
 import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
@@ -15,6 +14,7 @@ from sentry_sdk.integrations.dedupe import DedupeIntegration
 from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 
 from ralph import __version__ as ralph_version
+from ralph.checked_accessors import as_object_dict, loads_toml
 from ralph.config import _env as config_env
 from ralph.config.agent_transport import AgentTransport
 from ralph.platform.detection import current_platform
@@ -29,7 +29,7 @@ from ralph.telemetry._sentry_scrub import ScrubPolicy
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, MutableMapping, MutableSequence
 
     from ralph.config.agent_config import AgentConfig
 
@@ -39,7 +39,8 @@ _WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
 
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
-_PHASE_ROLES: frozenset[str] = frozenset(str(arg) for arg in get_args(PhaseRole))
+_phase_role_args: tuple[object, ...] = cast("tuple[object, ...]", get_args(PhaseRole))
+_PHASE_ROLES: frozenset[str] = frozenset(str(arg) for arg in _phase_role_args)
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
 _POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
 _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
@@ -171,9 +172,10 @@ def _is_metric_distribution(value: object) -> TypeGuard[_MetricDistribution]:
 
 
 def _as_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
+    try:
+        return as_object_dict(value)
+    except TypeError:
         return None
-    return {str(key): item for key, item in value.items()}
 
 
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
@@ -226,7 +228,7 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
         if not config_path.exists():
             return False
         with config_path.open("rb") as fh:
-            data = _as_object_dict(tomllib.load(fh))
+            data = _as_object_dict(loads_toml(fh))
     except (OSError, ValueError):
         return True
     if data is None:
@@ -315,17 +317,19 @@ def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
 
 def scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
     if isinstance(obj, dict):
-        for key in list(obj):
-            val = obj[key]
+        mapping = cast("MutableMapping[str, object]", cast("Mapping[object, object]", obj))
+        for key in list(mapping):
+            val = mapping[key]
             if isinstance(val, str):
-                obj[key] = _scrub_string(val, policy)
+                mapping[key] = _scrub_string(val, policy)
             else:
                 scrub_obj(val, policy)
         return
     if isinstance(obj, list):
-        for i, item in enumerate(obj):
+        sequence = cast("MutableSequence[object]", cast("list[object]", obj))
+        for i, item in enumerate(sequence):
             if isinstance(item, str):
-                obj[i] = _scrub_string(item, policy)
+                sequence[i] = _scrub_string(item, policy)
             else:
                 scrub_obj(item, policy)
 

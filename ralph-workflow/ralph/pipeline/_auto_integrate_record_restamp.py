@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict, as_sequence
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
@@ -41,19 +42,22 @@ def _is_valid_collector_evidence_key(key: str) -> bool:
 
 def _parse_raw_evidence_pairs(raw_evidence: object) -> tuple[tuple[str, str], ...] | None:
     if isinstance(raw_evidence, dict):
-        raw_evidence = list(raw_evidence.items())
-    if not (any(isinstance(raw_evidence, _t) for _t in (list, tuple))):
+        raw_evidence = list(as_object_dict(raw_evidence).items())
+    try:
+        evidence_items = as_sequence(raw_evidence)
+    except TypeError:
         return None
     pairs: list[tuple[str, str]] = []
-    for item in raw_evidence:
+    for item in evidence_items:
         match item:
             case list() | tuple():
                 match item:
                     case [k, v] if isinstance(k, str) and isinstance(v, str):
                         pairs.append((k, v))
             case dict():
-                k = item.get("key") or item.get("name")
-                v = item.get("value") or item.get("content")
+                item_dict = as_object_dict(item)
+                k = item_dict.get("key") or item_dict.get("name")
+                v = item_dict.get("value") or item_dict.get("content")
                 if isinstance(k, str) and isinstance(v, str):
                     pairs.append((k, v))
             case _:

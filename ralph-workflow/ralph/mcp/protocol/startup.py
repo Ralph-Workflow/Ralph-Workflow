@@ -274,7 +274,7 @@ def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
         raise PermanentPreflightError(f"failed to parse MCP response JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise PermanentPreflightError("failed to parse MCP response JSON: expected object")
-    return (as_object_dict(payload) or {})
+    return as_object_dict(payload) or {}
 
 
 def _read_content_length(reader: io.BufferedReader) -> int:

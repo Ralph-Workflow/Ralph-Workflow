@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 
 class MarkdownArtifactError(ValueError):
-    __slots__ = ('diagnostics',)
+    __slots__ = ("diagnostics",)
 
     def __init__(self, diagnostics: list[Diagnostic]) -> None:
         self.diagnostics = diagnostics

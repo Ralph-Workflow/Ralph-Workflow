@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from rich.text import Text
 
 from ralph import __version__
+from ralph._typed_attrs import read_attr
 from ralph.config import _env as config_env
 from ralph.update_check import gating as _gating
 from ralph.update_check import pypi as _pypi
@@ -39,7 +40,7 @@ __all__ = [
 def _real_detect_install() -> InstallInfo:
     ralph_module = sys.modules.get("ralph")
     package_file = ralph_module.__file__ if ralph_module is not None else None
-    frozen_attr: object = getattr(sys, "frozen", False)
+    frozen_attr: object = read_attr(sys, "frozen", default=False)
     return detect_install(
         package_file=package_file,
         environ=config_env.environ(),

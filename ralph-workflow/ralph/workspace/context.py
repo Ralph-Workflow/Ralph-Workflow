@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.workspace.errors import WorkspaceContextError
 
 if TYPE_CHECKING:
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
+
 
 def _build_agent_registry(config: UnifiedConfig) -> AgentRegistry:
     from ralph.agents.registry import AgentRegistry
@@ -90,7 +92,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
         effective_mcp_plan = _resolve_effective_session_mcp_plan(target_scope.root)
     except (ConfigTomlError, OSError) as exc:
         msg = str(exc)
-        exc_file: object = getattr(exc, "file", None)
+        exc_file: object = read_attr(exc, "file", None)
         file_path = _path_from_exc_file(exc_file)
         if file_path is None:
             m = re.search(r"Ralph could not read (.*?):", msg)

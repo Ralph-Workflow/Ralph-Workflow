@@ -4,7 +4,7 @@ import asyncio
 import sys
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 from loguru import logger
 
@@ -346,9 +346,7 @@ def build_session_mcp_plan_for_phase(
         registry = AgentRegistry.from_config(config)
         agent_config = registry.get(agent_name)
 
-    transport: AgentTransport | None = (
-        agent_config.transport if agent_config is not None else None
-    )
+    transport: AgentTransport | None = agent_config.transport if agent_config is not None else None
     model_flag: str | None = agent_config.model_flag if agent_config is not None else None
     chain_transport, chain_is_ambiguous = resolve_phase_session_transport(candidate_agents, config)
     transport, model_flag = phase_session_identity(
@@ -480,7 +478,9 @@ def _resume_fan_out_state(
     reducer_reduce_fn: _ReducerReduceFn | None = None,
 ) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
     _reduce: _ReducerReduceFn = (
-        reducer_reduce_fn if reducer_reduce_fn is not None else reducer_reduce
+        reducer_reduce_fn
+        if reducer_reduce_fn is not None
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -512,7 +512,9 @@ async def _run_post_fanout_verification(
 ) -> str | None:
     logger.debug("Running post-fanout workspace-wide verification (serialized)")
     _run: _RunProcessAsyncFn = (
-        run_process_async_fn if run_process_async_fn is not None else run_process_async
+        run_process_async_fn
+        if run_process_async_fn is not None
+        else cast("_RunProcessAsyncFn", run_process_async)
     )
     verify_result = await _run(
         "make",
@@ -546,7 +548,9 @@ async def _run_verify_phase(
         v = VerificationResult(ran=True, passed=True, exit_code=0)
         verify_ev = PostFanoutVerificationEvent(success=True, exit_code=0)
     _reduce: _ReducerReduceFn = (
-        ctx.reducer_reduce_fn if ctx.reducer_reduce_fn is not None else reducer_reduce
+        ctx.reducer_reduce_fn
+        if ctx.reducer_reduce_fn is not None
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -560,18 +564,20 @@ async def _run_verify_phase(
 async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     current = ctx.state
     _reduce: _ReducerReduceFn = (
-        ctx.reducer_reduce_fn if ctx.reducer_reduce_fn is not None else reducer_reduce
+        ctx.reducer_reduce_fn
+        if ctx.reducer_reduce_fn is not None
+        else cast("_ReducerReduceFn", reducer_reduce)
     )
     _install: _InstallSignalHandlersFn = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
-        else install_signal_handlers
+        else cast("_InstallSignalHandlersFn", install_signal_handlers)
     )
     loop = asyncio.get_running_loop()
     bridge = SignalBridge()
     if ctx.monitor_stop_cb is not None:
         bridge._connectivity_stop = ctx.monitor_stop_cb
-    root_task = asyncio.current_task()
+    root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
     if root_task is None:
         raise RuntimeError("root_task is None")
     teardown_fn: Callable[[], None] | None = None

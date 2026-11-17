@@ -425,11 +425,10 @@ When auto-integrate conflict resolution runs through its configured resolver age
 2. **Failure ledger and escalation ladder**:
    - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `RESOLVER_NOT_SPENT_TERMINATION_REASONS`), `CANDIDATE_EXHAUSTED` records exhaustion in the `AgentFailureLedger`. This permits the recovery escalation ladder to progress rather than looping indefinitely.
    - `RecoveryController` exposes `all_exhausted` and `agents_now_available` to differentiate between chains that have live options remaining and chains that are completely spent.
-3. **Operator hand-off message and commands**:
-   - When candidate agents are exhausted or conflicts are out of reach, the engine constructs an actionable operator message listing each spent agent with its specific failure reason, the conflicted paths, and the exact manual command needed to continue:
-     `all N resolver agents are spent/unavailable (<reasons>); conflict on <paths> needs operator action: git add -- <paths>`
-   - Generated via `operator_command_for_paths(paths)`, the command properly escapes and formats pathnames for direct shell execution.
-   - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` with this operator hand-off message, eliminating misleading "conflict resolution incomplete; progress retained" summaries.
+3. **Spent-chain and out-of-reach outcomes**:
+   - When candidate agents are exhausted (`CANDIDATE_EXHAUSTED`), the sealed outcome is `RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED)`: integration remains pending/waiting, the rebase state is preserved, and resolution retries when eligibility changes. That stop never hands off to a person.
+   - When conflicts are out of reach for agents, the sealed outcome is `NextStrategyOutcome(strategy="completion_in_place")`, and the ladder completes in place rather than requesting manual staging.
+   - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` so the stop stays pending rather than reporting a failed rebase or a hand-off-to-human summary.
 
 ### Sealed resolution outcome
 
@@ -455,8 +454,8 @@ Every path that wants to attempt resolution of a rebase or merge stop goes throu
    - If the stored key equals the computed key, the attempt is refused and one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
    - Resolution is re-entered only when the key changes (when the conflict identity, the eligible agents or the configuration change, or when the backoff is reset).
    - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode.
-5. **Forced operator retry via `ralph --retry`**:
-   - Operators can bypass the durable retry gate at any time using `ralph --retry` (or `ralph --retry-integration`).
+5. **Forced retry via `ralph --retry`**:
+   - `ralph --retry` (or `ralph --retry-integration`) bypasses the durable retry gate for exactly one attempt.
    - The CLI passes `force_retry=True` to `recover_incomplete_integration`, which constructs or forwards launch-capable conflict/rebase resolver callbacks and an active `RecoveryController` from the pipeline context.
    - Forced retry executes exactly one resolution attempt; if resolution cannot complete, the new gate key is recorded back to disk so subsequent regular runs remain gated.
 
@@ -486,8 +485,8 @@ The recovery ladder is a table of states with explicit transitions and a persist
 
 The facts about an integration stop are produced once and rendered by every surface that shows them.
 
-1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, the operator command, whether agents can finish the stop, and the build identity. Its `summary` renders the one operator-facing sentence for those facts.
-2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths that need operator action with their command, and states that agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the operator command, the agent-completion flag and the build.
+1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, whether agents can finish the stop, and the build identity. Its `summary` renders the one sentence for those facts.
+2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths the pipeline will complete in place when agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the agent-completion flag and the build.
 
 ### Expected process exit codes and build attribution
 
@@ -504,7 +503,7 @@ Submodule gitlink conflicts (`160000` mode in git index) occur when two branches
 2. **Policy table**: `ralph.pipeline.conflict_resolution.gitlink_policy` holds the pointer-preference table, and `choose_gitlink` applies it. The preference is `ours`, `theirs` or `vendor-immutable`; `vendor-immutable` is the built-in default and prefers the side unchanged from the merge base before falling back to `ours` and then `theirs`.
 3. **Review record**: every gitlink resolution records the base, ours and theirs SHAs, and the selected side and SHA, so the resolution stays reviewable after the fact.
 4. **Completion in place**: `try_deterministic_resolution` and `resolve_completion_in_place` stage the selected pointer with `git update-index` and finish the conflict in place. Both read the same policy table, so no path can complete a gitlink under a different rule.
-5. **No agent work**: a gitlink conflict never enters an agent prompt and never consumes a candidate attempt. An operator hand-off remains only when the pipeline cannot stage its own resolution.
+5. **No agent work**: a gitlink conflict never enters an agent prompt and never consumes a candidate attempt. When the pipeline cannot stage its own resolution through the normal path, completion proceeds through `completion_in_place` rather than a hand-off to a person.
 
 ### Real-configuration isolation guard and audit trail
 

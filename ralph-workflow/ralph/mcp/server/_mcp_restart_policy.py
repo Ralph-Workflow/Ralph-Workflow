@@ -4,6 +4,8 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -87,11 +89,11 @@ def next_budget_decision(
 ) -> str:
     now_fn: Callable[[], float] = _now if _now is not None else time.monotonic
     now = now_fn()
-    raw_max: object = getattr(policy, "max_restarts", 20)
+    raw_max: object = read_attr(policy, "max_restarts", 20)
     max_restarts = _coerce_restart_limit(raw_max, default=20)
     if current_count >= max_restarts:
         return "absolute_cap"
-    raw_rolling: object = getattr(policy, "rolling_max_in_window", None)
+    raw_rolling: object = read_attr(policy, "rolling_max_in_window", None)
     rolling_limit = _coerce_optional_number(raw_rolling)
     if rolling_limit is not None:
         rolling_count = sum(1 for ts in rolling_history if now - ts <= rolling_window_s)

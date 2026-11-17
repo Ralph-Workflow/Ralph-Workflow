@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.agents.invoke import SupervisionInfrastructureError
 from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
 from ralph.agents.timeout_clock import Clock, SystemClock
@@ -414,6 +415,7 @@ def _attempt_cooldown_reasons(
 
 
 class RecoveryController:
+    _failure_ledger: object
     __slots__ = (
         "_attempt_counts",
         "_attempt_ordinals",
@@ -522,7 +524,9 @@ class RecoveryController:
         }
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
-            existing_ledger: object = getattr(self._unavailability_tracker, "_failure_ledger", None)
+            existing_ledger: object = read_attr(
+                self._unavailability_tracker, "_failure_ledger", None
+            )
             if existing_ledger is not None and isinstance(existing_ledger, AgentFailureLedger):
                 self._ledger = existing_ledger
             else:
@@ -1740,7 +1744,7 @@ class RecoveryController:
             st = self.agent_eligibility(phase, sole_agent)
             demote_reason = (
                 st.reason
-                if isinstance(st, Cooldown | Spent | Unavailable) and st.reason
+                if isinstance(st, (Cooldown, Spent, Unavailable)) and st.reason
                 else failure.reason
             )
             exhaustion_reason = f"Sole agent '{sole_agent}' demoted in phase '{phase}': unproductive attempt limit reached ({demote_reason})"
@@ -1773,28 +1777,28 @@ class RecoveryController:
         unavailability_reason: UnavailabilityReason | str | None = None,
     ) -> PipelineState:
         match unavailability_reason:
-            case UnavailabilityReason() as reason:
-                unavail_reason = reason.value
-                logged_reason: object = reason
+            case UnavailabilityReason() as unavail_enum:
+                unavail_reason = unavail_enum.value
+                logged_reason: object = unavail_enum
             case str() as text if text:
                 unavail_reason = text
                 logged_reason = text
             case _:
                 unavail_reason = "unknown"
                 logged_reason = None
-        reason = (
+        wait_message = (
             f"all agents unavailable (last reason: {unavail_reason}); waiting for cooldown expiry"
             if logged_reason is not None
             else "all agents unavailable; waiting for cooldown expiry"
         )
         logger.info(
             "{} in phase={} (wait_ms={} unavailability_reason={})",
-            reason,
+            wait_message,
             phase,
             wait_ms,
             logged_reason,
         )
-        return state.copy_with(last_error=reason, last_retry_delay_ms=wait_ms).set_waiting(
+        return state.copy_with(last_error=wait_message, last_retry_delay_ms=wait_ms).set_waiting(
             WaitReason.ALL_AGENTS_UNAVAILABLE, None
         )
 

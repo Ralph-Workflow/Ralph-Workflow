@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.explore import graph as graph_module
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
@@ -174,7 +175,7 @@ def handle_ralph_graph(
     try:
         handle: ExploreIndex | None = handlers_module._resolve_explore_index(session)
         if handle is None:
-            workspace_root_obj: object = getattr(workspace, "root", None)
+            workspace_root_obj: object = read_attr(workspace, "root", None)
             workspace_root_raw: object = workspace_root_obj or params.get("workspace_root", "")
             workspace_root_str: str = str(workspace_root_raw) if workspace_root_raw else ""
             workspace_root = Path(workspace_root_str) if workspace_root_str else Path.cwd()

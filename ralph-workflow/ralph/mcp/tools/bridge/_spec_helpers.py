@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import attr_or_none
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 
@@ -17,11 +18,11 @@ def _mapping_field(mapping: dict[str, object], field: str) -> object | None:
 
 def _object_field(outcome: object, field: str) -> object | None:
     if field == "name":
-        return getattr(outcome, "name", None)
+        return attr_or_none(outcome, "name")
     if field == "value":
-        return getattr(outcome, "value", None)
+        return attr_or_none(outcome, "value")
     if field == "status":
-        return getattr(outcome, "status", None)
+        return attr_or_none(outcome, "status")
     return None
 
 

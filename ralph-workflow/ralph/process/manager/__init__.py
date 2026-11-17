@@ -10,8 +10,9 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
+from ralph._typed_attrs import is_callable_obj, read_attr
 from ralph.checked_accessors import as_int
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
@@ -87,11 +88,22 @@ from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from types import ModuleType
 
 
 class _Prctl(Protocol):
     def __call__(self, option: int, value: int) -> int: ...
+
+
+class _CtypesLib(Protocol):
+    def __getattr__(self, name: str) -> object: ...
+
+
+class _CtypesConstructor(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+class _CtypesModule(Protocol):
+    CDLL: object
 
 
 class _PopenConstructor(Protocol):
@@ -112,17 +124,17 @@ class _PopenConstructor(Protocol):
     ) -> subprocess.Popen[bytes]: ...
 
 
-def _ctypes_module() -> ModuleType:
+def _ctypes_module() -> _CtypesModule:
     existing = sys.modules.get("ctypes")
     if existing is not None:
-        return existing
+        return cast("_CtypesModule", existing)
     spec = importlib.util.find_spec("ctypes")
     if spec is None or spec.loader is None:
         raise RuntimeError("ctypes is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules["ctypes"] = module
     spec.loader.exec_module(module)
-    return module
+    return cast("_CtypesModule", module)
 
 
 _PR_SET_PDEATHSIG: Final[int] = 1
@@ -132,15 +144,19 @@ _SIGTERM: Final[int] = 15
 _PRCTL_FN: _Prctl | None = None
 if sys.platform.startswith("linux"):
     try:
-        _libc = _ctypes_module().CDLL(None, use_errno=True)
-        _raw_prctl: object = getattr(_libc, "prctl", None)
+        _libc = cast(
+            "_CtypesLib",
+            cast("_CtypesConstructor", _ctypes_module().CDLL)(None, use_errno=True),
+        )
+        _raw_prctl: object = read_attr(_libc, "prctl", None)
 
         def _bound_prctl(option: int, value: int) -> int:
-            if not callable(_raw_prctl):
+            if not is_callable_obj(_raw_prctl):
                 return -1
-            return as_int(_raw_prctl(option, value), field="prctl")
+            result: object = cast("Callable[[int, int], object]", _raw_prctl)(option, value)
+            return as_int(result, field="prctl")
 
-        if callable(_raw_prctl):
+        if is_callable_obj(_raw_prctl):
             _PRCTL_FN = _bound_prctl
     except (OSError, RuntimeError, ValueError, AttributeError):
         _PRCTL_FN = None
@@ -180,7 +196,9 @@ def _supervisor_invocation(command: Sequence[str]) -> list[str]:
 def _require_executable(command: Sequence[str], opts: SpawnOptions, env: Mapping[str, str]) -> None:
     program = os.fsdecode(command[0])
     target = str(Path(opts.cwd or ".", program)) if os.sep in program else program
-    if shutil.which(target, path=env.get("PATH", os.defpath)) is None:
+    path_value = env.get("PATH")
+    search_path = path_value if path_value is not None else os.defpath
+    if shutil.which(target, path=str(search_path)) is None:
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), program)
 
 

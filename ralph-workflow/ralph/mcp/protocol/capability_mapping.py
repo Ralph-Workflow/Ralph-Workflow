@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum, StrEnum
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.protocol._access_decision import AccessDecision
 from ralph.mcp.protocol._access_denied_code import AccessDeniedCode
 from ralph.mcp.protocol._access_mode import AccessMode
@@ -168,11 +169,11 @@ def extract_text_field(value: object, field_name: str) -> str | None:
         field_value = value.get(field_name)
         return field_value if isinstance(field_value, str) else None
     if field_name == "status":
-        field_value = getattr(value, "status", None)
+        field_value = read_attr(value, "status", None)
     elif field_name == "name":
-        field_value = getattr(value, "name", None)
+        field_value = read_attr(value, "name", None)
     elif field_name == "value":
-        field_value = getattr(value, "value", None)
+        field_value = read_attr(value, "value", None)
     else:
         return None
     return field_value if isinstance(field_value, str) else None

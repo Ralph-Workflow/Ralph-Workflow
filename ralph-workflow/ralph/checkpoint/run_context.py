@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from uuid import uuid4
 
+from ralph.checked_accessors import as_object_dict
+
 
 @dataclass(frozen=True)
 class RunContext:
@@ -55,9 +57,7 @@ class RunContext:
         raw_history = data.get("fallover_history")
         history: list[dict[str, object]] = []
         if isinstance(raw_history, list):
-            history.extend(
-                {str(k): v for k, v in h.items()} for h in raw_history if isinstance(h, dict)
-            )
+            history.extend(as_object_dict(h) for h in raw_history if isinstance(h, dict))
         parent_val = data.get("parent_run_id")
         resume_val = data.get("resume_count")
         dev_runs_val = data.get("actual_developer_runs")

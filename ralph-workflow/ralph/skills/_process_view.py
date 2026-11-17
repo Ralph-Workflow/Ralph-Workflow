@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Literal
 
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_mapping, loads_json
 from ralph.config._env import pop_environ, set_environ
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -54,7 +54,7 @@ def _is_valid_managed_skill(skills_dir: Path, name: str) -> bool:
     if not (skill_file.is_file() and marker_file.is_file()):
         return False
     try:
-        marker = dict(as_mapping(json.loads(marker_file.read_text(encoding="utf-8"))))
+        marker = dict(as_mapping(loads_json(marker_file.read_text(encoding="utf-8"))))
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return False
     if not (marker.get("managed_by") == "ralph-workflow" and marker.get("skill") == name):

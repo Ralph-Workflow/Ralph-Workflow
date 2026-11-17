@@ -30,17 +30,17 @@ class McpServerError(Exception):
         startup_diagnostic: str = "",
         failure_kind: str = "transient",
     ) -> None:
-        object.__setattr__(self, "restart_count", restart_count)
-        object.__setattr__(self, "last_stage", last_stage)
-        object.__setattr__(self, "elapsed_s", elapsed_s)
-        object.__setattr__(self, "restart_reason", restart_reason)
-        object.__setattr__(self, "handover_step", handover_step)
-        object.__setattr__(self, "probe_duration_s", probe_duration_s)
-        object.__setattr__(self, "probe_timeout_s", probe_timeout_s)
-        object.__setattr__(self, "child_pid", child_pid)
-        object.__setattr__(self, "psutil_status", psutil_status)
-        object.__setattr__(self, "startup_diagnostic", startup_diagnostic)
-        object.__setattr__(self, "failure_kind", failure_kind)
+        self.restart_count = restart_count
+        self.last_stage = last_stage
+        self.elapsed_s = elapsed_s
+        self.restart_reason = restart_reason
+        self.handover_step = handover_step
+        self.probe_duration_s = probe_duration_s
+        self.probe_timeout_s = probe_timeout_s
+        self.child_pid = child_pid
+        self.psutil_status = psutil_status
+        self.startup_diagnostic = startup_diagnostic
+        self.failure_kind = failure_kind
         super().__init__(message)
 
     def __str__(self) -> str:

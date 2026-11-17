@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from ralph.checked_accessors import as_object_dict, as_sequence
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.resources import (
     MediaEntryExtras,
@@ -15,7 +16,6 @@ from ralph.mcp.multimodal.resources import (
     build_media_identity,
     new_artifact_id,
 )
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -99,17 +99,17 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
         return []
     tools: list[UpstreamTool] = []
     for item in raw_tools:
-        if not isinstance(item, Mapping):
+        if not isinstance(item, dict):
             continue
-        item_map = (as_object_dict(item) or {})
+        item_map = as_object_dict(item)
         name = item_map.get("name")
         if not isinstance(name, str) or not name:
             continue
         description_raw = item_map.get("description")
         description = str(description_raw) if description_raw is not None else ""
         schema_raw = item_map.get("inputSchema") or item_map.get("input_schema")
-        if isinstance(schema_raw, Mapping):
-            input_schema: dict[str, object] = dict(as_object_dict(schema_raw) or {})
+        if isinstance(schema_raw, dict):
+            input_schema: dict[str, object] = as_object_dict(schema_raw)
         else:
             input_schema = {}
         tools.append(UpstreamTool(name=name, description=description, input_schema=input_schema))
@@ -117,15 +117,15 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
 
 
 def _json_rpc_result(raw: object, context: str) -> JsonObject:
-    if not isinstance(raw, Mapping):
+    if not isinstance(raw, dict):
         raise UpstreamCallError(f"unexpected response type from {context}")
-    raw_map = (as_object_dict(raw) or {})
+    raw_map = as_object_dict(raw)
     err = raw_map.get("error")
     if err is not None:
         raise UpstreamCallError(f"JSON-RPC error from {context}: {err}")
     result = raw_map.get("result")
-    if isinstance(result, Mapping):
-        return dict(as_object_dict(result) or {})
+    if isinstance(result, dict):
+        return as_object_dict(result)
     return {}
 
 
@@ -313,7 +313,7 @@ def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> l
     if content is None:
         return None
     if any(isinstance(content, _t) for _t in (list, tuple)):
-        return list(content)
+        return list(as_sequence(content))
     msg = (
         f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
         f"field that is not a list of blocks (got {type(content).__name__}); "
@@ -327,10 +327,10 @@ def carries_upstream_media_blocks(content: object) -> bool:
         return False
     if not (any(isinstance(content, _t) for _t in (list, tuple))):
         return True
-    for block in content:
-        if not isinstance(block, Mapping):
+    for block in as_sequence(content):
+        if not isinstance(block, dict):
             return True
-        typed_block: Mapping[str, object] = (as_object_dict(block) or {})
+        typed_block: Mapping[str, object] = as_object_dict(block)
         raw_type: object = typed_block.get("type")
         if not isinstance(raw_type, str):
             return True

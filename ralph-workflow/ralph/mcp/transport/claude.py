@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.checked_accessors import as_object_list
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -181,7 +182,7 @@ def _declined_mcpjson_server_names(workspace_path: Path) -> frozenset[str]:
     value = entry[0].get("disabledMcpjsonServers")
     if not isinstance(value, list):
         return frozenset()
-    names = list(value)
+    names = as_object_list(value)
     return frozenset(name for name in names if isinstance(name, str))
 
 
@@ -226,7 +227,7 @@ def _read_json_object(path: Path) -> dict[str, object] | None:
             path,
         )
         return None
-    return (as_object_dict(raw_payload) or {})
+    return as_object_dict(raw_payload) or {}
 
 
 def _local_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
@@ -246,7 +247,7 @@ def _user_config_project_entry(workspace_path: Path) -> tuple[dict[str, object],
     projects = config.get("projects")
     if not isinstance(projects, dict):
         return None
-    project_entries = (as_object_dict(projects) or {})
+    project_entries = as_object_dict(projects) or {}
     for key in _workspace_config_keys(workspace_path):
         entry = project_entries.get(key)
         if isinstance(entry, dict):

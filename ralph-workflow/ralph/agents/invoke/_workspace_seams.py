@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from ralph._typed_attrs import attr_or_none
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
 from ralph.workspace._shared_awareness import SharedAwarenessSidecar
@@ -90,6 +91,6 @@ def _mark_workspace_event_queue_overflow(workspace: Path) -> None:
 
 
 def bind_observer_overflow(observer: _WatchObserverProtocol, workspace: Path) -> None:
-    event_queue = getattr(observer, "event_queue", None)
+    event_queue = attr_or_none(observer, "event_queue")
     if isinstance(event_queue, DroppingEventQueue):
         event_queue.set_overflow_callback(partial(_mark_workspace_event_queue_overflow, workspace))

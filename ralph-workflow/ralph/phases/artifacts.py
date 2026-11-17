@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_document
 from ralph.mcp.artifacts.markdown import specs as _markdown_artifact_specs
 from ralph.mcp.artifacts.markdown.registry import get_spec
@@ -181,7 +182,7 @@ def artifact_contract_for_drain(
                 return contract
         return None
 
-    raw_artifacts: object = getattr(artifacts_policy, "artifacts", None)
+    raw_artifacts: object = read_attr(artifacts_policy, "artifacts", None)
     if not isinstance(raw_artifacts, dict):
         return None
 
@@ -200,6 +201,6 @@ def decision_vocabulary_for_drain(
 ) -> list[str]:
     contract = artifact_contract_for_drain(artifacts_policy, drain, artifact_type)
     vocabulary: object = (
-        getattr(contract, "decision_vocabulary", []) if contract is not None else []
+        read_attr(contract, "decision_vocabulary", []) if contract is not None else []
     )
     return list(vocabulary) if isinstance(vocabulary, list) else []

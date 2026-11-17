@@ -4,7 +4,12 @@ from pathlib import Path
 
 
 class WorkspaceContextError(Exception):
-    __slots__ = ('file', 'fix', 'reason',)
+    __slots__ = (
+        "file",
+        "fix",
+        "reason",
+    )
+
     def __init__(self, file: Path, reason: str, fix: str | None = None) -> None:
         self.file = Path(file)
         self.reason = reason

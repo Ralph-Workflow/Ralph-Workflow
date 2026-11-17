@@ -57,16 +57,17 @@ def _document_bool(document: dict[str, object], key: str, *, default: bool = Fal
 
 class SharedAwarenessSidecar:
     __slots__ = (
-        '_epoch',
-        '_last_claimed_epoch',
-        '_lock',
-        '_overflowed',
-        '_owner_id',
-        '_path',
-        '_paths',
-        '_polled_epoch',
-        '_workspace_root',
+        "_epoch",
+        "_last_claimed_epoch",
+        "_lock",
+        "_overflowed",
+        "_owner_id",
+        "_path",
+        "_paths",
+        "_polled_epoch",
+        "_workspace_root",
     )
+
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._path = self._workspace_root / SIDECAR_RELPATH
@@ -204,6 +205,8 @@ class SharedAwarenessSidecar:
 
 
 _sidecars: dict[str, SharedAwarenessSidecar] = {}
+
+
 class _SidecarRegistry:
     __slots__ = ()
     _lock: ClassVar[threading.Lock | None] = None
@@ -216,8 +219,6 @@ class _SidecarRegistry:
         created = threading.Lock()
         cls._lock = created
         return created
-
-
 
 
 def is_sidecar_path(workspace_root: Path | str, path: str) -> bool:

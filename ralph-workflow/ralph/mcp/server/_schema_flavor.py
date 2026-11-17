@@ -36,7 +36,9 @@ def _dict_items(value: object) -> dict[str, object] | None:
 def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
     branches = subschema.get("oneOf") or subschema.get("anyOf")
     if isinstance(branches, list) and "type" not in subschema:
-        branch_dicts = [item for item in (_dict_items(branch) for branch in branches) if item is not None]
+        branch_dicts = [
+            item for item in (_dict_items(branch) for branch in branches) if item is not None
+        ]
         branch_type_of = [b.get("type") for b in branch_dicts]
         branch_types = sorted(t for t in branch_type_of if isinstance(t, str))
         if branch_types and len(branch_types) == len(branches):

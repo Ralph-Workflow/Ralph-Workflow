@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph import __version__
+from ralph._typed_attrs import read_attr
 from ralph.config import _env as _config_env
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
@@ -247,7 +248,7 @@ def _poll_bounded_pre_serve(
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        allowed_roots = _as_path_tuple(getattr(effective_session, "allowed_roots", ()))
+        allowed_roots = _as_path_tuple(read_attr(effective_session, "allowed_roots", ()))
         ws = (
             workspace
             if workspace is not None
@@ -494,7 +495,7 @@ def run_standalone_server(
     _check_real_startup_deadline("env_loaded", t0, env_map)
 
     with contextlib.suppress(ValueError, AttributeError, OSError):
-        reconfigure_fn: object = getattr(sys.stdout, "reconfigure", None)
+        reconfigure_fn: object = read_attr(sys.stdout, "reconfigure", None)
         if callable(reconfigure_fn):
             reconfigure_fn(line_buffering=True)
 

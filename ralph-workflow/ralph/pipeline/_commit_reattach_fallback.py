@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._typed_attrs import read_attr
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_git_dir,
@@ -28,18 +29,18 @@ def _first_nonempty_str(*values: object) -> str | None:
 
 
 def _branch_from_config_object(config: object) -> str | None:
-    auto_integrate_target: object = getattr(config, "auto_integrate_target", None)
-    integration_target: object = getattr(config, "integration_target", None)
-    target_branch: object = getattr(config, "target_branch", None)
+    auto_integrate_target: object = read_attr(config, "auto_integrate_target", None)
+    integration_target: object = read_attr(config, "integration_target", None)
+    target_branch: object = read_attr(config, "target_branch", None)
     direct = _first_nonempty_str(auto_integrate_target, integration_target, target_branch)
     if direct is not None:
         return direct
-    general_obj: object = getattr(config, "general", None)
+    general_obj: object = read_attr(config, "general", None)
     if general_obj is None:
         return None
-    general_auto: object = getattr(general_obj, "auto_integrate_target", None)
-    general_integration: object = getattr(general_obj, "integration_target", None)
-    general_target: object = getattr(general_obj, "target_branch", None)
+    general_auto: object = read_attr(general_obj, "auto_integrate_target", None)
+    general_integration: object = read_attr(general_obj, "integration_target", None)
+    general_target: object = read_attr(general_obj, "target_branch", None)
     return _first_nonempty_str(general_auto, general_integration, general_target)
 
 
@@ -80,9 +81,7 @@ class WorktreeOccupancy(frozenset[str]):
 def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccupancy:
     occupied: set[str] = set()
     raw_occupied = opts.get("occupied_worktree_branches") or opts.get("occupied")
-    if (
-        any(isinstance(raw_occupied, _t) for _t in (set, frozenset, list, tuple))
-    ):
+    if isinstance(raw_occupied, (set, frozenset, list, tuple)):
         occupied.update(str(name) for name in raw_occupied)
     try:
         common = common_git_dir(repo_root) or rebase_bookkeeping_dir(repo_root)

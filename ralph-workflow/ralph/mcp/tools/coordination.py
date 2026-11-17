@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
@@ -97,7 +98,7 @@ def _write_completion_sentinel(
         _write_fn(sentinel_abspath, payload)
         return True
 
-    root_value: object | None = getattr(workspace, "root", None)
+    root_value: object | None = read_attr(workspace, "root", None)
     if not isinstance(root_value, Path):
         return False
 
@@ -184,7 +185,7 @@ def handle_declare_complete(
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
     partial_reason_value = params.get("partial_reason")
     partial_reason = partial_reason_value if isinstance(partial_reason_value, str) else None
-    broker_secret: str | None = getattr(session, "broker_secret", None)
+    broker_secret: str | None = session.broker_secret
     sentinel_written = _write_completion_sentinel(
         workspace, session.run_id, sentinel_hmac=broker_secret
     )
