@@ -9,6 +9,7 @@ export PYTEST_XDIST_WORKERS_PER_SHARD
 export PYTHONPATH := $(shell realpath .)
 export VIRTUAL_ENV := $(abspath .venv)
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
+VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS ?= 150
 COVERAGE_SUITE_TIMEOUT_SECONDS ?= 120
 LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
 RUN_PYTHON = uv run --locked --project . python
@@ -119,7 +120,7 @@ test-auto-integrate-e2e:
 	$(RUN_PYTHON) -m ralph.test_suites --auto-integrate-e2e
 
 test-verify-budget:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_verify_budget_real_time.py -v
+	uv run python -m ralph.verify_timeout --suite-timeout $(VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_verify_budget_real_time.py -v
 
 coverage: test-cov
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import functools
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -15,6 +18,7 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.conflict_resolution import (
     RebaseStop,
     run_rebase_conflict_resolution_pipeline,
@@ -29,6 +33,7 @@ from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     TARGET,
     FakeAgentMode,
 )
+from tests.test_pending_merge_commit_recovery import _commit, _git
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -362,3 +367,88 @@ def _durable_agent_shape(controller: RecoveryController, phase: str) -> object:
             type(controller.agent_eligibility(phase, agent)).__name__ for agent in _PARITY_AGENTS
         ),
     )
+
+
+REPO_TEMPLATE_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+_REPO_HANDLES: dict[Path, Repo] = {}
+
+
+def cached_repo(root: Path) -> Repo:
+    return _REPO_HANDLES.setdefault(root, Repo(root))
+
+
+def close_cached_repo(root: Path) -> None:
+    repo = _REPO_HANDLES.pop(root, None)
+    if repo is not None:
+        repo.close()
+
+
+@functools.lru_cache(maxsize=16)
+def retained_resolution_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_target": target,
+                "auto_integrate_enabled": enabled,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
+
+
+_DIVERGED_TEMPLATE_CACHE: list[tuple[Path, str, str, str]] = []
+_INTERRUPTED_TEMPLATE_CACHE: dict[str, tuple[Path, str, str, str]] = {}
+
+
+def diverged_repo_template(root: Path | None = None) -> tuple[Path, str, str, str]:
+    if not _DIVERGED_TEMPLATE_CACHE:
+        d = Path(tempfile.mkdtemp(prefix="it-diverged-"))
+        if root is not None and root.exists():
+            shutil.copytree(root, d, dirs_exist_ok=True, ignore=REPO_TEMPLATE_IGNORE)
+        else:
+            repo = Repo.init(d, initial_branch="main")
+            with repo.config_writer() as cfg:
+                cfg.set_value("user", "name", "Test User")
+                cfg.set_value("user", "email", "test@example.com")
+            readme = d / "README.md"
+            readme.write_text("test")
+            repo.index.add(["README.md"])
+            repo.index.commit("initial commit")
+        _commit(d, "shared.txt", "base\n")
+        assert _git(d, "switch", "-c", "feature").returncode == 0
+        feature = _commit(d, "shared.txt", "feature\n")
+        assert _git(d, "switch", "main").returncode == 0
+        main = _commit(d, "shared.txt", "main\n")
+        assert _git(d, "switch", "feature").returncode == 0
+        close_cached_repo(d)
+        _DIVERGED_TEMPLATE_CACHE.append((d, "main", feature, main))
+    return _DIVERGED_TEMPLATE_CACHE[0]
+
+
+def interrupted_resolution_repo(root: Path, operation: str) -> tuple[str, str, str]:
+    if operation not in _INTERRUPTED_TEMPLATE_CACHE:
+        diverged, target, feature, main = diverged_repo_template(root)
+        d = Path(tempfile.mkdtemp(prefix=f"it-{operation}-"))
+        shutil.copytree(diverged, d, dirs_exist_ok=True, ignore=REPO_TEMPLATE_IGNORE)
+        assert target == "main"
+        assert _git(d, operation, "main").returncode != 0
+        _INTERRUPTED_TEMPLATE_CACHE[operation] = (d, target, feature, main)
+    template, target, feature, main = _INTERRUPTED_TEMPLATE_CACHE[operation]
+    close_cached_repo(root)
+    close_cached_repo(template)
+    if root.exists():
+        shutil.rmtree(root)
+    shutil.copytree(template, root, ignore=REPO_TEMPLATE_IGNORE)
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=main,
+            resolving_rebase=operation == "rebase",
+            resolving_merge=operation == "merge",
+        ),
+    )
+    return target, feature, main

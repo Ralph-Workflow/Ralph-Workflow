@@ -10,6 +10,16 @@ from ralph import test_suites as test_suites_module
 from ralph import verify as verify_module
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_test_verify_budget_target_runs_only_real_time_test body pin updated": (
+        "the same target body is still pinned exactly, still running only "
+        "tests/test_verify_budget_real_time.py under ralph.verify_timeout; the "
+        "pinned suite-timeout variable changed to "
+        "VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS so the 60s default no longer "
+        "SIGKILLs the oracle before it can observe the budget"
+    ),
+}
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
 
 
@@ -286,14 +296,26 @@ def test_test_verify_budget_target_runs_only_real_time_test() -> None:
 
     assert target_body == [
         "uv run python -m ralph.verify_timeout "
-        "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
+        "--suite-timeout $(VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS) -- "
         "python -m pytest tests/test_verify_budget_real_time.py -v"
     ], (
         "Expected the test-verify-budget target to run only "
         "tests/test_verify_budget_real_time.py under the verify_timeout "
-        "wrapper with the standard per-suite cap. Drifting from this "
-        "shape would either burn the 60 s per-suite cap (if more tests "
-        "are added) or skip the wrapper (if --suite-timeout is removed)."
+        "wrapper with the dedicated budget-oracle per-suite cap. Drifting "
+        "from this shape would either burn the 60 s per-suite cap (if "
+        "more tests are added), skip the wrapper (if --suite-timeout is "
+        "removed), or regress to the 60 s cap the real-time oracle "
+        "cannot finish under (if VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS is "
+        "replaced with PYTEST_SUITE_TIMEOUT_SECONDS)."
+    )
+
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+    assert "VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS ?= 150" in makefile_text, (
+        "Expected a dedicated VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS default "
+        "of 150s for the real-time budget oracle. The oracle runs "
+        "'make test' with a 120s subprocess timeout, so the 60s "
+        "PYTEST_SUITE_TIMEOUT_SECONDS default would SIGKILL the oracle "
+        "before it can observe the budget."
     )
 
 

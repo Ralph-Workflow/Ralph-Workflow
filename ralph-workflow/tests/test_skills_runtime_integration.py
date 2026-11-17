@@ -12,7 +12,7 @@ import pytest
 
 from ralph.cli.commands import run as run_module
 from ralph.git.operations import get_head_sha, has_uncommitted_changes
-from ralph.skills import get_skill_content, upstream
+from ralph.skills import gating, get_skill_content, upstream
 from ralph.skills.upstream import HttpClient, HttpResponse, UpdateOutcome
 from tests.test_skills_upstream_update import _SKILL_FILES, _client_for
 
@@ -26,9 +26,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the updater now queries every configured universal upstream source, so the "
         "expected request list is derived from upstream.UNIVERSAL_UPSTREAMS"
     ),
+    "kill-switch and untouched-client negative waits replaced with gate_decisions": (
+        "the same observables are asserted: the updater must not run and the "
+        "injected HTTP client must remain untouched when the kill switches are "
+        "set. The negative real-clock waits "
+        "assert not event.wait(timeout=0.25) could flip under host contention, "
+        "so the test records the gate's synchronous False decision through the "
+        "public universal_skill_updates_enabled seam and still asserts "
+        "not event.is_set()"
+    ),
 }
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 pytestmark = [pytest.mark.timeout_seconds(15)]
 
@@ -147,6 +156,20 @@ def updater_probe(monkeypatch: pytest.MonkeyPatch) -> _UpdaterProbe:
 
     monkeypatch.setattr("ralph.skills.upstream.maybe_update_universal_skills", _fake)
     return probe
+
+
+@pytest.fixture
+def gate_decisions(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    decisions: list[bool] = []
+    real_gate = gating.universal_skill_updates_enabled
+
+    def _recorded_gate(environ: Mapping[str, str] | None = None) -> bool:
+        decision = real_gate(environ)
+        decisions.append(decision)
+        return decision
+
+    monkeypatch.setattr("ralph.skills.gating.universal_skill_updates_enabled", _recorded_gate)
+    return decisions
 
 
 @pytest.fixture
@@ -296,6 +319,7 @@ def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
     transport_probe: list[str],
+    gate_decisions: list[bool],
     monkeypatch: pytest.MonkeyPatch,
     value: str,
 ) -> None:
@@ -304,7 +328,10 @@ def test_run_start_makes_no_updater_call_when_the_env_kill_switch_is_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
-    assert not updater_probe.event.wait(timeout=0.25), (
+    assert gate_decisions == [False], (
+        f"the update gate must synchronously reject the kill-switch value {value!r}"
+    )
+    assert not updater_probe.event.is_set(), (
         "the updater must not be called when the kill switch is set"
     )
     assert updater_probe.calls == [], (
@@ -346,6 +373,7 @@ def test_run_start_makes_no_updater_call_when_the_config_kill_switch_is_set(
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
     transport_probe: list[str],
+    gate_decisions: list[bool],
 ) -> None:
     (sandbox.config / "ralph-workflow.toml").write_text(
         "[skills]\nuniversal_updates_enabled = false\n",
@@ -355,7 +383,10 @@ def test_run_start_makes_no_updater_call_when_the_config_kill_switch_is_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
-    assert not updater_probe.event.wait(timeout=0.25), (
+    assert gate_decisions == [False], (
+        "the update gate must synchronously reject the config kill switch"
+    )
+    assert not updater_probe.event.is_set(), (
         "the updater must not be called when the config disables updates"
     )
     assert updater_probe.calls == [], (
@@ -372,6 +403,7 @@ def test_run_start_makes_no_updater_call_when_both_kill_switches_are_set(
     sandbox: _Sandbox,
     updater_probe: _UpdaterProbe,
     transport_probe: list[str],
+    gate_decisions: list[bool],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
@@ -383,7 +415,8 @@ def test_run_start_makes_no_updater_call_when_both_kill_switches_are_set(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
-    assert not updater_probe.event.wait(timeout=0.25), (
+    assert gate_decisions == [False], "the update gate must synchronously reject both kill switches"
+    assert not updater_probe.event.is_set(), (
         "the updater must not be called when both kill switches are set"
     )
     assert updater_probe.calls == [], (
@@ -509,6 +542,7 @@ def _recording_client(event: threading.Event) -> tuple[HttpClient, list[str]]:
 
 def test_the_env_switch_alone_leaves_the_injected_http_client_untouched(
     tmp_path: Path,
+    gate_decisions: list[bool],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RALPH_DISABLE_SKILL_UPDATES", "1")
@@ -519,7 +553,10 @@ def test_the_env_switch_alone_leaves_the_injected_http_client_untouched(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
-    assert not reached.wait(timeout=0.25), (
+    assert gate_decisions == [False], (
+        "the update gate must synchronously reject the env kill switch"
+    )
+    assert not reached.is_set(), (
         "the env switch alone must leave the injected HTTP client untouched"
     )
     assert calls == [], f"the env switch alone must stop every request; got {calls!r}"
@@ -528,6 +565,7 @@ def test_the_env_switch_alone_leaves_the_injected_http_client_untouched(
 def test_the_config_switch_alone_leaves_the_injected_http_client_untouched(
     tmp_path: Path,
     sandbox: _Sandbox,
+    gate_decisions: list[bool],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (sandbox.config / "ralph-workflow.toml").write_text(
@@ -541,7 +579,10 @@ def test_the_config_switch_alone_leaves_the_injected_http_client_untouched(
 
     _run_seam(tmp_path, _build_dependencies(warnings))
 
-    assert not reached.wait(timeout=0.25), (
+    assert gate_decisions == [False], (
+        "the update gate must synchronously reject the config kill switch"
+    )
+    assert not reached.is_set(), (
         "the config switch alone must leave the injected HTTP client untouched"
     )
     assert calls == [], f"the config switch alone must stop every request; got {calls!r}"

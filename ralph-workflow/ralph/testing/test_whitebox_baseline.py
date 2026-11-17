@@ -813,7 +813,7 @@ tests/test_telemetry_user_identity.py|0,7,0
 tests/test_template_engine_renderer_reuse.py|1,0,0
 tests/test_template_text_cache.py|0,2,15
 tests/test_terminal_authority.py|0,1,0
-tests/test_test_suites.py|0,0,16
+tests/test_test_suites.py|0,0,13
 tests/test_test_suites_orchestration.py|1,0,12
 tests/test_test_suites_subprocess_orchestration.py|0,0,1
 tests/test_text_accumulator_bound.py|0,1,0

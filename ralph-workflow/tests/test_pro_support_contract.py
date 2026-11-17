@@ -56,6 +56,17 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "heartbeat 401/404 hard-stop negative waits replaced with closed_signal": (
+        "the same observable is asserted: no tick may fire after the 401/404 "
+        "hard-stop decision. The negative real-clock wait "
+        "assert not tick_signal.wait(timeout=0.05) could flip under host "
+        "contention, so the test now waits positively on the fake client's "
+        "close() signal, which the production client emits only after the "
+        "stop decision is final, and still asserts not tick_signal.is_set()"
+    ),
+}
+
 
 class _FakeResponse:
     def __init__(self, status_code: int) -> None:
@@ -67,10 +78,12 @@ class _FakeClient:
         self,
         status_code: int = 200,
         tick_signal: threading.Event | threading.Semaphore | None = None,
+        closed_signal: threading.Event | None = None,
     ) -> None:
         self.posts: list[dict[str, object]] = []
         self._status_code = status_code
         self._tick_signal = tick_signal
+        self._closed_signal = closed_signal
 
     def post(
         self,
@@ -88,7 +101,8 @@ class _FakeClient:
         return _FakeResponse(self._status_code)
 
     def close(self) -> None:
-        pass
+        if self._closed_signal is not None:
+            self._closed_signal.set()
 
 
 class _Clock:
@@ -285,7 +299,8 @@ def test_section_7_heartbeat_posts_required_fields() -> None:
 
 def test_section_7_heartbeat_401_is_hard_stop() -> None:
     tick_signal = threading.Event()
-    fake = _FakeClient(status_code=401, tick_signal=tick_signal)
+    closed_signal = threading.Event()
+    fake = _FakeClient(status_code=401, tick_signal=tick_signal, closed_signal=closed_signal)
     clock = _Clock()
     client = _make_heartbeat_client(fake, clock)
     client.start()
@@ -294,9 +309,12 @@ def test_section_7_heartbeat_401_is_hard_stop() -> None:
         posts_after_first = len(fake.posts)
         assert posts_after_first == 1
         tick_signal.clear()
+        assert closed_signal.wait(timeout=2.0), (
+            "the client must close the 401 response before the loop can continue"
+        )
         for _ in range(5):
             clock.advance(0.001)
-        assert not tick_signal.wait(timeout=0.05), "client must not POST after 401"
+        assert not tick_signal.is_set(), "client must not POST after 401"
         assert len(fake.posts) == 1
     finally:
         client.stop()
@@ -304,7 +322,8 @@ def test_section_7_heartbeat_401_is_hard_stop() -> None:
 
 def test_section_7_heartbeat_404_is_hard_stop() -> None:
     tick_signal = threading.Event()
-    fake = _FakeClient(status_code=404, tick_signal=tick_signal)
+    closed_signal = threading.Event()
+    fake = _FakeClient(status_code=404, tick_signal=tick_signal, closed_signal=closed_signal)
     clock = _Clock()
     client = _make_heartbeat_client(fake, clock)
     client.start()
@@ -313,9 +332,12 @@ def test_section_7_heartbeat_404_is_hard_stop() -> None:
         posts_after_first = len(fake.posts)
         assert posts_after_first == 1
         tick_signal.clear()
+        assert closed_signal.wait(timeout=2.0), (
+            "the client must close the 404 response before the loop can continue"
+        )
         for _ in range(5):
             clock.advance(0.001)
-        assert not tick_signal.wait(timeout=0.05), "client must not POST after 404"
+        assert not tick_signal.is_set(), "client must not POST after 404"
         assert len(fake.posts) == 1
     finally:
         client.stop()

@@ -1313,7 +1313,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_template_engine_renderer_reuse.py` | 1 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_template_text_cache.py` | 0 | 2 | 15 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_terminal_authority.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_test_suites.py` | 0 | 0 | 16 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
+| `tests/test_test_suites.py` | 0 | 0 | 13 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/test_test_suites_orchestration.py` | 1 | 0 | 12 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_test_suites_subprocess_orchestration.py` | 0 | 0 | 1 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/test_text_accumulator_bound.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

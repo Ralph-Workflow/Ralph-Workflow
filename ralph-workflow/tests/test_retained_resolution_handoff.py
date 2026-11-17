@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import functools
 import inspect
 import shutil
 import tempfile
@@ -10,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
 
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.commit import CommitChainConfig, CommitPlumbingOptions, commit_plumbing
@@ -29,6 +27,14 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
+from tests.scenarios._integration_scenario_fixtures import (
+    REPO_TEMPLATE_IGNORE,
+    cached_repo,
+    close_cached_repo,
+    diverged_repo_template,
+    interrupted_resolution_repo,
+    retained_resolution_config,
+)
 from tests.test_cli_commit_command import _write_commit_message_doc
 from tests.test_pending_merge_commit_recovery import _commit, _fast_rev_parse, _git
 
@@ -84,6 +90,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "consolidated the parameter cases into a single run verifying both declining resolver "
         "retention and subsequent recovery when receipt flags are lost before successful resolution"
     ),
+    "test_standalone_commit_recovers_ownership_before_commit_session": (
+        "removed the unreachable changed_head receipt branch; the parametrization only ever "
+        "produced integrated, malformed and missing_target receipts, so that elif and its "
+        "trailing else assertions never executed"
+    ),
+    "test_completed_retained_rebase_lands_or_replays_stale_intent": (
+        "removed the unreachable empty completion conditional; the parametrization only ever "
+        "produced prepared and unrelated completions"
+    ),
     'assert _git(owner, "switch", "-c", "remote-seed").returncode == 0': (
         "foreign reconciliation repository setup reuses the shared diverged template's "
         "feature branch to seed origin once instead of asserting a separate remote-seed branch"
@@ -106,36 +121,22 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
 }
 
-_COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
-
-_REPOS: dict[Path, Repo] = {}
-
-
-def _repo(root: Path) -> Repo:
-    return _REPOS.setdefault(root, Repo(root))
-
-
-def _close_repo(root: Path) -> None:
-    repo = _REPOS.pop(root, None)
-    if repo is not None:
-        repo.close()
-
 
 def _sha(root: Path, ref: str = "HEAD") -> str:
     fast = _fast_rev_parse(root, ref)
     if fast is not None:
         return fast
-    _close_repo(root)
-    return _repo(root).commit(ref).hexsha
+    close_cached_repo(root)
+    return cached_repo(root).commit(ref).hexsha
 
 
 def _blob(root: Path, ref: str, path: str) -> str:
-    _close_repo(root)
-    return _repo(root).commit(ref).tree[path].data_stream.read().decode("utf-8")
+    close_cached_repo(root)
+    return cached_repo(root).commit(ref).tree[path].data_stream.read().decode("utf-8")
 
 
 def _stage(root: Path, *paths: str) -> None:
-    _repo(root).index.add(list(paths))
+    cached_repo(root).index.add(list(paths))
 
 
 class _EmptyCommitEvidenceSource:
@@ -151,31 +152,18 @@ _EMPTY_COMMIT_EVIDENCE_SOURCE: CommitEvidenceSource = _EmptyCommitEvidenceSource
 
 def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
     repo = base / f"case-{name}"
-    _close_repo(template)
-    shutil.copytree(template, repo, ignore=_COPY_IGNORE)
+    close_cached_repo(template)
+    shutil.copytree(template, repo, ignore=REPO_TEMPLATE_IGNORE)
     return repo
-
-
-@functools.lru_cache(maxsize=16)
-def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_target": target,
-                "auto_integrate_enabled": enabled,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
 
 
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "repo-owned-landing"
-    diverged, target, feature, _main = _diverged()
-    shutil.copytree(diverged, root, ignore=_COPY_IGNORE)
-    base = _repo(root).commit("main~1").hexsha
+    diverged, target, feature, _main = diverged_repo_template()
+    shutil.copytree(diverged, root, ignore=REPO_TEMPLATE_IGNORE)
+    base = cached_repo(root).commit("main~1").hexsha
     write_record(
         root,
         IntegrationRecord(
@@ -186,7 +174,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
             integrated_feature_sha=feature,
         ),
     )
-    config = _make_config(target, enabled=True)
+    config = retained_resolution_config(target, enabled=True)
 
     declined = recover_incomplete_integration(
         WorkspaceScope(root),
@@ -260,11 +248,9 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
             assert ownership.read_bytes() == payload
     elif receipt == "missing_target":
         assert _git(root, "branch", "-D", target).returncode == 0
-    elif receipt == "changed_head":
-        _commit(root, "operator.txt", "operator work\n")
     head_before = _git(root, "rev-parse", "HEAD").stdout.strip()
     (root / "pending.txt").write_text("keep pending work\n", encoding="utf-8")
-    config = _make_config(target, enabled=False)
+    config = retained_resolution_config(target, enabled=False)
     context = make_display_context()
     agent = AgentConfig(cmd="fake-commit", json_parser="generic")
     registry = AgentRegistry.from_config(config)
@@ -302,11 +288,6 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         assert not result.message and result.failure_details
         assert read_record(root) is not None
         assert _git(root, "rev-parse", "--verify", target).returncode != 0
-    else:
-        assert not result.message and result.failure_details
-        assert read_record(root) is not None
-        assert _sha(root, target) == base
-        assert _blob(root, "HEAD", "operator.txt") == "operator work\n"
     assert _sha(root) == head_before
     assert (root / "pending.txt").read_text(encoding="utf-8") == "keep pending work\n"
 
@@ -342,7 +323,7 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     )
     assert _git(root, operation, target).returncode == 0
     completed = _git(root, "rev-parse", "HEAD").stdout.strip()
-    config = _make_config(target, enabled=False)
+    config = retained_resolution_config(target, enabled=False)
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -386,7 +367,7 @@ def test_completed_landing_receipt_preserves_later_operator_resolution(
     _stage(root, "shared.txt")
     index_before = _git(root, "write-tree").stdout
     head_before = _git(root, "rev-parse", "HEAD").stdout
-    config = _make_config(target, enabled=False)
+    config = retained_resolution_config(target, enabled=False)
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -481,79 +462,22 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
     assert _git(root, "rev-parse", "HEAD").stdout.strip() == base
 
 
-_INTERRUPTED_CACHE: dict[str, tuple[Path, str, str, str]] = {}
-_DIVERGED_CACHE: list[tuple[Path, str, str, str]] = []
-
-
-def _diverged(root: Path | None = None) -> tuple[Path, str, str, str]:
-    if not _DIVERGED_CACHE:
-        d = Path(tempfile.mkdtemp(prefix="it-diverged-"))
-        if root is not None and root.exists():
-            shutil.copytree(root, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
-        else:
-            repo = Repo.init(d, initial_branch="main")
-            with repo.config_writer() as cfg:
-                cfg.set_value("user", "name", "Test User")
-                cfg.set_value("user", "email", "test@example.com")
-            readme = d / "README.md"
-            readme.write_text("test")
-            repo.index.add(["README.md"])
-            repo.index.commit("initial commit")
-        _commit(d, "shared.txt", "base\n")
-        assert _git(d, "switch", "-c", "feature").returncode == 0
-        feature = _commit(d, "shared.txt", "feature\n")
-        assert _git(d, "switch", "main").returncode == 0
-        main = _commit(d, "shared.txt", "main\n")
-        assert _git(d, "switch", "feature").returncode == 0
-        _close_repo(d)
-        _DIVERGED_CACHE.append((d, "main", feature, main))
-    return _DIVERGED_CACHE[0]
-
-
-def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
-    if operation not in _INTERRUPTED_CACHE:
-        diverged, target, feature, main = _diverged(root)
-        d = Path(tempfile.mkdtemp(prefix=f"it-{operation}-"))
-        shutil.copytree(diverged, d, dirs_exist_ok=True, ignore=_COPY_IGNORE)
-        assert target == "main"
-        assert _git(d, operation, "main").returncode != 0
-        _INTERRUPTED_CACHE[operation] = (d, target, feature, main)
-    template, target, feature, main = _INTERRUPTED_CACHE[operation]
-    _close_repo(root)
-    _close_repo(template)
-    if root.exists():
-        shutil.rmtree(root)
-    shutil.copytree(template, root, ignore=_COPY_IGNORE)
-    write_record(
-        root,
-        IntegrationRecord(
-            phase="integrating",
-            target=target,
-            pre_feature_sha=feature,
-            pre_target_sha=main,
-            resolving_rebase=operation == "rebase",
-            resolving_merge=operation == "merge",
-        ),
-    )
-    return target, feature, main
-
-
 _FOREIGN_TEMPLATE_CACHE: list[tuple[Path, str]] = []
 
 
 def _foreign_reconcile_template(root: Path | None = None) -> tuple[Path, str]:
     if not _FOREIGN_TEMPLATE_CACHE:
         template_base = Path(tempfile.mkdtemp(prefix="it-foreign-reconcile-"))
-        diverged, target, _, _ = _diverged(root)
+        diverged, target, _, _ = diverged_repo_template(root)
         tmpl_owner = template_base / "owner"
-        shutil.copytree(diverged, tmpl_owner, ignore=_COPY_IGNORE)
+        shutil.copytree(diverged, tmpl_owner, ignore=REPO_TEMPLATE_IGNORE)
         tmpl_origin = template_base / "origin.git"
         assert _git(tmpl_owner, "init", "--bare", str(tmpl_origin)).returncode == 0
         assert _git(tmpl_owner, "remote", "add", "origin", str(tmpl_origin)).returncode == 0
         assert _git(tmpl_owner, "push", "origin", f"feature:{target}").returncode == 0
         assert _git(tmpl_owner, "switch", target).returncode == 0
         assert _git(tmpl_owner, "branch", "-D", "feature").returncode == 0
-        _close_repo(tmpl_owner)
+        close_cached_repo(tmpl_owner)
         _FOREIGN_TEMPLATE_CACHE.append((tmpl_owner, target))
     return _FOREIGN_TEMPLATE_CACHE[0]
 
@@ -564,7 +488,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
 ) -> None:
     tmpl_owner, target = _foreign_reconcile_template()
     owner = tmp_path / "owner"
-    shutil.copytree(tmpl_owner, owner, ignore=_COPY_IGNORE)
+    shutil.copytree(tmpl_owner, owner, ignore=REPO_TEMPLATE_IGNORE)
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     _commit(feature, "feature.txt", "valuable completed feature\n")
@@ -582,7 +506,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")
         return True
 
-    config = _make_config(target, enabled=False)
+    config = retained_resolution_config(target, enabled=False)
     from ralph.pipeline.auto_integrate_record import record_path
 
     owner_receipt = record_path(owner)
@@ -625,8 +549,8 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
 
     root = tmp_path / f"repo-{completion}"
-    target, _, _ = _interrupted(root, "rebase")
-    content = "main\n" if completion == "empty" else "resolved feature and main\n"
+    target, _, _ = interrupted_resolution_repo(root, "rebase")
+    content = "resolved feature and main\n"
     (root / "shared.txt").write_text(content, encoding="utf-8")
     assert _git(root, "add", "shared.txt").returncode == 0
     if completion == "prepared":
@@ -635,7 +559,7 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     if completion == "unrelated":
         _commit(root, "unrelated.txt", "later commit\n")
     outcome = integrate_before_planning(
-        _make_config(target),
+        retained_resolution_config(target),
         WorkspaceScope(root),
         RebaseState(),
     )
@@ -661,7 +585,7 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     tmp_path: Path, operation: str
 ) -> None:
     root = tmp_path / f"case-{operation}"
-    target, feature, main = _interrupted(root, operation)
+    target, feature, main = interrupted_resolution_repo(root, operation)
     assert read_record(root) is not None
     assert _git(root, operation, "--abort").returncode == 0
     aborted = recover_incomplete_integration(WorkspaceScope(root))
@@ -669,7 +593,7 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     assert read_record(root) is not None
     assert _git(root, "reset", "--hard", main).returncode == 0
     outcome = integrate_before_planning(
-        _make_config(target),
+        retained_resolution_config(target),
         WorkspaceScope(root),
         RebaseState(),
     )
@@ -692,7 +616,7 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     from ralph.pipeline._pending_merge_commit import mark_pending_merge
 
     root = tmp_path / f"repo-{legacy}-{operation}"
-    target, _, _ = _interrupted(root, operation)
+    target, _, _ = interrupted_resolution_repo(root, operation)
     if not legacy and operation == "merge":
         mark_pending_merge(root, target, resolving=True)
     (root / "shared.txt").write_text("staged partial\n", encoding="utf-8")
@@ -720,7 +644,7 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    config = _make_config(target)
+    config = retained_resolution_config(target)
     policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     registry = AgentRegistry()
     registry.agents.update(
@@ -785,7 +709,7 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     from ralph.policy.models import PolicyBundle
 
     owner = tmp_path / "owner"
-    target, _, _ = _interrupted(owner, "rebase")
+    target, _, _ = interrupted_resolution_repo(owner, "rebase")
     feature = tmp_path / "record-owner"
     assert (
         _git(owner, "worktree", "add", "-b", "record-owner", str(feature), target).returncode == 0

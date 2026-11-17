@@ -253,7 +253,6 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/recovery/test_run_loop_real_resume_restart.py": 16,
     "tests/recovery/test_runner_offline_pause_resume.py": 22,
     "tests/recovery/test_runner_recovery_end_to_end.py": 44,
-    "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,
     "tests/scenarios/test_integration_scenario_matrix.py": 374,
     "tests/test_agent_chain.py": 11,
     "tests/test_agents_invoke.py": 31,

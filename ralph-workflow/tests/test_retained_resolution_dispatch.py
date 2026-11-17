@@ -7,7 +7,6 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
-from git import Repo
 from rich.console import Console
 
 from ralph.config.enums import Verbosity
@@ -29,6 +28,7 @@ from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests.scenarios._integration_scenario_fixtures import cached_repo, close_cached_repo
 from tests.test_pending_merge_commit_recovery import _git
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
@@ -93,28 +93,15 @@ def _branch_sha(root: Path, branch: str) -> str:
     return ref.read_text(encoding="utf-8").strip()
 
 
-_REPOS: dict[Path, Repo] = {}
-
-
-def _repo(root: Path) -> Repo:
-    return _REPOS.setdefault(root, Repo(root))
-
-
-def _close_repo(root: Path) -> None:
-    repo = _REPOS.pop(root, None)
-    if repo is not None:
-        repo.close()
-
-
 def _branch_sha_from_repo(root: Path, branch: str) -> str:
-    _close_repo(root)
-    return _repo(root).commit(branch).hexsha
+    close_cached_repo(root)
+    return cached_repo(root).commit(branch).hexsha
 
 
 def _commit(root: Path, path: str, content: str) -> str:
 
     FsWorkspace(root).write(path, content)
-    repo = _repo(root)
+    repo = cached_repo(root)
     repo.index.add([path])
     commit = repo.index.commit(path)
     assert commit.hexsha
@@ -123,7 +110,7 @@ def _commit(root: Path, path: str, content: str) -> str:
 
 def _seed_commit(root: Path, path: str, content: str) -> str:
     FsWorkspace(root).write(path, content)
-    repo = _repo(root)
+    repo = cached_repo(root)
     repo.index.add([path])
     return repo.index.commit(path).hexsha
 
@@ -147,7 +134,7 @@ def _scenario_templates(
         shutil.copytree(_git_repo_template, root, dirs_exist_ok=True)
         target = _current_branch(root)
         base = _seed_commit(root, "shared.txt", "base\n")
-        repo = _repo(root)
+        repo = cached_repo(root)
         repo.create_head("feature", base)
         repo.head.set_reference(repo.heads.feature)
         assert _current_branch(root) == "feature"
@@ -159,14 +146,14 @@ def _scenario_templates(
             base=base,
             feature=feature,
         )
-        _close_repo(root)
+        close_cached_repo(root)
     return scenarios
 
 
 def _scenario_repo(tmp_path: Path, scenarios: dict[str, _Scenario], scenario: str) -> _Scenario:
     prepared = scenarios[scenario]
     root = tmp_path / "repo"
-    _close_repo(prepared.root)
+    close_cached_repo(prepared.root)
     shutil.copytree(prepared.root, root)
     return _Scenario(
         root=root,

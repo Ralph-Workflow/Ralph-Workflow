@@ -159,7 +159,11 @@ def live_smoke_session(
         cli_log_tail = _read_cli_log_tail(agy_home)
         timeout_diagnostic = _live_timeout_diagnostic(exc.timeout, cli_log_tail)
         if timeout_diagnostic is not None:
-            pytest.xfail(timeout_diagnostic)
+            pytest.xfail(
+                f"{timeout_diagnostic} Quarantine: upstream blocker "
+                "https://github.com/google-antigravity/antigravity-cli; "
+                "review date: 2026-12."
+            )
         raise
     output = result.stdout + result.stderr
     cli_log_tail = _read_cli_log_tail(agy_home)
@@ -181,7 +185,10 @@ def _xfail_if_upstream_blocked(cli_log_tail: str, *, smoke_output: str = "") -> 
             "the strict live assertions cannot be observed in this env. "
             "The mock-binary test test_agy_smoke_promotes_artifact_to_canonical_receipt "
             "is the always-green regression-proof. cli.log tail: "
-            f"{cli_log_tail[-200:]!r}"
+            f"{cli_log_tail[-200:]!r} "
+            "Quarantine: upstream blocker "
+            "https://github.com/google-antigravity/antigravity-cli; "
+            "review date: 2026-12."
         )
     if smoke_output and "[claude turn boundary]" in smoke_output:
         pytest.xfail(
@@ -190,7 +197,10 @@ def _xfail_if_upstream_blocked(cli_log_tail: str, *, smoke_output: str = "") -> 
             "unobservable in this env. See agy_wire_provenance.md "
             "'Unexplained, out of scope' for the documented environment-level "
             "nature of this artifact. cli.log tail: "
-            f"{cli_log_tail[-200:]!r}"
+            f"{cli_log_tail[-200:]!r} "
+            "Quarantine: upstream blocker "
+            "https://github.com/google-antigravity/antigravity-cli; "
+            "review date: 2026-12."
         )
 
 
@@ -379,7 +389,10 @@ def test_live_agy_pty_read_thread_sees_output(
             pytest.xfail(
                 f"Live AGY --print is upstream-blocked ({upstream_reason}); "
                 "the canonical 'hello' response cannot be observed. "
-                f"cli.log tail: {cli_log_tail[-200:]!r}"
+                f"cli.log tail: {cli_log_tail[-200:]!r} "
+                "Quarantine: upstream blocker "
+                "https://github.com/google-antigravity/antigravity-cli; "
+                "review date: 2026-12."
             )
         raise
 
@@ -394,7 +407,10 @@ def test_live_agy_pty_read_thread_sees_output(
             f"Live AGY --print is upstream-blocked ({upstream_reason}); "
             "the canonical 'hello' response cannot be observed. "
             "Re-run when the upstream condition clears. "
-            f"cli.log tail: {cli_log_tail[-200:]!r}"
+            f"cli.log tail: {cli_log_tail[-200:]!r} "
+            "Quarantine: upstream blocker "
+            "https://github.com/google-antigravity/antigravity-cli; "
+            "review date: 2026-12."
         )
 
     raise AssertionError(
@@ -627,7 +643,10 @@ def _xfail_if_live_agy_upstream_blocked(agy_home: Path) -> None:
     if upstream_reason is not None:
         pytest.xfail(
             "Live AGY is upstream-blocked before invocation "
-            f"({upstream_reason}); cli.log tail: {cli_log_tail[-200:]!r}"
+            f"({upstream_reason}); cli.log tail: {cli_log_tail[-200:]!r} "
+            "Quarantine: upstream blocker "
+            "https://github.com/google-antigravity/antigravity-cli; "
+            "review date: 2026-12."
         )
 
 
@@ -642,7 +661,10 @@ def test_live_agy_environment_diagnostic_records_upstream_block(
         pytest.xfail(
             f"Live AGY environment diagnostic: upstream-blocked ({upstream_reason}); "
             "strict live tests in this file will fail. "
-            f"cli.log tail: {cli_log_tail[-200:]!r}"
+            f"cli.log tail: {cli_log_tail[-200:]!r} "
+            "Quarantine: upstream blocker "
+            "https://github.com/google-antigravity/antigravity-cli; "
+            "review date: 2026-12."
         )
 
     assert cli_log_tail, (

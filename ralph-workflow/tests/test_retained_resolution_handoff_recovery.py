@@ -17,8 +17,11 @@ from ralph.pipeline.plumbing.commit_integration import prepare_commit_integratio
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests.scenarios._integration_scenario_fixtures import (
+    interrupted_resolution_repo,
+    retained_resolution_config,
+)
 from tests.test_pending_merge_commit_recovery import _commit, _git
-from tests.test_retained_resolution_handoff import _interrupted, _make_config
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
@@ -31,7 +34,7 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 ) -> None:
     for operation in ["merge", "rebase"]:
         root = tmp_path / f"repo-{operation}"
-        target, feature, _main = _interrupted(root, operation)
+        target, feature, _main = interrupted_resolution_repo(root, operation)
         assert _git(root, operation, "--abort").returncode == 0
         assert _git(root, "switch", "-c", "other", f"{feature}^").returncode == 0
         _commit(root, "shared.txt", "other target\n")
@@ -46,7 +49,7 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 
         outcome = recover_incomplete_integration(
             WorkspaceScope(root),
-            config=_make_config(target),
+            config=retained_resolution_config(target),
             conflict_resolver=resolve,
             rebase_stop_resolver=lambda repo, branch, _stop: resolve(repo, branch),
         )
@@ -64,9 +67,9 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
 ) -> None:
     operation = "rebase"
     root = tmp_path / f"repo-{operation}"
-    target, feature, _moved = _interrupted(root, operation)
+    target, feature, _moved = interrupted_resolution_repo(root, operation)
     assert _git(root, operation, "--abort").returncode == 0
-    config = _make_config(target, enabled=False)
+    config = retained_resolution_config(target, enabled=False)
 
     waiting = recover_incomplete_integration(WorkspaceScope(root))
 
@@ -103,7 +106,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     seam: str,
 ) -> None:
     root = tmp_path / f"repo-{operation}-{seam}"
-    target, _, _ = _interrupted(root, operation)
+    target, _, _ = interrupted_resolution_repo(root, operation)
     calls: list[str] = []
 
     def merge_resolver(repo: Path, branch: str) -> bool:

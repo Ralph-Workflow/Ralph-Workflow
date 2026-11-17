@@ -19,6 +19,17 @@ from ralph.git.lock_recovery import (
     reset_probe_executor,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "fake probe gates widened from 1-2s self-release to a 60s hang cap": (
+        "the same observable is asserted: a stalled probe or metadata read must "
+        "fail closed to 'unknown' within the production probe timeout. The fake "
+        "worker previously self-released after 1-2s of real clock, racing the "
+        "0.05s production probe timeout under host contention; it now never "
+        "completes on its own, so only the production timeout bounds the test. "
+        "The 60s bound is a hang cap for the audit's no-blocking-wait rule"
+    ),
+}
+
 
 def test_liveness_probe_whole_timeout_0_5s(
     tmp_path: Path,
@@ -127,7 +138,7 @@ def test_liveness_probe_real_blocked_worker_elapsed_bound(
     gate = threading.Event()
 
     def hung_probe(*args: object, **kwargs: object) -> bool:
-        gate.wait(timeout=2.0)
+        gate.wait(timeout=60)
         return False
 
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_probe)
@@ -317,7 +328,7 @@ def test_liveness_probe_blocked_metadata_within_whole_probe_timeout(
 
     def slow_read_text(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
         if self.name == "commondir":
-            gate.wait(timeout=2.0)
+            gate.wait(timeout=60)
         return real_read_text(self, encoding=encoding, errors=errors)
 
     monkeypatch.setattr(Path, "read_text", slow_read_text)
@@ -341,7 +352,7 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
     gate = threading.Event()
 
     def hung_lsof(*args: object, **kwargs: object) -> bool:
-        gate.wait(timeout=1.0)
+        gate.wait(timeout=60)
         return False
 
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_lsof)

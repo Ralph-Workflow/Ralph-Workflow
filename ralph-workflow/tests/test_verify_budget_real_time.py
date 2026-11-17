@@ -10,7 +10,7 @@ import pytest
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.verify_budget_real_time,
-    pytest.mark.timeout_seconds(130),
+    pytest.mark.timeout_seconds(125),
 ]
 
 _BUDGET_SECONDS = 60.0
