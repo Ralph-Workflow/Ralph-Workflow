@@ -1,27 +1,43 @@
 from __future__ import annotations
 
+import dataclasses
+from io import StringIO
 from typing import TYPE_CHECKING
 
 import pytest
+from rich.console import Console
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.conflict_resolution.session import (
+    ResolutionSession,
+    ensure_session_controller,
+    finalize_resolution_attempt_failure,
+    invoke_resolution_agent,
+)
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import install_executors, reset_executors
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
-from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown, Spent
+from ralph.recovery.agent_unavailability_tracker import (
+    AgentUnavailabilityTracker,
+    UnavailabilityEntry,
+)
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.workspace.scope import WorkspaceScope
 from tests._conflict_resolution_phase_parity_seams import (
     _config,
     _CooldownClock,
     _install_seams,
     _policy_bundle,
 )
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -37,6 +53,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "retained continuation must observe the same RecoveryController ledger cooldown "
         "as the ordinary phase, including when the controller is reconstructed process-locally "
         "from the ambient effect dependencies"
+    ),
+    "test_resolver_failure_records_on_run_shared_controller": (
+        "a resolver failure injected through the public finalisation seam must land in the "
+        "run's shared RecoveryController ledger, so the run reports Cooldown/Spent instead of "
+        "a session-private ledger copy masking the run"
+    ),
+    "test_agent_cooled_by_another_phase_is_not_launched_by_resolver": (
+        "an agent cooled via the shared tracker in another phase must not be launched by the "
+        "resolver; refusal is owned by the shared effect-executor launch gate after the "
+        "session adopts the run's RecoveryController"
     ),
 }
 
@@ -335,6 +361,17 @@ def test_controller_has_no_secondary_conflict_classifier() -> None:
     assert not hasattr(RecoveryController, "_typed_conflict_attempt_reason")
 
 
+def test_driver_rounds_selects_via_shared_preferred_agent_index() -> None:
+    import inspect
+
+    from ralph.pipeline.conflict_resolution import _driver_rounds as rounds
+
+    assert not hasattr(rounds, "_preferred_conflict_candidate")
+    source = inspect.getsource(rounds._run_one_round)
+    assert "preferred_agent_index" in source
+    assert "_preferred_conflict_candidate" not in source
+
+
 def test_retained_continuation_and_ordinary_phase_share_one_controller_ledger(
     tmp_path: Path,
 ) -> None:
@@ -428,3 +465,120 @@ def test_retained_continuation_and_ordinary_phase_share_one_controller_ledger(
     assert ambient_key == explicit_key
     assert isinstance(blocked, str)
     assert "continuation resolver required" in blocked or "WAITING" in blocked
+
+
+def test_resolver_failure_records_on_run_shared_controller() -> None:
+    clock = FakeClock()
+    run_controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            ledger=AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1),
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
+        )
+    )
+    private_controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            ledger=AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1),
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
+        )
+    )
+    session = ResolutionSession(recovery_controller=private_controller)
+    context = make_display_context(console=Console(file=StringIO(), force_terminal=False))
+    pipeline_deps = dataclasses.replace(
+        make_test_pipeline_deps(context, recovery_clock=clock),
+        recovery_controller=run_controller,
+        ledger=run_controller.ledger,
+    )
+
+    bound = ensure_session_controller(
+        session,
+        _policy_bundle(),
+        pipeline_deps=pipeline_deps,
+        config=_config(),
+    )
+    assert bound is run_controller
+    assert session.recovery_controller is run_controller
+
+    finalize_resolution_attempt_failure(
+        session,
+        "resolver-shared",
+        facts=AttemptFacts(artifact_valid=False),
+        candidates=("resolver-shared",),
+        policy_bundle=_policy_bundle(),
+    )
+
+    status = run_controller.agent_eligibility(PHASE_RESOLUTION, "resolver-shared")
+    assert isinstance(status, (Cooldown, Spent))
+    assert not status.is_eligible
+    assert private_controller.agent_eligibility(PHASE_RESOLUTION, "resolver-shared").is_eligible
+
+
+def test_agent_cooled_by_another_phase_is_not_launched_by_resolver(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+
+    del monkeypatch
+    clock = FakeClock()
+    store = AgentUnavailabilityTracker(clock=clock)
+    store.mark_unavailable("development", "cooled-agent", UnavailabilityReason.OUT_OF_CREDITS)
+    run_controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            unavailability_store=store,
+            ledger=AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1),
+        )
+    )
+    session = ResolutionSession()
+    context = make_display_context(console=Console(file=StringIO(), force_terminal=False))
+    pipeline_deps = dataclasses.replace(
+        make_test_pipeline_deps(context, recovery_clock=clock),
+        recovery_controller=run_controller,
+        unavailability_store=store,
+        ledger=run_controller.ledger,
+    )
+    ensure_session_controller(
+        session,
+        _policy_bundle(),
+        pipeline_deps=pipeline_deps,
+        config=_config(),
+    )
+
+    executed: list[str] = []
+
+    def _stub_runner(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
+        del args, kwargs
+        if isinstance(effect, InvokeAgentEffect):
+            executed.append(effect.agent_name)
+        return PipelineEvent.AGENT_SUCCESS
+
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("resolve conflict", encoding="utf-8")
+    token = install_agent_effect_dependencies(
+        agent_runner=_stub_runner,
+        recovery_controller=run_controller,
+    )
+    try:
+        result = invoke_resolution_agent(
+            agent_name="cooled-agent",
+            prompt_path=prompt,
+            config=_config(),
+            pipeline_deps=pipeline_deps,
+            workspace_scope=WorkspaceScope(tmp_path),
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=context,
+            session=session,
+        )
+    finally:
+        reset_agent_effect_dependencies(token)
+
+    assert result.succeeded is False
+    assert executed == []
+    assert not run_controller.agent_eligibility(PHASE_RESOLUTION, "cooled-agent").is_eligible

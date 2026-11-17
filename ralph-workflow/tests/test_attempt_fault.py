@@ -10,6 +10,11 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
 )
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.recovery.classifier import FailureContext
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
 def test_attempt_fault_enum_values() -> None:
@@ -98,6 +103,66 @@ def test_classify_attempt_fault_matches_existing_termination_reasons(
 
 def test_classify_attempt_fault_defaults_without_typed_evidence() -> None:
     assert classify_attempt_fault(None) is AttemptFault.AGENT_HEALTHY
+
+
+def test_candidate_exited_matches_shared_no_activity_classification() -> None:
+    shared = FailureContext(
+        phase=PHASE_RESOLUTION,
+        agent="resolver",
+        outcome=ConflictAttemptOutcome.NO_ACTIVITY,
+    ).classified_failure
+    assert shared is not None
+    assert shared.unavailability_reason is UnavailabilityReason.NO_OUTPUT_AT_START
+    assert (
+        classify_attempt_fault(ResolutionTerminationReason.CANDIDATE_EXITED)
+        is AttemptFault.AGENT_EXITED
+    )
+
+
+def test_candidate_exited_classifies_through_failure_classifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes: list[ConflictAttemptOutcome | str] = []
+    real = FailureClassifier.classify_outcome
+
+    def _spy(
+        self: FailureClassifier,
+        outcome: ConflictAttemptOutcome | str,
+        **kwargs: object,
+    ) -> object:
+        outcomes.append(outcome)
+        return real(self, outcome, **kwargs)
+
+    monkeypatch.setattr(FailureClassifier, "classify_outcome", _spy)
+
+    assert (
+        classify_attempt_fault(ResolutionTerminationReason.CANDIDATE_EXITED)
+        is AttemptFault.AGENT_EXITED
+    )
+    assert outcomes == [ConflictAttemptOutcome.NO_ACTIVITY]
+
+
+def test_attempt_failed_classifies_through_failure_classifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes: list[ConflictAttemptOutcome | str] = []
+    real = FailureClassifier.classify_outcome
+
+    def _spy(
+        self: FailureClassifier,
+        outcome: ConflictAttemptOutcome | str,
+        **kwargs: object,
+    ) -> object:
+        outcomes.append(outcome)
+        return real(self, outcome, **kwargs)
+
+    monkeypatch.setattr(FailureClassifier, "classify_outcome", _spy)
+
+    assert (
+        classify_attempt_fault(ResolutionTerminationReason.ATTEMPT_FAILED)
+        is AttemptFault.UNKNOWN
+    )
+    assert outcomes == [ConflictAttemptOutcome.ATTEMPT_FAILED]
 
 
 def test_attempt_fault_to_termination_reason_with_specific_evidence() -> None:

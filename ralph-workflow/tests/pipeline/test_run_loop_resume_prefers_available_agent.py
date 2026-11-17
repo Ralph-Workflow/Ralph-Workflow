@@ -31,6 +31,15 @@ if TYPE_CHECKING:
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_exhausted_mid_run_verdict_terminates_without_resolution_reentry": (
+        "candidate exhaustion after the last rung takes completion-in-place instead of exit 1"
+    ),
+    "test_a_different_conflict_gets_its_own_resolver_budget": (
+        "launch permission follows shared eligibility; spent agents escalate, Eligible agents run"
+    ),
+}
+
 
 def _policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as directory:
@@ -220,11 +229,14 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
 def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from ralph.pipeline._integration_strategy import IntegrationStrategy
+
     config = MagicMock()
     config.general.auto_integrate_enabled = True
     ctx = MagicMock()
     ctx.config = config
     ctx.workspace_scope.root = Path("/workspace")
+    ctx.latest_state = []
     state = PipelineState(phase="planning")
     exhausted = IntegrationResolutionVerdict(
         status=run_loop.EXHAUSTED,
@@ -237,8 +249,10 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
     monkeypatch.setattr(run_loop, "_announce_deferred_startup_integration", lambda *_args: None)
+    monkeypatch.setattr(run_loop, "_exhaustion_still_binds", lambda *_args: True)
 
-    assert run_loop._block_unresolved_integration(state, ctx, "analysis") == (state, "analysis", 1)
+    assert run_loop._block_unresolved_integration(state, ctx, "analysis") is None
+    assert ctx.latest_state[0].rebase.last_decision == IntegrationStrategy.COMPLETE_IN_PLACE.value
     startup.assert_not_called()
 
 
@@ -551,12 +565,21 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.M
         ConflictIdentity,
     )
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
     built: list[str] = []
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
+    eligible = AgentFailureLedger(clock=FakeClock(), consecutive_limit=3)
+    ctx.controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=FakeClock(), ledger=eligible)
+    )
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session.resolution_chain_agents",
+        lambda _bundle: ("resolver",),
     )
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
@@ -564,6 +587,7 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.M
             feature_sha="feature-2", target_sha="target-2", scope="feature"
         ),
     )
+    ctx.registry.get = lambda _name: object()
 
     def _build(**_kwargs: object) -> _ConflictResolverDouble:
         built.append("built")
@@ -584,6 +608,14 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.M
     assert run_loop._run_integration_conflict_resolution(ctx, spent_on_another_conflict) is True
     assert len(built) == 1
 
+    spent_ledger = AgentFailureLedger(clock=FakeClock(), consecutive_limit=1, total_limit=1)
+    spent_ledger.record(
+        AttemptFact(phase="rebase_conflict_resolution", agent="resolver", artifact_valid=False)
+    )
+    ctx.controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=FakeClock(), ledger=spent_ledger)
+    )
+    monkeypatch.setattr(run_loop, "_run_cold_capped_escalation", lambda *_a: False)
     same_conflict = spent_on_another_conflict.model_copy(
         update={"last_conflict_feature_sha": "feature-2", "last_conflict_target_sha": "target-2"}
     )

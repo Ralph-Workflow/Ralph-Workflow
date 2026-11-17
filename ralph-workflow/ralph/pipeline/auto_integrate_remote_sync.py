@@ -15,7 +15,6 @@ from ralph.pipeline._remote_default_client import (
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
-    resolver_allowed,
 )
 from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_remote_client import (
@@ -127,7 +126,6 @@ __all__ = [
     "remote_sync_enabled",
     "remote_target_name",
     "remote_unreachable_reason",
-    "resolver_allowed",
 ]
 
 

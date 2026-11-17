@@ -135,6 +135,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_resolution_types import (
         IntegrationResolutionVerdict,
     )
+    from ralph.pipeline.ladder_step_result import LadderStepResult
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -602,8 +603,9 @@ def log_waiting_state(
     ctx.last_waiting_state_phase = phase_str
     chain = state.chain_for_phase(state.phase)
     agent_cooldowns: list[tuple[str, int, int]] = []
-    if chain is not None:
-        agent_cooldowns = ctx.controller.waiting_state_payload(phase_str, chain.agents)
+    controller = getattr(ctx, "controller", None)
+    if chain is not None and controller is not None:
+        agent_cooldowns = controller.waiting_state_payload(phase_str, chain.agents)
 
     logger.bind(recovery=True).info(
         "Phase '{phase}' enters WAITING state: all agents unavailable. "
@@ -637,8 +639,9 @@ def _log_resumed_state(
     ctx.last_waiting_state_phase = None
     chain = state.chain_for_phase(state.phase)
     agents_now_available: list[str] = []
-    if chain is not None:
-        agents_now_available = ctx.controller.agents_now_available(phase_str, chain.agents)
+    controller = getattr(ctx, "controller", None)
+    if chain is not None and controller is not None:
+        agents_now_available = controller.agents_now_available(phase_str, chain.agents)
     logger.bind(recovery=True).info(
         "Phase '{phase}' RESUMED: cooldown expired. "
         "Agents now available: {agents}. "
@@ -1652,14 +1655,12 @@ def _cold_capped_escalation_due(
     ledger: AgentFailureLedger | None = None,
     candidates: tuple[str, ...] = (),
 ) -> bool:
-    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
-
-    if ledger is not None and candidates:
-        if ledger.any_eligible("rebase_conflict_resolution", candidates):
-            return False
-        if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
-            return False
-    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
+    del rebase, identity
+    if ledger is None or not candidates:
+        return False
+    if ledger.any_eligible("rebase_conflict_resolution", candidates):
+        return False
+    if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1719,8 +1720,6 @@ def _run_owned_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
-    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
-
     target = _integration_target_or_none(ctx)
     if not target:
         return False
@@ -1749,19 +1748,13 @@ def _run_owned_integration_conflict_resolution(
         return _run_cold_capped_escalation(ctx, target, rebase)
     all_exhausted = (
         ledger is not None
-        and installed
+        and bool(installed)
         and ledger.all_exhausted("rebase_conflict_resolution", installed)
     )
     allowed = (
-        resolver_allowed(
-            rebase,
-            target,
-            identity,
-            ledger=ledger,
-            candidates=installed,
-        )
-        if rebase is not None
-        else True
+        ledger is None
+        or not installed
+        or ledger.any_eligible("rebase_conflict_resolution", installed)
     )
     if rebase is not None and (all_exhausted or not allowed):
         logger.warning(
@@ -2284,12 +2277,41 @@ def _resume_planning_after_commit(
     return state
 
 
+def _continue_pipeline_with_planning_handoff(
+    state: PipelineState,
+    ctx: LoopContext,
+    root: Path,
+) -> PipelineState:
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+    from ralph.pipeline.planning_handoff_continuation import continue_with_planning_handoff
+
+    try:
+        continuation = continue_with_planning_handoff(
+            root,
+            ledger=AttemptLedger(root),
+            state=state,
+            pipeline_policy=ctx.policy_bundle.pipeline,
+        )
+    except (OSError, RuntimeError, ValueError, KeyError) as handoff_exc:
+        logger.warning("planning handoff continuation failed: {}", handoff_exc)
+        return state
+    if continuation is None or continuation.state is None:
+        return state
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            f"last-resort planning hand-over: continuing into {continuation.next_phase}",
+        )
+    _save_recovered_rebase_checkpoint(continuation.state, ctx)
+    return continuation.state
+
+
 def _execute_owner_ladder_rung(
     ctx: LoopContext,
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> None:
+) -> LadderStepResult | None:
     from ralph.git.merge import observe_branch_sha
     from ralph.pipeline._integration_owner_seam import execute_planning_ladder_rung
     from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -2309,9 +2331,9 @@ def _execute_owner_ladder_rung(
         )
     except (OSError, RuntimeError, ValueError, KeyError) as rung_exc:
         logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)
-        return
+        return None
     if result is None:
-        return
+        return None
     message = f"cleanup-ladder rung {result.rung.name.lower()} {result.outcome}: {result.reason}"
     if result.outcome in ("failed", "terminal"):
         logger.warning("{}", message)
@@ -2319,6 +2341,7 @@ def _execute_owner_ladder_rung(
         logger.info("{}", message)
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, message)
+    return result
 
 
 def execute_owner_ladder_rung(
@@ -2326,11 +2349,10 @@ def execute_owner_ladder_rung(
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> None:
+) -> LadderStepResult | None:
     if _execute_owner_ladder_rung is not _execute_owner_ladder_rung_dispatch:
-        _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
-        return
-    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+        return _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+    return _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
 
 
 def _execute_owner_ladder_rung_dispatch(
@@ -2338,11 +2360,10 @@ def _execute_owner_ladder_rung_dispatch(
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> None:
+) -> LadderStepResult | None:
     if execute_owner_ladder_rung is not _public_execute_owner_ladder_rung_dispatch:
-        execute_owner_ladder_rung(ctx, root, sync_verdict, target)
-        return
-    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+        return execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+    return _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
 
 
 _execute_owner_ladder_rung_impl = _execute_owner_ladder_rung
@@ -2364,7 +2385,9 @@ def _dispatch_owner_ladder_rung(
         return executed_rung, previous_action, "fall"
     if sync_verdict.ladder_rung is executed_rung:
         return executed_rung, previous_action, "break"
-    _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+    result = _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+    if result is not None and result.reason.startswith("autonomous-transition:planning"):
+        return sync_verdict.ladder_rung, sync_verdict.action, "break"
     return sync_verdict.ladder_rung, sync_verdict.action, "continue"
 
 
@@ -2481,6 +2504,13 @@ def _ensure_planning_in_sync(
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
         )
+        state = _continue_pipeline_with_planning_handoff(state, ctx, root)
+        if (
+            _is_planning_entry(state, ctx)
+            and isinstance(state.last_error, str)
+            and "last-resort planning handoff:" in state.last_error
+        ):
+            return state, None
         if rung_step == "break":
             break
         if rung_step == "continue":
@@ -2541,7 +2571,7 @@ _public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
     if rebase is None:
         return True
@@ -2557,6 +2587,13 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
+    if rebase.last_target != target or not identity.matches(rebase):
+        logger.info(
+            "integration resolution: the recorded exhaustion does not bind the conflict "
+            "now on disk for '{}'; giving the resolver another attempt",
+            target,
+        )
+        return False
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
     installed = tuple(
@@ -2570,23 +2607,11 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    allowed = (
-        resolver_allowed(
-            rebase,
-            target,
-            identity,
-            ledger=ledger,
-            candidates=installed,
-        )
-        if rebase is not None
-        else True
-    )
-    can_resolve = allowed and (
-        ledger is None
-        or not installed
-        or not ledger.all_exhausted("rebase_conflict_resolution", installed)
-    )
-    if can_resolve:
+    if (
+        installed
+        and ledger is not None
+        and ledger.any_eligible("rebase_conflict_resolution", installed)
+    ):
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",
@@ -2872,13 +2897,24 @@ def _block_unresolved_integration(
         ctx, state.rebase
     )
     if exhausted_still_binds:
+        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
         _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
-        return state, prev_phase, 1
+        return None
 
     post = _post_recovery_verdict(ctx, state, prev_phase, verdict)
     if not isinstance(post, IntegrationResolutionVerdict):
         return post
+
+    if post.status is EXHAUSTED and state.rebase.resolution_exhausted:
+        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        _announce_blocked_dispatch(ctx, post)
+        _announce_deferred_startup_integration(ctx, state.rebase)
+        return None
 
     _announce_blocked_dispatch(ctx, post)
     _announce_deferred_startup_integration(ctx, state.rebase)
@@ -2930,6 +2966,7 @@ def _boundary_ladder_recovery(
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
         )
+        state = _continue_pipeline_with_planning_handoff(state, ctx, root)
         if rung_step != "continue":
             break
         recovered = _run_startup_integration(ctx, state.rebase)
@@ -3257,22 +3294,6 @@ def _handle_intervention_required_retry(
     return state.clear_waiting()
 
 
-_MAX_COOLDOWN_SLEEP_SECONDS = 30.0
-
-
-def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
-    from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
-    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
-
-    installed = tuple(
-        agent
-        for agent in resolution_chain_agents(ctx.policy_bundle)
-        if ctx.registry.get(agent) is not None
-    )
-    choice = choose_resolver(ctx.controller, installed)
-    return choice.wait_ms if choice.agent is None else 0
-
-
 def _config_failure_watch_paths(
     ctx: LoopContext,
     watcher: ConfigFileFingerprintWatcher,
@@ -3311,14 +3332,30 @@ def handle_pending_retry(
     detail: str,
     backend: FileBackend,
 ) -> PipelineState:
-    cooldown_ms = _resolver_cooldown_wait_ms(ctx) if rebase.integration_unresolved else 0
-    if cooldown_ms > 0:
-        waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
-        state = state.copy_with(rebase=waiting).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        ctx.sleep(min(cooldown_ms / 1000.0, _MAX_COOLDOWN_SLEEP_SECONDS))
-        return state.clear_waiting()
+    if rebase.integration_unresolved:
+        from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+        from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
+        from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+        installed = tuple(
+            agent
+            for agent in resolution_chain_agents(ctx.policy_bundle)
+            if ctx.registry.get(agent) is not None
+        )
+        choice = choose_resolver(ctx.controller, installed)
+        if choice.agent is None and choice.wait_ms > 0:
+            waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+            state = ctx.controller.apply_all_agents_unavailable_wait(
+                state.copy_with(rebase=waiting),
+                PHASE_RESOLUTION,
+                wait_ms=choice.wait_ms,
+            )
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            state = _handle_cooldown_delay(state, ctx)
+            if state.is_waiting_state:
+                state = state.clear_waiting()
+            return state
     recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if recovered is not None and not recovered.integration_unresolved:
         from ralph.pipeline._publication_state_machine import (
@@ -3433,10 +3470,13 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
 
         ctx.sleep(delay_ms / 1000.0)
 
-        if is_all_unavailable:
+        if is_all_unavailable and getattr(ctx, "workspace_scope", None) is not None:
             state = _resume_after_cooldown_wait(
                 state, ctx, current_phase_str, unavail_reason, delay_ms
             )
+        elif is_all_unavailable:
+            state = state.copy_with(last_retry_delay_ms=0).clear_waiting()
+            _log_resumed_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
         return state
     except BaseException as e:
         if isinstance(e, KeyboardInterrupt):
@@ -3540,6 +3580,7 @@ def _run_inner_loop_after_startup(
             state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
             continue
         state = _reconcile_dispatch_state(state)
+        state = _continue_pipeline_with_planning_handoff(state, ctx, Path(ctx.workspace_scope.root))
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
             state = _wait_for_integration_retry(state, ctx, backend=backend)

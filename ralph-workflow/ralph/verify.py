@@ -70,9 +70,7 @@ for idx in _BUDGET_TRACKED_STEPS:
     if _step[3] is None:
         raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout")
     _timeout = _step[3]
-    if not isinstance(_timeout, int) and not isinstance(_timeout, float):
-        raise TypeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
-    if not _timeout > 0:
+    if not (isinstance(_timeout, (int, float)) and _timeout > 0):
         raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
 
 if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:

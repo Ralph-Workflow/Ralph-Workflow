@@ -9,6 +9,7 @@ from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 from ralph.pipeline.terminal_state_violation_error import TerminalStateViolationError
 
 if TYPE_CHECKING:
@@ -24,10 +25,8 @@ __all__ = (
     "delete_rebase_backup_refs",
     "post_attempt_verify",
     "resolution_terminal_marker",
-    "terminal_marker_blocks_attempt",
 )
 
-type ResolutionAttemptKey = tuple[str | None, tuple[str, ...], str | None]
 type ResolutionTerminalMarkerValue = tuple[ResolutionAttemptKey | None, str, str]
 
 RESOLUTION_TERMINAL_MARKER_FIELD = "resolution_terminal_marker"
@@ -64,6 +63,8 @@ def resolution_terminal_marker(record: IntegrationRecord) -> ResolutionTerminalM
 def _resolution_attempt_key(raw: object) -> ResolutionAttemptKey | None:
     if raw is None:
         return None
+    if isinstance(raw, ResolutionAttemptKey):
+        return raw
     if not (any(isinstance(raw, _t) for _t in (tuple, list))) or len(raw) != _MARKER_PARTS:
         return None
     stop, agents, config = raw
@@ -73,15 +74,7 @@ def _resolution_attempt_key(raw: object) -> ResolutionAttemptKey | None:
         and all(isinstance(agent, str) for agent in agents)
         and (config is None or isinstance(config, str))
     )
-    return (stop, tuple(agents), config) if valid else None
-
-
-def terminal_marker_blocks_attempt(
-    record: IntegrationRecord,
-    attempt_key: ResolutionAttemptKey | None,
-) -> bool:
-    marker = resolution_terminal_marker(record)
-    return marker is not None and marker.attempt_key == attempt_key
+    return ResolutionAttemptKey(stop, tuple(agents), config) if valid else None
 
 
 _TERMINAL_MARKER_FILES: frozenset[str] = frozenset(

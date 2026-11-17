@@ -31,6 +31,16 @@ _REEXPORTED_CLASSES: tuple[tuple[str, str, str], ...] = (
         "TerminalStateViolationError",
         "ralph.pipeline.terminal_state_violation_error",
     ),
+    (
+        "ralph.pipeline.auto_integrate_recovery_terminal",
+        "ResolutionAttemptKey",
+        "ralph.pipeline.resolution_attempt_key",
+    ),
+    (
+        "ralph.pipeline.integration_ladder",
+        "ResolutionAttemptKey",
+        "ralph.pipeline.resolution_attempt_key",
+    ),
     ("ralph.pipeline.integration_ladder", "LadderEffect", "ralph.pipeline.ladder_effect"),
     ("ralph.pipeline.integration_ladder", "LadderEffectKind", "ralph.pipeline.ladder_effect_kind"),
     ("ralph.pipeline.integration_ladder", "LadderFacts", "ralph.pipeline.ladder_facts"),
@@ -90,3 +100,19 @@ def test_facade_reexports_the_canonical_class(
     canonical_module = importlib.import_module(canonical)
 
     assert getattr(facade_module, class_name) is getattr(canonical_module, class_name)
+
+
+def test_resolution_attempt_key_facades_are_namedtuple_class() -> None:
+    from ralph.pipeline.auto_integrate_recovery_terminal import (
+        ResolutionAttemptKey as FromRecovery,
+    )
+    from ralph.pipeline.integration_ladder import ResolutionAttemptKey as FromLadder
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey as Canonical
+
+    assert FromRecovery is Canonical is FromLadder
+    assert issubclass(FromRecovery, tuple)
+    assert FromRecovery._fields == ("stop_identity", "eligible_agents", "config_fingerprint")
+    key = FromRecovery("stop", ("agent-a",), "config")
+    assert isinstance(key, Canonical)
+    assert isinstance(key, tuple)
+    assert key.stop_identity == "stop"

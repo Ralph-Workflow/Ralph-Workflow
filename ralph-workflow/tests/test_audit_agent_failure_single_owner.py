@@ -19,6 +19,23 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "TEMPORARY_TRANSITIONAL_RULES is now empty following removal of transitional "
         "dead_tool_surfaces rules in conflict resolution"
     ),
+    "test_conflict_resolution_ledger_construction_is_flagged": (
+        "conflict_resolution packages must not construct AgentFailureLedger; the run's "
+        "shared RecoveryController owns cooldown state"
+    ),
+    "test_auto_integrate_recovery_controller_construction_is_flagged": (
+        "auto_integrate modules must not construct RecoveryController; adopt the run's "
+        "shared controller through the shared accessor"
+    ),
+    "test_conflict_resolution_adopting_shared_controller_passes": (
+        "adopting an already-built shared RecoveryController in conflict_resolution is allowed"
+    ),
+    "test_conflict_resolution_agent_failure_classify_is_flagged": (
+        "conflict_resolution must not classify agent failures outside RecoveryController"
+    ),
+    "test_conflict_resolution_retry_delay_is_flagged": (
+        "conflict_resolution must not compute agent retry delays outside RecoveryController"
+    ),
 }
 
 
@@ -1155,3 +1172,60 @@ def test_unrelated_private_reads(controller, runner, subprocess_runner, resolver
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert not violations
+
+
+def test_conflict_resolution_ledger_construction_is_flagged() -> None:
+    source = """
+def build_private_ledger(clock):
+    return AgentFailureLedger(clock=clock)
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_private_ledger.py", source
+    )
+    assert any(v.rule == "production_cooldown_state_construction_outside_owner" for v in violations)
+
+
+def test_auto_integrate_recovery_controller_construction_is_flagged() -> None:
+    source = """
+def build_private_controller(clock):
+    return RecoveryController(options=RecoveryControllerOptions(clock=clock))
+"""
+    violations = audit_production_source("ralph/pipeline/auto_integrate_local.py", source)
+    assert any(v.rule == "production_cooldown_state_construction_outside_owner" for v in violations)
+
+
+def test_conflict_resolution_adopting_shared_controller_passes() -> None:
+    source = """
+def adopt_shared(controller: RecoveryController, session) -> RecoveryController:
+    session.recovery_controller = controller
+    session.ledger = controller.ledger
+    return controller
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/session_bind.py", source
+    )
+    assert not [
+        v for v in violations if v.rule == "production_cooldown_state_construction_outside_owner"
+    ]
+
+
+def test_conflict_resolution_agent_failure_classify_is_flagged() -> None:
+    source = """
+def classify_attempt(exc):
+    return classify_failure(exc)
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_classify_local.py", source
+    )
+    assert any(v.rule == "production_agent_failure_classify_outside_owner" for v in violations)
+
+
+def test_conflict_resolution_retry_delay_is_flagged() -> None:
+    source = """
+def delay_for(attempt: int) -> float:
+    return compute_retry_delay(attempt)
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_retry_local.py", source
+    )
+    assert any(v.rule == "production_agent_retry_delay_outside_owner" for v in violations)

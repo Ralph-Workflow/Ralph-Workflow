@@ -20,10 +20,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
 )
 from ralph.pipeline.attempt_result import AttemptResult
-from ralph.pipeline.attempt_runner import (
-    build_entry_point_recovery_controller,
-    run_agent_attempt,
-)
+from ralph.pipeline.attempt_runner import run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
 from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -41,7 +38,6 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
@@ -52,7 +48,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from ralph.agents.clock import Clock
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -203,23 +198,22 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     return tuple(chain_config.agents)
 
 
-def _fallback_controller_clock(
-    pipeline_deps: PipelineDeps | None, ledger: object, store: object
-) -> Clock:
-    if pipeline_deps is not None and pipeline_deps.recovery_clock is not None:
-        return pipeline_deps.recovery_clock
-    if isinstance(ledger, AgentFailureLedger):
-        return ledger.clock
-    if isinstance(store, AgentUnavailabilityTracker):
-        return store.clock
-    from ralph.agents.clock import Clock
-    from ralph.agents.system_clock import SystemClock
-    from ralph.pipeline.integration_actions import current_clock, system_clock_active
+def _bind_session_controller(
+    session: ResolutionSession | None, controller: RecoveryController
+) -> RecoveryController:
+    if session is not None:
+        session.recovery_controller = controller
+        session.ledger = controller.ledger
+        session.unavailability_store = controller.unavailability_store
+    return controller
 
-    executor_clock: object = current_clock()
-    if system_clock_active() or not isinstance(executor_clock, Clock):
-        return SystemClock()
-    return executor_clock
+
+def _require_bound_session_controller(session: ResolutionSession | None) -> RecoveryController:
+    if session is not None and isinstance(session.recovery_controller, RecoveryController):
+        return session.recovery_controller
+    raise RecoveryControllerUnavailableError(
+        "conflict resolution requires the run's shared RecoveryController; none is bound"
+    )
 
 
 def ensure_session_controller(
@@ -229,68 +223,33 @@ def ensure_session_controller(
     pipeline_deps: PipelineDeps | None = None,
     config: UnifiedConfig | None = None,
 ) -> RecoveryController:
-    if session is not None and isinstance(session.recovery_controller, RecoveryController):
-        controller = session.recovery_controller
-        session.ledger = controller.ledger
-        session.unavailability_store = controller.unavailability_store
-        return controller
+    from ralph.pipeline._integration_recovery_controller import (
+        reachable_shared_recovery_controller,
+    )
+
+    del policy_bundle, config
     rc_candidate = pipeline_deps.recovery_controller if pipeline_deps is not None else None
     if isinstance(rc_candidate, RecoveryController):
-        controller = rc_candidate
-        if session is not None:
-            session.recovery_controller = controller
-            session.ledger = controller.ledger
-            session.unavailability_store = controller.unavailability_store
-        return controller
-    store = (
-        pipeline_deps.unavailability_store
-        if pipeline_deps is not None and pipeline_deps.unavailability_store is not None
-        else (session.unavailability_store if session is not None else None)
+        return _bind_session_controller(session, rc_candidate)
+    session_controller = (
+        session.recovery_controller
+        if session is not None and isinstance(session.recovery_controller, RecoveryController)
+        else None
     )
-    if session is not None:
-        session.unavailability_store = store
     ledger = (
         session.ledger
         if session is not None and session.ledger is not None
         else (pipeline_deps.ledger if pipeline_deps is not None else None)
     )
-    if ledger is not None:
-        controller_candidate: object = getattr(ledger, "recovery_controller", None)
-        if isinstance(controller_candidate, RecoveryController):
-            if session is not None:
-                session.recovery_controller = controller_candidate
-                session.ledger = controller_candidate.ledger
-                session.unavailability_store = controller_candidate.unavailability_store
-            return controller_candidate
-    active_controller = (
-        _effect_executor_module.current_agent_effect_dependencies().recovery_controller
-    )
-    if isinstance(active_controller, RecoveryController):
-        if session is not None:
-            session.recovery_controller = active_controller
-            session.ledger = active_controller.ledger
-            session.unavailability_store = active_controller.unavailability_store
-        return active_controller
-    deps = AttemptRunnerDeps(
-        clock=_fallback_controller_clock(pipeline_deps, ledger, store),
-        invoke=effect_attempt_invoke(_effect_executor_module.execute_agent_effect),
-        probe_runner=session.probe_runner if session is not None else None,
-        workspace_probe=session.workspace_probe if session is not None else None,
-        connectivity=None,
-    )
-    controller = build_entry_point_recovery_controller(
-        AgentEntryPoint.CONFLICT_RESOLUTION,
-        config=config,
-        policy_bundle=policy_bundle,
-        deps=deps,
+    shared = reachable_shared_recovery_controller(
+        explicit=session_controller,
         ledger=ledger,
-        unavailability_store=store,
     )
-    if session is not None:
-        session.recovery_controller = controller
-        session.unavailability_store = controller.unavailability_store
-        session.ledger = controller.ledger
-    return controller
+    if shared is not None:
+        return _bind_session_controller(session, shared)
+    raise RecoveryControllerUnavailableError(
+        "conflict resolution requires the run's shared RecoveryController; none is reachable"
+    )
 
 
 def finalize_resolution_attempt_failure(
@@ -307,9 +266,10 @@ def finalize_resolution_attempt_failure(
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
 
-    controller = ensure_session_controller(session, policy_bundle)
+    del policy_bundle
     if session is None:
         return
+    controller = _require_bound_session_controller(session)
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state = (
@@ -380,8 +340,6 @@ def finalize_resolution_attempt_failure(
     )
     if selection.agent is not None and selection.index is not None:
         next_cursor = failed_index if selection.index < failed_index else selection.index
-    elif candidates:
-        next_cursor = controller.next_conflict_candidate(candidates, failed_index=failed_index)
     else:
         next_cursor = failed_index
     session.chain_cursor = next_cursor
@@ -423,32 +381,6 @@ def _record_session_failure_result(
         outcome=outcome,
         attempt_outcomes=((1, outcome),),
     )
-    if isinstance(exc, AgentInactivityTimeoutError):
-        from ralph.agents.watchdog_fire_reason import WatchdogFireReason
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        if exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
-            controller.mark_agent_unavailable(
-                PHASE_RESOLUTION,
-                agent_name,
-                reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-            )
-
-
-def _conflict_config_with_inactivity(
-    config: UnifiedConfig,
-    inactivity_timeout_seconds: float | None,
-) -> UnifiedConfig:
-    effective_timeout = (
-        inactivity_timeout_seconds
-        if inactivity_timeout_seconds is not None
-        else config.conflict_resolution.inactivity_timeout_seconds
-    )
-    conflict_limits = config.conflict_resolution.model_copy(
-        update={"inactivity_timeout_seconds": effective_timeout}
-    )
-    general = config.general.model_copy(update={"agent_idle_timeout_seconds": effective_timeout})
-    return config.model_copy(update={"conflict_resolution": conflict_limits, "general": general})
 
 
 def invoke_resolution_agent(
@@ -471,8 +403,6 @@ def invoke_resolution_agent(
         session.last_attempt_outcome = None
         session.last_attempt_result = None
         session.last_attempt_saw_activity = False
-    inactivity_timeout = session.inactivity_timeout_seconds if session is not None else None
-    config = _conflict_config_with_inactivity(config, inactivity_timeout)
     if display_context is None:
         from ralph.display.context import make_display_context
 
@@ -496,16 +426,11 @@ def invoke_resolution_agent(
         pipeline_deps=caller_deps,
         config=config,
     )
-    if effective_deps.recovery_controller is None:
+    if effective_deps.recovery_controller is not controller:
         import dataclasses
 
         effective_deps = dataclasses.replace(effective_deps, recovery_controller=controller)
-    if _candidate_cannot_be_launched(agent_name, session):
-        return _failed_invocation_outcome(
-            RuntimeError(f"agent {agent_name} cannot be launched"),
-            session,
-            (),
-        )
+    activity_only = not require_completion_evidence
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
@@ -513,6 +438,10 @@ def invoke_resolution_agent(
         drain=PHASE_RESOLUTION,
         chain_name=PHASE_RESOLUTION,
         requires_completion_evidence=require_completion_evidence,
+        activity_only_supervision=activity_only,
+        activity_only_status_interval_seconds=(
+            config.conflict_resolution.status_interval_seconds if activity_only else None
+        ),
     )
     try:
         attempt = run_agent_attempt(
@@ -583,37 +512,6 @@ def _failed_invocation_outcome(
         terminal_reason=session.terminal_reason if session is not None else None,
         unresolved_paths=session.unresolved_paths if session is not None else unresolved_paths,
     )
-
-
-def _candidate_cannot_be_launched(
-    agent_name: str,
-    session: ResolutionSession | None,
-) -> bool:
-    if session is not None:
-        controller = session.recovery_controller
-        if (
-            controller is not None
-            and not controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
-        ):
-            logger.warning(
-                "conflict_resolution: refusing to launch unavailable agent '{}'",
-                agent_name,
-            )
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            session.last_failure_cause = ResolutionFailureCause.NONE
-            session.charge_conflict_budget = False
-            return True
-        ledger = session_ledger(session)
-        if ledger is not None and not ledger.is_available(PHASE_RESOLUTION, agent_name):
-            logger.warning(
-                "conflict_resolution: refusing to launch unavailable agent '{}'",
-                agent_name,
-            )
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            session.last_failure_cause = ResolutionFailureCause.NONE
-            session.charge_conflict_budget = False
-            return True
-    return False
 
 
 def _record_attempt_without_agent_work(session: ResolutionSession | None) -> None:
@@ -803,5 +701,5 @@ def session_ledger(session: ResolutionSession | None) -> AgentFailureLedger | No
 def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
     if session.terminal_reason is not ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
         return
-    controller = ensure_session_controller(session)
+    controller = _require_bound_session_controller(session)
     controller.mark_candidate_unavailable(PHASE_RESOLUTION, agent_name)

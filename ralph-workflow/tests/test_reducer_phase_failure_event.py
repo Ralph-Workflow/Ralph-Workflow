@@ -9,7 +9,8 @@ from ralph.phases.commit_review import (
     CommitReviewRejected,
 )
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
-from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+from ralph.pipeline.auto_integrate import _configured_resolver_allowed
+from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
@@ -39,6 +40,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "a rejection that skipped the rollback left the rejected tree in place, so "
         "recovery re-entered commit review and rejected the same tree on every pass; "
         "every rejection now requests the rollback and the assertion pins that"
+    ),
+    "test_integration_failure_advances_conflict_strategy_with_backoff": (
+        "after a strategy advance an Eligible ledger may still launch; launch permission "
+        "is shared eligibility, not a retired resolver_allowed local veto"
+    ),
+    "test_strategy_advance_grants_the_next_rung_its_own_budget_after_restart": (
+        "the next rung remains launchable under shared eligibility after restart"
     ),
 }
 
@@ -505,10 +513,12 @@ class TestPhaseFailureEvent:
         )
         assert first.rebase.resolution_exhausted is False
         assert (
-            resolver_allowed(
+            _configured_resolver_allowed(
                 first.rebase,
                 "main",
+                ConflictIdentity(),
                 ledger=_available_ledger(),
+                candidates=("resolver",),
             )
             is True
         )
@@ -570,7 +580,16 @@ class TestPhaseFailureEvent:
         restored = RebaseState.model_validate(advanced.rebase.model_dump(mode="json"))
 
         assert restored.conflict_strategy_index == 1
-        assert resolver_allowed(restored, "main", ledger=_available_ledger()) is True
+        assert (
+            _configured_resolver_allowed(
+                restored,
+                "main",
+                ConflictIdentity(),
+                ledger=_available_ledger(),
+                candidates=("resolver",),
+            )
+            is True
+        )
 
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
         state = PipelineState(

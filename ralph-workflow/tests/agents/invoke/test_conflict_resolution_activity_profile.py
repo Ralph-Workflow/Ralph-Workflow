@@ -195,15 +195,26 @@ def test_conflict_resolution_regression_initial_activity_keeps_its_provenance(
     assert watchdog.diagnostic_snapshot(now=10.0)["last_activity_kind"] == expected_kind
 
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivity_timeout": (
+        "resolver launch no longer remaps general idle from conflict_resolution."
+        "inactivity_timeout_seconds; stock shared idle options apply, with "
+        "activity_only_supervision set on the InvokeAgentEffect"
+    ),
+}
+
+
 def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivity_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    configured_timeout = 47.0
+    shared_idle = 13.0
+    conflict_idle = 47.0
     config = UnifiedConfig(
-        general=GeneralConfig(agent_idle_timeout_seconds=13.0),
-        conflict_resolution=ConflictResolutionConfig(inactivity_timeout_seconds=configured_timeout),
+        general=GeneralConfig(agent_idle_timeout_seconds=shared_idle),
+        conflict_resolution=ConflictResolutionConfig(inactivity_timeout_seconds=conflict_idle),
     )
     captured_options: list[InvokeOptions] = []
+    captured_activity_only: list[bool] = []
 
     class _Controller:
         clock = FakeClock()
@@ -235,6 +246,7 @@ def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivit
             policy_bundle,
             run_id,
         )
+        captured_activity_only.append(effect.activity_only_supervision)
         captured_options.append(
             build_invoke_options_from_config(
                 config.general,
@@ -267,6 +279,7 @@ def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivit
         display_context=MagicMock(),
     )
 
-    assert captured_options[0].idle_timeout_seconds == configured_timeout
-    assert policy_from_options(captured_options[0]).idle_timeout_seconds == configured_timeout
-    assert config.general.agent_idle_timeout_seconds == 13.0
+    assert captured_options[0].idle_timeout_seconds == shared_idle
+    assert policy_from_options(captured_options[0]).idle_timeout_seconds == shared_idle
+    assert captured_activity_only == [True]
+    assert config.general.agent_idle_timeout_seconds == shared_idle

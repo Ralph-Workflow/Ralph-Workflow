@@ -1,13 +1,34 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.recovery.classifier import FailureContext
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+from ralph.recovery.failure_category import FailureCategory
+from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+if TYPE_CHECKING:
+    from ralph.recovery.classified_failure import ClassifiedFailure
 
 _TRANSPORT_LOOP = "transport_loop_detected"
 _RELAY_FAULT = "SUPERVISION_INFRASTRUCTURE_FAILURE"
+
+_EXIT_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
+    {
+        UnavailabilityReason.NO_OUTPUT_AT_START,
+        UnavailabilityReason.PROCESS_EXITED,
+        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+        UnavailabilityReason.STALE_CHILD_QUIET,
+        UnavailabilityReason.STRICTLY_STUCK,
+        UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT,
+        UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+    }
+)
 
 
 class AttemptFault(StrEnum):
@@ -55,16 +76,19 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
     )
 )
 
-_REASON_TO_FAULT: dict[ResolutionTerminationReason, AttemptFault] = {
+_REASON_TO_OUTCOME: dict[ResolutionTerminationReason, ConflictAttemptOutcome] = {
+    ResolutionTerminationReason.CANDIDATE_EXITED: ConflictAttemptOutcome.NO_ACTIVITY,
+    ResolutionTerminationReason.ATTEMPT_FAILED: ConflictAttemptOutcome.ATTEMPT_FAILED,
+    ResolutionTerminationReason.CANDIDATE_EXHAUSTED: ConflictAttemptOutcome.ATTEMPT_FAILED,
+}
+
+_LOCAL_REASON_TO_FAULT: dict[ResolutionTerminationReason, AttemptFault] = {
     ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED: AttemptFault.AGENT_INFRASTRUCTURE_FAILURE,
     ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE: (
         AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
     ),
     ResolutionTerminationReason.TOOL_SURFACE_DEAD: AttemptFault.AGENT_TOOL_DEAD,
     ResolutionTerminationReason.CANDIDATE_UNAVAILABLE: AttemptFault.AGENT_TOOL_DEAD,
-    ResolutionTerminationReason.CANDIDATE_EXITED: AttemptFault.AGENT_EXITED,
-    ResolutionTerminationReason.ATTEMPT_FAILED: AttemptFault.UNKNOWN,
-    ResolutionTerminationReason.CANDIDATE_EXHAUSTED: AttemptFault.UNKNOWN,
 }
 
 _FAULT_TO_REASON: dict[AttemptFault, ResolutionTerminationReason | None] = {
@@ -90,45 +114,38 @@ def classify_ralph_origin_fault(payload: str) -> ResolutionTerminationReason | N
     return None
 
 
-def _classify_str_evidence(evidence: str) -> AttemptFault:
-    text = evidence.strip()
-    if not text or text.lower() == "healthy":
-        return AttemptFault.AGENT_HEALTHY
-    try:
-        return AttemptFault(text)
-    except ValueError:
-        pass
-    if classify_ralph_origin_fault(text) is not None:
-        return AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
-    lowered = text.lower()
-    if any(
-        k in lowered
-        for k in (
-            "tool_surface_dead",
-            "tool surface dead",
-            "candidate_unavailable",
-            "candidate unavailable",
-        )
-    ):
+def _fault_from_classified(classified: ClassifiedFailure) -> AttemptFault:
+    if classified.reset_tool_registry:
         return AttemptFault.AGENT_TOOL_DEAD
-    if any(k in lowered for k in ("unknown", "attempt_failed", "attempt failed")):
+    if classified.unavailability_reason in _EXIT_UNAVAILABILITY_REASONS:
+        return AttemptFault.AGENT_EXITED
+    if classified.category is FailureCategory.ENVIRONMENTAL:
+        return AttemptFault.AGENT_INFRASTRUCTURE_FAILURE
+    return AttemptFault.UNKNOWN
+
+
+def _classify_via_shared_outcome(outcome: ConflictAttemptOutcome) -> AttemptFault:
+    classified = FailureContext(
+        phase=PHASE_RESOLUTION,
+        agent=None,
+        outcome=outcome,
+    ).classified_failure
+    if classified is None:
         return AttemptFault.UNKNOWN
-    return AttemptFault.AGENT_EXITED
+    return _fault_from_classified(classified)
 
 
 def classify_attempt_fault(
     evidence: AttemptFault | ResolutionTerminationReason | None = None,
 ) -> AttemptFault:
-    raw: object = evidence
-    if isinstance(raw, AttemptFault):
-        return raw
-    if raw is None:
+    if isinstance(evidence, AttemptFault):
+        return evidence
+    if evidence is None:
         return AttemptFault.AGENT_HEALTHY
-    if isinstance(raw, ResolutionTerminationReason):
-        return _REASON_TO_FAULT.get(raw, AttemptFault.UNKNOWN)
-    if isinstance(raw, str):
-        return _classify_str_evidence(raw)
-    return AttemptFault.UNKNOWN
+    outcome = _REASON_TO_OUTCOME.get(evidence)
+    if outcome is not None:
+        return _classify_via_shared_outcome(outcome)
+    return _LOCAL_REASON_TO_FAULT.get(evidence, AttemptFault.UNKNOWN)
 
 
 def attempt_fault_to_termination_reason(

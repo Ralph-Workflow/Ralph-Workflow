@@ -113,6 +113,7 @@ ralph.pipeline.integration_ladder
 
 .. automodule:: ralph.pipeline.integration_ladder
    :members:
+   :exclude-members: ResolutionAttemptKey
    :show-inheritance:
 
 ralph.pipeline.integration_preservation_bundle
@@ -1199,7 +1200,7 @@ ralph.pipeline.auto_integrate_recovery_terminal
 
 .. automodule:: ralph.pipeline.auto_integrate_recovery_terminal
    :members:
-   :exclude-members: TerminalStateViolationError
+   :exclude-members: TerminalStateViolationError, ResolutionAttemptKey
    :show-inheritance:
 
 ralph.pipeline.auto_integrate_terminal
@@ -5632,6 +5633,20 @@ ralph.pipeline.last_resort_wait_proof
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.last_resort_wait_proof
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.last_resort_production_pools
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.last_resort_production_pools
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.planning_handoff_continuation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.planning_handoff_continuation
    :members:
    :show-inheritance:
 

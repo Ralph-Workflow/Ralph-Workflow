@@ -167,6 +167,8 @@ def test_mismatched_index_keeps_operator_wait_and_reports_it_once(
     assert record is not None
     assert record.rebase_continue_pending is True
     assert record.rebase_continue_tree == state.resolved_tree
-    landing_waits = [line for line in criticals if "land the expected commit" in line]
+    landing_waits = [line for line in criticals if "resume point: ralph --resume" in line]
     assert len(landing_waits) == 1
+    assert "operator action required" not in landing_waits[0]
+    assert "land the expected commit" not in landing_waits[0]
     assert state.feature in landing_waits[0]

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
-from ralph.pipeline import escalate_record_fact_outcome
+from ralph.pipeline._integration_diagnostic_handoff import escalate_record_fact_outcome
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_diagnostic import handoff_integration_diagnostic
 from ralph.pipeline.integration_ladder import LAST_RESORT_TERMINAL_NO_SIGNATURE
@@ -198,6 +198,8 @@ def test_terminal_status_names_the_operator_facts_once(tmp_path: Path) -> None:
     assert f"merge_commit_parent={'0' * 40}" in message
     assert "preserved copy: nothing to preserve at HEAD abc123" in message
     assert "ralph --resume" in message
+    assert "NeedsOperator" not in message
+    assert "operator action required" not in message
     assert "no preserved copy yet" not in message
     assert "the run continues without waiting on a person" not in message
 

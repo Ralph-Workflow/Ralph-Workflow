@@ -55,7 +55,6 @@ from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
     prior_conflict_count,
     resolve_failure_ledger,
-    resolver_allowed,
 )
 from ralph.pipeline.auto_integrate_context import (
     current_branch_or_detached_marker,
@@ -223,14 +222,6 @@ def _current_branch_probe(root: Path) -> str | None:
     return fn(root)
 
 
-def _repository_conflict_exhausted(
-    state: RebaseState,
-    target: str,
-    identity: ConflictIdentity,
-) -> bool:
-    return not resolver_allowed(state, target, identity)
-
-
 def _pending_for_unavailable_agents(
     recovered: RebaseState,
     *,
@@ -387,10 +378,7 @@ def _auto_integrate_after_commit_entry(
     )
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
-    repository_conflict_exhausted = bool(
-        resolver_suppressed and target and _repository_conflict_exhausted(state, target, identity)
-    )
-    agents_unavailable = resolver_suppressed and not repository_conflict_exhausted
+    agents_unavailable = resolver_suppressed
     recovered = _recover_before_attempt_probe(
         config,
         workspace_scope,
@@ -417,15 +405,6 @@ def _auto_integrate_after_commit_entry(
                     resolver_suppressed=resolver_suppressed,
                 )
             )
-        if repository_conflict_exhausted:
-            from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
-            from ralph.pipeline.auto_integrate_record import clear_record
-            from ralph.pipeline.auto_integrate_resolve import _abort_merge_safely
-
-            if merge_state(root) == MERGE_STATE_IN_PROGRESS:
-                _abort_merge_safely(root)
-                clear_record(root)
-                recovered.clear_recovery_record_retained()
         return preserve_unresolved_resolution_state(recovered, prior=state)
     return preserve_unresolved_resolution_state(
         _auto_integrate_after_commit_inner(
@@ -647,12 +626,11 @@ def _configured_resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> bool:
-    if not resolver_allowed(state, target, identity):
-        return False
+    del state, target, identity
     effective_ledger = resolve_failure_ledger(ledger)
-    return effective_ledger is None or effective_ledger.any_eligible(
-        "rebase_conflict_resolution", candidates
-    )
+    if effective_ledger is None or not candidates:
+        return True
+    return effective_ledger.any_eligible("rebase_conflict_resolution", candidates)
 
 
 def _freshen_attempt_target(

@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._integration_ladder_evidence import (
     _LADDER_ACTION_VALUES,
     _RUNG_ACTION_VALUE,
@@ -52,6 +50,7 @@ from ralph.pipeline.landed_verdict import LandedVerdict
 from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
 from ralph.pipeline.last_resort_agent_proof import LastResortAgentProof
 from ralph.pipeline.last_resort_wait_proof import LastResortWaitProof
+from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -87,6 +86,7 @@ __all__ = [
     "LandResult",
     "LandedVerdict",
     "RepointResult",
+    "ResolutionAttemptKey",
     "RungPostCondition",
     "adapt_environment_and_retry",
     "decide_ladder_transition",
@@ -132,8 +132,6 @@ LAST_RESORT_DISABLED_NO_SIGNATURE: Final[str] = "failed:disabled:no-blocking-sig
 LAST_RESORT_REFUSED_NO_PRESERVED_COPY: Final[str] = "terminal:refused:no-preserved-copy"
 
 NO_ENABLED_NEXT_RUNG: Final[str] = "terminal:no-enabled-next-rung"
-
-type ResolutionAttemptKey = tuple[str | None, tuple[str, ...], str | None]
 
 PRESERVED_COPY_LEDGER_KEY: Final[str] = "preserved:alternate_preservation"
 
@@ -190,14 +188,14 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
         )
     elif facts.terminal_for_attempt:
         transition = LadderTransition(
-            LadderState.NEEDS_OPERATOR,
+            LadderState.COMPLETE_IN_PLACE,
             terminal=True,
             reason=facts.reason,
             next_rung=None,
             effects=(),
         )
     elif facts.rung is None:
-        transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+        transition = _completion_in_place_transition(NO_ENABLED_NEXT_RUNG)
     elif facts.outcome is None:
         transition = LadderTransition(
             _RUNG_STATES[facts.rung],
@@ -212,7 +210,7 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
             facts.reason.startswith("failed:disabled:") and next_rung is None
         )
         if terminal:
-            transition = _needs_operator_transition(facts.reason)
+            transition = _completion_in_place_transition(facts.reason)
         elif facts.outcome == "waiting" or facts.reason.startswith("autonomous-transition:"):
             transition = LadderTransition(
                 _RUNG_STATES[facts.rung],
@@ -222,7 +220,7 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
                 effects=(),
             )
         elif next_rung is None:
-            transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+            transition = _completion_in_place_transition(NO_ENABLED_NEXT_RUNG)
         else:
             transition = LadderTransition(
                 _RUNG_STATES[next_rung],
@@ -234,13 +232,13 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
     return transition
 
 
-def _needs_operator_transition(reason: str) -> LadderTransition:
+def _completion_in_place_transition(reason: str) -> LadderTransition:
     effects = (
         LadderEffect(LadderEffectKind.EMIT_TERMINAL),
         LadderEffect(LadderEffectKind.RECORD_TERMINAL_MARKER),
     )
     return LadderTransition(
-        LadderState.NEEDS_OPERATOR, terminal=True, reason=reason, next_rung=None, effects=effects
+        LadderState.COMPLETE_IN_PLACE, terminal=True, reason=reason, next_rung=None, effects=effects
     )
 
 
@@ -685,12 +683,12 @@ def terminal_operator_message(
         expected.append(f"merge_commit_parent={record.merge_commit_parent}")
     failures = "; ".join(proof_failures) or reason
     return (
-        f"Integration ladder terminal state: NeedsOperator ({reason}); "
+        f"Integration ladder terminal state: complete_in_place ({reason}); "
         f"observed HEAD {observed_head or 'unreadable'}; "
         f"expected {'; '.join(expected)}; "
         f"proof failures: {failures}; "
         f"preserved copy: {preserved_copy}; "
-        "operator action required: land the expected commit and run 'ralph --resume'"
+        "resume point: ralph --resume"
     )
 
 
@@ -990,27 +988,53 @@ def last_resort_recovery(
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
     carried, carry_failures = carry_preserved_commits(root, preservation)
     reapply_preserved_progress(root, preservation)
-    carry_record = {
-        "bundle": preservation.manifest_path,
-        "carried": carried,
-        "not_carried": carry_failures,
-        "next_phase": "planning",
-    }
-    carry_path = Path(preservation.manifest_path).with_name("planning-handoff.json")
-    write_text_if_changed(
-        DEFAULT_FILE_BACKEND, carry_path, json.dumps(carry_record, indent=2), encoding="utf-8"
+    from ralph.pipeline.integration_diagnostic import create_planning_handoff_record
+    from ralph.pipeline.planning_handoff_continuation import continue_with_planning_handoff
+
+    carry_path = create_planning_handoff_record(
+        state_dir,
+        manifest_path=preservation.manifest_path,
+        carried=tuple(carried),
+        not_carried=tuple(carry_failures),
+        next_phase="planning",
+        ledger=ledger,
     )
-    _record_evidence(ledger, "preserved:planning-handoff", str(carry_path))
+    continuation = continue_with_planning_handoff(
+        root,
+        handoff_path=carry_path,
+        ledger=ledger,
+    )
     git.clean_untracked(root, untracked_paths)
     removed_locks = git.remove_stale_locks(root)
-    value = f"succeeded:reset-hard-to={tip}:locks-removed={len(removed_locks)}"
+    value = f"autonomous-transition:planning:reset-hard-to={tip}:locks-removed={len(removed_locks)}"
     _record_evidence(ledger, key, value)
+    handoff_evidence: dict[str, str] = {
+        **preconditions,
+        "next_strategy": "planning",
+        "preserved:planning-handoff": str(carry_path),
+    }
+    if continuation is not None:
+        handoff_evidence["handoff:bundle"] = str(continuation.handoff.get("bundle", ""))
+        carried_raw = continuation.handoff.get("carried", ())
+        not_carried_raw = continuation.handoff.get("not_carried", ())
+        carried_list: list[str] = (
+            [str(item) for item in carried_raw] if isinstance(carried_raw, (list, tuple)) else []
+        )
+        not_carried_list: list[str] = (
+            [str(item) for item in not_carried_raw]
+            if isinstance(not_carried_raw, (list, tuple))
+            else []
+        )
+        handoff_evidence["handoff:carried"] = json.dumps(carried_list, sort_keys=True)
+        handoff_evidence["handoff:not_carried"] = json.dumps(not_carried_list, sort_keys=True)
     logger.warning(
         "integration ladder rung 6 (last resort): reset --hard to {}; blocking "
-        "untracked paths cleaned; preserved refs and sidecars untouched",
+        "untracked paths cleaned; planning hand-over consumed at {}; preserved "
+        "refs and sidecars untouched",
         tip,
+        carry_path,
     )
-    return LadderStepResult(rung, "succeeded", value, evidence=preconditions)
+    return LadderStepResult(rung, "succeeded", value, evidence=handoff_evidence)
 
 
 def _refuse_without_preserved_copy(

@@ -21,7 +21,6 @@ from ralph.pipeline.auto_integrate_record import BUMP_DIAGNOSTIC_ATTEMPT
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     RESUME_COMMAND,
     ResolutionTerminalMarker,
-    terminal_marker_blocks_attempt,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import (
@@ -54,6 +53,7 @@ from ralph.pipeline.integration_preservation_bundle import (
     IntegrationPreservationBundle,
     preserve_integration_state,
 )
+from ralph.pipeline.last_resort_production_pools import production_last_resort_agent_pools
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -350,13 +350,22 @@ def ladder_terminal_state(
     )
 
 
+def _feature_tip_for(record: IntegrationRecord) -> str | None:
+    return record.integrated_feature_sha or record.pre_feature_sha or None
+
+
 def _write_terminal_marker(root: Path, record: IntegrationRecord) -> None:
     from ralph.pipeline.auto_integrate_record import read_record, write_record
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
     current = read_record(root) or record
+    gate = current.resolution_gate_key
+    attempt_key = (
+        None if gate is None else ResolutionAttemptKey(gate[0], tuple(gate[1]), gate[2])
+    )
     marker = ResolutionTerminalMarker(
-        current.resolution_gate_key,
-        "NeedsOperator",
+        attempt_key,
+        "complete_in_place",
         RESUME_COMMAND,
     )
     write_record(root, current.with_resolution_terminal_marker(marker.as_record_value()))
@@ -419,10 +428,22 @@ def _handle_completion_in_place_escalation(
     _record_evidence(ladder, "transition:autonomous", "completion_in_place")
     _record_evidence(ladder, COMPLETION_IN_PLACE_HANDOFF_KEY, "autonomous_transition")
     _record_evidence(ladder, "landing:completion_in_place", f"landed:{landed_sha}")
+    _record_evidence(
+        ladder,
+        _LAST_RESORT_EVIDENCE_KEY,
+        f"{_TERMINAL_EVIDENCE_PREFIX}completion_in_place",
+    )
+    _record_ladder_facts(
+        ladder,
+        cip_record,
+        observed_head=plumbing.head_sha(root),
+        target_tip=plumbing.target_sha(root, effective_target),
+    )
+    _write_terminal_marker(root, cip_record)
 
     logger.info(
         "escalated autonomously to completion-in-place; resolved work preserved, "
-        "target landed={}, no terminal marker emitted",
+        "target landed={}, terminal complete_in_place facts recorded",
         landed_sha,
     )
     return LadderStepResult(
@@ -439,6 +460,22 @@ def _handle_completion_in_place_escalation(
             "landing:completion_in_place": f"landed:{landed_sha}",
         },
     )
+
+
+def _last_resort_eligibility(
+    *,
+    agent_eligibility: AgentFailureLedger | None,
+) -> AgentFailureLedger | None:
+    if agent_eligibility is not None:
+        return agent_eligibility
+    from ralph.pipeline._integration_recovery_controller import (
+        reachable_shared_recovery_controller,
+    )
+
+    controller = reachable_shared_recovery_controller()
+    if controller is None:
+        return None
+    return controller.ledger
 
 
 def escalate_record_fact_outcome(
@@ -458,24 +495,19 @@ def escalate_record_fact_outcome(
     feature_tip: str | None = None,
     decided_signature: str | None = None,
     fresh_signature: str | None = None,
+    agent_eligibility: AgentFailureLedger | None = None,
+    agent_pools: tuple[LastResortAgentPool, ...] | None = None,
+    resolver_agents: Sequence[str] | None = None,
+    integration_agents: Sequence[str] | None = None,
+    epoch_now: Callable[[], float] | None = None,
 ) -> LadderStepResult:
     ladder = ledger if ledger is not None else AttemptLedger(root)
     plumbing = git if git is not None else default_git_plumbing()
     effective_target = record.target if target is None else target
+    effective_tip = feature_tip if feature_tip is not None else _feature_tip_for(record)
     terminal = ladder_terminal_state(root, record, ledger=ladder, git=plumbing)
     if terminal is not None:
         return terminal
-    if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
-        marker = ResolutionTerminalMarker(
-            record.resolution_gate_key,
-            "NeedsOperator",
-            RESUME_COMMAND,
-        )
-        return LadderStepResult(
-            CleanupLadderRung.LAST_RESORT,
-            "terminal",
-            f"terminal:durable-marker:{marker.state}",
-        )
     if outcome is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT:
         record_salvage_attempt(ladder, "resolver_agent", f"failed:{reason}")
     rung = resume_rung(ladder.read())
@@ -488,6 +520,18 @@ def escalate_record_fact_outcome(
         decided_signature,
         fresh_signature,
     )
+    from ralph.pipeline._integration_recovery_controller import (
+        reachable_shared_recovery_controller,
+    )
+
+    controller = reachable_shared_recovery_controller()
+    pools = production_last_resort_agent_pools(
+        explicit=agent_pools,
+        resolver_agents=resolver_agents,
+        integration_agents=integration_agents,
+        controller=controller,
+    )
+    eligibility = _last_resort_eligibility(agent_eligibility=agent_eligibility)
     step = run_ladder_rung(
         rung,
         root=root,
@@ -499,10 +543,13 @@ def escalate_record_fact_outcome(
         state_dir=state_dir,
         target=effective_target,
         branch=branch,
-        feature_tip=feature_tip,
+        feature_tip=effective_tip,
         decided_signature=decided,
         fresh_signature=fresh,
         terminal_when_disabled=True,
+        agent_eligibility=eligibility,
+        agent_pools=pools,
+        epoch_now=epoch_now if epoch_now is not None else time.time,
     )
     observed_head = plumbing.head_sha(root)
     target_tip = plumbing.target_sha(root, effective_target)
@@ -542,7 +589,7 @@ def escalate_record_fact_outcome(
         state_dir=state_dir,
         observed_head=observed_head,
     )
-    if is_disabled_signature_step(step) and feature_tip is not None:
+    if (decision.terminal or is_disabled_signature_step(step)) and effective_tip is not None:
         cip_step = _handle_completion_in_place_escalation(
             root=root,
             record=record,
@@ -552,13 +599,14 @@ def escalate_record_fact_outcome(
             fs=fs,
             state_dir=state_dir,
             effective_target=effective_target,
-            feature_tip=feature_tip,
+            feature_tip=effective_tip,
             rung=rung,
         )
         if cip_step is not None:
             return cip_step
 
     if decision.terminal:
+        terminal_evidence = {**step.evidence, "next_strategy": "completion_in_place"}
         terminal_step = LadderStepResult(
             rung,
             "terminal",
@@ -566,7 +614,7 @@ def escalate_record_fact_outcome(
             preserved_ref=step.preserved_ref,
             preserved_sidecar=step.preserved_sidecar,
             quarantined_paths=step.quarantined_paths,
-            evidence=step.evidence,
+            evidence=terminal_evidence,
         )
         message = terminal_operator_message(
             record,

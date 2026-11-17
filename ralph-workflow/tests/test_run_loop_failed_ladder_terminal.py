@@ -239,7 +239,7 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
                 ),
                 agents=AgentsPolicy(),
             ),
-            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn, emit=lambda *_a, **_k: None),
             config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(workspace.root),
             latest_state=latest_state,
@@ -342,7 +342,7 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
                 ),
                 agents=AgentsPolicy(),
             ),
-            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn, emit=lambda *_a, **_k: None),
             config=UnifiedConfig.model_validate(
                 {"general": {"agent_max_consecutive_unproductive": 1}}
             ),

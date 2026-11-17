@@ -33,6 +33,14 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.run_loop import LoopContext
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cold_capped_conflict_invokes_resolver_when_budget_already_spent": (
+        "cold-capped escalation is gated by shared all_exhausted, not resolution_exhausted"
+    ),
+    "test_cold_capped_escalation_does_not_fire_for_different_conflict_identity": (
+        "with Eligible agents a different conflict identity takes the ordinary resolver path"
+    ),
+}
 
 _MAX_PACING_SLEEP_SECONDS = 60.0
 
@@ -75,7 +83,7 @@ def _create_retry_ctx(
                     },
                 ),
             ),
-            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn, emit=lambda *_a, **_k: None),
             config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(root),
             latest_state=latest_state,
@@ -84,6 +92,8 @@ def _create_retry_ctx(
             _session_handoff_dispatched=False,
             registry={},
             controller=RecoveryController(),
+            last_waiting_state_phase=None,
+            last_waiting_state_sig=None,
         ),
     )
 
@@ -1086,18 +1096,45 @@ def _make_cold_capped_ctx(
     *,
     cap: int = 5,
     target: str = "release",
+    spent: bool = True,
 ) -> tuple[list[float], LoopContext, dict[str, int]]:
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+    from ralph.recovery.controller import RecoveryControllerOptions
+
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target",
         lambda _cfg, _root: target,
     )
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.session.resolution_chain_agents",
+        lambda _bundle: ("resolver",),
+    )
     ctx.cold_capped_escalation_attempted = False
-    ctx.registry = SimpleNamespace()
+    ctx.registry = SimpleNamespace(get=lambda _name: object())
     ctx.pipeline_deps = None
     ctx.display_context = None
     ctx.hooks.save_checkpoint = _noop_save
+    clock = FakeClock()
+    ledger = AgentFailureLedger(
+        clock=clock,
+        consecutive_limit=1,
+        total_limit=1 if spent else 9,
+        base_cooldown_seconds=10.0,
+    )
+    if spent:
+        ledger.record(
+            AttemptFact(
+                phase="rebase_conflict_resolution",
+                agent="resolver",
+                artifact_valid=False,
+            )
+        )
+    ctx.controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
+    )
     counters: dict[str, int] = {"built": 0, "merge": 0, "orphan": 0, "rederive": 0, "paused": 0}
     return sleeps, ctx, counters
 
@@ -1317,7 +1354,7 @@ def test_cold_capped_escalation_does_not_fire_for_different_conflict_identity(
 ) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
-    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5, spent=False)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
         lambda _root, _target, **_k: ConflictIdentity(
@@ -1359,5 +1396,5 @@ def test_cold_capped_escalation_does_not_fire_for_different_conflict_identity(
     assert ctx.cold_capped_escalation_attempted is False, (
         "Cold-capped escalation must not fire for a different-conflict "
         "identity; the budget is per-identity and the new conflict "
-        "inherits a fresh budget via resolver_allowed"
+        "inherits a fresh budget via shared eligibility"
     )

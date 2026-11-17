@@ -433,6 +433,19 @@ def _violation_sort_key(violation: SingleOwnerViolation) -> tuple[str, int]:
 
 
 def verify_counter_access_detection() -> None:
+    src_cooldown_construction = """
+def build_private_ledger(clock):
+    return AgentFailureLedger(clock=clock)
+"""
+    v_cooldown = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_scratch_private_ledger.py",
+        src_cooldown_construction,
+    )
+    require(
+        any(v.rule == "production_cooldown_state_construction_outside_owner" for v in v_cooldown),
+        f"Expected cooldown-state construction violation, got: {v_cooldown}",
+    )
+
     src_test_attr = """
 def test_sample(ledger, fact):
     outcome = ledger.record(fact)

@@ -13,9 +13,28 @@ if TYPE_CHECKING:
 
 __all__ = [
     "entry_recovery_controller",
+    "reachable_shared_recovery_controller",
     "shared_recovery_controller",
     "standalone_integration_controller",
 ]
+
+
+def reachable_shared_recovery_controller(
+    *,
+    explicit: RecoveryController | None = None,
+    ledger: AgentFailureLedger | None = None,
+) -> RecoveryController | None:
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+    from ralph.recovery.controller import RecoveryController
+
+    if isinstance(explicit, RecoveryController):
+        return explicit
+    if ledger is not None:
+        owner: object = getattr(ledger, "recovery_controller", None)
+        if isinstance(owner, RecoveryController):
+            return owner
+    ambient = current_agent_effect_dependencies().recovery_controller
+    return ambient if isinstance(ambient, RecoveryController) else None
 
 
 def standalone_integration_controller(

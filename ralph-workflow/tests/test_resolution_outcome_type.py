@@ -102,6 +102,22 @@ def test_out_of_reach_advances_to_completion_in_place() -> None:
     assert state.last_reason == "continuing with autonomous strategy: completion_in_place"
 
 
+def test_legacy_needs_operator_advances_to_completion_in_place() -> None:
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause as Cause
+    from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
+    from ralph.pipeline.resolution_outcome_producer import stop_resolution_outcome_from_legacy
+
+    outcome = stop_resolution_outcome_from_legacy(
+        NeedsOperator(cause=Cause.UNRESOLVED_CONFLICT, paths=("a.py",), command="git add -- a.py")
+    )
+    match outcome:
+        case NextStrategyOutcome(strategy=strategy):
+            assert strategy == "completion_in_place"
+        case _ as unreachable:
+            raise AssertionError(f"expected NextStrategyOutcome, got {unreachable!r}")
+    assert "operator action required" not in repr(outcome)
+
+
 def test_exhausted_but_not_spent_is_retry_later() -> None:
     outcome = classify_resolution_failure(
         terminal_reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,

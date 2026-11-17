@@ -19,11 +19,13 @@ from ralph.pipeline._integration_diagnostic_proof import (
     _check_parent_match,
 )
 from ralph.pipeline._landed_predicate import operation_landed
+from ralph.pipeline._pending_rebase_continue import promote_completed_pending_rebase
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     read_record,
     write_record,
 )
+from ralph.pipeline.auto_integrate_recovery_terminal import RESUME_COMMAND
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
@@ -192,6 +194,55 @@ def test_promote_completed_resolution_advances_record_and_clears_continue_fields
     assert disk_record.phase == "integrated"
     assert disk_record.integrated_feature_sha == rebased_head
     assert disk_record.rebase_continue_head is None
+
+
+def test_landed_proof_failure_status_is_informational_not_person_gated(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _init_repo(root)
+    base = _commit(root, "base.txt", "base\n", "base")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feat = _commit(root, "feature.txt", "feature\n", "feature")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feat,
+        pre_target_sha=base,
+        resolving_rebase=True,
+        rebase_continue_pending=True,
+        rebase_continue_head=feat,
+        rebase_continue_stop=feat,
+        rebase_continue_tree="faketree",
+        owning_worktree=str(root),
+    )
+
+    decision = operation_landed(root, record)
+    assert decision.landed is False
+    status = decision.operator_status("all recorded Git state")
+    assert "operator action required" not in status
+    assert "LandedProofFailed" not in status
+    assert "land the expected commit" not in status
+    assert f"observed HEAD {feat}" in status
+    assert "proof failures:" in status
+    assert "preserved copy: all recorded Git state" in status
+    assert f"resume point: {RESUME_COMMAND}" in status
+
+    ok, reason = _check_head_match(root, record)
+    assert ok is False
+    assert "operator action required" not in reason
+    assert "LandedProofFailed" not in reason
+    assert "land the expected commit" not in reason
+    assert f"resume point: {RESUME_COMMAND}" in reason
+
+    write_record(root, record)
+    retained = promote_completed_pending_rebase(root, record)
+    assert isinstance(retained, str)
+    assert "operator action required" not in retained
+    assert "LandedProofFailed" not in retained
+    assert "land the expected commit" not in retained
+    assert f"resume point: {RESUME_COMMAND}" in retained
 
 
 def test_diagnostic_proof_delegates_to_single_predicate(tmp_path: Path) -> None:
