@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import sys
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -289,8 +290,6 @@ __all__ = [
 
 def __getattr__(name: str) -> object:
     if name == "graph_module":
-        import sys
-
         return sys.modules[__name__]
     if name == "hubs":
         from ralph.mcp.explore._graph_impact import hubs

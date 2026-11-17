@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import os as os
 from pathlib import Path
 from typing import TYPE_CHECKING
 

@@ -103,30 +103,29 @@ def _strip_ansi(value: object) -> str:
         return ""
 
 
+_ENTRY_ATTR_NAMES = frozenset(
+    {
+        "timestamp",
+        "phase",
+        "cycle",
+        "iter",
+        "agent",
+        "severity",
+        "body",
+        "grouping_role",
+        "indent_level",
+    }
+)
+
+
 def _extract_field(entry: object, name: str) -> object:
     if entry is None:
         return None
     if isinstance(entry, dict):
         value: object = entry.get(name)
         return value
-    if name == "timestamp":
-        return getattr(entry, "timestamp", None)
-    if name == "phase":
-        return getattr(entry, "phase", None)
-    if name == "cycle":
-        return getattr(entry, "cycle", None)
-    if name == "iter":
-        return getattr(entry, "iter", None)
-    if name == "agent":
-        return getattr(entry, "agent", None)
-    if name == "severity":
-        return getattr(entry, "severity", None)
-    if name == "body":
-        return getattr(entry, "body", None)
-    if name == "grouping_role":
-        return getattr(entry, "grouping_role", None)
-    if name == "indent_level":
-        return getattr(entry, "indent_level", None)
+    if name in _ENTRY_ATTR_NAMES:
+        return getattr(entry, name, None)
     return None
 
 

@@ -35,6 +35,7 @@ CANONICAL_REASON_CODES: Final[frozenset[str]] = frozenset(
 )
 
 DEFAULT_STALENESS_THRESHOLD: Final[float] = 0.05
+_STALENESS_CACHE_ENTRY_LEN: Final[int] = 2
 
 
 def serving_metadata(
@@ -92,8 +93,11 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
             last_refresh_age = None
     raw_cached: object = getattr(handle, "staleness_block_cache", None)
     cached: tuple[tuple[int, int, float | None, int], dict[str, object]] | None
-    _staleness_cache_pair_len = 2
-    if raw_cached is None or not isinstance(raw_cached, tuple) or len(raw_cached) != _staleness_cache_pair_len:
+    if (
+        raw_cached is None
+        or not isinstance(raw_cached, tuple)
+        or len(raw_cached) != _STALENESS_CACHE_ENTRY_LEN
+    ):
         cached = None
     else:
         signature_obj, block_obj = raw_cached

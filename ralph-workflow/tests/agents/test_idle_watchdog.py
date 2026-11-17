@@ -1381,8 +1381,7 @@ def _force_classify_stuck_kind(
     ) -> StuckKind:
         return fixed_kind
 
-    _classify_attr = "_classify_stuck_now"
-    setattr(watchdog, _classify_attr, _stuck_now)
+    watchdog._classify_stuck_provider = _stuck_now
 
 
 def _shell_call_line(command: str, *, call_id: str) -> str:
@@ -1561,8 +1560,7 @@ def _patch_classifier_to_deferring_kind(watchdog: IdleWatchdog) -> None:
     ) -> StuckKind:
         return StuckKind.LOADING
 
-    _classify_attr = "_classify_stuck_now"
-    setattr(watchdog, _classify_attr, _stuck_now)
+    watchdog._classify_stuck_provider = _stuck_now
 
 
 def _stale_subagent_corroborator() -> CorroborationSnapshot:
@@ -2066,7 +2064,6 @@ def _classifier_to_stuck_now(
     *,
     reason: WatchdogFireReason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
 ) -> None:
-    _attr = "_classify_stuck_now"
 
     def _stuck_now(
         *,
@@ -2076,7 +2073,7 @@ def _classifier_to_stuck_now(
     ) -> StuckKind:
         return StuckKind.STUCK
 
-    setattr(watchdog, _attr, _stuck_now)
+    watchdog._classify_stuck_provider = _stuck_now
 
 
 def _fresh_progress_corroborator() -> WaitingCorroborator:
@@ -4571,8 +4568,7 @@ def test_gate_fire_throttle_is_per_key() -> None:
         kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
         return kind
 
-    _classify_attr = "_classify_stuck_now"
-    setattr(watchdog, _classify_attr, _stuck_now)
+    watchdog._classify_stuck_provider = _stuck_now
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
     call_log = [StuckKind.DUPLICATE_KILL]
@@ -4620,8 +4616,7 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
         kind = call_log[0] if call_log else StuckKind.DUPLICATE_KILL
         return kind
 
-    _classify_attr = "_classify_stuck_now"
-    setattr(watchdog, _classify_attr, _stuck_now)
+    watchdog._classify_stuck_provider = _stuck_now
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
     kinds = [StuckKind.DUPLICATE_KILL, StuckKind.LOADING]
@@ -8242,7 +8237,6 @@ def test_silent_subagent_emits_stalled_event() -> None:
     captured: list[WaitingStatusEvent] = []
     watchdog, clock = _stall_status_events_make_watchdog(listener=captured.append)
 
-    _attr = "_classify_stuck_now"
 
     def _silent_subagent_now(
         *,
@@ -8252,7 +8246,7 @@ def test_silent_subagent_emits_stalled_event() -> None:
     ) -> StuckKind:
         return StuckKind.SILENT_SUBAGENT
 
-    setattr(watchdog, _attr, _silent_subagent_now)
+    watchdog._classify_stuck_provider = _silent_subagent_now
 
     _now = clock.monotonic() + 181.0
     gate_verdict = watchdog.evaluate_fire_gate(
@@ -8390,7 +8384,6 @@ def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
     watchdog, clock = _stall_status_events_make_watchdog(listener=captured.append)
 
     sequence: list[StuckKind] = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
-    _attr = "_classify_stuck_now"
 
     def _sequence_now(
         *,
@@ -8402,7 +8395,7 @@ def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
             return sequence.pop(0)
         return StuckKind.LOADING
 
-    setattr(watchdog, _attr, _sequence_now)
+    watchdog._classify_stuck_provider = _sequence_now
 
     first_now = clock.monotonic() + 181.0
     first_verdict = watchdog.evaluate_fire_gate(
@@ -8453,7 +8446,6 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
     watchdog, clock = _stall_status_events_make_watchdog(listener=captured.append)
 
     sequence: list[StuckKind] = [StuckKind.STUCK, StuckKind.LOADING]
-    _attr = "_classify_stuck_now"
 
     def _sequence_now(
         *,
@@ -8465,7 +8457,7 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
             return sequence.pop(0)
         return StuckKind.LOADING
 
-    setattr(watchdog, _attr, _sequence_now)
+    watchdog._classify_stuck_provider = _sequence_now
 
     first_now = clock.monotonic() + 60.0
     first_verdict = watchdog.evaluate_fire_gate(

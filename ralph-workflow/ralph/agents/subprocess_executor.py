@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import time
 from pathlib import Path
 from subprocess import DEVNULL as _DEVNULL
@@ -165,7 +166,7 @@ class SubprocessAgentExecutor:
         drain: Coroutine[object, object, None],
         unit_id: str,
     ) -> None:
-        session_pgid = _verified_session_pgid(handle.pid)
+        session_pgid = _session_pgid_for_reap(handle)
         drain_task: asyncio.Task[None] = asyncio.create_task(drain)
         try:
             try:
@@ -343,6 +344,21 @@ def _verified_session_pgid(pid: int) -> int | None:
         return verified_child_session_pgid(pid)
     except (OSError, ProcessLookupError, PermissionError, ValueError, RuntimeError):
         return None
+
+
+def _session_pgid_for_reap(handle: ManagedAsyncProcess) -> int | None:
+    verified = _verified_session_pgid(handle.pid)
+    if verified is not None:
+        return verified
+    recorded = getattr(handle.record, "pgid", None)
+    if not isinstance(recorded, int) or recorded <= 1 or recorded != handle.pid:
+        return None
+    try:
+        if hasattr(os, "getpgid") and recorded == os.getpgid(0):
+            return None
+    except OSError:
+        pass
+    return recorded
 
 
 async def _until_root_exit(

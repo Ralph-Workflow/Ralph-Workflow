@@ -574,30 +574,46 @@ def _check_cooldown_state_single_owner(
     return violations
 
 
-def _static_expression_truth(node: ast.AST) -> bool | None:
+def _static_bool_op_truth(node: ast.BoolOp) -> bool | None:
+    values = [_static_expression_truth(value) for value in node.values]
+    if isinstance(node.op, ast.And):
+        if any(value is False for value in values):
+            return False
+        return True if all(value is True for value in values) else None
+    if all(value is False for value in values):
+        return False
+    return True if any(value is True for value in values) else None
+
+
+def _static_if_exp_truth(node: ast.IfExp) -> bool | None:
+    body_truth = _static_expression_truth(node.body)
+    orelse_truth = _static_expression_truth(node.orelse)
+    return body_truth if body_truth is not None and body_truth == orelse_truth else None
+
+
+def _static_container_truth(node: ast.AST) -> bool | None:
     match node:
-        case ast.Constant():
-            return bool(node.value)
         case ast.Tuple() | ast.List() | ast.Set():
             return bool(node.elts)
         case ast.Dict():
             return bool(node.keys)
+        case _:
+            return None
+
+
+def _static_expression_truth(node: ast.AST) -> bool | None:
+    match node:
+        case ast.Constant():
+            return bool(node.value)
+        case ast.Tuple() | ast.List() | ast.Set() | ast.Dict():
+            return _static_container_truth(node)
         case ast.UnaryOp(op=ast.Not()):
             operand_truth = _static_expression_truth(node.operand)
             return None if operand_truth is None else not operand_truth
         case ast.BoolOp():
-            values = [_static_expression_truth(value) for value in node.values]
-            if isinstance(node.op, ast.And):
-                if any(value is False for value in values):
-                    return False
-                return True if all(value is True for value in values) else None
-            if all(value is False for value in values):
-                return False
-            return True if any(value is True for value in values) else None
+            return _static_bool_op_truth(node)
         case ast.IfExp():
-            body_truth = _static_expression_truth(node.body)
-            orelse_truth = _static_expression_truth(node.orelse)
-            return body_truth if body_truth is not None and body_truth == orelse_truth else None
+            return _static_if_exp_truth(node)
         case _:
             return None
 
@@ -1502,17 +1518,17 @@ def _check_forbidden_integration_classifier(
             any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES
         ):
-                violations.append(
-                    SingleOwnerViolation(
-                        path=rel_path,
-                        line=node.lineno,
-                        rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
-                        detail=(
-                            f"Definition of '{node.name}' is forbidden. "
-                            f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
-                        ),
-                    )
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
+                    detail=(
+                        f"Definition of '{node.name}' is forbidden. "
+                        f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
+                    ),
                 )
+            )
         if isinstance(node, ast.Call):
             name = _call_name(node)
             if name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:

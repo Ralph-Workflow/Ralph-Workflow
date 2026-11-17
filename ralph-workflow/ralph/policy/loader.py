@@ -54,8 +54,17 @@ def _policy_error(message: str, *, source: str | None = None) -> PolicyValidatio
     return PolicyValidationError(message, source=source)
 
 
+def __getattr__(name: str) -> object:
+    if name == "PolicyValidationError":
+        from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
+        return PolicyValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "PIPELINE_POLICY_FIELDS",
+    "PolicyValidationError",
     "ValidationErrorDetail",
     "ValidationErrorDetails",
     "build_agents_policy_from_config",

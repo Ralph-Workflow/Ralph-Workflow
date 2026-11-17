@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
@@ -10,11 +10,6 @@ if TYPE_CHECKING:
 _DEVELOPMENT_DRAIN = "development"
 _DEVELOPMENT_CLASS = "development"
 _CLI_CHAIN_NAME = "cli_developer"
-
-
-class _DeveloperPinConfig(Protocol):
-    developer_agent: str | None
-    developer_model: str | None
 
 
 def _agents_error(message: str) -> PolicyValidationError:
@@ -34,13 +29,14 @@ def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig)
     return f"{base.split('/', 1)[0]}/{model.strip()}"
 
 
-def apply_developer_override(
-    policy: AgentsPolicy, config: _DeveloperPinConfig | None
-) -> AgentsPolicy:
-    if config is None:
-        return policy
-    agent = config.developer_agent
-    model = config.developer_model
+def _pinned_value(config: object, name: str) -> str | None:
+    value: object = getattr(config, name, None)
+    return value if isinstance(value, str) else None
+
+
+def apply_developer_override(policy: AgentsPolicy, config: object) -> AgentsPolicy:
+    agent = _pinned_value(config, "developer_agent")
+    model = _pinned_value(config, "developer_model")
     if agent is None and model is None:
         return policy
     binding = policy.agent_drains.get(_DEVELOPMENT_DRAIN)

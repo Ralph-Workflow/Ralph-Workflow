@@ -141,7 +141,7 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
         def shutdown(self) -> None:
             return None
 
-    monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root: FakeBridge())
+    monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root, **_kwargs: FakeBridge())
 
 
 def _stub_canary_probe_boundary(monkeypatch: pytest.MonkeyPatch) -> list[str]:

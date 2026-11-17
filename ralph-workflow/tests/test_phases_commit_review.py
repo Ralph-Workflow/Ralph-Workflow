@@ -634,10 +634,10 @@ def test_repo_root_resolution_failure_returns_phase_failure_event(
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
 
-    def _raise_mock_workspace_failure(_path: str) -> str:
+    def _raise_mock_workspace_failure(_self: object, _path: str) -> str:
         raise RuntimeError("mock workspace failure")
 
-    monkeypatch.setattr(workspace, "absolute_path", _raise_mock_workspace_failure)
+    monkeypatch.setattr(FsWorkspace, "absolute_path", _raise_mock_workspace_failure)
 
     _write_commit_review_artifact(
         workspace,
@@ -688,10 +688,10 @@ def test_repo_root_resolution_failure_does_not_use_path_cwd(
 
     workspace = FsWorkspace(tmp_git_repo)
 
-    def _raise_mock_workspace_failure(_path: str) -> str:
+    def _raise_mock_workspace_failure(_self: object, _path: str) -> str:
         raise RuntimeError("mock workspace failure")
 
-    monkeypatch.setattr(workspace, "absolute_path", _raise_mock_workspace_failure)
+    monkeypatch.setattr(FsWorkspace, "absolute_path", _raise_mock_workspace_failure)
     monkeypatch.setattr("ralph.phases.commit_review.Path.cwd", lambda: fake_cwd)
 
     _write_commit_review_artifact(

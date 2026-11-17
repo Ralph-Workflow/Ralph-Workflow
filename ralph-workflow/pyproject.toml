@@ -168,7 +168,19 @@ select = [
 
 
 [tool.ruff.lint.per-file-ignores]
-"ralph/agents/parsers/_ndjson_base.py" = ["E402", "PLR0911"]
+"ralph/mcp/server/_in_memory_transport.py" = [
+    "N802",
+]
+"ralph/pipeline/__init__.py" = [
+    "N813",
+    "N802",
+    "TC003",
+]
+"ralph/config/__init__.py" = [
+    "N813",
+    "N802",
+    "TC003",
+]
 "ralph/visual/**/*.py" = [
     "PLR0911",
     "PLR0912",
@@ -203,7 +215,23 @@ select = [
     "PLR0912",
     "PLC0415",
 ]
-"ralph/pipeline/plumbing/smoke_plumbing.py" = ["PLR0911", "PLR0912", "PLC0415", "PLR0915"]
+"ralph/pipeline/plumbing/smoke_plumbing.py" = [
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+    "PLC0415",
+]
+"ralph/agents/invoke/_pty_line_reader.py" = ["PLR0915", "PLC0415"]
+"ralph/agents/parsers/_ndjson_base.py" = ["E402", "PLR0911"]
+"ralph/display/record_writer.py" = ["PLR0911"]
+"ralph/git/git_command_queue.py" = ["PLC0415", "PLR0911", "PLR0912"]
+"ralph/recovery/canary_probe.py" = ["PLC0415"]
+"ralph/pipeline/conflict_resolution/rebase_loop.py" = ["PLR0912"]
+"ralph/pipeline/effect_executor.py" = ["PLR0915"]
+"ralph/pipeline/factory.py" = ["PLR0912", "PLR0915"]
+"ralph/pipeline/reducer.py" = ["PLR0911"]
+"ralph/testing/_single_owner_rules.py" = ["PLR0911"]
+"ralph/mcp/explore/lifecycle.py" = ["TRY301"]
 "ralph/pipeline/plumbing/smoke_evidence.py" = ["S105"]
 "ralph/process/_spawn_env.py" = ["S105"]
 "ralph/mcp/multimodal/capabilities.py" = ["PLR0911"]
@@ -290,6 +318,10 @@ select = [
 "ralph/phases/**/*.py" = ["PLC0415"]
 "ralph/agents/__init__.py" = [
     "PLC0415",
+    "N813",
+    "N811",
+    "N802",
+    "TC003",
 ]
 "ralph/agents/_agy_upstream_diagnostic.py" = ["PLC0415"]
 "ralph/agents/catalog.py" = ["PLC0415"]
@@ -297,7 +329,6 @@ select = [
 "ralph/agents/invoke/watchdog_observer.py" = ["PLC0415"]
 "ralph/agents/parsers/__init__.py" = ["PLC0415"]
 "ralph/agents/parsers/line_channel.py" = ["PLC0415"]
-"ralph/git/git_command_queue.py" = ["PLC0415", "PLR0911", "PLR0912"]
 "ralph/git/rebase/rebase_continuation.py" = ["PLC0415"]
 "ralph/git/subprocess_runner.py" = ["PLC0415"]
 "ralph/interrupt/dispatcher.py" = ["PLC0415"]
@@ -332,6 +363,10 @@ select = [
 "ralph/onboarding.py" = ["PLC0415"]
 "ralph/policy/__init__.py" = [
     "PLC0415",
+    "N813",
+    "N811",
+    "N802",
+    "TC003",
 ]
 "ralph/policy/_policy_validation.py" = ["PLC0415"]
 "ralph/policy/loader.py" = ["PLC0415"]
@@ -341,16 +376,12 @@ select = [
 "ralph/process/manager/_process_manager.py" = ["PLC0415"]
 "ralph/process/teardown.py" = ["PLC0415"]
 "ralph/prompts/materialize.py" = ["PLC0415"]
-"ralph/recovery/__init__.py" = ["PLC0415"]
-"ralph/pipeline/effect_executor.py" = ["PLR0915"]
-"ralph/agents/invoke/_pty_line_reader.py" = ["PLR0915", "PLC0415"]
-"ralph/pipeline/factory.py" = ["PLR0912", "PLR0915"]
-"ralph/pipeline/conflict_resolution/rebase_loop.py" = ["PLR0912"]
-"ralph/testing/_single_owner_rules.py" = ["PLR0911"]
-"ralph/pipeline/reducer.py" = ["PLR0911"]
-"ralph/display/record_writer.py" = ["PLR0911"]
+"ralph/recovery/__init__.py" = [
+    "PLC0415",
+    "N802",
+    "TC003",
+]
 "ralph/display/__init__.py" = ["PLR0911"]
-"ralph/recovery/canary_probe.py" = ["PLC0415"]
 "ralph/recovery/failure_classifier.py" = ["PLC0415"]
 "ralph/skills/__init__.py" = ["PLC0415"]
 "ralph/supervising.py" = ["PLC0415"]

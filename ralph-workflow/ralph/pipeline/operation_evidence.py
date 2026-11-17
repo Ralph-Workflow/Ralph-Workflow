@@ -44,11 +44,16 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     return identity_fingerprint(record)
 
 
+_IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
+    "target",
+    "operation_kind",
+    "owning_worktree",
+)
+
+
 def identity_fingerprint(record: IntegrationRecord) -> str:
     payload: dict[str, object] = {
-        "target": record.target,
-        "operation_kind": record.operation_kind,
-        "owning_worktree": record.owning_worktree,
+        field: getattr(record, field) for field in _IDENTITY_FINGERPRINT_FIELDS
     }
     return hashlib.sha256(
         json.dumps(

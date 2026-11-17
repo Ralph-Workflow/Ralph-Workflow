@@ -273,44 +273,33 @@ def route_git_method(
 
 
 
+_GIT_CMD_METHOD_NAMES = frozenset(
+    {
+        "add",
+        "cat_file",
+        "check_ignore",
+        "commit_tree",
+        "diff",
+        "diff_tree",
+        "for_each_ref",
+        "ls_files",
+        "ls_tree",
+        "read_tree",
+        "reset",
+        "rev_parse",
+        "rm",
+        "status",
+        "update_index",
+        "update_ref",
+        "write_tree",
+    }
+)
+
+
 def _git_cmd_method(git_attr: object, method_name: str) -> object:
-    match method_name:
-        case "add":
-            return git_attr.add
-        case "cat_file":
-            return git_attr.cat_file
-        case "check_ignore":
-            return git_attr.check_ignore
-        case "commit_tree":
-            return git_attr.commit_tree
-        case "diff":
-            return git_attr.diff
-        case "diff_tree":
-            return git_attr.diff_tree
-        case "for_each_ref":
-            return git_attr.for_each_ref
-        case "ls_files":
-            return git_attr.ls_files
-        case "ls_tree":
-            return git_attr.ls_tree
-        case "read_tree":
-            return git_attr.read_tree
-        case "reset":
-            return git_attr.reset
-        case "rev_parse":
-            return git_attr.rev_parse
-        case "rm":
-            return git_attr.rm
-        case "status":
-            return git_attr.status
-        case "update_index":
-            return git_attr.update_index
-        case "update_ref":
-            return git_attr.update_ref
-        case "write_tree":
-            return git_attr.write_tree
-        case _:
-            raise AttributeError(f"repo.git has no method named {method_name!r}")
+    if method_name not in _GIT_CMD_METHOD_NAMES:
+        raise AttributeError(f"repo.git has no method named {method_name!r}")
+    return getattr(git_attr, method_name)
 
 def _dispatch_git_method(
     queue: GitCommandQueue,

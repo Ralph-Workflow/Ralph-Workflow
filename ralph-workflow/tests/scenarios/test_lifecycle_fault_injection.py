@@ -28,12 +28,19 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "fifty/twenty fixture shrunk to five progressing conflicts for two-commit budget": (
-        "same observable: a rebase with more progressing conflict stops than "
-        "scenario_config max_rebase_conflict_stops=4 must complete under that "
-        "two-commit-sized config without hitting a stop, round, attempt or time "
-        "cap. Five progressing conflicts exceed the configured stop cap; the "
-        "prior 50-commit/20-conflict fixture only amplified git rebase cost"
+    "test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget": (
+        "fixture shrunk from default 50/20 to "
+        "_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE commits and conflicts for the "
+        "test budget; same observable: a rebase with more progressing conflict "
+        "stops than scenario_config max_rebase_conflict_stops=4 must complete "
+        "under that two-commit-sized config without hitting a stop, round, "
+        "attempt or time cap"
+    ),
+    "test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure": (
+        "fixture and mid-work fail_at_launch / launch / completed_stops counts "
+        "scaled from 50/20 to _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE for the test "
+        "budget; same observable: survive one mid-work resolver failure then "
+        "continue to completion under FakeClock"
     ),
 }
 
@@ -98,13 +105,20 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
     tmp_git_repo: Path,
 ) -> None:
     clock = FakeClock()
-    feature_sha = _large_conflicted_range(tmp_git_repo)
+    feature_sha = _large_conflicted_range(
+        tmp_git_repo,
+        commits=_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE,
+        conflicts=_TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE,
+    )
     target_before = git(tmp_git_repo, "rev-parse", "main")
-    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, fail_at_launch=11, clock=clock)
+    fail_at_launch = _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE // 2 + 1
+    runner = FakeAgentRunner(
+        AgentMode.EDITS_AND_STAGES, fail_at_launch=fail_at_launch, clock=clock
+    )
     run1 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
     assert run1.error is None, f"large finite work must survive one resolver failure: {run1.error}"
-    assert runner.launches == 11
-    assert len(runner.completed_stops) == 10
+    assert runner.launches == fail_at_launch
+    assert len(runner.completed_stops) == fail_at_launch - 1
 
     durable = record_path(tmp_git_repo)
     assert durable.exists(), "the shared rebase state must be durably observable"
@@ -116,8 +130,8 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
 
     run2 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner)
     assert run2.error is None, f"continuation must succeed: {run2.error}"
-    assert runner.launches == 21
-    assert len(runner.completed_stops) >= 20
+    assert runner.launches == _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE + 1
+    assert len(runner.completed_stops) >= _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE
     assert_content_equivalence(
         tmp_git_repo,
         contract="large finite work with a mid-work agent failure must still land",

@@ -12,6 +12,7 @@ import pytest
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
+from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -42,9 +43,23 @@ _LINE_SIZE = 1024
 _RETAINED_SPREAD_LIMIT = 512_000
 
 
-class _SharedFakeBridge:
+class _SharedFakeInner:
+    endpoint = "http://127.0.0.1:12345/mcp"
+    process = None
+
+
+class _SharedFakeBridge(RestartAwareMcpBridge):
     def __init__(self) -> None:
-        self.run_id = str(uuid.uuid4())
+        self._run_id = str(uuid.uuid4())
+        self._restart_count = 0
+        self._inner = _SharedFakeInner()
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    def start(self) -> None:
+        return None
 
     def shutdown(self) -> None:
         return None
@@ -52,7 +67,13 @@ class _SharedFakeBridge:
     def agent_endpoint_uri(self) -> str:
         return "http://127.0.0.1:12345/mcp"
 
+    def endpoint_uri(self) -> str:
+        return self.agent_endpoint_uri()
+
     def reset_tool_registry(self) -> None:
+        return None
+
+    def reset_session_budget(self) -> None:
         return None
 
 

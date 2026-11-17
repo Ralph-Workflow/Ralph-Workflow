@@ -57,11 +57,13 @@ def _pause(seconds: float) -> None:
     threading.Event().wait(seconds)
 
 
+_SOCKET_ADDRESS_PARTS = 2
+
+
 def _bound_address(server_address: object) -> tuple[str, int]:
-    _bound_address_len = 2
     if (
         isinstance(server_address, tuple)
-        and len(server_address) == _bound_address_len
+        and len(server_address) == _SOCKET_ADDRESS_PARTS
         and isinstance(server_address[0], str)
         and isinstance(server_address[1], int)
     ):
@@ -263,11 +265,9 @@ class _FallbackStandaloneServer:
             on_ready()
         if ready_event is not None:
             ready_event.set()
-        logger.info(
-            "Ralph MCP server listening on http://{host}:{port}{mount}",
-            host=self._host,
-            port=self._port,
-            mount=DEFAULT_MOUNT_PATH,
+        print(
+            f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}",
+            flush=True,
         )
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)

@@ -285,30 +285,26 @@ def _epoch_to_iso(value: float) -> str | None:
         return None
 
 
+_SUBAGENT_SOURCE_BY_NAME: dict[str, _SubagentSourceLabel] = {
+    "opencode": "opencode",
+    "claude": "claude",
+    "pi": "pi",
+    "agy": "agy",
+    "generic": "generic",
+    "claude_interactive": "claude_interactive",
+    "codex": "codex",
+    "nanocoder": "nanocoder",
+    "gemini": "gemini",
+    "cursor": "cursor",
+    "kimi": "kimi",
+}
+
+
 def _as_subagent_source_label(value: str) -> _SubagentSourceLabel:
-    if value == "opencode":
-        return "opencode"
-    if value == "claude":
-        return "claude"
-    if value == "pi":
-        return "pi"
-    if value == "agy":
-        return "agy"
-    if value == "generic":
-        return "generic"
-    if value == "claude_interactive":
-        return "claude_interactive"
-    if value == "codex":
-        return "codex"
-    if value == "nanocoder":
-        return "nanocoder"
-    if value == "gemini":
-        return "gemini"
-    if value == "cursor":
-        return "cursor"
-    if value == "kimi":
-        return "kimi"
-    raise ValueError(value)
+    try:
+        return _SUBAGENT_SOURCE_BY_NAME[value]
+    except KeyError:
+        raise ValueError(value) from None
 
 
 class NdjsonParserBase(ParserTemplateBase):

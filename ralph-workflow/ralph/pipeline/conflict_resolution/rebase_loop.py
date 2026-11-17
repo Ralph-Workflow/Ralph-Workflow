@@ -247,6 +247,30 @@ def _resolve_stops(
 resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
+def _record_retry_later_on_session(
+    outcome: RetryLaterOutcome,
+    active_session: ResolutionSession,
+) -> None:
+    if (
+        outcome.failure_cause is not None
+        and outcome.failure_cause != ResolutionFailureCause.NONE
+    ):
+        active_session.last_failure_cause = outcome.failure_cause
+    raw_reason: object = (
+        outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason
+    )
+    if raw_reason is not None:
+        match raw_reason:
+            case ResolutionTerminationReason():
+                active_session.terminal_reason = raw_reason
+            case str() if not active_session.exhaustion_reason:
+                active_session.exhaustion_reason = raw_reason
+            case _:
+                pass
+    if outcome.on_change:
+        active_session.exhaustion_reason = outcome.on_change
+
+
 def _record_resolver_outcome_on_session(
     outcome: object,
     active_session: ResolutionSession | None,
@@ -261,24 +285,7 @@ def _record_resolver_outcome_on_session(
     active_session.last_resolution_outcome = outcome
     match outcome:
         case RetryLaterOutcome():
-            if (
-                outcome.failure_cause is not None
-                and outcome.failure_cause != ResolutionFailureCause.NONE
-            ):
-                active_session.last_failure_cause = outcome.failure_cause
-            raw_reason: object = (
-                outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason
-            )
-            if raw_reason is not None:
-                match raw_reason:
-                    case ResolutionTerminationReason():
-                        active_session.terminal_reason = raw_reason
-                    case str() if not active_session.exhaustion_reason:
-                        active_session.exhaustion_reason = raw_reason
-                    case _:
-                        pass
-            if outcome.on_change:
-                active_session.exhaustion_reason = outcome.on_change
+            _record_retry_later_on_session(outcome, active_session)
         case NextStrategyOutcome():
             active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
             active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED

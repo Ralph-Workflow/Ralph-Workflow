@@ -583,6 +583,8 @@ def ensure_cli_terminal_restore(
     getter = signal_getter if signal_getter is not None else signal.getsignal
     setter = signal_setter if signal_setter is not None else signal.signal
     signums: tuple[int, ...] = ()
+    if hasattr(signal, "SIGINT"):
+        signums += (signal.SIGINT,)
     if hasattr(signal, "SIGTERM"):
         signums += (signal.SIGTERM,)
     if hasattr(signal, "SIGHUP"):

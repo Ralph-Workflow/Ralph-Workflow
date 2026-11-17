@@ -356,6 +356,115 @@ def _controller_and_ledger_from_deps(
     return controller, ledger
 
 
+def _agent_not_found_failure(agent_name: str) -> PipelineEvent:
+    logger.error("Agent not found: {}", agent_name)
+    _set_last_captured_retry_intent(
+        AgentRetryIntent(
+            failure_reason=AGENT_NOT_FOUND_REASON,
+            skip_same_agent_retries=True,
+            failed_agent_name=agent_name,
+        )
+    )
+    return PipelineEvent.AGENT_FAILURE
+
+
+def _agent_unavailable_failure(agent_name: str) -> PipelineEvent:
+    logger.error(
+        "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+        agent_name,
+    )
+    _set_last_captured_retry_intent(
+        AgentRetryIntent(
+            action=None,
+            session_id=None,
+            failure_reason="Agent unavailable or spent in failure ledger",
+        )
+    )
+    return PipelineEvent.AGENT_FAILURE
+
+
+def _resolve_active_ledger_and_clock(
+    active_rec: RecoveryController | None,
+    pipeline_deps: PipelineDeps,
+    state: PipelineState | None,
+) -> tuple[AgentFailureLedger | None, Clock]:
+    active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
+    active_clock: Clock = active_rec.clock if active_rec is not None else SystemClock()
+    if active_ledger is None and state is not None and state.ledger_snapshot:
+        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+        active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=active_clock)
+    return active_ledger, active_clock
+
+
+def _execute_injected_agent_runner(
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps,
+    workspace_scope: WorkspaceScope,
+    injected: AgentEffectDependencies,
+    *,
+    display_context: DisplayContext | None,
+    display: ParallelDisplay | None,
+    verbosity: Verbosity,
+    state: PipelineState | None,
+    policy_bundle: PolicyBundle | None,
+    bridge: RestartAwareMcpBridge | None,
+    raw_output_sink: deque[str] | None,
+    rendered_output_sink: deque[str] | None,
+    raw_line_sink: Callable[[str], None] | None,
+    run_id: str | None,
+    required_artifact: RequiredArtifact | None,
+    session_id: str | None,
+    extra_env: dict[str, str] | None,
+    raise_resumable_exit: bool,
+    agent_invocation_error_sink: Callable[[Exception], object] | None,
+    attempt_finalizer: AttemptFinalizer | None,
+    opts: dict[str, object],
+) -> PipelineEvent | AgentFailureEvent | AttemptEnded | None:
+    if injected.agent_runner is None:
+        return None
+    injected_controller, injected_ledger = _controller_and_ledger_from_deps(
+        pipeline_deps, injected
+    )
+    if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
+        logger.error(
+            "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+            effect.agent_name,
+        )
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                action=None,
+                session_id=None,
+                failure_reason="Agent unavailable or spent in failure ledger",
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
+    return injected.agent_runner(
+        effect,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        display_context=display_context,
+        display=display,
+        verbosity=verbosity,
+        state=state,
+        policy_bundle=policy_bundle,
+        bridge=bridge,
+        raw_output_sink=raw_output_sink,
+        rendered_output_sink=rendered_output_sink,
+        raw_line_sink=raw_line_sink,
+        run_id=run_id,
+        required_artifact=required_artifact,
+        session_id=session_id,
+        extra_env=extra_env,
+        raise_resumable_exit=raise_resumable_exit,
+        agent_invocation_error_sink=agent_invocation_error_sink,
+        attempt_finalizer=attempt_finalizer,
+        **opts,
+    )
+
+
 def execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
@@ -381,47 +490,32 @@ def execute_agent_effect(
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
-    if injected.agent_runner is not None:
-        injected_controller, injected_ledger = _controller_and_ledger_from_deps(
-            pipeline_deps, injected
-        )
-        if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
-            logger.error(
-                "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
-                effect.agent_name,
-            )
-            _set_last_captured_retry_intent(
-                AgentRetryIntent(
-                    action=None,
-                    session_id=None,
-                    failure_reason="Agent unavailable or spent in failure ledger",
-                )
-            )
-            return PipelineEvent.AGENT_FAILURE
-        runner_opts: dict[str, object] = dict(opts)
-        return injected.agent_runner(
-            effect,
-            config,
-            pipeline_deps,
-            workspace_scope,
-            display_context=display_context,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-            policy_bundle=policy_bundle,
-            bridge=bridge,
-            raw_output_sink=raw_output_sink,
-            rendered_output_sink=rendered_output_sink,
-            raw_line_sink=raw_line_sink,
-            run_id=run_id,
-            required_artifact=required_artifact,
-            session_id=session_id,
-            extra_env=extra_env,
-            raise_resumable_exit=raise_resumable_exit,
-            agent_invocation_error_sink=agent_invocation_error_sink,
-            attempt_finalizer=attempt_finalizer,
-            **runner_opts,
-        )
+    injected_result = _execute_injected_agent_runner(
+        effect,
+        config,
+        pipeline_deps,
+        workspace_scope,
+        injected,
+        display_context=display_context,
+        display=display,
+        verbosity=verbosity,
+        state=state,
+        policy_bundle=policy_bundle,
+        bridge=bridge,
+        raw_output_sink=raw_output_sink,
+        rendered_output_sink=rendered_output_sink,
+        raw_line_sink=raw_line_sink,
+        run_id=run_id,
+        required_artifact=required_artifact,
+        session_id=session_id,
+        extra_env=extra_env,
+        raise_resumable_exit=raise_resumable_exit,
+        agent_invocation_error_sink=agent_invocation_error_sink,
+        attempt_finalizer=attempt_finalizer,
+        opts=dict(opts),
+    )
+    if injected_result is not None:
+        return injected_result
     verdict = inspect_integration_resolution(
         workspace_scope.root,
         state.rebase if state is not None else RebaseState(),
@@ -433,15 +527,7 @@ def execute_agent_effect(
     agent_config_raw = registry.get(effect.agent_name)
     agent_config = agent_config_raw if _is_agent_config(agent_config_raw) else None
     if agent_config is None:
-        logger.error("Agent not found: {}", effect.agent_name)
-        _set_last_captured_retry_intent(
-            AgentRetryIntent(
-                failure_reason=AGENT_NOT_FOUND_REASON,
-                skip_same_agent_retries=True,
-                failed_agent_name=effect.agent_name,
-            )
-        )
-        return PipelineEvent.AGENT_FAILURE
+        return _agent_not_found_failure(effect.agent_name)
 
     active_rec = _extract_recovery_controller(opts) or injected.recovery_controller
     if active_rec is None:
@@ -451,25 +537,11 @@ def execute_agent_effect(
         phase=str(effect.phase),
         agent=effect.agent_name,
     )
-    active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
-    active_clock: Clock = active_rec.clock if active_rec is not None else SystemClock()
-    if active_ledger is None and state is not None and state.ledger_snapshot:
-        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-
-        active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=active_clock)
+    active_ledger, active_clock = _resolve_active_ledger_and_clock(
+        active_rec, pipeline_deps, state
+    )
     if not _agent_launch_is_available(effect, active_rec, active_ledger):
-        logger.error(
-            "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
-            effect.agent_name,
-        )
-        _set_last_captured_retry_intent(
-            AgentRetryIntent(
-                action=None,
-                session_id=None,
-                failure_reason="Agent unavailable or spent in failure ledger",
-            )
-        )
-        return PipelineEvent.AGENT_FAILURE
+        return _agent_unavailable_failure(effect.agent_name)
     effective_agents_policy = (
         policy_bundle.agents
         if policy_bundle is not None

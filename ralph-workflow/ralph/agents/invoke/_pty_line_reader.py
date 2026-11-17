@@ -367,6 +367,9 @@ class PtyLineReader:
         self._waiting_listener = getattr(ctx, "waiting_listener", None)
         self._bind_optional_ctx_hooks(ctx)
         self._configure_runtime_hooks(ctx, _extras)
+        self._init_reader_runtime(handle, ctx)
+
+    def _init_reader_runtime(self, handle: ManagedPtyProcess, ctx: AgentRunCtx) -> None:
         self._completion_run_id = completion_run_id_from_extra_env(
             getattr(ctx, "extra_env", None)
         )
@@ -399,10 +402,8 @@ class PtyLineReader:
         self._last_auto_mode_menu_seen_at = None
         self._pending_permission_prompt_line = None
         self._pending_permission_prompt_started_at = None
-        recent_choice_cap = _RECENT_CHOICE_LINES_MAX
-        self._recent_choice_lines = deque(maxlen=recent_choice_cap)
-        cap = _MAX_TRANSCRIPT_SESSION_IDS
-        self._transcript_session_ids = deque(maxlen=cap)
+        self._recent_choice_lines = deque(maxlen=_RECENT_CHOICE_LINES_MAX)
+        self._transcript_session_ids = deque(maxlen=_MAX_TRANSCRIPT_SESSION_IDS)
         self._transcript_session_ids_lock = threading.Lock()
         self._captured_session_id = self._expected_session_id
         if self._expected_session_id:

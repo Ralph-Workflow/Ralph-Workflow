@@ -169,6 +169,7 @@ class IdleWatchdog:
         "_awaiting_post_tool_result_progression",
         "_captured_session_id",
         "_classify_quiet_provider",
+        "_classify_stuck_provider",
         "_clock",
         "_config",
         "_connectivity_state_provider",
@@ -289,6 +290,7 @@ class IdleWatchdog:
         self._last_progress_fingerprint: str | None = None
         self._is_waiting_state = False
         self._classify_quiet_provider = None
+        self._classify_stuck_provider = None
         self._stall_active = False
         self._last_verdict = None
         self._last_alive_by = None
@@ -501,6 +503,9 @@ class IdleWatchdog:
         idle_elapsed: float,
         corroboration: CorroborationSnapshot | None = None,
     ) -> StuckKind:
+        provider = self._classify_stuck_provider
+        if provider is not None:
+            return provider(now=now, idle_elapsed=idle_elapsed, corroboration=corroboration)
         return classify_stuck_now(
             self, now=now, idle_elapsed=idle_elapsed, corroboration=corroboration
         )

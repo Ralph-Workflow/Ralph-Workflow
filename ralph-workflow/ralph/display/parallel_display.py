@@ -137,6 +137,7 @@ _SECONDS_PER_MINUTE: int = 60
 _PREVIEW_MAX_LINES: int = 40
 
 _MIN_COALESCE_REPEAT = 2
+_CONDENSE_SUMMARY_RESULT_LEN = 4
 _MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
 _TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
 _TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
@@ -156,14 +157,11 @@ def _condense_pair(
     return result[0], result[1]
 
 
-_condense_summary_arity = 4
-
-
 def _condense_with_summaries(
     text: str, *, options: CondenseOptions
 ) -> tuple[str, bool, str | None, str | None]:
     result = condense_content(text, options=options)
-    if len(result) == _condense_summary_arity:
+    if len(result) == _CONDENSE_SUMMARY_RESULT_LEN:
         return result
     return result[0], result[1], None, None
 

@@ -132,10 +132,10 @@ _MAX_QUOTA_DETAIL_CHARS = 512
 
 
 class AttemptEnded:
-    def __init__(self, message: object = "", *, facts: AttemptFacts | None = None) -> None:
+    def __init__(self, *args: object, facts: AttemptFacts | None = None) -> None:
         if facts is not None:
             _EXPLICIT_ATTEMPT_FACTS[self] = facts
-        super().__init__(message)
+        super().__init__(*args)
 
     @property
     def facts(self) -> AttemptFacts:
@@ -501,15 +501,6 @@ class AgentInactivityTimeoutError(AgentInvocationError):
 
 
 
-__all__ = [
-    "AgentInactivityTimeoutError",
-    "AgentInvocationError",
-    "BrokenAgentExitError",
-    "MissingCredentialsError",
-    "PiContextExhaustedExitError",
-    "QuotaExhaustedError",
-]
-
 class AgyIncompleteExitError(AgentInvocationError):
     def __init__(self, agent_name: str, diagnostic: str | None = None) -> None:
         canonical = (
@@ -527,23 +518,6 @@ class AgyIncompleteExitError(AgentInvocationError):
         super().__init__(agent_name, 0, message)
 
 
-def raise_missing_completion_evidence(
-    agent_name: str,
-    execution_strategy: BaseExecutionStrategy,
-    diagnostic: str | None,
-) -> NoReturn:
-    if execution_strategy.supports_incomplete_exit_reprompt():
-        raise AgyIncompleteExitError(agent_name, diagnostic=diagnostic)
-    canonical = (
-        "agent exited without required completion evidence "
-        "(completion sentinel missing, or required artifact receipt missing)"
-    )
-    message = f"{diagnostic}\n{canonical}" if diagnostic else canonical
-    raise AgentInvocationError(agent_name, 0, message)
-
-
-__all__ = ["AgyIncompleteExitError", "raise_missing_completion_evidence"]
-
 class PiProviderFailureExitError(AgentInvocationError):
     __slots__ = ("skip_same_agent_retries",)
 
@@ -555,8 +529,6 @@ class PiProviderFailureExitError(AgentInvocationError):
             f"pi agent provider failure (stopReason=error): {reason}",
         )
 
-
-__all__ = ["PiProviderFailureExitError"]
 
 class SupervisionInfrastructureError(AgentInvocationError):
     __slots__ = ("detail",)
@@ -571,8 +543,6 @@ class SupervisionInfrastructureError(AgentInvocationError):
         )
 
 
-__all__ = ["SupervisionInfrastructureError"]
-
 class InteractivePermissionPromptError(AgentInvocationError):
     def __init__(self, agent_name: str, parsed_output: list[str]) -> None:
         super().__init__(
@@ -582,8 +552,6 @@ class InteractivePermissionPromptError(AgentInvocationError):
             parsed_output,
         )
 
-
-__all__ = ["InteractivePermissionPromptError"]
 
 class OpenCodeResumableExitError(AgentInvocationError):
     __slots__ = (
@@ -627,4 +595,16 @@ class OpenCodeResumableExitError(AgentInvocationError):
         super().__init__(agent_name, returncode, full_message, issuer=issuer)
 
 
-__all__ = ["OpenCodeResumableExitError"]
+def raise_missing_completion_evidence(
+    agent_name: str,
+    execution_strategy: BaseExecutionStrategy,
+    diagnostic: str | None,
+) -> NoReturn:
+    if execution_strategy.supports_incomplete_exit_reprompt():
+        raise AgyIncompleteExitError(agent_name, diagnostic=diagnostic)
+    canonical = (
+        "agent exited without required completion evidence "
+        "(completion sentinel missing, or required artifact receipt missing)"
+    )
+    message = f"{diagnostic}\n{canonical}" if diagnostic else canonical
+    raise AgentInvocationError(agent_name, 0, message)

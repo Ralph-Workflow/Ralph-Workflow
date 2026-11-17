@@ -37,27 +37,10 @@ def __getattr__(name: str) -> object:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     from ralph.display import parallel_display
 
-    if name == "ParallelDisplay":
-        return parallel_display.ParallelDisplay
-    if name == "build_default_display_legacy_bridge":
-        return parallel_display.build_default_display_legacy_bridge
-    if name == "emit_activity_line":
-        return parallel_display.emit_activity_line
-    if name == "get_display_context":
-        return parallel_display.get_display_context
-    if name == "phase_style_for_phase":
-        return parallel_display.phase_style_for_phase
-    if name == "resolve_active_display":
-        return parallel_display.resolve_active_display
-    if name == "resolve_display":
-        return parallel_display.resolve_display
-    if name == "status_text":
-        return parallel_display.status_text
-    if name == "strip_markup":
-        return parallel_display.strip_markup
-    if name == "subscriber_for_display":
-        return parallel_display.subscriber_for_display
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    try:
+        return getattr(parallel_display, name)
+    except AttributeError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
 
 
 def __dir__() -> list[str]:
