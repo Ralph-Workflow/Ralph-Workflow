@@ -69,7 +69,10 @@ for idx in _BUDGET_TRACKED_STEPS:
     _step = _VERIFY_STEPS[idx]
     if _step[3] is None:
         raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout")
-    if not (isinstance(_step[3], (int, float)) and _step[3] > 0):
+    _timeout = _step[3]
+    if not isinstance(_timeout, int) and not isinstance(_timeout, float):
+        raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
+    if not _timeout > 0:
         raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
 
 if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
@@ -286,7 +289,8 @@ def run_verify(
     runner: VerifyRunner = _default_runner,
     orphan_tracker: Callable[[], AbstractContextManager[OrphanCpuReading]] = orphaned_cpu_tracker,
 ) -> int:
-    print("Running full verification...", flush=True)
+    sys.stdout.write("Running full verification...\n")
+    sys.stdout.flush()
 
     cumulative_test_elapsed = 0.0
     cumulative_suite_cpu = 0.0
@@ -300,13 +304,13 @@ def run_verify(
             step_timeout = timeout if timeout is not None else _TOTAL_TEST_HANG_CAP_SECONDS
             remaining_budget = _TOTAL_TEST_HANG_CAP_SECONDS - cumulative_test_elapsed
             if remaining_budget <= 0.0:
-                print(
+                sys.stderr.write(
                     format_verify_failure_banner(
                         failed_command=_failed_command_label(label, 0, cumulative_exhausted=True),
-                    ),
-                    file=sys.stderr,
-                    flush=True,
+                    )
+                    + "\n"
                 )
+                sys.stderr.flush()
                 return TIMEOUT_EXIT_CODE
             effective_timeout = (
                 min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
@@ -343,26 +347,28 @@ def run_verify(
             cumulative_host_busy += host_busy_end - host_busy_start
 
         if result.stdout:
-            print(result.stdout, end="", flush=True)
+            sys.stdout.write(result.stdout)
+            sys.stdout.flush()
         if result.stderr:
-            print(result.stderr, end="", file=sys.stderr, flush=True)
+            sys.stderr.write(result.stderr)
+            sys.stderr.flush()
         if result.returncode != 0:
             cumulative_exhausted = (
                 is_tracked
                 and result.returncode == TIMEOUT_EXIT_CODE
                 and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
             )
-            print(
+            sys.stderr.write(
                 format_verify_failure_banner(
                     failed_command=_failed_command_label(
                         label,
                         result.returncode,
                         cumulative_exhausted=cumulative_exhausted,
                     ),
-                ),
-                file=sys.stderr,
-                flush=True,
+                )
+                + "\n"
             )
+            sys.stderr.flush()
             return result.returncode
 
     report = SuiteBudgetReport(
@@ -373,19 +379,18 @@ def run_verify(
         wall_budget_seconds=_TOTAL_TEST_BUDGET_SECONDS,
         cpu_budget_seconds=_TOTAL_TEST_CPU_BUDGET_SECONDS,
     )
-    print(
+    sys.stdout.write(
         f"\nCumulative test elapsed: {cumulative_test_elapsed:.2f}s"
-        f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s",
-        flush=True,
+        f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s\n"
     )
-    print(f"Combined test budget: {report.describe()}", flush=True)
+    sys.stdout.write(f"Combined test budget: {report.describe()}\n")
+    sys.stdout.flush()
     failure = report.announce()
     if failure is not None:
-        print(
-            format_verify_failure_banner(failed_command=f"test budget exhausted — {failure}"),
-            file=sys.stderr,
-            flush=True,
+        sys.stderr.write(
+            format_verify_failure_banner(failed_command=f"test budget exhausted — {failure}") + "\n"
         )
+        sys.stderr.flush()
         return TIMEOUT_EXIT_CODE
     return 0
 

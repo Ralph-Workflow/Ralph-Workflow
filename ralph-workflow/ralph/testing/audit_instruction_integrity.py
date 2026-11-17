@@ -11,17 +11,23 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ralph.project_policy import markers as project_policy_markers
+from ralph.project_policy.agents_md import check_agents_md_path_citations
 from ralph.project_policy.instruction_surface import find_hidden_unicode
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+    from ralph.project_policy.models import PolicyFinding
+    from ralph.workspace.protocol import Workspace
+
 __all__ = [
     "CATEGORY_HIDDEN_UNICODE",
     "CATEGORY_INSTRUCTION_PROMOTION",
+    "CATEGORY_MISSING_CITED_PATH",
     "CATEGORY_MISSING_PIN",
     "CATEGORY_MISSING_REVIEW_TRIGGER",
+    "RULE_AGENTS_MD_PATH_CITATION",
     "RULE_HIDDEN_UNICODE",
     "RULE_INSTRUCTION_PROMOTION",
     "RULE_MCP_SERVER_PIN",
@@ -44,11 +50,14 @@ RULE_REVIEWED_COMMIT_ONLY: str = "instruction-change-reviewed-commit"
 
 RULE_TOOL_DESCRIPTION_REREVIEW: str = "mcp-tool-description-re-review"
 
+RULE_AGENTS_MD_PATH_CITATION: str = "agents-md-path-citation"
+
 
 CATEGORY_MISSING_PIN: str = "mcp-server-missing-pin"
 CATEGORY_MISSING_REVIEW_TRIGGER: str = "mcp-server-missing-review-trigger"
 CATEGORY_INSTRUCTION_PROMOTION: str = "instruction-promotion"
 CATEGORY_HIDDEN_UNICODE: str = "instruction-hidden-unicode"
+CATEGORY_MISSING_CITED_PATH: str = "agents-md-missing-cited-path"
 
 RALPH_OWN_SERVER_NAME: str = "ralph"
 
@@ -530,6 +539,58 @@ def _audit_instruction_files(root: Path) -> list[InstructionIntegrityFinding]:
     return findings
 
 
+def _nested_agents_md_files(root: Path) -> list[Path]:
+    nested: list[Path] = []
+    for path in _instruction_files(root):
+        if path.name != "AGENTS.md":
+            continue
+        if len(path.relative_to(root).parts) == 1:
+            continue
+        nested.append(path)
+    return nested
+
+
+def _citation_findings_for_paths_inside_the_repository(
+    workspace: Workspace,
+    line: str,
+) -> list[PolicyFinding]:
+    try:
+        return check_agents_md_path_citations(workspace, line)
+    except ValueError:
+        return []
+
+
+def _audit_nested_agents_md_path_citations(root: Path) -> list[InstructionIntegrityFinding]:
+    workspace = FsWorkspace(root)
+    findings: list[InstructionIntegrityFinding] = []
+    for path in _nested_agents_md_files(root):
+        relative = str(path.relative_to(root))
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        reported: set[str] = set()
+        for line_number, raw_line in enumerate(text.splitlines(), start=1):
+            for policy_finding in _citation_findings_for_paths_inside_the_repository(
+                workspace, raw_line
+            ):
+                if policy_finding.missing_evidence in reported:
+                    continue
+                reported.add(policy_finding.missing_evidence)
+                findings.append(
+                    InstructionIntegrityFinding(
+                        file_path=relative,
+                        line=line_number,
+                        rule=RULE_AGENTS_MD_PATH_CITATION,
+                        category=CATEGORY_MISSING_CITED_PATH,
+                        detail=(
+                            f"{policy_finding.missing_evidence}; {policy_finding.required_outcome}"
+                        ),
+                    )
+                )
+    return findings
+
+
 def _policy_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for path in _iter_files(root, (".md",)):
@@ -569,7 +630,10 @@ def _audit_hidden_unicode(root: Path) -> list[InstructionIntegrityFinding]:
 def audit_instruction_integrity(root: Path) -> list[InstructionIntegrityFinding]:
     _audited_relative_paths.cache_clear()
     findings = (
-        _audit_mcp_declarations(root) + _audit_instruction_files(root) + _audit_hidden_unicode(root)
+        _audit_mcp_declarations(root)
+        + _audit_instruction_files(root)
+        + _audit_nested_agents_md_path_citations(root)
+        + _audit_hidden_unicode(root)
     )
     findings.sort(key=lambda finding: (finding.file_path, finding.line, finding.category))
     return findings

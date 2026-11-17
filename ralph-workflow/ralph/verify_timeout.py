@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
+from ralph.config._env import getenv
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult, ProcessRunOptions, run_process
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
@@ -103,6 +103,8 @@ _POLICY_FIX_MESSAGE = (
 
 
 class SuiteTimeoutError(RuntimeError):
+    __slots__ = ("timeout_seconds",)
+
     def __init__(self, timeout_seconds: float) -> None:
         super().__init__(
             f"Test suite exceeded the {timeout_seconds}s wall-clock limit.\n{_POLICY_FIX_MESSAGE}"
@@ -111,7 +113,7 @@ class SuiteTimeoutError(RuntimeError):
 
 
 def timeout_seconds_from_env(name: str, default: float) -> float:
-    raw_value = os.getenv(name)
+    raw_value = getenv(name)
     if raw_value is None:
         return default
     seconds = float(raw_value)
@@ -129,7 +131,7 @@ def build_timeout_env(
     test_timeout_seconds: float = DEFAULT_TEST_TIMEOUT_SECONDS,
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
 ) -> dict[str, str]:
-    env = dict(base_env or os.environ)
+    env = dict(base_env) if base_env is not None else {}
     env[TEST_TIMEOUT_ENV] = str(test_timeout_seconds)
     env[SUITE_TIMEOUT_ENV] = str(suite_timeout_seconds)
     return env
@@ -160,13 +162,19 @@ def run_command_with_timeout(
     return result
 
 
+class _TimeoutArgs(argparse.Namespace):
+    suite_timeout: float
+    command: list[str]
+
+
 def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite-timeout", type=float, default=DEFAULT_SUITE_TIMEOUT_SECONDS)
     parser.add_argument("command", nargs=argparse.REMAINDER)
-    parsed = parser.parse_args(list(argv))
-    suite_timeout = cast("float", parsed.suite_timeout)
-    command = cast("list[str]", parsed.command)
+    parsed = _TimeoutArgs()
+    parser.parse_args(list(argv), namespace=parsed)
+    suite_timeout = parsed.suite_timeout
+    command = parsed.command
     if command and command[0] == "--":
         command = command[1:]
     if not command:
@@ -191,7 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             capture_output=False,
         )
     except SuiteTimeoutError as exc:
-        print(str(exc), file=sys.stderr)
+        sys.stderr.write(f"{exc}\n")
         return 124
 
     return result.returncode

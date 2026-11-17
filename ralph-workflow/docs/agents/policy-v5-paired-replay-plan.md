@@ -506,6 +506,8 @@ git worktree add --detach "${worktree}" "${base_ref}"
   python -m pytest -q "tests/integration/test_pipeline_commit_review_to_commit_e2e.py::test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end" \
 )
 
+mkdir -p "tmp/policy-v5-replay-snapshots"
+
 sha="$(cd "${worktree}" && git rev-parse HEAD)"
 size="$(du -sb "${worktree}" | cut -f1)"
 printf '{"category":"%s","name":"%s","base_ref":"%s","worktree":"%s","head":"%s","size_bytes":%s}\n' \

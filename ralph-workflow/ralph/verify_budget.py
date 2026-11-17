@@ -63,6 +63,19 @@ class _Descendant:
 
 
 class _OrphanedCpuTracker:
+    __slots__ = (
+        "_descendants",
+        "_finished_orphan_cpu",
+        "_interval",
+        "_root",
+        "_session_members",
+        "_session_of",
+        "_sessions",
+        "_stop",
+        "_thread",
+        "orphaned_cpu_seconds",
+    )
+
     def __init__(
         self,
         root: _ProcessTree,
@@ -248,24 +261,22 @@ class SuiteBudgetReport:
     def announce(self) -> str | None:
         outcome = self.outcome
         if outcome == "host_contention":
-            print(
+            sys.stderr.write(
                 "WARNING: the tests took longer than the wall-clock budget only "
                 "because other processes were using this host's CPUs; net of that "
                 "contention the suite is within budget. Re-run on a quieter host "
-                "to measure it alone.",
-                file=sys.stderr,
-                flush=True,
+                "to measure it alone.\n"
             )
+            sys.stderr.flush()
             return None
         if outcome == "host_capacity":
-            print(
+            sys.stderr.write(
                 "WARNING: the tests took longer than the wall-clock budget because "
                 "this host has too little CPU capacity for the suite: its own work "
                 "kept the free cores saturated, so it could not have finished "
-                "sooner. The CPU budget is the binding limit on this host.",
-                file=sys.stderr,
-                flush=True,
+                "sooner. The CPU budget is the binding limit on this host.\n"
             )
+            sys.stderr.flush()
             return None
         if outcome == "over_cpu_budget":
             return "suite CPU exceeded"

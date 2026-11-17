@@ -6,8 +6,10 @@ import pytest
 
 from ralph.testing.audit_instruction_integrity import (
     CATEGORY_INSTRUCTION_PROMOTION,
+    CATEGORY_MISSING_CITED_PATH,
     CATEGORY_MISSING_PIN,
     CATEGORY_MISSING_REVIEW_TRIGGER,
+    RULE_AGENTS_MD_PATH_CITATION,
     RULE_INSTRUCTION_PROMOTION,
     RULE_MCP_SERVER_PIN,
     RULE_REVIEWED_COMMIT_ONLY,
@@ -93,6 +95,10 @@ _OWN_SERVER_TOML = """\
 transport = "http"
 url = "http://127.0.0.1:8765/mcp"
 """
+
+_MISSING_CITED_PATH: str = "docs/ralph-workflow-policy/absent-policy.md"
+
+_RESOLVABLE_CITED_PATH: str = "docs/ralph-workflow-policy/execution-kernel.md"
 
 _UNPINNED_JSON = """\
 {"mcpServers": {"probe": {"url": "http://127.0.0.1:18765/mcp"}}}
@@ -519,3 +525,111 @@ def test_audit_instruction_integrity_skips_probe_ws(tmp_path: Path) -> None:
     _write(tmp_path, "probe-ws/mcp.json", _UNPINNED_JSON)
     _write(tmp_path, "tmp/mcp.json", _UNPINNED_JSON)
     assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_nested_agents_md_citing_a_missing_path_is_reported(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "packages/api/AGENTS.md",
+        "<!-- ralph-workflow-policy:begin v1 -->\n"
+        f"Read `{_MISSING_CITED_PATH}` before changing code.\n"
+        "<!-- ralph-workflow-policy:end -->\n",
+    )
+
+    findings = audit_instruction_integrity(tmp_path)
+
+    citation = next(f for f in findings if f.category == CATEGORY_MISSING_CITED_PATH)
+    assert citation.rule == RULE_AGENTS_MD_PATH_CITATION
+    assert citation.file_path == "packages/api/AGENTS.md"
+    assert citation.line == 2
+    assert _MISSING_CITED_PATH in citation.detail
+    assert "create the cited path" in citation.detail
+
+
+def test_nested_agents_md_citation_outside_the_managed_block_is_reported(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "packages/api/AGENTS.md",
+        "<!-- ralph-workflow-policy:begin v1 -->\n"
+        "Managed content.\n"
+        "<!-- ralph-workflow-policy:end -->\n"
+        f"Read `{_MISSING_CITED_PATH}` before changing code.\n",
+    )
+
+    findings = audit_instruction_integrity(tmp_path)
+
+    citation = next(f for f in findings if f.category == CATEGORY_MISSING_CITED_PATH)
+    assert citation.file_path == "packages/api/AGENTS.md"
+    assert citation.line == 4
+
+
+def test_nested_agents_md_with_resolvable_citations_is_clean(tmp_path: Path) -> None:
+    _write(tmp_path, _RESOLVABLE_CITED_PATH, "Kernel policy.\n")
+    _write(
+        tmp_path,
+        "packages/api/AGENTS.md",
+        "<!-- ralph-workflow-policy:begin v1 -->\n"
+        f"Read `{_RESOLVABLE_CITED_PATH}` first.\n"
+        "<!-- ralph-workflow-policy:end -->\n",
+    )
+
+    assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_nested_agents_md_citation_inside_the_package_layout_resolves(tmp_path: Path) -> None:
+    _write(tmp_path, "ralph-workflow/ralph/verify.py", "STEPS = ()\n")
+    _write(
+        tmp_path,
+        "ralph-workflow/packages/api/AGENTS.md",
+        "Read `ralph/verify.py` for the declared gates.\n",
+    )
+
+    assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_root_agents_md_citations_are_not_reported_by_this_audit(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "AGENTS.md",
+        "<!-- ralph-workflow-policy:begin v1 -->\n"
+        "Managed content.\n"
+        "<!-- ralph-workflow-policy:end -->\n"
+        f"Read `{_MISSING_CITED_PATH}` before changing code.\n",
+    )
+
+    assert audit_instruction_integrity(tmp_path) == []
+
+
+def test_repeated_missing_citation_in_one_nested_file_is_reported_once(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "packages/api/AGENTS.md",
+        f"Read `{_MISSING_CITED_PATH}`.\nRead `{_MISSING_CITED_PATH}` again.\n",
+    )
+
+    findings = audit_instruction_integrity(tmp_path)
+
+    citations = [f for f in findings if f.category == CATEGORY_MISSING_CITED_PATH]
+    assert len(citations) == 1
+    assert citations[0].line == 1
+
+
+def test_missing_citation_in_two_nested_files_is_reported_per_file(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "packages/api/AGENTS.md",
+        f"Read `{_MISSING_CITED_PATH}`.\n",
+    )
+    _write(
+        tmp_path,
+        "packages/web/AGENTS.md",
+        f"Read `{_MISSING_CITED_PATH}`.\n",
+    )
+
+    findings = audit_instruction_integrity(tmp_path)
+
+    citations = [f for f in findings if f.category == CATEGORY_MISSING_CITED_PATH]
+    assert {citation.file_path for citation in citations} == {
+        "packages/api/AGENTS.md",
+        "packages/web/AGENTS.md",
+    }
