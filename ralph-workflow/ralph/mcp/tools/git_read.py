@@ -17,7 +17,6 @@ from ralph.mcp.explore.dirty_paths import (
     ExploreStoreLike,
     resolve_explore_index,
 )
-from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools._envelope_bytes import finalize_envelope_bytes_out
 from ralph.mcp.tools._git_cwd_validator import resolve_git_cwd
 from ralph.mcp.tools._git_diff_params import GitDiffParams
@@ -348,10 +347,9 @@ def _resolve_compact_status_index(
             break
     if handle is None:
         return None
-    store_raw: object | None = getattr(handle, "store", None)
-    if not isinstance(store_raw, ExploreStore):
+    store = handle.store
+    if store is None:
         return None
-    store: ExploreStoreLike = store_raw
     return (handle, store)
 
 
@@ -724,7 +722,7 @@ def _collect_git_diff_capped(
 def _start_pipe_drain(pipe: object) -> threading.Thread | None:
     if pipe is None or not isinstance(pipe, _ReadablePipe):
         return None
-    readable = cast("_ReadablePipe", pipe)
+    readable = pipe
 
     def _drain() -> None:
         with contextlib.suppress(Exception):

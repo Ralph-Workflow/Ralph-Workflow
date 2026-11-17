@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
-from ralph._typed_attrs import attr_or_none
 from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
 
 from ..secrets import resolve_secret
@@ -78,7 +77,6 @@ def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
 
 
 def _object_payload(value: object) -> Mapping[str, object]:
-    from ralph.checked_accessors import as_object_dict
 
     if isinstance(value, Mapping):
         return value

@@ -168,7 +168,7 @@ def _retain_tool_result_target(
             payload: object = raw_input
             if isinstance(payload, str):
                 try:
-                    payload: object = json.loads(payload)
+                    payload = json.loads(payload)
                 except (TypeError, ValueError):
                     payload = None
             if isinstance(payload, dict):

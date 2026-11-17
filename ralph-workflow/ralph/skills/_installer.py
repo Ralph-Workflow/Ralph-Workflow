@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, cast
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from ralph._typed_attrs import read_attr
-from ralph.checked_accessors import as_mapping, optional_str
+from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import capture_pre_write_contents, snapshot_dirty_paths_strict
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -41,7 +41,6 @@ from ralph.skills._prune import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot

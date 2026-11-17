@@ -135,9 +135,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.integration_decision import CleanupLadderRung
-    from ralph.pipeline.integration_resolution import (
-        IntegrationResolutionVerdict,
-    )
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -1634,7 +1632,7 @@ def _cold_capped_escalation_due(
             return False
     elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
         return False
-    session_attempted = read_bool_attr(ctx, "cold_capped_escalation_attempted", default=False)
+    session_attempted: object = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
         return False
     ctx.cold_capped_escalation_attempted = True
@@ -2790,9 +2788,7 @@ def _block_unresolved_integration(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
-    from ralph.pipeline.integration_resolution import (
-        IntegrationResolutionVerdict,
-    )
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
     record, busy_expired = _blocking_record(ctx)
     if busy_expired:

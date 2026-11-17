@@ -95,6 +95,7 @@ class RubyGuidelines:
             "Avoid deeply nested conditionals when guard clauses or object"
             " extraction would simplify flow.",
         )
+        self.secrets_checks = ()
 
         for framework in normalized_frameworks:
             self._apply_framework(framework)

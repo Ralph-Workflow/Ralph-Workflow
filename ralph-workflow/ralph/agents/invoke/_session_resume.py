@@ -3,46 +3,22 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING, TypeGuard
 
-from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
-from ralph.agents.invoke._workspace import WorkspaceMonitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.invoke._types import InvokeOptions
+    from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.pipeline.agent_retry_intent import AgentRetryAction
 
 
 def _is_workspace_monitor_factory(
     value: object,
-) -> TypeGuard[Callable[[Path, WorkspaceChangeClassifier | None], object]]:
+) -> TypeGuard[Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None]]:
     return callable(value)
-
-
-def _looks_like_workspace_monitor(value: object) -> TypeGuard[WorkspaceMonitor]:
-    return callable(read_attr(value, "set_on_event", None))
-
-
-def _as_workspace_monitor_factory(
-    value: object,
-) -> Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None]:
-    if not _is_workspace_monitor_factory(value):
-        raise TypeError("workspace_monitor_factory must be callable or None")
-
-    def _factory(
-        path: Path, classifier: WorkspaceChangeClassifier | None
-    ) -> WorkspaceMonitor | None:
-        result: object = value(path, classifier)
-        if result is None:
-            return None
-        if not _looks_like_workspace_monitor(result):
-            return None
-        return result
-
-    return _factory
 
 
 def fresh_session_options(
@@ -59,8 +35,10 @@ def fresh_session_options(
     factory: Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     if workspace_monitor_factory is None:
         factory = None
+    elif _is_workspace_monitor_factory(workspace_monitor_factory):
+        factory = workspace_monitor_factory
     else:
-        factory = _as_workspace_monitor_factory(workspace_monitor_factory)
+        raise TypeError("workspace_monitor_factory must be callable or None")
     return replace(opts, session_id=None, workspace_monitor_factory=factory)
 
 

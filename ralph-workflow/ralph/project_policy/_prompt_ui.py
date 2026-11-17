@@ -7,8 +7,6 @@ from typing import Protocol, cast
 
 from loguru import logger
 
-from ralph._typed_attrs import read_attr
-
 
 @dataclass(frozen=True)
 class PromptChoice:

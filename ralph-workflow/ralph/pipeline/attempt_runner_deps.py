@@ -171,9 +171,7 @@ class AttemptRunnerDeps:
     connectivity: Callable[[], ConnectivityState | None] | None
 
 
-PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(
-    _as_effect_runner(execute_agent_effect)
-)
+PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(_as_effect_runner(execute_agent_effect))
 
 
 __all__ = (

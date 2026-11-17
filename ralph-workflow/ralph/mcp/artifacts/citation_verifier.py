@@ -19,6 +19,7 @@ class _HasEntryFields(Protocol):
     status: object
     is_binary: object
 
+
 _STRIP_PUNCT: str = ".,;:()[]{}'\"`<>!?"
 
 _WRAPPER_CHARS: str = "\"'`*~"
@@ -337,20 +338,27 @@ def _entry_tracked_paths(entry: object) -> frozenset[str]:
     elif isinstance(entry, _HasBaseTreePaths):
         raw = entry.base_tree_paths
     else:
-        raw = None
-    if isinstance(raw, frozenset):
-        items: frozenset[object] = raw
-    elif isinstance(raw, set):
-        items = frozenset(raw)
-    elif isinstance(raw, tuple):
-        items = frozenset(raw)
-    elif isinstance(raw, list):
-        items = frozenset(raw)
-    else:
         raw = getattr(entry, "base_tree_paths", None)
-    if not isinstance(raw, (frozenset, set, tuple, list)):
+    items = _path_collection(raw)
+    if items is None:
         return frozenset()
     return frozenset(str(item) for item in items)
+
+
+def _path_collection(raw: object) -> frozenset[object] | None:
+    if isinstance(raw, frozenset):
+        frozen: frozenset[object] = raw
+        return frozen
+    if isinstance(raw, set):
+        members: set[object] = raw
+        return frozenset(members)
+    if isinstance(raw, tuple):
+        ordered: tuple[object, ...] = raw
+        return frozenset(ordered)
+    if isinstance(raw, list):
+        listed: list[object] = raw
+        return frozenset(listed)
+    return None
 
 
 def _status_kind(status: str) -> str:

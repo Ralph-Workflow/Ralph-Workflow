@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger

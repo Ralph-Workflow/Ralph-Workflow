@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
-from ralph.checked_accessors import as_object_list
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import merge_existing_upstreams

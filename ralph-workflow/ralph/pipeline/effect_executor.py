@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph._typed_attrs import read_attr
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,

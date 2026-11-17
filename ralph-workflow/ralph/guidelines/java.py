@@ -96,6 +96,7 @@ class JavaGuidelines:
             "Method contracts are explicit about nullability, exceptions, and side effects.",
             "Dependency injection boundaries stay clear and constructor-based where possible.",
         )
+        self.secrets_checks = ()
 
         for framework in normalized_frameworks:
             self._apply_framework(framework)

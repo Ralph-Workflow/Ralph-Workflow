@@ -45,10 +45,29 @@ class _EnvironView(MutableMapping[str, str]):
     def __contains__(self, key: object) -> bool:
         return key in self._mapping()
 
+    def wraps(self, raw: object) -> bool:
+        return self._raw is raw
+
+
+class _EnvironViewCache:
+    __slots__ = ("view",)
+
+    def __init__(self) -> None:
+        self.view: _EnvironView | None = None
+
+
+_ENVIRON_VIEW_CACHE = _EnvironViewCache()
+
 
 def _os_environ() -> _EnvironView:
     raw: object = os.environ
-    return _EnvironView(raw)
+    cached = _ENVIRON_VIEW_CACHE.view
+    if cached is not None and cached.wraps(raw):
+        return cached
+    view = _EnvironView(raw)
+    _ENVIRON_VIEW_CACHE.view = view
+    return view
+
 
 __all__ = [
     "copy_environ",

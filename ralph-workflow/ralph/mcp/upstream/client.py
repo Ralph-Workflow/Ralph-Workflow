@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 

@@ -20,6 +20,7 @@ from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
 import psutil
 from loguru import logger
 
+from ralph.config._env import copy_environ
 from ralph.mcp.bridge_diagnostics import (
     BridgeDiagnostics,
     bound_dominates,
@@ -343,7 +344,6 @@ if not _PROBE_SUCCESS_HYSTERESIS_COUNT > 0:
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
-
 def _optional_poll(obj: object) -> object | None:
     attr: object = getattr(obj, "poll", None)
     if attr is None or not callable(attr):
@@ -369,9 +369,7 @@ def _as_finite_float(value: object, default: float) -> float:
 
 
 def _process_environ_map() -> dict[str, str]:
-    from ralph.config import _env as _config_env
-
-    return dict(_config_env.environ())
+    return copy_environ()
 
 
 def _process_is_dead(target: StandaloneMcpProcess) -> bool:

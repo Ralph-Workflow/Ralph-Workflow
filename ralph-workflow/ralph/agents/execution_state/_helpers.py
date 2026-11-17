@@ -6,7 +6,6 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.checked_accessors import as_object_list
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 

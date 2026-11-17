@@ -9,12 +9,12 @@ import time
 from collections.abc import Mapping, Sequence, Sized
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, cast
+from typing import Final
 
 from ralph.checked_accessors import as_object_dict
 from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
 from ralph.mcp.explore._bench_product_baseline import _BaselineSession
-from ralph.mcp.explore._bench_r6_query_sampler import _QueryCallable, sample_query_latencies
+from ralph.mcp.explore._bench_r6_query_sampler import sample_query_latencies
 from ralph.mcp.explore._bench_r6_subprocess import run_build_subprocess
 from ralph.mcp.explore._bench_r6_validation import (
     _R6_2_METRICS,
@@ -235,7 +235,7 @@ def _measure_query_latency(
             raw_samples.append(time.perf_counter() - start)
         raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
         return sample_query_latencies(
-            grep_handler=cast("_QueryCallable", handle_grep_files),
+            grep_handler=handle_grep_files,
             session=session,
             workspace=ws,
             perf_counter=time.perf_counter,

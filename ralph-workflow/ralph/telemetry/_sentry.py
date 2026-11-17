@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -232,10 +231,11 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
             data = _as_object_dict(loads_toml(fh))
     except (OSError, ValueError):
         return True
-    raw_general = data.get("general")
-    if not isinstance(raw_general, dict):
+    if data is None:
         return False
-    general = cast("dict[str, object]", raw_general)
+    general = _as_object_dict(data.get("general"))
+    if general is None:
+        return False
     return general.get("telemetry_enabled") is False
 
 

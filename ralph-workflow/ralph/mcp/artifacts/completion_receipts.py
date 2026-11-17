@@ -404,7 +404,7 @@ def commit_receipt_matches_changed_files(
         audit = None
     else:
         try:
-            audit: object = json.loads(as_str(audit_json, field="normalization_audit"))
+            audit = json.loads(as_str(audit_json, field="normalization_audit"))
         except (json.JSONDecodeError, TypeError, ValueError):
             return False
     if not isinstance(audit, dict):

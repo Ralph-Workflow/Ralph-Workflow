@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, ClassVar, Final, cast
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.markdown import CodeBlock, Markdown, MarkdownElement

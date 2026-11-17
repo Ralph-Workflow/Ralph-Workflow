@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
 from loguru import logger
 
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.phases._commit_review_events import (
     CommitReviewApproved,
     CommitReviewEvent,
@@ -438,13 +439,26 @@ def _reduce_agent_failure_pure(
 
 
 def _is_commit_review_event(event: object) -> TypeGuard[CommitReviewEvent]:
-    return (
-        any(isinstance(event, _t) for _t in (CommitReviewApproved, CommitReviewRejected, CommitReviewGateFailed, CommitReviewLoopback))
+    return any(
+        isinstance(event, _t)
+        for _t in (
+            CommitReviewApproved,
+            CommitReviewRejected,
+            CommitReviewGateFailed,
+            CommitReviewLoopback,
+        )
     )
 
 
-def _is_pipeline_event(event: object) -> TypeGuard[PipelineEvent]:
-    return isinstance(event, PipelineEvent)
+def _as_pipeline_event(event: object) -> PipelineEvent | None:
+    if isinstance(event, PipelineEvent):
+        return event
+    if isinstance(event, str):
+        try:
+            return PipelineEvent(event)
+        except ValueError:
+            return None
+    return None
 
 
 def _reduce_commit_residual_event(
@@ -489,9 +503,7 @@ def _reduce_typed_pipeline_event(
             state, event, pipeline_policy, routing_timing, recovery=recovery
         )
     if event == PipelineEvent.AGENT_FAILURE or isinstance(event, AgentFailureEvent):
-        return _reduce_agent_failure_pure(
-            state, event, pipeline_policy, recovery, routing_timing
-        )
+        return _reduce_agent_failure_pure(state, event, pipeline_policy, recovery, routing_timing)
     return None
 
 
@@ -518,9 +530,10 @@ def _reduce_pure(
     )
     if worker_result is not None:
         return worker_result
-    if not _is_pipeline_event(event):
+    pipeline_event = _as_pipeline_event(event)
+    if pipeline_event is None:
         return state, []
-    handler = _get_event_handlers().get(event)
+    handler = _get_event_handlers().get(pipeline_event)
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy, routing_timing)
@@ -557,11 +570,9 @@ def reduce(
             snap = recovery.ledger.snapshot()
             if snap != routed_state.ledger_snapshot:
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
-        verdict_record = getattr(recovery, "last_verdict_record", None)
-        if (
-            verdict_record is not None
-            and verdict_record != routed_state.dead_agent_verdict_record
-        ):
+        raw_verdict_record: object = getattr(recovery, "last_verdict_record", None)
+        verdict_record = as_object_dict(raw_verdict_record)
+        if verdict_record is not None and verdict_record != routed_state.dead_agent_verdict_record:
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
         feedback_snapshot = recovery.false_bench_feedback.snapshot()
         if feedback_snapshot != routed_state.false_bench_feedback:

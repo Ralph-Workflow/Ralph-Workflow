@@ -233,7 +233,7 @@ def run_agent_attempt(
         return outcome
 
     target = effect if effect is not None else invocation
-    if not (isinstance(target, InvokeAgentEffect) or isinstance(target, AgentConfig)):
+    if not isinstance(target, InvokeAgentEffect | AgentConfig):
         raise TypeError("attempt target must be an InvokeAgentEffect or AgentConfig")
     invoke_kwargs: dict[str, object] = dict(execute_kwargs)
     invoke_kwargs["attempt_finalizer"] = finalize

@@ -18,7 +18,6 @@ import typer.testing
 from loguru import logger
 
 from ralph._build_meta import build_provenance_line, flavored_version
-from ralph._typed_attrs import read_attr
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
@@ -536,16 +535,26 @@ class _CLIRestoreState:
 _CLI_RESTORE_STATE = _CLIRestoreState()
 
 
+class _SysExceptHookHost(Protocol):
+    excepthook: Callable[[type[BaseException], BaseException, TracebackType | None], None]
+
+
+class _ThreadingExceptHookHost(Protocol):
+    excepthook: Callable[[threading.ExceptHookArgs], object]
+
+
 def _set_sys_excepthook(
     hook: Callable[[type[BaseException], BaseException, TracebackType | None], None],
 ) -> None:
-    sys.modules["sys"].excepthook = hook
+    host: _SysExceptHookHost = sys
+    host.excepthook = hook
 
 
 def _set_threading_excepthook(
     hook: Callable[[threading.ExceptHookArgs], None],
 ) -> None:
-    sys.modules["threading"].excepthook = hook
+    host: _ThreadingExceptHookHost = threading
+    host.excepthook = hook
 
 
 def ensure_cli_terminal_restore(
@@ -571,8 +580,6 @@ def ensure_cli_terminal_restore(
     getter = signal_getter if signal_getter is not None else signal.getsignal
     setter = signal_setter if signal_setter is not None else signal.signal
     signums: tuple[int, ...] = ()
-    if hasattr(signal, "SIGINT"):
-        signums += (signal.SIGINT,)
     if hasattr(signal, "SIGTERM"):
         signums += (signal.SIGTERM,)
     if hasattr(signal, "SIGHUP"):

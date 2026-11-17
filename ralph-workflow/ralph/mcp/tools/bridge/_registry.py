@@ -85,10 +85,6 @@ _WORKER_READ_EXCEPTIONS = (
 )
 
 
-class _ReadableWorkspace(Protocol):
-    def read(self, path: str) -> str: ...
-
-
 def _read_workspace_policy(
     workspace: object,
     *,

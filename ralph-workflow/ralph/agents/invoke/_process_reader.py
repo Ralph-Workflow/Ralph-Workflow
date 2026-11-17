@@ -10,7 +10,7 @@ import threading
 import traceback
 from collections import deque
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Protocol, TextIO, TypeGuard, cast, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
 import psutil
 from loguru import logger
@@ -144,7 +144,7 @@ from ._quota_detection import (
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator, Sequence
+    from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
     from contextvars import Token
 
     from ralph.agents.activity import AgentActivitySignal
@@ -300,6 +300,13 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 @runtime_checkable
+class _PromptSink(Protocol):
+    def write(self, data: str) -> int: ...
+    def flush(self) -> None: ...
+    def close(self) -> None: ...
+
+
+@runtime_checkable
 class _WritableTextStream(Protocol):
     def fileno(self) -> int: ...
     def write(self, data: str) -> int: ...
@@ -337,7 +344,7 @@ def _is_nullary_callable(value: object) -> TypeGuard[Callable[[], object]]:
 
 
 def _as_idle_diagnostic(
-    value: dict[str, object],
+    value: Mapping[str, object],
 ) -> dict[str, str | int | float | bool | list[object]] | None:
     result: dict[str, str | int | float | bool | list[object]] = {}
     for key, item in value.items():
@@ -352,6 +359,8 @@ def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
     if stream_obj is None:
         return
     if not isinstance(stream_obj, _WritableTextStream):
+        if isinstance(stream_obj, _PromptSink):
+            _write_prompt_to_stream(stream_obj, prompt)
         return
     text_stream = stream_obj
     try:
@@ -382,7 +391,7 @@ def _write_prompt_to_fd(fd: int, payload: bytes) -> None:
             os.close(fd)
 
 
-def _write_prompt_to_stream(stream: _WritableTextStream, prompt: str) -> None:
+def _write_prompt_to_stream(stream: _PromptSink, prompt: str) -> None:
     try:
         stream.write(prompt)
         stream.flush()
@@ -1192,10 +1201,6 @@ class ProcessLineReader:
             resumable_session_id=captured_session_id,
             issuer=fire_reason.value,
             runtime_event=current_runtime_event(),
-        )
-        narrow_diag = _as_idle_diagnostic(merged_diag)
-        object_diag: dict[str, object] | None = (
-            dict(narrow_diag) if narrow_diag is not None else None
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,

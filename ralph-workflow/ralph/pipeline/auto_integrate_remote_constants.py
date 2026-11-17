@@ -68,7 +68,7 @@ def remote_sync_enabled(config: object | None) -> bool:
     if isinstance(fields_set, (set, frozenset)) and "auto_integrate_remote_enabled" in fields_set:
         remote_enabled: object = getattr(general, "auto_integrate_remote_enabled", True)
         return isinstance(remote_enabled, bool) and remote_enabled
-    general_enabled: object = _optional_attr(general, "auto_integrate_enabled", True)
+    general_enabled: object = _optional_attr(general, "auto_integrate_enabled", default=True)
     return isinstance(general_enabled, bool) and general_enabled
 
 
@@ -82,5 +82,7 @@ def reclaim_target_worktree_enabled(config: object | None) -> bool:
     if config is None:
         return True
     general: object = _optional_attr(config, "general", config)
-    configured: object = _optional_attr(general, "auto_integrate_reclaim_target_worktree", True)
+    configured: object = _optional_attr(
+        general, "auto_integrate_reclaim_target_worktree", default=True
+    )
     return configured is not False

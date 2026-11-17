@@ -176,7 +176,7 @@ is entered only when a caller injects a custom runner or replaces
 it. The rule table for the production kills is under
 "Cause 1 — production liveness subsystem (CURRENT)" below.
 
-- `ralph-workflow/ralph/process/manager/_managed_process.py:286` resets
+- `ralph-workflow/ralph/process/manager/_managed_process.py:287` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
   only when a non-empty `chunk` arrives from the child's `stdout`/`stderr`.
 - The poll loop at `ralph-workflow/ralph/process/manager/_managed_process.py:344-380`
@@ -296,7 +296,7 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
   `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:171`, 3600 s)) and stores
   it as `job.ceiling_ms`; the registry kills with `cause="hard_cap"` at
-  `_exec_jobs.py:465` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
+  `_exec_jobs.py:527` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
   (`ralph/timeout_defaults.py:173`, 4 h) is the outer bound.
 - **Hard-cap error text.** `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
   `ExecutionError._render_timeout` (`:108-118`, split into a job path and
@@ -777,7 +777,7 @@ stale, and the fastest drift check is a re-read of:
   and `:39` (`EXEC_MAX_TIMEOUT_MS`), plus `:169`
   (`EXEC_SOFT_REPLY_BUDGET_MS`), `:171` (`EXEC_JOB_CEILING_S`), `:173`
   (`EXEC_JOB_CEILING_MAX_S`) — the Cause 1 / Cause 2 constants.
-- `ralph-workflow/ralph/process/manager/_managed_process.py:286` (the
+- `ralph-workflow/ralph/process/manager/_managed_process.py:287` (the
   output-only `last_output_at_ref` reset) and `:344-380` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
 - ralph-workflow/ralph/mcp/tools/exec.py:558-571 (the injected-runner

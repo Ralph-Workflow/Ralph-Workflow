@@ -4,8 +4,6 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph._typed_attrs import read_attr
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 

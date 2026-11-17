@@ -66,9 +66,7 @@ def _resolution_attempt_key(raw: object) -> ResolutionAttemptKey | None:
         return None
     stop, agents, config = raw
     stop_ok = stop is None or isinstance(stop, str)
-    agents_ok = isinstance(agents, tuple | list) and all(
-        isinstance(agent, str) for agent in agents
-    )
+    agents_ok = isinstance(agents, tuple | list) and all(isinstance(agent, str) for agent in agents)
     config_ok = config is None or isinstance(config, str)
     if not (stop_ok and agents_ok and config_ok):
         return None

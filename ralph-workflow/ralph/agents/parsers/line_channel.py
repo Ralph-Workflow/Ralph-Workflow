@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 from ralph._typed_attrs import attr_or_none, is_callable_obj
 
@@ -12,6 +12,13 @@ if TYPE_CHECKING:
 
     from .agent_output_line import AgentOutputLine
 
+
+class _LineClassifier(Protocol):
+    def __call__(self, raw_line: str, /) -> Iterable[AgentOutputLine]: ...
+
+
+def _is_line_classifier(value: object) -> TypeGuard[_LineClassifier]:
+    return is_callable_obj(value)
 
 
 def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | None:
@@ -24,10 +31,9 @@ def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | N
     except ValueError:
         return None
     classify_line = attr_or_none(parser, "classify_line")
-    if not is_callable_obj(classify_line):
+    if not _is_line_classifier(classify_line):
         return None
-    classify = cast("Callable[[str], Iterable[AgentOutputLine]]", classify_line)
-    for output_line in classify(raw_line):
+    for output_line in classify_line(raw_line):
         return output_line.channel
     return None
 

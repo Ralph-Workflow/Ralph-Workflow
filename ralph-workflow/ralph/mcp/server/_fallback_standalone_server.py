@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import socket as _socket_mod
+import sys
 import threading
 import time
 from pathlib import Path
@@ -258,12 +259,10 @@ class _FallbackStandaloneServer:
             on_ready()
         if ready_event is not None:
             ready_event.set()
-        logger.info(
-            "Ralph MCP server listening on http://{host}:{port}{path}",
-            host=self._host,
-            port=self._port,
-            path=DEFAULT_MOUNT_PATH,
+        sys.stdout.write(
+            f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}\n"
         )
+        sys.stdout.flush()
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
         finally:

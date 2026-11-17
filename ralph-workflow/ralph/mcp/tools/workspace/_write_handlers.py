@@ -375,9 +375,7 @@ def handle_edit_file(
                         impact_handle.store if impact_handle is not None else None
                     )
                     impact_store_obj: ExploreStore | None = (
-                        impact_store_raw
-                        if isinstance(impact_store_raw, ExploreStore)
-                        else None
+                        impact_store_raw if isinstance(impact_store_raw, ExploreStore) else None
                     )
                     target_param_dict: dict[str, object] = (
                         target_param if isinstance(target_param, dict) else {}
@@ -390,7 +388,7 @@ def handle_edit_file(
                         and isinstance(target_symbol_name, str)
                         and target_symbol_name
                     ):
-                        symbols = list(cast("ExploreStore", impact_store_obj).iter_symbols())
+                        symbols = list(impact_store_obj.iter_symbols())
                         scoped_symbols = [
                             s for s in symbols if target_symbol_name in (s.name, s.qualified_name)
                         ]
@@ -402,7 +400,7 @@ def handle_edit_file(
                                 target_path = scoped_symbols[0].path
                     if impact_store_obj is not None and target_symbol_id is not None:
                         result = run_query(
-                            cast("ExploreStore", impact_store_obj),
+                            impact_store_obj,
                             query_type="impact",
                             target=target_symbol_id,
                             change_kind="behavior",
@@ -481,7 +479,7 @@ def handle_edit_file(
                 )
 
                 reindex(
-                    cast("ExploreStore", edit_store_obj),
+                    edit_store_obj,
                     workspace_root_path,
                     options=ReindexOptions(
                         mode="changed",

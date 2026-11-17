@@ -600,18 +600,26 @@ def _execute_effect_with_optional_display(
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
 ) -> Event | CommitReviewEvent:
-    return execute_effect(
-        effect,
-        config,
-        workspace_scope,
-        display=display,
-        display_context=display_context,
-        verbosity=verbosity,
-        state=state,
-        policy_bundle=policy_bundle,
-        pipeline_deps=pipeline_deps,
-        run_id=run_id,
-    )
+    fn: object = execute_effect
+    if not _is_kwargs_effect_executor(fn):
+        raise TypeError("execute_effect must be callable")
+    params = signature(fn).parameters
+    accepts_kwargs = any(p.kind == p.VAR_KEYWORD for p in params.values())
+    all_opts: dict[str, object] = {
+        "display": display,
+        "display_context": display_context,
+        "verbosity": verbosity,
+        "state": state,
+        "policy_bundle": policy_bundle,
+        "pipeline_deps": pipeline_deps,
+        "run_id": run_id,
+    }
+    supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
+    return fn(effect, config, workspace_scope, **supported)
+
+
+def _is_kwargs_effect_executor(value: object) -> TypeGuard[_ExecuteEffectKwargsFn]:
+    return callable(value)
 
 
 def execute_effect_with_optional_display(
@@ -2642,31 +2650,20 @@ def execute_fan_out_sync(
     state: PipelineState,
     display: ParallelDisplay,
     pipeline_deps: PipelineDeps | None = None,
-    policy_bundle: PolicyBundle,
-    workspace_scope: WorkspaceScope,
-    pipeline_subscriber: _PipelineSubscriber | None = None,
-    dashboard_subscriber: _PipelineSubscriber | None = None,
-    config: UnifiedConfig | None = None,
-    config_path: Path | None = None,
-    cli_overrides: Mapping[str, object] | None = None,
-    _on_successful_completion: Callable[[PipelineState], PipelineState] | None = None,
-    _monitor_stop_cb: Callable[[], None] | None = None,
+    **opts: object,
 ) -> PipelineState:
-    overrides = dict(cli_overrides) if cli_overrides is not None else None
+    forwarded: dict[str, object] = dict(opts)
+    forwarded.setdefault("_install_signal_handlers", install_signal_handlers)
+    forwarded.setdefault("_executor_cls", SubprocessAgentExecutor)
+    forwarded.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
+    forwarded.setdefault("_run_process_async", run_process_async)
+    forwarded.setdefault("_reducer_reduce", reducer_reduce)
     return _fan_out_execute_fan_out_sync(
         effect=effect,
         state=state,
         display=display,
         pipeline_deps=pipeline_deps,
-        policy_bundle=policy_bundle,
-        workspace_scope=workspace_scope,
-        pipeline_subscriber=pipeline_subscriber,
-        dashboard_subscriber=dashboard_subscriber,
-        config=config,
-        config_path=config_path,
-        cli_overrides=overrides,
-        _on_successful_completion=_on_successful_completion,
-        _monitor_stop_cb=_monitor_stop_cb,
+        **forwarded,
     )
 
 

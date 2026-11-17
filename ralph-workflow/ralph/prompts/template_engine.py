@@ -50,7 +50,6 @@ class TemplateRenderer:
         templates = {
             f"{name}.j2": _normalize_static_spacing(content) for name, content in partials.items()
         }
-        strict_undefined = cast("type[Undefined]", StrictUndefined)
         self._environment = Environment(
             loader=DictLoader(templates),
             autoescape=select_autoescape(

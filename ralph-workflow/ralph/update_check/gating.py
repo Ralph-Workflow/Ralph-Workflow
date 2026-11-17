@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.checked_accessors import as_object_dict, loads_toml
 from ralph.telemetry._sentry import is_telemetry_disabled, is_telemetry_disabled_by_config
@@ -43,10 +43,11 @@ def _config_disables_update_check(environ: Mapping[str, str]) -> bool:
             data = _as_object_dict(loads_toml(handle))
     except (OSError, ValueError):
         return False
-    raw_general = data.get("general")
-    if not isinstance(raw_general, dict):
+    if data is None:
         return False
-    general = cast("dict[str, object]", raw_general)
+    general = _as_object_dict(data.get("general"))
+    if general is None:
+        return False
     return general.get("update_check_enabled") is False
 
 

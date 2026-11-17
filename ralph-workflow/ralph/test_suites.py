@@ -25,7 +25,6 @@ from ralph.process.manager import (
 )
 from ralph.process.unmanaged_terminate import terminate_unmanaged
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
-from ralph.testing._audit_scope import is_function_def, is_sequence_display
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,

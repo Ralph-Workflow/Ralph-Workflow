@@ -135,21 +135,13 @@ def _run_hook(
         runner_value = cast("ReindexRunner", claim_reindex)
     options_value: ReindexOptions = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
 
-    def _require_reindex_result(raw_result: object) -> ReindexResult:
-        if not isinstance(raw_result, ReindexResult):
-            msg = f"reindex runner returned {type(raw_result).__name__}, expected ReindexResult"
-            raise TypeError(msg)
-        return raw_result
-
     try:
         runner: ReindexRunner = runner_value
         kwargs_name = "opts" if reindex_runner is not None else "options"
-        result = _require_reindex_result(
-            runner(
-                store,
-                workspace_root,
-                **{kwargs_name: options_value},
-            )
+        raw_result: object = runner(
+            store,
+            workspace_root,
+            **{kwargs_name: options_value},
         )
     except (
         OSError,
@@ -173,7 +165,8 @@ def _run_hook(
             reindex_result=None,
             skipped_reason=f"error:{type(exc).__name__}",
         )
-    result_status: object = getattr(result, "status", "")
+    result = raw_result if isinstance(raw_result, ReindexResult) else None
+    result_status: object = getattr(raw_result, "status", "")
     result_status_str: str = result_status if isinstance(result_status, str) else str(result_status)
     timed_out = bool(result_status_str == "timed_out")
     if result_status_str == "ok":

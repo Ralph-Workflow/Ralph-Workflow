@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, assert_never, cast
+from typing import TYPE_CHECKING, Protocol, assert_never
 
 from ralph._typed_attrs import read_attr
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line

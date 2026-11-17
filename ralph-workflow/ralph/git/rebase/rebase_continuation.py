@@ -4,7 +4,7 @@ import os
 import subprocess
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -24,7 +24,7 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
 __all__ = [
     "ConflictRemainingError",

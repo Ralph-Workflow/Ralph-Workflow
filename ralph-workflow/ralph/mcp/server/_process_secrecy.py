@@ -31,9 +31,7 @@ class _SizedBuffer(Protocol):
 
 
 class _CreateStringBuffer(Protocol):
-    def __call__(
-        self, init: int | bytes, size: int | None = None
-    ) -> _SizedBuffer: ...
+    def __call__(self, init: int | bytes, size: int | None = None) -> _SizedBuffer: ...
 
 
 class _Byref(Protocol):
@@ -90,22 +88,22 @@ def _native_ctypes() -> _CTypesModule:
     return module
 
 
-def _require_cfunc(value: object, *, label: str) -> _CFuncPtr:
+def _require_cfunc(value: object, *, symbol: str) -> _CFuncPtr:
     if not isinstance(value, _CFuncPtr):
-        raise TypeError(f"MCP broker secret process protection failed: missing {label}")
+        raise TypeError(f"MCP broker secret process protection failed: missing {symbol}")
     return value
 
 
-def _require_library_loader(value: object, *, label: str) -> _LibraryLoader:
+def _require_library_loader(value: object, *, symbol: str) -> _LibraryLoader:
     if not isinstance(value, _LibraryLoader):
-        raise TypeError(f"MCP broker secret process protection failed: missing {label}")
+        raise TypeError(f"MCP broker secret process protection failed: missing {symbol}")
     return value
 
 
 def _protect_darwin_process() -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     raw_ptrace: object = getattr(libc, "ptrace", None)
-    ptrace = _require_cfunc(raw_ptrace, label="ptrace")
+    ptrace = _require_cfunc(raw_ptrace, symbol="ptrace")
     raw_result = ptrace(31, 0, None, 0)
     if as_int(raw_result, field="ptrace result") != 0:
         raise RuntimeError("MCP broker secret process protection failed")
@@ -117,17 +115,15 @@ def _protect_windows_process() -> None:
     se_kernel_object = 6
     acl = ctypes.create_string_buffer(8)
     raw_windll: object = getattr(ctypes, "WinDLL", None)
-    windows_library_loader = _require_library_loader(raw_windll, label="WinDLL")
+    windows_library_loader = _require_library_loader(raw_windll, symbol="WinDLL")
     advapi32 = windows_library_loader("advapi32", use_last_error=True)
     kernel32 = windows_library_loader("kernel32", use_last_error=True)
     raw_initialize_acl: object = getattr(advapi32, "InitializeAcl", None)
     raw_set_security_info: object = getattr(advapi32, "SetSecurityInfo", None)
     raw_get_current_process: object = getattr(kernel32, "GetCurrentProcess", None)
-    initialize_acl = _require_cfunc(raw_initialize_acl, label="InitializeAcl")
-    set_security_info = _require_cfunc(raw_set_security_info, label="SetSecurityInfo")
-    get_current_process = _require_cfunc(
-        raw_get_current_process, label="GetCurrentProcess"
-    )
+    initialize_acl = _require_cfunc(raw_initialize_acl, symbol="InitializeAcl")
+    set_security_info = _require_cfunc(raw_set_security_info, symbol="SetSecurityInfo")
+    get_current_process = _require_cfunc(raw_get_current_process, symbol="GetCurrentProcess")
     initialize_acl.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
     initialize_acl.restype = ctypes.c_int
     set_security_info.argtypes = [
@@ -178,7 +174,7 @@ def protect_broker_secret(
     if prctl is None:
         libc = ctypes.CDLL(None, use_errno=True)
         raw_prctl_fn: object = getattr(libc, "prctl", None)
-        raw_prctl = _require_cfunc(raw_prctl_fn, label="prctl")
+        raw_prctl = _require_cfunc(raw_prctl_fn, symbol="prctl")
         result = as_int(raw_prctl(4, 0), field="prctl result")
     else:
         result = prctl(4, 0)
@@ -205,7 +201,7 @@ def erase_broker_secret_environment() -> None:
         return
     if os.name == "posix":
         libc = ctypes.CDLL(None)
-        environ_table = ctypes.POINTER(ctypes.c_void_p).in_dll(libc, "environ")
+        environ_table: _EnvironTable = ctypes.POINTER(ctypes.c_void_p).in_dll(libc, "environ")
         prefix = b"RALPH_BROKER_SECRET="
         encoded_secret = secret.encode()
         index = 0

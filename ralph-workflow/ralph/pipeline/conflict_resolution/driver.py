@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 

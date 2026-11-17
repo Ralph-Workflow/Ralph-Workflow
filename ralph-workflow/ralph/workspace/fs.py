@@ -28,12 +28,13 @@ def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
 
 class FsWorkspace:
     __slots__ = (
-        '__dict__',
-        '_allowed_roots',
-        '_backend',
-        '_root',
-        'explore_index',
+        "__dict__",
+        "_allowed_roots",
+        "_backend",
+        "_root",
+        "explore_index",
     )
+
     def __init__(
         self,
         root: Path | str,

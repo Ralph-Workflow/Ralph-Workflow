@@ -40,7 +40,12 @@ class ProbeExecutorStatus:
 
 
 class _ProbeExecutorHolder:
-    __slots__ = ('_executor', '_lock', '_max_workers',)
+    __slots__ = (
+        "_executor",
+        "_lock",
+        "_max_workers",
+    )
+
     def __init__(self, max_workers: int = _PROBE_MAX_WORKERS) -> None:
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None

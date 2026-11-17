@@ -4,7 +4,7 @@ import ast
 import json
 import re
 from dataclasses import dataclass
-from typing import Final, Literal, cast
+from typing import Final, Literal
 
 _PATCH_HUNK_RE: Final[re.Pattern[str]] = re.compile(
     r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", re.MULTILINE

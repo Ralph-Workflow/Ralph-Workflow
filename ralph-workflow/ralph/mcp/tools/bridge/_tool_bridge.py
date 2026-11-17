@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
@@ -9,7 +9,6 @@ from ralph.mcp.tools.bridge._spec_helpers import _is_approved
 from ralph.mcp.tools.bridge._tool_bridge_error import ToolBridgeError
 from ralph.mcp.tools.bridge._tool_dispatch_error import ToolDispatchError
 from ralph.mcp.tools.bridge._tool_registration_error import ToolRegistrationError
-from ralph.mcp.tools.bridge._types import as_tool_handler
 from ralph.mcp.tools.capability_denied_error import CapabilityDeniedError
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
 from ralph.mcp.tools.tool_content import ToolContent
@@ -40,6 +39,14 @@ _RETIRED_JSON_TOOL_REPLACEMENTS: dict[str, str] = {
     "ralph_move_plan_step": "ralph_edit_md_artifact",
     "ralph_edit_md_plan_step": "ralph_edit_md_artifact",
 }
+
+
+class _CapabilityChecker(Protocol):
+    def __call__(self, capability: str, /) -> object: ...
+
+
+def _is_capability_checker(value: object) -> TypeGuard[_CapabilityChecker]:
+    return callable(value)
 
 
 def _candidate_names(name: str) -> tuple[str, ...]:
@@ -155,7 +162,6 @@ class ToolBridge:
             return True
 
         checker_obj = attr_or_none(effective_session, "check_capability")
-        if checker_obj is None or not callable(checker_obj):
+        if not _is_capability_checker(checker_obj):
             return True
-        checker = as_tool_handler(checker_obj)
-        return _is_approved(checker(metadata.required_capability))
+        return _is_approved(checker_obj(metadata.required_capability))

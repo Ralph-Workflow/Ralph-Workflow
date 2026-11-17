@@ -7,6 +7,13 @@ from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import agents_md, markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_both_agents_templates_interpolate_canonical_dir": (
+        "the same interpolation contract is asserted on the AGENTS.md text that bootstrap and "
+        "condense_placeholder_block write, instead of reading the private template constants"
+    ),
+}
+
 
 def _empty_stack() -> ProjectStack:
     return ProjectStack()
@@ -576,23 +583,13 @@ def test_bootstrap_preserves_user_authored_v1_block() -> None:
 
 
 def test_both_agents_templates_interpolate_canonical_dir() -> None:
-    placeholder = agents_md._AGENTS_PLACEHOLDER_TEMPLATE.format(
-        begin=markers.AGENTS_BLOCK_BEGIN,
-        end=markers.AGENTS_BLOCK_END,
-        canonical_dir=markers.CANONICAL_DIR,
-    )
-    ready = agents_md._AGENTS_READY_TEMPLATE.format(
-        begin=markers.AGENTS_BLOCK_BEGIN,
-        end=markers.AGENTS_BLOCK_END,
-        canonical_dir=markers.CANONICAL_DIR,
-    )
+    ws = MemoryWorkspace()
+    agents_md.bootstrap(ws)
+    placeholder = ws.read(markers.AGENTS_MD)
+    agents_md.condense_placeholder_block(ws)
+    ready = ws.read(markers.AGENTS_MD)
     cited_dir = f"`{markers.CANONICAL_DIR}`"
     cited_gate = f"`{markers.CANONICAL_DIR}gate-script-policy.md`"
-    assert "{canonical_dir}" in agents_md._AGENTS_PLACEHOLDER_TEMPLATE
-    assert "{canonical_dir}" in agents_md._AGENTS_READY_TEMPLATE
-    assert "`{canonical_dir}`" in agents_md._AGENTS_PLACEHOLDER_TEMPLATE
-    assert "`{canonical_dir}`" in agents_md._AGENTS_READY_TEMPLATE
-    assert "`{canonical_dir}gate-script-policy.md`" in agents_md._AGENTS_READY_TEMPLATE
     assert cited_dir in placeholder
     assert cited_dir in ready
     assert cited_gate in ready

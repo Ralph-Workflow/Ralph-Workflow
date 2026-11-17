@@ -132,7 +132,17 @@ def as_object_dict(value: object, *, field: str | None = None) -> dict[str, obje
 
 
 def as_mapping(value: object, *, field: str | None = None) -> Mapping[str, object]:
-    return as_object_dict(value, field=field)
+    if not isinstance(value, Mapping):
+        msg = _field_message(field, f"expected Mapping[str, object], got {type(value).__name__}")
+        raise TypeError(msg)
+    mapping: Mapping[object, object] = value
+    result: dict[str, object] = {}
+    for key, item in mapping.items():
+        if not isinstance(key, str):
+            msg = _field_message(field, f"mapping keys must be str, got {type(key).__name__}")
+            raise TypeError(msg)
+        result[key] = item
+    return result
 
 
 def as_object_list(value: object, *, field: str | None = None) -> list[object]:

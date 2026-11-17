@@ -312,7 +312,6 @@ def route_git_method(
     return second_result
 
 
-
 def _git_cmd_method(git_attr: GitCmdProxy, method_name: str) -> object:
     if method_name == "add":
         return git_attr.add

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Final, cast
 from loguru import logger
 
 from ralph.checked_accessors import as_object_list
-from ralph.config._env import getenv
 from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
@@ -93,11 +92,8 @@ def build_opencode_provider_config(
         config_obj["experimental"] = experimental_obj
     cast("dict[str, object]", experimental_obj)["mcp_timeout"] = _OPENCODE_MCP_CLIENT_TIMEOUT_MS
 
-    permission_section_obj = config_obj.setdefault("permission", {})
-    if not isinstance(permission_section_obj, dict):
-        permission_section_obj = {}
-        config_obj["permission"] = permission_section_obj
-    permission_section = as_object_dict(permission_section_obj) or {}
+    permission_section = as_object_dict(config_obj.get("permission")) or {}
+    config_obj["permission"] = permission_section
     permission_section["ralph_*"] = "allow"
     permission_section["mcp__ralph__*"] = "allow"
     for tool_name in ALL_RALPH_TOOLS:

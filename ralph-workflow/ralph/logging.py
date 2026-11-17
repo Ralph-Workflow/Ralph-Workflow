@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.checked_accessors import as_int
 from ralph.display.log_sink import make_stderr_log_sink
 
 if TYPE_CHECKING:

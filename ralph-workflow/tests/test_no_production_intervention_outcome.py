@@ -10,6 +10,10 @@ from typing import Final
 
 import pytest
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "status bar allow-list line": "the retained legacy attention key moved from line 139 to 140 when 429c3fa23 added the read_attr import above it; the guarded literal and its justification are unchanged",
+}
+
 _PRODUCTION_ROOT: Final = Path(__file__).resolve().parent.parent / "ralph"
 
 _NEEDLES: Final = (
@@ -93,7 +97,7 @@ _ALLOW_PHASE_DECISION_PRODUCERS: Final = {
 }
 
 _ALLOW_DISPLAY_MAPPINGS: Final = {
-    ("display/status_bar.py", 139): (
+    ("display/status_bar.py", 140): (
         '"intervention_required": ("INTERVENTION_REQUIRED", "error", "theme.status.error")',
         "ATTENTION_PRESENTATION retains the retired attention key for legacy "
         "checkpoint rendering; live ladder escalation renders as evidence_diagnosis",

@@ -58,14 +58,10 @@ def emit_final_summary(
         if subscriber is not None:
             try:
                 try:
-                    dropped_count_raw: object = object.__getattribute__(
-                        subscriber, "dropped_count"
-                    )
+                    dropped_count_raw: object = object.__getattribute__(subscriber, "dropped_count")
                 except AttributeError:
                     dropped_count_raw = 0
-                dropped_count = (
-                    dropped_count_raw if isinstance(dropped_count_raw, int) else 0
-                )
+                dropped_count = dropped_count_raw if isinstance(dropped_count_raw, int) else 0
                 snapshot = subscriber.build_snapshot(state)
             except (AttributeError, OSError, RuntimeError, ValueError, KeyError):
                 logger.debug(

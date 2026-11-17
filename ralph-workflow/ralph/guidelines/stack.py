@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from ralph.guidelines._detected_stack import DetectedStack
+from ralph.guidelines._detected_stack_like import _DetectedStackLike
 from ralph.guidelines.go import GoGuidelines
 from ralph.guidelines.java import JavaGuidelines
 from ralph.guidelines.javascript import JavaScriptGuidelines
@@ -53,6 +55,14 @@ class _ReadableGuidelineSource(Protocol):
 
     @property
     def api_design_checks(self) -> Sequence[str]: ...
+
+
+class _StackDetector(Protocol):
+    def __call__(self, workspace: Workspace, root: str, /) -> object: ...
+
+
+def _is_stack_detector(value: object) -> TypeGuard[_StackDetector]:
+    return callable(value)
 
 
 class _LanguageHandler(Protocol):
@@ -385,8 +395,7 @@ class StackGuidelines:
 
 
 def get_stack_guidelines(workspace: Workspace, root: str = "") -> StackGuidelines:
-    del root
-    stack = _fallback_detect_stack(workspace)
+    stack = _detect_stack_with_workspace(workspace, root)
     languages = [stack.primary_language, *stack.secondary_languages]
     normalized = [lang for lang in languages if lang]
     typescript_enabled = any(lang == "TypeScript" for lang in normalized)
@@ -407,6 +416,24 @@ def get_stack_guidelines(workspace: Workspace, root: str = "") -> StackGuideline
         processed.add(key)
 
     return guidelines
+
+
+def _detect_stack_with_workspace(workspace: Workspace, root: str) -> DetectedStack:
+    try:
+        module: object = import_module("ralph.language_detector")
+    except ImportError:
+        return _fallback_detect_stack(workspace)
+    detector: object = getattr(module, "detect_stack_with_workspace", None)
+    if not _is_stack_detector(detector):
+        return _fallback_detect_stack(workspace)
+    stack_candidate = detector(workspace, root)
+    if not isinstance(stack_candidate, _DetectedStackLike):
+        return _fallback_detect_stack(workspace)
+    return DetectedStack(
+        primary_language=stack_candidate.primary_language,
+        secondary_languages=list(stack_candidate.secondary_languages),
+        frameworks=list(stack_candidate.frameworks),
+    )
 
 
 def _fallback_detect_stack(workspace: Workspace) -> DetectedStack:

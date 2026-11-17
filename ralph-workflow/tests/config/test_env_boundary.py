@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import ralph.config as config_package
-from ralph.config import resolve_global_config_dir
-from ralph.config._env import (
+from ralph.config import (
     copy_environ,
     del_environ,
     environ,
     getenv,
     pop_environ,
     resolve_environ,
+    resolve_global_config_dir,
     set_environ,
     setdefault_environ,
 )

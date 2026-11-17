@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph._typed_attrs import read_attr
 from ralph.mcp.explore._narrowing import is_int_or_float

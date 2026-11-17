@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from rich.text import Text
 

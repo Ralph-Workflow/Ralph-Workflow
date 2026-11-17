@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph._typed_attrs import read_attr, read_optional_instance_attr
 from ralph.checked_accessors import as_object_list

@@ -6,8 +6,6 @@ from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
 
-from ralph._typed_attrs import attr_or_none, read_int_attr, read_str_attr
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
@@ -374,12 +372,11 @@ def _normalized_repo_path(raw_path: str) -> str:
 def _is_path_collection(
     value: object,
 ) -> TypeGuard[list[object] | tuple[object, ...] | set[object] | frozenset[object]]:
-    return (
-        isinstance(value, list)
-        or isinstance(value, tuple)
-        or isinstance(value, set)
-        or isinstance(value, frozenset)
-    )
+    match value:
+        case list() | tuple() | set() | frozenset():
+            return True
+        case _:
+            return False
 
 
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:

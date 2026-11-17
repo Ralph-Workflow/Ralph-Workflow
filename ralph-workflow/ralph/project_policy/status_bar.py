@@ -27,9 +27,9 @@ def _attr_or(obj: object, name: str, default: object) -> object:
 def format_readiness_footer_label(assessment: object | None) -> str:
     if assessment is None:
         return "Policy: -- -"
-    s_attr = _attr_or(assessment, "structure_complete", False)
-    i_attr = _attr_or(assessment, "implementation_verified", False)
-    o_attr = _attr_or(assessment, "outcome_evidence_reviewed", False)
+    s_attr = _attr_or(assessment, "structure_complete", default=False)
+    i_attr = _attr_or(assessment, "implementation_verified", default=False)
+    o_attr = _attr_or(assessment, "outcome_evidence_reviewed", default=False)
     s = "S*" if bool(s_attr) else "S-"
     i = "I*" if bool(i_attr) else "I-"
     o = "O*" if bool(o_attr) else "O-"

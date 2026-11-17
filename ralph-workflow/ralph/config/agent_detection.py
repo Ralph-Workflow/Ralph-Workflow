@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
-from ralph.checked_accessors import as_mapping, as_object_dict
+from ralph.checked_accessors import as_object_dict
 from ralph.config import _env
 from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.agents_file_writer import write_agents_toml

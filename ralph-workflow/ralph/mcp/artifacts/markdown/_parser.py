@@ -141,7 +141,6 @@ def parse_markdown_document(
             finish_item()
             if current is not None:
                 sections.append(current.finish())
-            marks = _group_str(heading, "marks")
             current = _SectionBuilder(
                 _group_str(heading, "name"),
                 line_number,

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.parsers import resolve_parser_key
 from ralph.agents.parsers.line_channel import line_channel
+
 if TYPE_CHECKING:
     from ralph.agents.parsers.content_channel import ContentChannel
     from ralph.config.models import AgentConfig

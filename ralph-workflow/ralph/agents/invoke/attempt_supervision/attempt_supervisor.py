@@ -7,7 +7,6 @@ import weakref
 from collections import deque
 from typing import TYPE_CHECKING, cast
 
-from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.invoke.attempt_supervision import _issuer_mapping
 from ralph.agents.invoke.attempt_supervision._signal_fn import _SignalFn

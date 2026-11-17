@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
-from ralph._typed_attrs import read_attr
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 

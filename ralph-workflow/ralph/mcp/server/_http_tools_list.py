@@ -37,12 +37,12 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     payload: object
     if not data_lines:
         try:
-            payload: object = json.loads(raw)
+            payload = json.loads(raw)
         except json.JSONDecodeError:
             return []
     else:
         try:
-            payload: object = json.loads(data_lines[0])
+            payload = json.loads(data_lines[0])
         except json.JSONDecodeError:
             return []
     payload_map = payload if isinstance(payload, dict) else None

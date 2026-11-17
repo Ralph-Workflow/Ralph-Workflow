@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, overload
 
 from loguru import logger
 
-from ralph._typed_attrs import read_attr
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 

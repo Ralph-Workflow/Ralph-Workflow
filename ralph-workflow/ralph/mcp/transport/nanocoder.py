@@ -6,9 +6,9 @@ import platform
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tool_contract import expand_tool_names_with_aliases
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
@@ -119,7 +119,7 @@ def _parse_nanocoder_mcp_servers(existing: str | None) -> dict[str, object]:
             item = as_object_dict(item_obj)
             if item is None:
                 continue
-            item_map = cast("dict[str, object]", item)
+            item_map = item
             name = item_map.get("name")
             if not isinstance(name, str) or not name:
                 continue

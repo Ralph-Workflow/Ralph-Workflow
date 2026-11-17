@@ -397,7 +397,6 @@ def post_http_jsonrpc_with_session(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
         ) from exc
 
-    response_headers: Mapping[str, str] = response.headers
     if response.status_code == _HTTP_ACCEPTED and not response.content.strip():
         next_session_id = cast("str | None", response.headers.get("mcp-session-id"))
         return {}, next_session_id or session_id

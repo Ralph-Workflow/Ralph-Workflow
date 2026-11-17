@@ -257,8 +257,8 @@ def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]
     except TypeError:
         return {}
     owners: dict[str, tuple[str, float]] = {}
-    for path, entry in raw.items():
-        if isinstance(path, str) and isinstance(entry, dict):
+    for path, entry in raw_dict.items():
+        if isinstance(entry, dict):
             run_id = entry.get("run_id")
             created_at = entry.get("created_at")
             if isinstance(run_id, str) and isinstance(created_at, (int, float)):

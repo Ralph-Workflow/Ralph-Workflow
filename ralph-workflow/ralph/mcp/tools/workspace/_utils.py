@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 
 from ralph._typed_attrs import read_attr, read_callable_attr
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved

@@ -23,6 +23,10 @@ POLICY_WHITE_BOX_EXCEPTION = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_default_routing_allowlist_is_exact_and_immutable": (
+        "f2ee58d5b added tests/test_private_agent_home_rust_toolchain.py to the conftest "
+        "default-gate Antigravity paths; the pinned set now names that file too"
+    ),
     "test_test_verify_budget_target_runs_only_real_time_test pins the new suite-timeout variable": (
         "the same target body is still pinned line-for-line; only the suite-timeout "
         "variable name changed from PYTEST_SUITE_TIMEOUT_SECONDS to "
@@ -116,6 +120,7 @@ def test_default_routing_allowlist_is_exact_and_immutable() -> None:
             {
                 "tests/test_agy_pty_invocation.py",
                 "tests/test_agy_runtime_home_auth.py",
+                "tests/test_private_agent_home_rust_toolchain.py",
             }
         )
         == conftest_module._AGY_DEFAULT_TEST_PATHS

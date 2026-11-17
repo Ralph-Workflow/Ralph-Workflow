@@ -7,7 +7,6 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
-from ralph._typed_attrs import read_attr
 from ralph.workspace.errors import WorkspaceContextError
 
 if TYPE_CHECKING:

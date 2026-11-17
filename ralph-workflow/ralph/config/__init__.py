@@ -4,6 +4,16 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from ralph.config._env import (
+        copy_environ,
+        del_environ,
+        environ,
+        getenv,
+        pop_environ,
+        resolve_environ,
+        set_environ,
+        setdefault_environ,
+    )
     from ralph.config._toml_fallback import (
         describe_config_failure,
         emit_config_failure_warning,
@@ -42,6 +52,8 @@ __all__ = [
     "RecoveryStrategy",
     "UnifiedConfig",
     "Verbosity",
+    "copy_environ",
+    "del_environ",
     "describe_config_failure",
     "emit_config_failure_warning",
     "emit_first_run_welcome",
@@ -49,14 +61,28 @@ __all__ = [
     "ensure_global_config",
     "ensure_global_mcp_config",
     "ensure_local_configs",
+    "environ",
+    "getenv",
     "load_optional_toml",
+    "pop_environ",
     "regenerate_all",
     "reset_fallback_warning_registry",
+    "resolve_environ",
     "resolve_global_config_dir",
+    "set_environ",
+    "setdefault_environ",
     "validate_or_default",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "copy_environ": ("ralph.config._env", "copy_environ"),
+    "del_environ": ("ralph.config._env", "del_environ"),
+    "environ": ("ralph.config._env", "environ"),
+    "getenv": ("ralph.config._env", "getenv"),
+    "pop_environ": ("ralph.config._env", "pop_environ"),
+    "resolve_environ": ("ralph.config._env", "resolve_environ"),
+    "set_environ": ("ralph.config._env", "set_environ"),
+    "setdefault_environ": ("ralph.config._env", "setdefault_environ"),
     "AgentConfig": ("ralph.config.models", "AgentConfig"),
     "BootstrapResult": ("ralph.config.bootstrap", "BootstrapResult"),
     "GeneralConfig": ("ralph.config.models", "GeneralConfig"),

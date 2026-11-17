@@ -288,10 +288,7 @@ class FileBackedSession:
     @property
     def created_at(self) -> float:
         payload_raw = self._load().get("created_at")
-        if (
-            isinstance(payload_raw, int | float)
-            and not isinstance(payload_raw, bool)
-        ):
+        if isinstance(payload_raw, int | float) and not isinstance(payload_raw, bool):
             return float(payload_raw)
         if isinstance(payload_raw, float):
             return payload_raw

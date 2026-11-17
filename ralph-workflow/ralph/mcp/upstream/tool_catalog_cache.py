@@ -148,7 +148,7 @@ def _read_disk_snapshot(workspace_root: Path) -> UpstreamToolCatalogSnapshot | N
         return UpstreamToolCatalogSnapshot(present=False)
     decoded: object
     try:
-        decoded: object = json.loads(raw)
+        decoded = json.loads(raw)
     except json.JSONDecodeError:
         decoded = None
     if not isinstance(decoded, dict):

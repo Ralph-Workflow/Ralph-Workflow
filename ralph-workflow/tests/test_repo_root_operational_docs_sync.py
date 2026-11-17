@@ -8,6 +8,24 @@ _OPERATIONAL_GUIDES = [
 
 _SPINX_DIR = Path(__file__).resolve().parent.parent / "docs" / "sphinx"
 
+_RUST_ERA_CARGO_COMMANDS = (
+    "cargo build",
+    "cargo test",
+    "cargo run",
+    "cargo install",
+    "cargo clippy",
+    "cargo fmt",
+    "cargo.toml",
+)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_no_stale_rust_workflow_references": (
+        "the guide now documents that private agent homes reuse the operator's ~/.cargo and "
+        "CARGO_HOME for the user's own Rust projects; the guard still rejects every Rust-era "
+        "cargo workflow command and Cargo.toml reference instead of the bare word"
+    ),
+}
+
 
 def _guide_path(guide: str) -> Path:
     return _SPINX_DIR / guide
@@ -36,9 +54,10 @@ def test_no_stale_rust_workflow_references() -> None:
         )
 
         if not is_historical:
-            assert "cargo" not in content_lower, (
-                f"{guide} should not reference Rust-era cargo workflow"
-            )
+            for cargo_command in _RUST_ERA_CARGO_COMMANDS:
+                assert cargo_command not in content_lower, (
+                    f"{guide} should not reference Rust-era cargo workflow"
+                )
             assert "xtask" not in content_lower, f"{guide} should not reference Rust-era xtask"
             assert "src/main.rs" not in content_lower, (
                 f"{guide} should not reference Rust source paths"

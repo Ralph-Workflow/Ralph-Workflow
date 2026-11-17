@@ -71,14 +71,20 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 @pytest.fixture(autouse=True)
-def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds, **_kwargs: None)
+def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> FakeClock:
+    clock = FakeClock()
+    monkeypatch.setattr(
+        driver_module,
+        "_sleep_seconds",
+        lambda seconds, **_kwargs: clock.advance(max(seconds, 65.0)),
+    )
     monkeypatch.setattr(
         sight_module,
         "conflict_stage_entries",
         lambda _root, _paths: ConflictStageEntries({}),
     )
     _stub_canary_probe_boundary(monkeypatch)
+    return clock
 
 
 class _FakeStatusBar:
@@ -270,16 +276,15 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
     assert feedback_seen == [(), ("src/alpha.py",)]
 
 
-def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_bounded_at_max_resolution_rounds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _no_real_cooldown_waits: FakeClock
+) -> None:
     from dataclasses import replace
 
     from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[["src/alpha.py"]])
-    clock = FakeClock()
-    monkeypatch.setattr(
-        driver_module, "_sleep_seconds", lambda seconds, **_kwargs: clock.advance(max(seconds, 65.0))
-    )
+    clock = _no_real_cooldown_waits
     calls: list[int] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:

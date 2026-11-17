@@ -637,7 +637,7 @@ def test_marker(controller):
 
     src_private_getattr = """
 def test_getattr(controller):
-    attempts = read_attr(controller, "_backoff_attempts")
+    attempts = getattr(controller, "_backoff_attempts")
 """
     v17 = audit_test_source("tests/recovery/test_sample.py", src_private_getattr)
     require(

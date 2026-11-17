@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.checked_accessors import as_object_dict, as_sequence
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,

@@ -17,7 +17,6 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-from ralph.recovery.unavailability_reason import UnavailabilityReason
 from tests.test_run_loop_retry_diagnostic import _create_retry_ctx, _noop_save
 
 if TYPE_CHECKING:

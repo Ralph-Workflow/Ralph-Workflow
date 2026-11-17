@@ -106,7 +106,7 @@ def _invoke_http_method(handler: _HandlerWithBaseAttrs, method: str) -> None:
     action_obj: object = getattr(handler, attr_name, None)
     if not callable(action_obj):
         raise TypeError(f"handler must provide {attr_name}")
-    action_obj()  # callable() checked above
+    action_obj()
 
 
 def drive_streamed_request(

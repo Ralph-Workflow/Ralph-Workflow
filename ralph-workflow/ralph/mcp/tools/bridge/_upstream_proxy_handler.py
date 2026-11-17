@@ -20,10 +20,6 @@ class UpstreamProxyHandler:
         workspace: object | None,
         params: JsonObject,
     ) -> object:
-        session = cast(
-            "HasMediaManifest | None",
-            host_session if host_session is not None else None,
-        )
         ws = cast("Workspace | None", workspace if workspace is not None else None)
         result = self._upstream_registry.call_tool(
             self._alias,

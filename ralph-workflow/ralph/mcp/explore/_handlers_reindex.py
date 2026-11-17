@@ -6,7 +6,6 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import read_attr
 from ralph.mcp.explore import handlers as handlers_module
@@ -37,10 +36,6 @@ from ralph.mcp.tools.workspace._utils import (
     WORKSPACE_READ_CAPABILITY,
     _tool_json,
 )
-
-if TYPE_CHECKING:
-    from ralph.workspace.protocol import Workspace
-
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from git.exc import GitError
 from loguru import logger

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import shutil
 import tomllib
-from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast

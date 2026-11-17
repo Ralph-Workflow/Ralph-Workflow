@@ -28,15 +28,6 @@ class CrossProcessWatchLock:
     _counter: ClassVar[int] = 0
 
     @classmethod
-    def _lock(cls) -> threading.Lock:
-        existing = cls._counter_lock
-        if existing is not None:
-            return existing
-        created = threading.Lock()
-        cls._counter_lock = created
-        return created
-
-    @classmethod
     def try_acquire(cls, workspace_root: Path) -> str | None:
         key = str(workspace_root.absolute())
         with cls._counter_lock:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from ralph._typed_attrs import attr_or_none
 from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
 from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 

@@ -13,6 +13,13 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 from ralph.recovery.events import FailureEvent, FailureEventBus
 from ralph.recovery.failure_classifier import FailureCategory, FailureClassifier
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cursor_auth_incident_fails_as_user_config_without_stale_session_reset": (
+        "RecoveryController now declares __slots__, so the stale-session tripwire is "
+        "installed on the class instead of the instance; the assertions are unchanged"
+    ),
+}
+
 
 @pytest.mark.parametrize(
     "message",
@@ -65,7 +72,7 @@ def test_cursor_auth_incident_fails_as_user_config_without_stale_session_reset(
         raise AssertionError("cursor authentication must not enter stale-session handling")
 
     monkeypatch.setattr(
-        controller, "_write_session_reset_hint", fail_if_stale_session_handling_runs
+        RecoveryController, "_write_session_reset_hint", fail_if_stale_session_handling_runs
     )
     state = PipelineState(
         phase="development_analysis",

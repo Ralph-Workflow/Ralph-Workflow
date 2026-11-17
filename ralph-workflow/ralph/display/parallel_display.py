@@ -137,7 +137,6 @@ _SECONDS_PER_MINUTE: int = 60
 _PREVIEW_MAX_LINES: int = 40
 
 _MIN_COALESCE_REPEAT = 2
-_CONDENSE_SUMMARY_RESULT_LEN = 4
 _MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
 _TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
 _TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
@@ -150,9 +149,7 @@ def _str_keyed_dict(value: object) -> dict[str, object]:
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
-def _condense_pair(
-    text: str, *, options: CondenseOptions
-) -> tuple[str, bool]:
+def _condense_pair(text: str, *, options: CondenseOptions) -> tuple[str, bool]:
     result = condense_content(text, options=options)
     return result[0], result[1]
 
@@ -160,10 +157,11 @@ def _condense_pair(
 def _condense_with_summaries(
     text: str, *, options: CondenseOptions
 ) -> tuple[str, bool, str | None, str | None]:
-    result = condense_content(text, options=options)
-    if len(result) == _CONDENSE_SUMMARY_RESULT_LEN:
-        return result
-    return result[0], result[1], None, None
+    match condense_content(text, options=options):
+        case (str() as condensed, bool() as truncated, summary, detail):
+            return condensed, truncated, summary, detail
+        case (str() as condensed, bool() as truncated):
+            return condensed, truncated, None, None
 
 
 def _clean_tool_result_content(content: str, unit_id: str) -> str:

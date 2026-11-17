@@ -139,13 +139,13 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/attempt_runner_deps.py",
         "raw_attempt_invoke",
-        144,
+        151,
         "raw attempt invocation seam reached only through the registered attempt runner",
     ),
     (
         "ralph/pipeline/effect_executor.py",
         "_consume_attempt_output",
-        1767,
+        1788,
         "effect executor dispatch owned by the registered effect route",
     ),
 )

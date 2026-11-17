@@ -4,7 +4,6 @@ import importlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph._typed_attrs import attr_or_none
 from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
 
 if TYPE_CHECKING:

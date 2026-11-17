@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from loguru import logger
 
@@ -33,7 +33,6 @@ from ralph.pipeline.attempt_runner import (
 from ralph.pipeline.attempt_runner_deps import (
     AttemptInvoke,
     AttemptRunnerDeps,
-    effect_attempt_invoke,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
@@ -67,7 +66,7 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
@@ -355,8 +354,30 @@ def _make_production_invoke_agent(
     return typed
 
 
+class _ForwardingEffectRunner(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+def _is_forwarding_effect_runner(value: object) -> TypeGuard[_ForwardingEffectRunner]:
+    return callable(value)
+
+
 def _production_effect_invoke() -> AttemptInvoke:
-    return effect_attempt_invoke(_effect_executor_module.execute_agent_effect)
+    def invoke(
+        target: InvokeAgentEffect | AgentConfig,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        config = kwargs.pop("config")
+        pipeline_deps = kwargs.pop("pipeline_deps")
+        workspace_scope = kwargs.pop("workspace_scope")
+        runner: object = _effect_executor_module.execute_agent_effect
+        if not _is_forwarding_effect_runner(runner):
+            raise TypeError("execute_agent_effect must be callable")
+        result: object = runner(target, config, pipeline_deps, workspace_scope, *args, **kwargs)
+        return result
+
+    return invoke
 
 
 def _run_project_policy_attempt_with_kwargs(

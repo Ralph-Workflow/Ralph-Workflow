@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard
 
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.explore.pipeline import (
@@ -123,7 +123,12 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
 
 
 def _resolve_explore_index(session: object) -> ExploreIndex | None:
-    return cast("ExploreIndex | None", attr_or_none(session, "explore_index"))
+    handle = attr_or_none(session, "explore_index")
+    return handle if _is_attached_index(handle) else None
+
+
+def _is_attached_index(value: object) -> TypeGuard[ExploreIndex]:
+    return value is not None
 
 
 def _gitignore_coverage(workspace_root: Path) -> bool:

@@ -35,7 +35,6 @@ from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_mapping
-from ralph.config._env import getenv
 from ralph.config.enums import AgentTransport
 from ralph.display.capability_observation_recorder import infer_surface_for_preview
 from ralph.display.parallel_display import ParallelDisplay

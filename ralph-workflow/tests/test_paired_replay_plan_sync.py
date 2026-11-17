@@ -90,9 +90,7 @@ _LEDGER_FIELDS = (
     "invalid",
     "scores_path",
 )
-_R1_INVALID_REASON = (
-    "ENOSPC: agent commands never started; no source change (see transcript.jsonl)"
-)
+_R1_INVALID_REASON = "ENOSPC: agent commands never started; no source change (see transcript.jsonl)"
 _R3_TIMEOUT_SECONDS = 720
 _R3_AGENT_EXIT = 124
 
@@ -121,7 +119,9 @@ def _pilot_ledger_rows() -> list[dict[str, object]]:
 
 def _row_by_arm(rows: list[dict[str, object]], arm: str) -> dict[str, object]:
     matches = [row for row in rows if row.get("arm") == arm]
-    assert len(matches) == 1, f"expected exactly one ledger row for arm {arm!r}; found {len(matches)}"
+    assert len(matches) == 1, (
+        f"expected exactly one ledger row for arm {arm!r}; found {len(matches)}"
+    )
     return matches[0]
 
 

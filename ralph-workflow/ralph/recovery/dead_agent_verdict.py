@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, cast
+from typing import Final
 
 from ralph.checked_accessors import as_object_dict
 from ralph.recovery.attempt_facts import (
