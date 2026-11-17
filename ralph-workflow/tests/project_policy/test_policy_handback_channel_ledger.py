@@ -187,18 +187,14 @@ def test_post_preflight_channel_ledger_records_six_channels(
 
         return PipelineEvent.AGENT_FAILURE
 
-    original_executor = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = failing_execute_agent_effect
-    try:
-        rc = cli_integration.run_project_policy_readiness(
-            load_result=load_result,
-            display_context=display_context,
-            workspace_factory=lambda: workspace,
-            emit_factory=lambda _m: None,
-            is_tty=lambda: False,
-        )
-    finally:
-        effect_executor_module.execute_agent_effect = original_executor
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", failing_execute_agent_effect)
+    rc = cli_integration.run_project_policy_readiness(
+        load_result=load_result,
+        display_context=display_context,
+        workspace_factory=lambda: workspace,
+        emit_factory=lambda _m: None,
+        is_tty=lambda: False,
+    )
 
     console_live_value = _probe_console_live(console)
 

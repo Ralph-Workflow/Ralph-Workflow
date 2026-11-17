@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -14,7 +14,6 @@ from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
-from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
@@ -31,7 +30,7 @@ from ralph.pipeline.attempt_runner import (
     run_agent_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import (
-    AttemptInvoke,
+    PRODUCTION_INVOKE,
     AttemptRunnerDeps,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -66,7 +65,7 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
@@ -82,6 +81,8 @@ if TYPE_CHECKING:
 _EXIT_SUCCESS: int = 0
 
 _EXIT_PREFLIGHT: int = 2
+
+execute_agent_effect = PRODUCTION_INVOKE
 
 
 EmitFn = Callable[[str], None]
@@ -276,10 +277,9 @@ def _make_production_invoke_agent(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None,
 ) -> InvokePolicyAgent:
-    invoke_effect = _production_effect_invoke()
     attempt_deps = AttemptRunnerDeps(
         clock=SystemClock(),
-        invoke=invoke_effect,
+        invoke=execute_agent_effect,
         probe_runner=None,
         workspace_probe=None,
         connectivity=None,
@@ -352,32 +352,6 @@ def _make_production_invoke_agent(
 
     typed: InvokePolicyAgent = invoke_agent
     return typed
-
-
-class _ForwardingEffectRunner(Protocol):
-    def __call__(self, *args: object, **kwargs: object) -> object: ...
-
-
-def _is_forwarding_effect_runner(value: object) -> TypeGuard[_ForwardingEffectRunner]:
-    return callable(value)
-
-
-def _production_effect_invoke() -> AttemptInvoke:
-    def invoke(
-        target: InvokeAgentEffect | AgentConfig,
-        *args: object,
-        **kwargs: object,
-    ) -> object:
-        config = kwargs.pop("config")
-        pipeline_deps = kwargs.pop("pipeline_deps")
-        workspace_scope = kwargs.pop("workspace_scope")
-        runner: object = _effect_executor_module.execute_agent_effect
-        if not _is_forwarding_effect_runner(runner):
-            raise TypeError("execute_agent_effect must be callable")
-        result: object = runner(target, config, pipeline_deps, workspace_scope, *args, **kwargs)
-        return result
-
-    return invoke
 
 
 def _run_project_policy_attempt_with_kwargs(

@@ -95,7 +95,9 @@ def _build_load_result(
     )
 
 
-def test_policy_phase_does_not_leak_session_id_into_pipeline_consumer() -> None:
+def test_policy_phase_does_not_leak_session_id_into_pipeline_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bundle = policy_invocation_bundle()
     policy_workspace = MemoryWorkspace()
 
@@ -116,22 +118,18 @@ def test_policy_phase_does_not_leak_session_id_into_pipeline_consumer() -> None:
             _approve_policy_in_workspace(policy_workspace)
         return PipelineEvent.AGENT_SUCCESS
 
-    original = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = fake_execute_agent_effect
-    try:
-        load_result = _build_load_result(
-            workspace_root="/test/project-policy-handback",
-            policy_bundle=bundle,
-        )
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
+    load_result = _build_load_result(
+        workspace_root="/test/project-policy-handback",
+        policy_bundle=bundle,
+    )
 
-        rc = run_module._run_project_policy_readiness(
-            load_result=load_result,
-            display_context=make_display_context(),
-            workspace_factory=lambda: policy_workspace,
-            emit_factory=lambda m: None,
-        )
-    finally:
-        effect_executor_module.execute_agent_effect = original
+    rc = run_module._run_project_policy_readiness(
+        load_result=load_result,
+        display_context=make_display_context(),
+        workspace_factory=lambda: policy_workspace,
+        emit_factory=lambda m: None,
+    )
 
     assert rc == 0, "policy preflight should exit 0 once remediation is ready"
 
@@ -188,23 +186,19 @@ def test_policy_phase_failure_path_does_not_leak_retry_intent(
         set_last_captured_session_id(None)
         return PipelineEvent.AGENT_FAILURE
 
-    original = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = fake_execute_agent_effect
-    try:
-        load_result = _build_load_result(
-            workspace_root="/test/project-policy-handback-failure",
-            policy_bundle=bundle,
-        )
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
+    load_result = _build_load_result(
+        workspace_root="/test/project-policy-handback-failure",
+        policy_bundle=bundle,
+    )
 
-        cli_integration.run_project_policy_readiness(
-            load_result=load_result,
-            display_context=make_display_context(),
-            workspace_factory=lambda: policy_workspace,
-            emit_factory=lambda m: None,
-            is_tty=lambda: False,
-        )
-    finally:
-        effect_executor_module.execute_agent_effect = original
+    cli_integration.run_project_policy_readiness(
+        load_result=load_result,
+        display_context=make_display_context(),
+        workspace_factory=lambda: policy_workspace,
+        emit_factory=lambda m: None,
+        is_tty=lambda: False,
+    )
 
     leaked_intent = effect_executor_module.pop_last_captured_retry_intent()
     assert leaked_intent == cleared_agent_retry_intent(), (
@@ -453,8 +447,7 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
         effect_executor_module, ws, policy_phase_session_ids
     )
 
-    original_executor_module = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = fake_execute_agent_effect
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
 
     load_result = _stub_load_result_for_handback(f"/test/handback-{phase}", phase=phase)
     load_result = run_module._LoadResult(
@@ -515,7 +508,6 @@ def test_run_pipeline_handback_returns_to_persisted_phase_not_policy_session(
             display_context=make_display_context(),
         )
     finally:
-        effect_executor_module.execute_agent_effect = original_executor_module
         run_module._load_configuration = original_load
         run_module._run_preflight_checks = original_preflight
         run_module._sync_shipped_skills_on_pipeline_run = original_sync

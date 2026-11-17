@@ -16,7 +16,6 @@ from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git.scoped_auto_commit import list_dirty_paths
-from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import default_dir, load_policy
 from ralph.project_policy import cli_integration
@@ -194,8 +193,7 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
 
         return PipelineEvent.AGENT_FAILURE
 
-    original_executor = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = failing_execute_agent_effect
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", failing_execute_agent_effect)
 
     stubs = _build_handback_run_pipeline_stubs_for_git_root(
         load_result=load_result,
@@ -228,7 +226,6 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
             display_context=make_display_context(),
         )
     finally:
-        effect_executor_module.execute_agent_effect = original_executor
         run_module._load_configuration = original_load
         run_module._run_preflight_checks = original_preflight
         run_module._sync_shipped_skills_on_pipeline_run = original_sync
@@ -255,6 +252,7 @@ def test_blocked_handback_leaves_no_policy_scope_path_dirty(
 @pytest.mark.timeout_seconds(10)
 def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
     tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_run_func_state_unset()
     workspace, _workspace_scope, load_result = _load_git_run_result(tmp_git_repo)
@@ -318,8 +316,7 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
 
         return PipelineEvent.AGENT_SUCCESS
 
-    original_executor = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = seed_execute_agent_effect
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", seed_execute_agent_effect)
 
     stubs = _build_handback_run_pipeline_stubs_for_git_root(
         load_result=load_result,
@@ -352,7 +349,6 @@ def test_post_remediation_ready_handback_leaves_no_policy_scope_path_dirty(
             display_context=make_display_context(),
         )
     finally:
-        effect_executor_module.execute_agent_effect = original_executor
         run_module._load_configuration = original_load
         run_module._run_preflight_checks = original_preflight
         run_module._sync_shipped_skills_on_pipeline_run = original_sync
@@ -425,8 +421,7 @@ def test_post_preflight_footer_is_neutralized_after_handback(
 
         return PipelineEvent.AGENT_FAILURE
 
-    original_executor = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = failing_execute_agent_effect
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", failing_execute_agent_effect)
 
     try:
         rc = cli_integration.run_project_policy_readiness(
@@ -437,7 +432,6 @@ def test_post_preflight_footer_is_neutralized_after_handback(
             is_tty=lambda: False,
         )
     finally:
-        effect_executor_module.execute_agent_effect = original_executor
         stop_event.set()
         try:
             os.set_blocking(master_fd, False)

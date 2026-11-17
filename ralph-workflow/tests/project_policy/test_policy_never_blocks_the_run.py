@@ -144,7 +144,6 @@ def test_a_failing_capture_restore_does_not_block_the_run(
 ) -> None:
     from loguru import logger as _loguru_logger
 
-    from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline._runner_session import set_last_captured_session_id
     from ralph.pipeline.events import PipelineEvent
     from tests.project_policy.policy_corpus import (
@@ -183,7 +182,7 @@ def test_a_failing_capture_restore_does_not_block_the_run(
         raising_set_last_captured_session_id,
     )
     monkeypatch.setattr(
-        effect_executor_module,
+        cli_integration,
         "execute_agent_effect",
         seed_publish_execute_agent_effect,
     )

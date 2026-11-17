@@ -9,7 +9,6 @@ from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
@@ -87,7 +86,7 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
         return PipelineEvent.AGENT_SUCCESS if len(invocations) == 4 else PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     load_result = _load_result()
     workspace_scope = load_result.workspace_scope
     assert workspace_scope is not None
@@ -120,7 +119,7 @@ def test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candid
         return PipelineEvent.AGENT_FAILURE
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     load_result = _analysis_load_result()
     workspace_scope = load_result.workspace_scope
     assert workspace_scope is not None
@@ -168,7 +167,7 @@ def test_real_policy_invoker_routes_caught_launch_failure_through_owner(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     load_result = _load_result()
     workspace_scope = load_result.workspace_scope
     assert workspace_scope is not None

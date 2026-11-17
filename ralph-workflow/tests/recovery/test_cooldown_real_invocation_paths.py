@@ -244,7 +244,7 @@ def test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back(
         return AttemptEnded(facts=AttemptFacts(artifact_valid=False, workspace_changed=False))
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     invoke = cli_integration.make_production_invoke_agent(
         load_result,
         deps,
@@ -709,7 +709,7 @@ def test_project_policy_no_activity_real_invocation_cools_and_falls_back(
         raise _no_activity_error(agent)
 
     monkeypatch.setattr(cli_integration, "SystemClock", lambda: clock)
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     invoke = cli_integration.make_production_invoke_agent(
         load_result,
         deps,

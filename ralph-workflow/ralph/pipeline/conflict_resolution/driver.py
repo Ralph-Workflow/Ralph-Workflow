@@ -1160,6 +1160,7 @@ def _wait_for_eligible_agent(
     candidates: Sequence[str],
 ) -> int:
     from ralph.pipeline import run_loop
+    from ralph.pipeline.cooldown_wait_context import CooldownWaitContext
 
     controller = session.recovery_controller
     if controller is None:
@@ -1171,7 +1172,7 @@ def _wait_for_eligible_agent(
     state = tracked if isinstance(tracked, PipelineState) else PipelineState(phase=PHASE_RESOLUTION)
     state = run_loop.handle_cooldown_delay(
         state.copy_with(last_retry_delay_ms=wait_ms),
-        run_loop.CooldownWaitContext(sleep=_sleep_seconds, controller=controller),
+        CooldownWaitContext(sleep=_sleep_seconds, controller=controller),
     )
     controller.prune_expired()
     if isinstance(tracked, PipelineState):

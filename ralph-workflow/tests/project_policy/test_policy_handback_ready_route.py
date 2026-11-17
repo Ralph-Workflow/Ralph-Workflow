@@ -221,7 +221,7 @@ def _run_ready_route(
         )
 
     original_deps_factory = cli_integration._build_pipeline_deps_for_remediation
-    original_executor = effect_executor_module.execute_agent_effect
+    original_executor = cli_integration.execute_agent_effect
     original_inspect = effect_executor_module.inspect_integration_resolution
     cli_integration._build_pipeline_deps_for_remediation = lambda _lr, _dc: deps
     effect_executor_module.inspect_integration_resolution = lambda *_args: (
@@ -250,7 +250,7 @@ def _run_ready_route(
             **opts_with_invoke,
         )
 
-    effect_executor_module.execute_agent_effect = patched_executor
+    cli_integration.execute_agent_effect = patched_executor
     try:
         rc = cli_integration.run_project_policy_readiness(
             load_result=load_result,
@@ -260,7 +260,7 @@ def _run_ready_route(
             is_tty=lambda: False,
         )
     finally:
-        effect_executor_module.execute_agent_effect = original_executor
+        cli_integration.execute_agent_effect = original_executor
         effect_executor_module.inspect_integration_resolution = original_inspect
         cli_integration._build_pipeline_deps_for_remediation = original_deps_factory
 

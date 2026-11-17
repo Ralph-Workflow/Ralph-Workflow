@@ -251,12 +251,14 @@ def test_readiness_emits_exactly_one_line_for_each_terminal_state() -> None:
     assert "ready" in emit_messages_ready[0]
 
 
-def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
+def test_remediation_invokes_configured_agent_not_hardcoded_claude(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _ensure_run_func_state_unset()
 
-    from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.policy.loader import default_dir, load_policy
     from ralph.policy.models._agent_chain_config import AgentChainConfig
+    from ralph.project_policy import cli_integration
 
     default_bundle = load_policy(default_dir())
     custom_chain = AgentChainConfig(agents=["custom-agent"], max_retries=2, retry_delay_ms=1000)
@@ -299,8 +301,7 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
         _seed_all_core_complete(ws, ProjectStack(primary_language="Python"))
         return _agent_success_sentinel
 
-    original_executor_module = effect_executor_module.execute_agent_effect
-    effect_executor_module.execute_agent_effect = fake_execute_agent_effect
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
 
     load_result = _LoadResult(
         config=UnifiedConfig(),
@@ -310,15 +311,12 @@ def test_remediation_invokes_configured_agent_not_hardcoded_claude() -> None:
         run_id="test-run-id",
     )
 
-    try:
-        rc = run_module._run_project_policy_readiness(
-            load_result=load_result,
-            display_context=make_display_context(),
-            workspace_factory=lambda: ws,
-            emit_factory=lambda m: None,
-        )
-    finally:
-        effect_executor_module.execute_agent_effect = original_executor_module
+    rc = run_module._run_project_policy_readiness(
+        load_result=load_result,
+        display_context=make_display_context(),
+        workspace_factory=lambda: ws,
+        emit_factory=lambda m: None,
+    )
 
     assert rc == 0
     assert observed_effects, "execute_agent_effect must be invoked"

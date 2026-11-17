@@ -76,6 +76,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery import legacy_rebase_startup_block
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
+from ralph.pipeline.cooldown_wait_context import CooldownWaitContext
 from ralph.pipeline.cycle_timing import (
     initialize_legacy_cycle_on_resume,
     initialize_legacy_development_timebox_on_resume,
@@ -197,15 +198,6 @@ if TYPE_CHECKING:
             exit_trigger: str | None = None,
             outer_dev_iteration: int | None = None,
         ) -> None: ...
-
-
-@dataclass
-class CooldownWaitContext:
-    sleep: Callable[[float], None]
-    controller: RecoveryController
-    active_display: ParallelDisplay | None = None
-    last_waiting_state_phase: str | None = None
-    last_waiting_state_sig: tuple[str, str] | None = None
 
 
 @dataclass

@@ -8,7 +8,6 @@ import pytest
 from ralph.cli.commands._load_result import _LoadResult
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models._agent_chain_config import AgentChainConfig
@@ -132,7 +131,7 @@ def test_chain_agents_empty_when_bundle_missing(monkeypatch: pytest.MonkeyPatch)
         invoked_agents.append(must_str(getattr(effect, "agent_name", "")))
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
 
     rc = cli_integration.run_project_policy_readiness(
         load_result=_load_result(None),
@@ -175,7 +174,7 @@ def test_production_closure_forwards_display_context(
 
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -212,7 +211,7 @@ def test_production_closure_falls_back_across_chain_agents(
             return PipelineEvent.AGENT_FAILURE
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -337,7 +336,7 @@ def test_remediation_runs_inside_started_display_with_status_bar(
         _seed_ready_policy(ws)
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
 
     monkeypatch.setattr(
@@ -375,7 +374,7 @@ def test_policy_handback_regression_preserves_caller_owned_live_display(
         _seed_ready_policy(ws)
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
     from ralph.project_policy import _auto_commit as policy_auto_commit_module
 
     monkeypatch.setattr(
@@ -413,7 +412,7 @@ def test_production_closure_raises_on_launch_crash(
         raise TypeError("display_context is required when display is None")
 
     monkeypatch.setattr(
-        effect_executor_module,
+        cli_integration,
         "execute_agent_effect",
         crashing_execute_agent_effect,
     )
@@ -454,7 +453,7 @@ def test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain(
             raise RuntimeError("this agent's binary is missing")
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", fake_execute_agent_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -484,7 +483,7 @@ def test_a_chain_where_every_agent_crashes_reports_a_launch_failure(
     def always_crash(*_args: object, **_opts: object) -> object:
         raise RuntimeError("no agent binaries at all")
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", always_crash)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", always_crash)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),
@@ -517,7 +516,7 @@ def test_policy_invocation_regression_launch_crashes_use_owner_cooldown_and_fall
             raise RuntimeError("missing agent binary")
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(effect_executor_module, "execute_agent_effect", invoke_effect)
+    monkeypatch.setattr(cli_integration, "execute_agent_effect", invoke_effect)
     invoke = cli_integration._make_production_invoke_agent(
         load_result,
         object(),

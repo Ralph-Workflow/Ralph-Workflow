@@ -458,6 +458,7 @@ def _revive_cooling_candidates(
     cohort_wait_ms: int,
 ) -> bool:
     from ralph.pipeline import run_loop
+    from ralph.pipeline.cooldown_wait_context import CooldownWaitContext
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
 
@@ -489,7 +490,7 @@ def _revive_cooling_candidates(
 
     run_loop.handle_cooldown_delay(
         state,
-        run_loop.CooldownWaitContext(sleep=_driver_mod._sleep_seconds, controller=controller),
+        CooldownWaitContext(sleep=_driver_mod._sleep_seconds, controller=controller),
     )
     controller.prune_expired()
     return any(
