@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import os
 from contextlib import suppress
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -14,7 +15,6 @@ from ralph.agents.completion_signals import evaluate_completion, graded_phase_ve
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
-from ralph.display.artifact_reader import read_latest_analysis_decision, read_plan_artifact
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -34,7 +34,9 @@ from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 if TYPE_CHECKING:
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
+    from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
     from ralph.display.context import DisplayContext
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.effects import Effect, InvokeAgentEffect
     from ralph.pipeline.events import Event
@@ -48,83 +50,51 @@ if TYPE_CHECKING:
     class _HandlePhaseFn(Protocol):
         def __call__(self, effect: Effect, ctx: PhaseContext) -> list[Event]: ...
 
+    class _ReadLatestAnalysisDecisionFn(Protocol):
+        def __call__(
+            self,
+            workspace_root: Path,
+            drain: str,
+        ) -> AnalysisDecisionSummary | None: ...
 
-def _resolve_display(display_context: DisplayContext) -> ParallelDisplay | None:
+    class _ReadPlanArtifactFn(Protocol):
+        def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
+
+    class _ArtifactReaderModule(Protocol):
+        read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
+        read_plan_artifact: _ReadPlanArtifactFn
+
+
+def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    return module.read_latest_analysis_decision
+
+
+def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    return module.read_plan_artifact
+
+
+@runtime_checkable
+class _DisplayMethod(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> object: ...
+
+
+def _emit_via_display(
+    display_context: DisplayContext,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> bool:
     try:
-        return resolve_active_display(None, display_context)
+        display: ParallelDisplay = resolve_active_display(None, display_context)
     except (TypeError, AttributeError, OSError, RuntimeError, ValueError, KeyError):
-        return None
-
-
-def _emit_analysis_decision(
-    display_context: DisplayContext,
-    workspace_root: Path,
-    drain: str,
-) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
+        return False
+    method: object = getattr(display, method_name, None)
+    if not isinstance(method, _DisplayMethod):
         return False
     try:
-        display.emit_analysis_decision(workspace_root, drain)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return False
-    return True
-
-
-def _emit_plan_artifact(display_context: DisplayContext, workspace_root: Path) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
-        return False
-    try:
-        display.emit_plan_artifact(workspace_root)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return False
-    return True
-
-
-def _emit_development_artifact(display_context: DisplayContext, workspace_root: Path) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
-        return False
-    try:
-        display.emit_development_artifact(workspace_root)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return False
-    return True
-
-
-def _emit_review_artifact(display_context: DisplayContext, workspace_root: Path) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
-        return False
-    try:
-        display.emit_review_artifact(workspace_root)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return False
-    return True
-
-
-def _emit_fix_artifact(display_context: DisplayContext, workspace_root: Path) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
-        return False
-    try:
-        display.emit_fix_artifact(workspace_root)
-    except (OSError, RuntimeError, ValueError, KeyError):
-        return False
-    return True
-
-
-def _emit_display_line(
-    display_context: DisplayContext,
-    agent_name: str,
-    message: str,
-) -> bool:
-    display = _resolve_display(display_context)
-    if display is None:
-        return False
-    try:
-        display.emit(agent_name, message)
+        method(*args, **kwargs)
     except (OSError, RuntimeError, ValueError, KeyError):
         return False
     return True
@@ -221,6 +191,7 @@ def _phase_event_after_agent_run(
     ):
         try:
             drain = effect.drain or effect.phase
+            read_latest_analysis_decision = _read_latest_analysis_decision_func()
             summary = read_latest_analysis_decision(workspace_scope.root, drain)
             if summary is not None:
                 display.emit_analysis_result(
@@ -269,7 +240,7 @@ def _render_phase_artifact_handoff(
             phase_def = policy_bundle.pipeline.phases.get(phase)
             role = phase_def.role if phase_def is not None else None
             if role == "analysis":
-                _emit_analysis_decision(ctx, workspace_root, effective_drain)
+                _emit_via_display(ctx, "emit_analysis_decision", workspace_root, effective_drain)
             else:
                 logger.debug(
                     "policy: no renderer for phase '{}' (role={});"
@@ -281,7 +252,7 @@ def _render_phase_artifact_handoff(
 
     artifact_type = required_artifact.artifact_type
     if artifact_type.endswith("_analysis_decision"):
-        _emit_analysis_decision(ctx, workspace_root, effective_drain)
+        _emit_via_display(ctx, "emit_analysis_decision", workspace_root, effective_drain)
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:
@@ -431,9 +402,9 @@ def _render_success_artifact(
     shared_capture: bool = False,
 ) -> None:
     def _emit_close(produced: str) -> None:
-        if verbosity != Verbosity.QUIET and display is not None:
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                display.record_artifact_outcome(produced)
+                cast("ParallelDisplay", display).record_artifact_outcome(produced)
 
     def _with_verdict(produced: str) -> str:
         try:
@@ -452,8 +423,9 @@ def _render_success_artifact(
         return f"{produced} — {_format_graded_phase_verdict(label, weakest, detail)}"
 
     if artifact_type == "plan":
-        _emit_plan_artifact(display_context, workspace_root)
+        _emit_via_display(display_context, "emit_plan_artifact", workspace_root)
         with suppress(Exception):
+            read_plan_artifact = _read_plan_artifact_func()
             plan = read_plan_artifact(workspace_root)
             produced = (
                 f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
@@ -464,7 +436,7 @@ def _render_success_artifact(
         return
 
     if artifact_type == "development_result":
-        _emit_development_artifact(display_context, workspace_root)
+        _emit_via_display(display_context, "emit_development_artifact", workspace_root)
         produced = (
             "result produced"
             if (workspace_root / ra.artifact_path).exists()
@@ -474,18 +446,19 @@ def _render_success_artifact(
         return
 
     if artifact_type == "issues":
-        _emit_review_artifact(display_context, workspace_root)
+        _emit_via_display(display_context, "emit_review_artifact", workspace_root)
         with suppress(Exception):
             issue_count = 0
             issues_path = workspace_root / ra.artifact_path
             if issues_path.exists():
                 with suppress(Exception):
                     from ralph.mcp.artifacts.markdown import parse_and_validate
-                    from ralph.mcp.artifacts.markdown.specs import ISSUES_SPEC
+                    from ralph.mcp.artifacts.markdown.registry import get_spec
 
+                    import_module("ralph.mcp.artifacts.markdown.specs")
                     content, diagnostics = parse_and_validate(
                         issues_path.read_text(encoding="utf-8"),
-                        ISSUES_SPEC,
+                        get_spec("issues"),
                     )
                     if not any(item.severity == "error" for item in diagnostics):
                         issues_list = content.get("issues")
@@ -495,7 +468,7 @@ def _render_success_artifact(
         return
 
     if artifact_type == "fix_result":
-        _emit_fix_artifact(display_context, workspace_root)
+        _emit_via_display(display_context, "emit_fix_artifact", workspace_root)
         _emit_close(_with_verdict("applied"))
 
 
@@ -537,8 +510,9 @@ def _render_phase_failure_report(
         if verbosity == Verbosity.QUIET:
             return
         ctx = get_display_context(display, display_context)
-        _emit_display_line(
+        _emit_via_display(
             ctx,
+            "emit",
             effect.agent_name,
             f"Verdict: {_format_graded_phase_verdict(label, weakest, detail)}",
         )

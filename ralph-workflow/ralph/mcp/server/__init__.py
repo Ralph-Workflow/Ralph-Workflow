@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import importlib
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from ._activity_sink import reset_subagent_sink, set_subagent_sink
 
@@ -79,92 +79,71 @@ __all__ = [
     "wire_evidence_for",
 ]
 
-_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
-    "BridgeDiagnostics": ("ralph.mcp.bridge_diagnostics", "BridgeDiagnostics"),
-    "bound_dominates": ("ralph.mcp.bridge_diagnostics", "bound_dominates"),
-    "classify_probe_failure": ("ralph.mcp.bridge_diagnostics", "classify_probe_failure"),
-    "reset_subagent_sink": ("ralph.mcp.server._activity_sink", "reset_subagent_sink"),
-    "set_subagent_sink": ("ralph.mcp.server._activity_sink", "set_subagent_sink"),
-    "ExitHandler": ("ralph.mcp.server._exit_handler", "ExitHandler"),
-    "canonical_tool_entries": ("ralph.mcp.server._handover_protocol", "canonical_tool_entries"),
-    "check_candidate_readiness": (
-        "ralph.mcp.server._handover_protocol",
-        "check_candidate_readiness",
-    ),
-    "compute_tool_set_hash": ("ralph.mcp.server._handover_protocol", "compute_tool_set_hash"),
-    "create_handover_socketpair": (
-        "ralph.mcp.server._handover_protocol",
-        "create_handover_socketpair",
-    ),
-    "describe_tool_set_diff": ("ralph.mcp.server._handover_protocol", "describe_tool_set_diff"),
-    "start_private_readiness_listener": (
-        "ralph.mcp.server._handover_protocol",
-        "start_private_readiness_listener",
-    ),
-    "JsonRpcRequest": ("ralph.mcp.server._json_rpc_request", "JsonRpcRequest"),
-    "clear_host_contention_signals": (
-        "ralph.mcp.server._mcp_health_event",
-        "clear_host_contention_signals",
-    ),
-    "configure_bridge_sink": ("ralph.mcp.server._mcp_health_event", "configure_bridge_sink"),
-    "read_durable_sink": ("ralph.mcp.server._mcp_health_event", "read_durable_sink"),
-    "record_host_contention_signal": (
-        "ralph.mcp.server._mcp_health_event",
-        "record_host_contention_signal",
-    ),
-    "McpServer": ("ralph.mcp.server._mcp_server", "McpServer"),
-    "McpServerError": ("ralph.mcp.server._mcp_server_error", "McpServerError"),
-    "get_default_metrics": ("ralph.mcp.server._metrics", "get_default_metrics"),
-    "reset_default_metrics": ("ralph.mcp.server._metrics", "reset_default_metrics"),
-    "exit_handler_override": ("ralph.mcp.server._pre_serve_overrun", "exit_handler_override"),
-    "overrun_handler_override": ("ralph.mcp.server._pre_serve_overrun", "overrun_handler_override"),
-    "stage_recorder_override": ("ralph.mcp.server._pre_serve_overrun", "stage_recorder_override"),
-    "StageEventRecorder": ("ralph.mcp.server._pre_serve_overrun_events", "StageEventRecorder"),
-    "ProcessLike": ("ralph.mcp.server._process_like", "ProcessLike"),
-    "reset_saturated_dispatch": (
-        "ralph.mcp.server._saturated_dispatch",
-        "reset_saturated_dispatch",
-    ),
-    "submit_saturated_dispatch": (
-        "ralph.mcp.server._saturated_dispatch",
-        "submit_saturated_dispatch",
-    ),
-    "session_before_warning": ("ralph.mcp.server._session_wrapup", "session_before_warning"),
-    "session_warning_fired": ("ralph.mcp.server._session_wrapup", "session_warning_fired"),
-    "session_warning_scope": ("ralph.mcp.server._session_wrapup", "session_warning_scope"),
-    "StageRecorder": ("ralph.mcp.server._stage_recorder", "StageRecorder"),
-    "TransportRepetitionTracker": (
-        "ralph.mcp.server._transport_repetition_tracker",
-        "TransportRepetitionTracker",
-    ),
-    "failure_signature": ("ralph.mcp.server._transport_repetition_tracker", "failure_signature"),
-    "WireLedgerIOError": ("ralph.mcp.server._wire_ledger", "WireLedgerIOError"),
-    "append_wire_record": ("ralph.mcp.server._wire_ledger", "append_wire_record"),
-    "collect_captures": ("ralph.mcp.server._wire_ledger", "collect_captures"),
-    "render_capture_table_markdown": (
-        "ralph.mcp.server._wire_ledger",
-        "render_capture_table_markdown",
-    ),
-    "verify_chain": ("ralph.mcp.server._wire_ledger", "verify_chain"),
-    "wire_evidence_for": ("ralph.mcp.server._wire_ledger", "wire_evidence_for"),
-    "factory_impl": ("ralph.mcp.server.factory_impl", "factory_impl"),
-    "SHUTDOWN_REAP_WAIT_S": ("ralph.mcp.server.lifecycle", "SHUTDOWN_REAP_WAIT_S"),
-    "SHUTDOWN_TERMINATE_GRACE_S": ("ralph.mcp.server.lifecycle", "SHUTDOWN_TERMINATE_GRACE_S"),
-    "McpRestartPolicy": ("ralph.mcp.server.lifecycle", "McpRestartPolicy"),
-    "McpServerExtras": ("ralph.mcp.server.lifecycle", "McpServerExtras"),
-    "RestartAwareMcpBridge": ("ralph.mcp.server.lifecycle", "RestartAwareMcpBridge"),
-    "SessionBridgeLike": ("ralph.mcp.server.lifecycle", "SessionBridgeLike"),
-    "StandaloneMcpProcess": ("ralph.mcp.server.lifecycle", "StandaloneMcpProcess"),
-    "shutdown_mcp_server": ("ralph.mcp.server.lifecycle", "shutdown_mcp_server"),
-    "start_mcp_server": ("ralph.mcp.server.lifecycle", "start_mcp_server"),
-    "startup_diagnostic_suffix": ("ralph.mcp.server.lifecycle", "startup_diagnostic_suffix"),
-    "run_standalone_server": ("ralph.mcp.server.runtime", "run_standalone_server"),
+_LAZY_MODULES = {
+    "BridgeDiagnostics": "ralph.mcp.bridge_diagnostics",
+    "ExitHandler": "ralph.mcp.server._exit_handler",
+    "JsonRpcRequest": "ralph.mcp.server._json_rpc_request",
+    "McpRestartPolicy": "ralph.mcp.server.lifecycle",
+    "McpServer": "ralph.mcp.server._mcp_server",
+    "McpServerError": "ralph.mcp.server._mcp_server_error",
+    "McpServerExtras": "ralph.mcp.server.lifecycle",
+    "ProcessLike": "ralph.mcp.server._process_like",
+    "RestartAwareMcpBridge": "ralph.mcp.server.lifecycle",
+    "SHUTDOWN_REAP_WAIT_S": "ralph.mcp.server.lifecycle",
+    "SHUTDOWN_TERMINATE_GRACE_S": "ralph.mcp.server.lifecycle",
+    "SessionBridgeLike": "ralph.mcp.server.lifecycle",
+    "StageEventRecorder": "ralph.mcp.server._pre_serve_overrun_events",
+    "StageRecorder": "ralph.mcp.server._stage_recorder",
+    "StandaloneMcpProcess": "ralph.mcp.server.lifecycle",
+    "TransportRepetitionTracker": "ralph.mcp.server._transport_repetition_tracker",
+    "WireLedgerIOError": "ralph.mcp.server._wire_ledger",
+    "append_wire_record": "ralph.mcp.server._wire_ledger",
+    "bound_dominates": "ralph.mcp.bridge_diagnostics",
+    "canonical_tool_entries": "ralph.mcp.server._handover_protocol",
+    "check_candidate_readiness": "ralph.mcp.server._handover_protocol",
+    "classify_probe_failure": "ralph.mcp.bridge_diagnostics",
+    "clear_host_contention_signals": "ralph.mcp.server._mcp_health_event",
+    "collect_captures": "ralph.mcp.server._wire_ledger",
+    "compute_tool_set_hash": "ralph.mcp.server._handover_protocol",
+    "configure_bridge_sink": "ralph.mcp.server._mcp_health_event",
+    "create_handover_socketpair": "ralph.mcp.server._handover_protocol",
+    "describe_tool_set_diff": "ralph.mcp.server._handover_protocol",
+    "exit_handler_override": "ralph.mcp.server._pre_serve_overrun",
+    "factory_impl": "ralph.mcp.server.factory_impl",
+    "failure_signature": "ralph.mcp.server._transport_repetition_tracker",
+    "get_default_metrics": "ralph.mcp.server._metrics",
+    "overrun_handler_override": "ralph.mcp.server._pre_serve_overrun",
+    "read_durable_sink": "ralph.mcp.server._mcp_health_event",
+    "record_host_contention_signal": "ralph.mcp.server._mcp_health_event",
+    "render_capture_table_markdown": "ralph.mcp.server._wire_ledger",
+    "reset_default_metrics": "ralph.mcp.server._metrics",
+    "reset_saturated_dispatch": "ralph.mcp.server._saturated_dispatch",
+    "reset_subagent_sink": "ralph.mcp.server._activity_sink",
+    "run_standalone_server": "ralph.mcp.server.runtime",
+    "session_before_warning": "ralph.mcp.server._session_wrapup",
+    "session_warning_fired": "ralph.mcp.server._session_wrapup",
+    "session_warning_scope": "ralph.mcp.server._session_wrapup",
+    "set_subagent_sink": "ralph.mcp.server._activity_sink",
+    "shutdown_mcp_server": "ralph.mcp.server.lifecycle",
+    "stage_recorder_override": "ralph.mcp.server._pre_serve_overrun",
+    "start_mcp_server": "ralph.mcp.server.lifecycle",
+    "start_private_readiness_listener": "ralph.mcp.server._handover_protocol",
+    "startup_diagnostic_suffix": "ralph.mcp.server.lifecycle",
+    "submit_saturated_dispatch": "ralph.mcp.server._saturated_dispatch",
+    "verify_chain": "ralph.mcp.server._wire_ledger",
+    "wire_evidence_for": "ralph.mcp.server._wire_ledger",
 }
 
 
 def __getattr__(name: str) -> object:
-    spec = _LAZY_EXPORTS.get(name)
-    if spec is None:
-        raise AttributeError(name)
-    module_name, attr_name = spec
-    return getattr(importlib.import_module(module_name), attr_name)
+    target = _LAZY_MODULES.get(name)
+    if target is not None:
+        return cast("object", getattr(import_module(target), name))
+    submodule = f"{__name__}.{name}"
+    try:
+        return import_module(submodule)
+    except ModuleNotFoundError as exc:
+        if exc.name != submodule:
+            raise
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

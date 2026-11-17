@@ -312,7 +312,7 @@ def _check_production_assignment(
         target_name: str | None = None
         if isinstance(target, ast.Name):
             target_name = target.id
-        if isinstance(target, ast.Attribute):
+        elif isinstance(target, ast.Attribute):
             target_name = target.attr
         if (
             target_name is not None
@@ -451,7 +451,7 @@ def _check_production_call(
         recv_name: str | None = None
         if isinstance(recv, ast.Name):
             recv_name = recv.id
-        if isinstance(recv, ast.Attribute):
+        elif isinstance(recv, ast.Attribute):
             recv_name = recv.attr
         if (
             recv_name is not None
@@ -574,48 +574,34 @@ def _check_cooldown_state_single_owner(
     return violations
 
 
-def _static_bool_op_truth(node: ast.BoolOp) -> bool | None:
-    values = [_static_expression_truth(value) for value in node.values]
-    if isinstance(node.op, ast.And):
-        if any(value is False for value in values):
-            return False
-        return True if all(value is True for value in values) else None
-    if all(value is False for value in values):
-        return False
-    return True if any(value is True for value in values) else None
-
-
-def _static_if_exp_truth(node: ast.IfExp) -> bool | None:
-    body_truth = _static_expression_truth(node.body)
-    orelse_truth = _static_expression_truth(node.orelse)
-    return body_truth if body_truth is not None and body_truth == orelse_truth else None
-
-
-def _static_container_truth(node: ast.AST) -> bool | None:
-    match node:
-        case ast.Tuple() | ast.List() | ast.Set():
-            return bool(node.elts)
-        case ast.Dict():
-            return bool(node.keys)
-        case _:
-            return None
-
-
 def _static_expression_truth(node: ast.AST) -> bool | None:
-    match node:
-        case ast.Constant():
-            return bool(node.value)
-        case ast.Tuple() | ast.List() | ast.Set() | ast.Dict():
-            return _static_container_truth(node)
-        case ast.UnaryOp(op=ast.Not()):
-            operand_truth = _static_expression_truth(node.operand)
-            return None if operand_truth is None else not operand_truth
-        case ast.BoolOp():
-            return _static_bool_op_truth(node)
-        case ast.IfExp():
-            return _static_if_exp_truth(node)
-        case _:
-            return None
+    if isinstance(node, ast.Constant):
+        result: bool | None = bool(node.value)
+    elif isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        result = bool(node.elts)
+    elif isinstance(node, ast.Dict):
+        result = bool(node.keys)
+    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        operand_truth = _static_expression_truth(node.operand)
+        result = None if operand_truth is None else not operand_truth
+    elif isinstance(node, ast.BoolOp):
+        values = [_static_expression_truth(value) for value in node.values]
+        if isinstance(node.op, ast.And):
+            if any(value is False for value in values):
+                result = False
+            else:
+                result = True if all(value is True for value in values) else None
+        elif all(value is False for value in values):
+            result = False
+        else:
+            result = True if any(value is True for value in values) else None
+    elif isinstance(node, ast.IfExp):
+        body_truth = _static_expression_truth(node.body)
+        orelse_truth = _static_expression_truth(node.orelse)
+        result = body_truth if body_truth is not None and body_truth == orelse_truth else None
+    else:
+        result = None
+    return result
 
 
 def _is_statically_falsy_expression(node: ast.AST) -> bool:
@@ -670,7 +656,7 @@ def _check_conflict_resolution_classification_ownership(
                 and _is_statically_falsy_expression(keyword.value)
             )
             continue
-        if not (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign))) or node.value is None:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
         if any(
@@ -737,15 +723,15 @@ def _phase_local_retry_loop_violation(
     retry_maps = {
         name
         for node in ast.walk(function)
-        if (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign)))
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
         and (name := _assigned_name(node)) is not None
         and "retr" in name.lower()
-        and (any(isinstance(node.value, _t) for _t in (ast.Dict, ast.Call)))
+        and isinstance(node.value, (ast.Dict, ast.Call))
     }
     if not retry_maps:
         return None
     for loop in (
-        node for node in ast.walk(function) if (any(isinstance(node, _t) for _t in (ast.For, ast.AsyncFor, ast.While)))
+        node for node in ast.walk(function) if isinstance(node, (ast.For, ast.AsyncFor, ast.While))
     ):
         calls = [node for node in ast.walk(loop) if isinstance(node, ast.Call)]
         invokes_parameter = any(
@@ -758,7 +744,7 @@ def _phase_local_retry_loop_violation(
         )
         retries = any(isinstance(node, ast.Continue) for node in ast.walk(loop))
         mutated_map = any(
-            (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign, ast.AugAssign)))
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
             and any(
                 isinstance(target, ast.Subscript)
                 and isinstance(target.value, ast.Name)
@@ -797,7 +783,7 @@ def check_phase_local_retry_loops(tree: ast.Module, rel_path: str) -> list[Singl
     return [
         violation
         for function in ast.walk(tree)
-        if (any(isinstance(function, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)))
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
         and (violation := _phase_local_retry_loop_violation(function, rel_path)) is not None
     ]
 
@@ -825,7 +811,7 @@ def _assignment_has_hardcoded_round_cap(
         return False
     return any(
         isinstance(child, ast.Constant)
-        and (any(isinstance(child.value, _t) for _t in (int, float)))
+        and isinstance(child.value, (int, float))
         and not isinstance(child.value, bool)
         for child in ast.walk(value)
     )
@@ -898,7 +884,7 @@ def _function_chain_by_node(
             chains[id(child)] = chain
             child_chain = (
                 (*chain, child)
-                if (any(isinstance(child, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)))
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
                 else chain
             )
             visit(child, child_chain)
@@ -936,7 +922,7 @@ def _optional_return_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(
         node.name
         for node in ast.walk(tree)
-        if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.returns is not None
         and _annotation_allows_none(node.returns)
     )
@@ -948,7 +934,7 @@ def _build_ownership_context(tree: ast.Module) -> _OwnershipContext:
         defined_function_names=frozenset(
             node.name
             for node in ast.walk(tree)
-            if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         ),
         invoke_seam_names=_invoke_seam_names(tree),
         try_body_ids=_try_body_node_ids(tree),
@@ -1006,15 +992,14 @@ def _null_bound_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> froze
     for node in ast.walk(function):
         targets: list[ast.expr]
         value: ast.expr | None
-        match node:
-            case ast.Assign():
-                targets = list(node.targets)
-                value = node.value
-            case ast.AnnAssign() | ast.AugAssign():
-                targets = [node.target]
-                value = node.value
-            case _:
-                continue
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
         for target in targets:
             if not isinstance(target, ast.Name):
                 continue
@@ -1029,7 +1014,7 @@ def _is_narrowed_to_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, name
     for node in ast.walk(function):
         if not isinstance(node, ast.Compare):
             continue
-        if not any((any(isinstance(operator, _t) for _t in (ast.Is, ast.IsNot))) for operator in node.ops):
+        if not any(isinstance(operator, (ast.Is, ast.IsNot)) for operator in node.ops):
             continue
         for operand in (node.left, *node.comparators):
             if isinstance(operand, ast.Name) and operand.id == name:
@@ -1184,19 +1169,18 @@ def _check_runner_ownership(
 
 def _direct_calls(statement: ast.stmt) -> list[ast.Call]:
     headers: list[ast.AST]
-    match statement:
-        case ast.If() | ast.While():
-            headers = [statement.test]
-        case ast.For() | ast.AsyncFor():
-            headers = [statement.iter]
-        case ast.With() | ast.AsyncWith():
-            headers = list(statement.items)
-        case ast.Match():
-            headers = [statement.subject]
-        case ast.Try():
-            headers = []
-        case _:
-            headers = [statement]
+    if isinstance(statement, (ast.If, ast.While)):
+        headers = [statement.test]
+    elif isinstance(statement, (ast.For, ast.AsyncFor)):
+        headers = [statement.iter]
+    elif isinstance(statement, (ast.With, ast.AsyncWith)):
+        headers = list(statement.items)
+    elif isinstance(statement, ast.Match):
+        headers = [statement.subject]
+    elif isinstance(statement, ast.Try):
+        headers = []
+    else:
+        headers = [statement]
     return [
         child for header in headers for child in ast.walk(header) if isinstance(child, ast.Call)
     ]
@@ -1233,7 +1217,7 @@ def _annotation_names(annotation: ast.expr | None) -> frozenset[str]:
     return frozenset(
         child.id if isinstance(child, ast.Name) else child.attr
         for child in ast.walk(annotation)
-        if (any(isinstance(child, _t) for _t in (ast.Name, ast.Attribute)))
+        if isinstance(child, (ast.Name, ast.Attribute))
     )
 
 
@@ -1252,7 +1236,7 @@ def _is_cooldown_owner_handle(call: ast.Call, context: _OwnershipContext) -> boo
     if "RecoveryController" in _annotation_names(annotation):
         return True
     return any(
-        (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign)))
+        isinstance(node, (ast.Assign, ast.AnnAssign))
         and any(
             isinstance(target, ast.Name) and target.id == name
             for target in (list(node.targets) if isinstance(node, ast.Assign) else [node.target])
@@ -1273,9 +1257,9 @@ def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
         branches = [statement.body, statement.orelse, statement.finalbody]
         branches.extend(handler.body for handler in statement.handlers)
         return branches
-    if (any(isinstance(statement, _t) for _t in (ast.For, ast.AsyncFor, ast.While))):
+    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
         return [statement.body, statement.orelse]
-    if (any(isinstance(statement, _t) for _t in (ast.With, ast.AsyncWith))):
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
         return [statement.body]
     if isinstance(statement, ast.Match):
         return [case.body for case in statement.cases]
@@ -1291,7 +1275,7 @@ def _execute_statement(
         return {(classified, _PATH_ROUTED)}
     if isinstance(statement, ast.Raise):
         return {(classified, _PATH_DELEGATED)}
-    if (any(isinstance(statement, _t) for _t in (ast.Return, ast.Break, ast.Continue))):
+    if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
         return {(classified, _PATH_SWALLOWED)}
     branches = _branch_bodies(statement)
     if branches is None:
@@ -1327,7 +1311,7 @@ def _handler_outcomes(handler: ast.ExceptHandler, context: _OwnershipContext) ->
 def _static_truth(node: ast.expr) -> bool | None:
     if isinstance(node, ast.Constant):
         return bool(node.value)
-    if (any(isinstance(node, _t) for _t in (ast.Tuple, ast.List, ast.Set))):
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
         return bool(node.elts)
     return None
 
@@ -1360,7 +1344,7 @@ def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
         _collect_dead_in_block(statement.orelse, dead)
         _collect_dead_in_block(statement.finalbody, dead)
         return
-    if (any(isinstance(statement, _t) for _t in (ast.For, ast.AsyncFor))):
+    if isinstance(statement, (ast.For, ast.AsyncFor)):
         _collect_dead_in_block(statement.body, dead)
         _collect_dead_in_block(statement.orelse, dead)
         return
@@ -1371,7 +1355,7 @@ def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
         _collect_dead_in_block(statement.body, dead)
         _collect_dead_in_block(statement.orelse, dead)
         return
-    if (any(isinstance(statement, _t) for _t in (ast.With, ast.AsyncWith))):
+    if isinstance(statement, (ast.With, ast.AsyncWith)):
         _collect_dead_in_block(statement.body, dead)
         return
     if isinstance(statement, ast.Match):
@@ -1514,22 +1498,20 @@ def _check_forbidden_integration_classifier(
 ) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
-        if (
-            any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES
-        ):
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
-                    detail=(
-                        f"Definition of '{node.name}' is forbidden. "
-                        f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
-                    ),
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
+                        detail=(
+                            f"Definition of '{node.name}' is forbidden. "
+                            f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
+                        ),
+                    )
                 )
-            )
-        if isinstance(node, ast.Call):
+        elif isinstance(node, ast.Call):
             name = _call_name(node)
             if name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
                 violations.append(
@@ -1608,7 +1590,7 @@ def _check_production_import(
                 or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
         )
-    if isinstance(node, ast.ImportFrom):
+    elif isinstance(node, ast.ImportFrom):
         if (
             node.module
             and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
@@ -1653,7 +1635,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
         if any(is_transitional_allowed(rel_path, ident) for ident in all_idents):
             continue
         has_forbidden = any(_is_forbidden_target_name(ident) for ident in all_idents)
-        if not has_forbidden and not any((any(isinstance(op, _t) for _t in (ast.GtE, ast.Gt))) for op in node.ops):
+        if not has_forbidden and not any(isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops):
             continue
         for other in [node.left, *node.comparators]:
             if other is operand:
@@ -1668,7 +1650,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
                     for k in other_idents
                 )
                 or any(_is_forbidden_target_name(k) for k in (other_attrs + other_names))
-                or (isinstance(other, ast.Constant) and (any(isinstance(other.value, _t) for _t in (int, float))))
+                or (isinstance(other, ast.Constant) and isinstance(other.value, (int, float)))
             )
             if is_cap:
                 return [
@@ -1787,7 +1769,7 @@ def _classifier_entry_name(
 def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
-        if not (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign))) or node.value is None:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         if not any(
             isinstance(child, ast.Call)
@@ -1800,7 +1782,7 @@ def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
         for target in targets:
             if isinstance(target, ast.Name):
                 names.add(target.id)
-            if isinstance(target, ast.Attribute):
+            elif isinstance(target, ast.Attribute):
                 names.add(target.attr)
     return names
 
@@ -1853,7 +1835,7 @@ def _collect_module_string_constants(tree: ast.Module) -> set[str]:
                     and isinstance(node.value.value, str)
                 ):
                     constants.add(target.id)
-        if (
+        elif (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and isinstance(node.value, ast.Constant)
@@ -1874,7 +1856,7 @@ def _assignment_target_field(target: ast.AST) -> str | None:
 def _collect_tainted_failure_fields(tree: ast.Module, module_constants: set[str]) -> dict[str, int]:
     tainted_fields: dict[str, int] = {}
     for node in ast.walk(tree):
-        if not (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign))):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         value = node.value
         if value is None:
@@ -1897,7 +1879,7 @@ def _collect_local_provenance(
     tainted: dict[str, int] = {}
     prose_returners: set[str] = set()
     for node in ast.walk(tree):
-        if (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign))):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
             value = node.value
             if value is None or not _expr_contains_ralph_authored_prose(value, module_constants):
                 continue
@@ -1906,17 +1888,18 @@ def _collect_local_provenance(
                 name: str | None = None
                 if isinstance(target, ast.Name):
                     name = target.id
-                if isinstance(target, ast.Attribute):
+                elif isinstance(target, ast.Attribute):
                     name = target.attr
                 if name is not None and name not in tainted:
                     tainted[name] = node.lineno
-        if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))) and any(
-            isinstance(child, ast.Return)
-            and child.value is not None
-            and _expr_contains_ralph_authored_prose(child.value, module_constants)
-            for child in ast.walk(node)
-        ):
-            prose_returners.add(node.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any(
+                isinstance(child, ast.Return)
+                and child.value is not None
+                and _expr_contains_ralph_authored_prose(child.value, module_constants)
+                for child in ast.walk(node)
+            ):
+                prose_returners.add(node.name)
     return tainted, prose_returners
 
 

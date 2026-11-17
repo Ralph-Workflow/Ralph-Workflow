@@ -197,7 +197,17 @@ def _continue_rebase_resolution(
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 
     outcome_to_check = result.outcome if isinstance(result, RebaseResolutionResult) else result
-    if not (any(isinstance(outcome_to_check, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if not isinstance(
+        outcome_to_check,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return "rebase resolution returned an invalid result"
     return _rebase_failure_transport(
         root,
@@ -215,7 +225,16 @@ def _rebase_failure_outcome(
     del chain_agents
     if isinstance(result, ResolvedOutcome):
         return ResolvedOutcome()
-    if (any(isinstance(result, _t) for _t in (WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if isinstance(
+        result,
+        (
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return result
     return UnknownOutcome(RuntimeError(f"unexpected outcome {result!r}"))
 
@@ -662,7 +681,7 @@ def _run_integration_continuation_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **dict(execute_kwargs),
+        **execute_kwargs,
     )
 
 

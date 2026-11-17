@@ -2,16 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import timedelta
-from typing import TYPE_CHECKING, Final, TypeGuard
+from typing import TYPE_CHECKING, Final, cast
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ralph.config.enums import PipelinePhase
 from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState
-from ralph.pydantic_compat import RalphBaseModel
 
 from ._checkpoint_retired_phase_error import CheckpointRetiredPhaseError
 from ._wait_reason import WaitReason
@@ -21,6 +20,7 @@ from .state_models import (
     FalloverRecord,
     RebaseState,
     RunMetrics,
+    _FrozenPipelineStateModel,
 )
 
 if TYPE_CHECKING:
@@ -31,41 +31,6 @@ from ralph.pipeline._pipeline_state_validation_error import PipelineStateValidat
 _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 PIPELINE_STATE_VERSION: Final[int] = 1
-
-
-def _is_plain_int(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_text(value: object) -> TypeGuard[str]:
-    return isinstance(value, str)
-
-
-def _as_int(value: object) -> int:
-    if _is_plain_int(value):
-        return value
-    if _is_text(value):
-        return int(value)
-    msg = f"expected int, got {type(value).__name__}"
-    raise TypeError(msg)
-
-
-def _as_fallover_record(item: object) -> FalloverRecord:
-    if isinstance(item, FalloverRecord):
-        return item
-    if isinstance(item, dict):
-        return FalloverRecord.model_validate(item)
-    msg = f"expected FalloverRecord or dict, got {type(item).__name__}"
-    raise TypeError(msg)
-
-
-def _as_agent_chain_state(value: object) -> AgentChainState:
-    if isinstance(value, AgentChainState):
-        return value
-    if isinstance(value, dict):
-        return AgentChainState.model_validate(value)
-    msg = f"expected AgentChainState or dict, got {type(value).__name__}"
-    raise TypeError(msg)
 
 
 def _validated_state_version(payload: Mapping[str, object]) -> int:
@@ -192,9 +157,9 @@ def _migrate_counter_field(
 def _resolved_recovery_cycle_cap(raw_cap: object) -> int:
     if raw_cap is None:
         return _DEFAULT_RECOVERY_CYCLE_CAP
-    if _is_plain_int(raw_cap):
+    if isinstance(raw_cap, int):
         cap = raw_cap
-    elif _is_text(raw_cap):
+    elif isinstance(raw_cap, str):
         try:
             cap = int(raw_cap)
         except ValueError:
@@ -214,7 +179,12 @@ def _normalize_fallover_history_for_cap(
         raise TypeError(
             f"Expected list or tuple for fallover_history, got {type(history).__name__!r}"
         )
-    records = tuple(_as_fallover_record(item) for item in history)
+    records = tuple(
+        FalloverRecord.model_validate(item)
+        if isinstance(item, dict)
+        else cast("FalloverRecord", item)
+        for item in history
+    )
     cap = _resolved_recovery_cycle_cap(recovery_cycle_cap)
     if len(records) <= cap:
         return records
@@ -258,9 +228,7 @@ def validate_no_retired_phases(data: dict[str, object] | PipelineState) -> None:
                 _check_retired_phase(chain_phase)
 
 
-class PipelineState(RalphBaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class PipelineState(_FrozenPipelineStateModel):
     state_version: int = PIPELINE_STATE_VERSION
     phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
@@ -364,22 +332,18 @@ class PipelineState(RalphBaseModel):
     def _migrate_legacy_state_fields(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        d: dict[str, object] = {str(key): value for key, value in data.items()}
+        d = cast("dict[str, object]", dict(data))
         validate_no_retired_phases(d)
         _validated_state_version(d)
         d["state_version"] = PIPELINE_STATE_VERSION
 
         _raw_bc = d.get("budget_caps")
-        budget_caps_data: dict[str, object] = (
-            {str(key): value for key, value in _raw_bc.items()}
-            if isinstance(_raw_bc, dict)
-            else {}
+        budget_caps_data: dict[str, object] = dict(
+            cast("dict[str, object]", _raw_bc) if _raw_bc is not None else {}
         )
         _raw_op = d.get("outer_progress")
-        outer_progress_data: dict[str, object] = (
-            {str(key): value for key, value in _raw_op.items()}
-            if isinstance(_raw_op, dict)
-            else {}
+        outer_progress_data: dict[str, object] = dict(
+            cast("dict[str, object]", _raw_op) if _raw_op is not None else {}
         )
         _migrate_counter_field(d, budget_caps_data, "total_iterations", "iteration")
         _migrate_counter_field(d, budget_caps_data, "total_reviewer_passes", "reviewer_pass")
@@ -396,17 +360,17 @@ class PipelineState(RalphBaseModel):
                 and _counter not in outer_progress_data
                 and _counter in budget_caps_data
             ):
-                _cap = _as_int(budget_caps_data[_counter])
-                _rem = _as_int(_scalar_br)
+                _cap = int(cast("int", budget_caps_data[_counter]))
+                _rem = int(cast("int", _scalar_br))
                 outer_progress_data[_counter] = max(0, _cap - _rem)
 
         _raw_br = d.get("budget_remaining")
         if isinstance(_raw_br, dict):
-            legacy_br = {str(key): value for key, value in _raw_br.items()}
+            legacy_br = cast("dict[str, object]", _raw_br)
             for counter, remaining_val in legacy_br.items():
                 if counter not in outer_progress_data and counter in budget_caps_data:
-                    cap = _as_int(budget_caps_data[counter])
-                    remaining = _as_int(remaining_val)
+                    cap = int(cast("int", budget_caps_data[counter]))
+                    remaining = int(cast("int", remaining_val))
                     outer_progress_data[counter] = max(0, cap - remaining)
 
         d["budget_caps"] = budget_caps_data
@@ -462,7 +426,12 @@ class PipelineState(RalphBaseModel):
         if v is None:
             return {}
         if isinstance(v, dict):
-            return {str(key): _as_agent_chain_state(value) for key, value in v.items()}
+            return {
+                str(key): AgentChainState.model_validate(value)
+                if isinstance(value, dict)
+                else cast("AgentChainState", value)
+                for key, value in v.items()
+            }
         raise TypeError(f"Expected dict for phase_chains, got {type(v).__name__!r}")
 
     @field_validator("loop_iterations", mode="before")
@@ -499,7 +468,7 @@ class PipelineState(RalphBaseModel):
             return v
         from ralph.recovery.dead_agent_verdict import migrate_verdict_record
 
-        return migrate_verdict_record({str(key): value for key, value in v.items()})
+        return migrate_verdict_record(cast("dict[str, object]", dict(v)))
 
     def is_complete(self, policy: PipelinePolicy) -> bool:
         return self.phase == policy.terminal_phase

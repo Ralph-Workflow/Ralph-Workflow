@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Final
+from typing import Final, cast
 
 from ralph.checked_accessors import as_mapping
 
@@ -80,7 +80,7 @@ def is_session_metadata_event(parsed_json: object) -> bool:
         serialized = json.dumps(parsed_json)
     except (TypeError, ValueError):
         return False
-    reparsed = json.loads(serialized)
+    reparsed = cast("object", json.loads(serialized))
     return isinstance(reparsed, dict) and _has_session_identifier(reparsed)
 
 
@@ -99,7 +99,7 @@ def _event_role(event: object) -> str | None:
 
 def is_user_prompt_event_line(line: str) -> bool:
     try:
-        raw_event = json.loads(line)
+        raw_event = cast("object", json.loads(line))
         event = as_mapping(raw_event)
     except (json.JSONDecodeError, TypeError, ValueError):
         return False

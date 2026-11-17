@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.telemetry._sentry import is_telemetry_disabled, is_telemetry_disabled_by_config
 
@@ -11,12 +11,6 @@ if TYPE_CHECKING:
 
 _TRUTHY_VALUES = frozenset({"1", "true", "yes", "on"})
 UPDATE_CHECK_DISABLE_ENV = "RALPH_DISABLE_UPDATE_CHECK"
-
-
-def _as_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    return {str(key): item for key, item in value.items()}
 
 
 def _env_disables_update_check(environ: Mapping[str, str]) -> bool:
@@ -39,14 +33,13 @@ def _config_disables_update_check(environ: Mapping[str, str]) -> bool:
         if not config_path.exists():
             return False
         with config_path.open("rb") as handle:
-            data = _as_object_dict(tomllib.load(handle))
+            data = cast("dict[str, object]", tomllib.load(handle))
     except (OSError, ValueError):
         return False
-    if data is None:
+    raw_general = data.get("general")
+    if not isinstance(raw_general, dict):
         return False
-    general = _as_object_dict(data.get("general"))
-    if general is None:
-        return False
+    general = cast("dict[str, object]", raw_general)
     return general.get("update_check_enabled") is False
 
 

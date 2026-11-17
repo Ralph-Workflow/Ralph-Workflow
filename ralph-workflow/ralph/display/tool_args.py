@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from typing import Final, TypeGuard
+from typing import Final, cast
 
 _KNOWN_KEY_ORDER: Final[tuple[str, ...]] = ("path", "command", "workdir", "pattern")
 
 _MCP_RALPH_PREFIX: Final[str] = "mcp__ralph__"
 _FRIENDLY_PREFIX: Final[str] = "ralph."
-
-
-def _is_str_keyed_dict(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
 def friendly_tool_name(name: str) -> str:
@@ -19,9 +15,9 @@ def friendly_tool_name(name: str) -> str:
 
 
 def format_tool_input(input_obj: object, *, max_value_chars: int = 120) -> str:
-    if not _is_str_keyed_dict(input_obj):
+    if not isinstance(input_obj, dict):
         return ""
-    d = input_obj
+    d = cast("dict[str, object]", input_obj)
     if not d:
         return ""
 

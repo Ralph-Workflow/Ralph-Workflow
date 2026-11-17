@@ -33,14 +33,13 @@ _PARALLEL_DISPLAY_EXPORTS = frozenset(
 
 
 def __getattr__(name: str) -> object:
-    if name not in _PARALLEL_DISPLAY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from ralph.display import parallel_display
+    if name in _PARALLEL_DISPLAY_EXPORTS:
+        from typing import cast
 
-    try:
-        return getattr(parallel_display, name)
-    except AttributeError:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+        from ralph.display import parallel_display
+
+        return cast("object", getattr(parallel_display, name))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

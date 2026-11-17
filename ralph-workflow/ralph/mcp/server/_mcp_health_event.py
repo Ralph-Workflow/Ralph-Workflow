@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import re
 import threading
@@ -8,13 +9,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
-
-from ralph.agents.watch_capacity import (
-    _read_inotify_watch_limit,
-    _read_inotify_watch_user_total,
-    call_within_budget,
-)
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,16 +17,7 @@ if TYPE_CHECKING:
 
 _DECISIONS: deque[RestartDecision] = deque(maxlen=64)
 
-
-class _DurableSinkLock:
-    __slots__ = ("lock",)
-
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-
-
-_DURABLE_SINK_LOCK_HOLDER = _DurableSinkLock()
-_DURABLE_SINK_LOCK: threading.Lock = _DURABLE_SINK_LOCK_HOLDER.lock
+_DURABLE_SINK_LOCK: threading.Lock = threading.Lock()
 _DURABLE_SINK_HOLDER: list[Path | None] = [None]
 
 
@@ -223,6 +209,30 @@ def clear_host_contention_signals() -> None:
 _clear_host_contention_signals = clear_host_contention_signals
 
 
+def _read_inotify_watch_limit() -> int | None:
+    reader = cast(
+        "Callable[[], int | None]",
+        importlib.import_module("ralph.agents.watch_capacity")._read_inotify_watch_limit,
+    )
+    return reader()
+
+
+def _read_inotify_watch_user_total() -> int | None:
+    reader = cast(
+        "Callable[[], int | None]",
+        importlib.import_module("ralph.agents.watch_capacity")._read_inotify_watch_user_total,
+    )
+    return reader()
+
+
+def call_within_budget[T](probe: Callable[[], T], fallback: T, budget_seconds: float) -> T:
+    call = cast(
+        "Callable[[Callable[[], T], T, float], T]",
+        importlib.import_module("ralph.agents.watch_capacity").call_within_budget,
+    )
+    return call(probe, fallback, budget_seconds)
+
+
 def current_host_is_contended(
     *,
     budget_seconds: float = 1.0,
@@ -247,6 +257,8 @@ def current_host_is_contended(
 
     return call_within_budget(_probe, fallback=False, budget_seconds=budget_seconds)
 
+
+clear_host_contention_signals = _clear_host_contention_signals
 
 __all__ = [
     "CONTENDED_WATCH_RATIO",

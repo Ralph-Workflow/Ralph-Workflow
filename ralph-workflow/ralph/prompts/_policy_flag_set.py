@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class PolicyFlagSet:
-    __slots__ = ("_values",)
-
     def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
         self._values = frozenset(values or ())
 

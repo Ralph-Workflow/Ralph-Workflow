@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
@@ -30,7 +30,7 @@ def looks_like_credentials_failure(text: str) -> bool:
 
 
 def terminal_returncode(handle: object, *, agent_name: str) -> int:
-    returncode: object = getattr(handle, "returncode", None)
+    returncode = cast("object", getattr(handle, "returncode", None))
     if not isinstance(returncode, int):
         raise AgentInvocationError(
             agent_name=agent_name,

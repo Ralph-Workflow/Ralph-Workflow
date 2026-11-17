@@ -285,9 +285,7 @@ class RebaseState(RalphBaseModel):
 
     def set_retry_deadline(self, value: float | None) -> Self:
         if value is not None:
-            if isinstance(value, bool) or not (
-                any(isinstance(value, _t) for _t in (int, float))
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"invalid retry_deadline: {value!r}")
             import math
 

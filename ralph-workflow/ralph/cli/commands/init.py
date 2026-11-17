@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import typer
 from loguru import logger
 
 from ralph.agents.agent_install_links import install_url_for
-from ralph.agents.registry import AgentRegistry
 from ralph.config.agent_detection import (
     _commit_deterministic_config_write,
     autowire_chains_to_detected_agent,
@@ -25,7 +25,6 @@ from ralph.config.bootstrap import (
     ensure_global_policy_configs,
     resolve_global_config_dir,
 )
-from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.onboarding import (
     STARTER_PROMPT_SENTINEL as _STARTER_PROMPT_SENTINEL,
@@ -40,8 +39,26 @@ from ralph.project_policy.preflight import seed_project_policy_starters
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    from types import ModuleType
+    from typing import Protocol
+
+    from ralph.agents.registry import AgentRegistry
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.skills._capability_state import CapabilityState
+
+    class _LoadConfigFn(Protocol):
+        def __call__(
+            self,
+            config_path: Path | None = None,
+            cli_overrides: dict[str, object] | None = None,
+            *,
+            workspace_scope: object | None = None,
+        ) -> UnifiedConfig: ...
+
+    class _AgentRegistryFactory(Protocol):
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
 
 from ralph.display.context import make_display_context
@@ -53,6 +70,25 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+def _load_config_loader() -> _LoadConfigFn:
+    return cast(
+        "_LoadConfigFn",
+        _module_attr(import_module("ralph.config.loader"), "load_config"),
+    )
+
+
+def _load_agent_registry_factory() -> _AgentRegistryFactory:
+    return cast(
+        "_AgentRegistryFactory",
+        _module_attr(import_module("ralph.agents.registry"), "AgentRegistry"),
+    )
 
 
 def init_command(
@@ -159,7 +195,7 @@ def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> Non
     with contextlib.suppress(
         OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError
     ):
-        config = load_config(None, {}, workspace_scope=resolve_workspace_scope())
+        config = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
         configured_target = config.general.auto_integrate_target
     _verdict, owner = target_worktree_lookup(target, configured_target)
     if owner is not None:
@@ -170,8 +206,8 @@ def _emit_target_worktree_warning(display: ParallelDisplay, target: Path) -> Non
 
 def _try_load_registry() -> AgentRegistry | None:
     try:
-        cfg = load_config(None, {}, workspace_scope=resolve_workspace_scope())
-        registry_type = AgentRegistry
+        cfg = _load_config_loader()(None, {}, workspace_scope=resolve_workspace_scope())
+        registry_type = _load_agent_registry_factory()
         return registry_type.from_config(cfg)
     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.warning(

@@ -3,7 +3,8 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -16,6 +17,8 @@ from .failure_details import FailureDetailParts, contains_casefolded_marker, fai
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .attempt_facts import AttemptFacts
     from .typed_signal import TypedSignal
 
@@ -412,7 +415,7 @@ def _terminal_process_unavailability_reason(
         "PiContextExhaustedExitError",
         "PiProviderFailureExitError",
     }
-    failure_origin = getattr(exc, "failure_origin", "agent")
+    failure_origin = cast("object", getattr(exc, "failure_origin", "agent"))
     agent_origin: bool = supported_type and failure_origin == "agent"
     if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
         return None
@@ -431,7 +434,7 @@ def _terminal_process_unavailability_reason(
         offline_no_output = (
             connectivity_state or ""
         ).casefold() != "online" and contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
-        returncode = getattr(exc, "returncode", 0)
+        returncode = cast("object", getattr(exc, "returncode", 0))
         process_failed = (
             type_name == "AgentInvocationError"
             and isinstance(returncode, int)
@@ -620,7 +623,7 @@ _WATCHDOG_REASON_UNAVAILABILITY: dict[str, UnavailabilityReason] = {
 def watchdog_reason_of(exc: BaseException | None) -> str | None:
     if exc is None or type(exc).__name__ != "AgentInactivityTimeoutError":
         return None
-    raw = getattr(exc, "reason", None)
+    raw = cast("object", getattr(exc, "reason", None))
     if raw is None:
         return None
     return str(raw)
@@ -677,14 +680,11 @@ class FailureClassifier:
         category, counts, unavailability_reason = classification
         original: BaseException | None = None
         raw_message = ""
-        match raw_failure:
-            case BaseException() as exc_failure:
-                original = exc_failure
-                raw_message = str(exc_failure)
-            case str() as text_failure:
-                raw_message = text_failure
-            case _:
-                raw_message = ""
+        if isinstance(raw_failure, BaseException):
+            original = raw_failure
+            raw_message = str(raw_failure)
+        elif isinstance(raw_failure, str):
+            raw_message = raw_failure
         return ClassifiedFailure(
             category=category,
             reason=typed_outcome_reason(outcome, unresolved_count),
@@ -722,9 +722,12 @@ class FailureClassifier:
         exc_obj = exc if isinstance(exc, BaseException) else None
         signal = facts.typed_signal if facts is not None else None
         if signal is None and exc_obj is not None:
-            from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
-
-            signal = attempt_facts_for_failure(exc_obj).typed_signal
+            module = import_module("ralph.agents.invoke._completion_termination")
+            facts_for_failure = cast(
+                "Callable[[BaseException], AttemptFacts]",
+                module.attempt_facts_for_failure,
+            )
+            signal = facts_for_failure(exc_obj).typed_signal
         signal_name = signal.name if signal is not None else None
         signal_provider_originated = signal.provider_originated if signal is not None else False
         typed_unavailability = typed_signal_unavailability_reason(signal)
@@ -741,7 +744,7 @@ class FailureClassifier:
 
         watchdog_reason = None
         if exc_obj is not None and type(exc_obj).__name__ == "AgentInactivityTimeoutError":
-            watchdog_reason_val = getattr(exc_obj, "reason", None)
+            watchdog_reason_val = cast("object", getattr(exc_obj, "reason", None))
             if watchdog_reason_val is not None:
                 watchdog_reason = str(watchdog_reason_val)
 
@@ -762,7 +765,7 @@ class FailureClassifier:
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
         if resumable_session_id is None and exc_obj is not None:
-            exc_session_id = getattr(exc_obj, "resumable_session_id", None)
+            exc_session_id = cast("object", getattr(exc_obj, "resumable_session_id", None))
             if isinstance(exc_session_id, str) and exc_session_id:
                 resumable_session_id = exc_session_id
 
@@ -914,18 +917,20 @@ class FailureClassifier:
         if isinstance(exc, IdleWatchdogKilledError):
             return exc
         visited: set[int] = {id(exc)}
-        current: BaseException | None = getattr(exc, "__cause__", None)
+        current: BaseException | None = cast(
+            "BaseException | None", getattr(exc, "__cause__", None)
+        )
         if current is None:
-            current = getattr(exc, "__context__", None)
+            current = cast("BaseException | None", getattr(exc, "__context__", None))
         while current is not None and id(current) not in visited:
             visited.add(id(current))
             if isinstance(current, IdleWatchdogKilledError):
                 return current
-            next_cause = getattr(current, "__cause__", None)
+            next_cause = cast("BaseException | None", getattr(current, "__cause__", None))
             if next_cause is not None:
                 current = next_cause
             else:
-                current = getattr(current, "__context__", None)
+                current = cast("BaseException | None", getattr(current, "__context__", None))
         return None
 
     def _classify_agent_invocation_error(
@@ -936,7 +941,7 @@ class FailureClassifier:
         *,
         connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
-        failure_origin = getattr(exc, "failure_origin", "agent")
+        failure_origin = cast("object", getattr(exc, "failure_origin", "agent"))
         reset_session = contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS)
         checks = (
             (failure_origin != "agent", (FailureCategory.AMBIGUOUS, False, False)),

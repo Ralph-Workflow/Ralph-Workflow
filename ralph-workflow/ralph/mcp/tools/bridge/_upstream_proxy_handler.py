@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._types import JsonObject
@@ -10,8 +11,6 @@ if TYPE_CHECKING:
 
 
 class UpstreamProxyHandler:
-    __slots__ = ("_alias", "_upstream_registry")
-
     def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
         self._alias = alias
         self._upstream_registry = upstream_registry
@@ -22,16 +21,13 @@ class UpstreamProxyHandler:
         workspace: object | None,
         params: JsonObject,
     ) -> object:
-        session: HasMediaManifest | None = host_session if host_session is not None else None
-        ws: Workspace | None = workspace if workspace is not None else None
         result = self._upstream_registry.call_tool(
             self._alias,
             params,
-            session=session,
-            workspace=ws,
+            session=cast("HasMediaManifest | None", host_session),
+            workspace=cast("Workspace | None", workspace),
         )
         if workspace is not None and host_session is not None and isinstance(result, dict):
-            from ralph.mcp.tools.workspace import persist_upstream_media_artifacts
-
-            persist_upstream_media_artifacts(result, host_session, workspace)
+            mod = import_module("ralph.mcp.tools.workspace")
+            mod.persist_upstream_media_artifacts(result, host_session, workspace)
         return result

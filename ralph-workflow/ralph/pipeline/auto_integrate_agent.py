@@ -154,7 +154,17 @@ def _wrap_stop_resolution_outcome(raw_obj: object) -> StopResolutionOutcome:
             if raw_obj
             else RetryLaterOutcome(on_change="rebase resolution failed")
         )
-    if (any(isinstance(raw_obj, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
+    if isinstance(
+        raw_obj,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         return raw_obj
     return UnknownOutcome(RuntimeError(f"unexpected resolution outcome {raw_obj!r}"))
 
@@ -363,20 +373,11 @@ _CONFIG_FILE_PATTERN = re.compile(
 )
 
 
-def _exception_config_path(exc: BaseException) -> str | None:
-    file_val: object = getattr(exc, "file", None)
-    if file_val is not None:
-        return str(file_val)
-    path_val: object = getattr(exc, "path", None)
-    if path_val is not None:
-        return str(path_val)
-    return None
-
-
 def _extract_config_path(exc: BaseException) -> str | None:
-    direct = _exception_config_path(exc)
-    if direct is not None:
-        return direct
+    for attr in ("file", "path"):
+        val: object = getattr(exc, attr, None)
+        if val is not None:
+            return str(val)
 
     chain: list[BaseException] = []
     curr: BaseException | None = exc
@@ -385,9 +386,10 @@ def _extract_config_path(exc: BaseException) -> str | None:
         curr = curr.__cause__ or curr.__context__
 
     for e in chain:
-        chain_val = _exception_config_path(e)
-        if chain_val is not None:
-            return chain_val
+        for attr in ("file", "path"):
+            chain_val: object = getattr(e, attr, None)
+            if chain_val is not None:
+                return str(chain_val)
 
     for e in chain:
         msg = str(e)

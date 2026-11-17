@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import suppress
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from git import GitError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
@@ -37,7 +37,7 @@ def ensure_git_initialized(repo_root: Path | str) -> None:
         repo = Repo(repo_root, search_parent_directories=False)
         repo.close()
         return
-    new_repo = Repo.init(repo_root)
+    new_repo = cast("_RepoClass", Repo).init(repo_root)
     try:
         logger.info("Initialized git repository at {}", repo_root)
     finally:
@@ -100,8 +100,10 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             if _is_recognized_secret_name(PurePosixPath(pattern.strip().replace("\\", "/")).name)
         ]
         if sensitive_patterns:
-            tracked_raw: object = route_git_method(repo, "ls_files", ("--cached", "-z"))
-            tracked_output = "" if not isinstance(tracked_raw, str) else tracked_raw
+            tracked_output = cast(
+                "str",
+                route_git_method(repo, "ls_files", ("--cached", "-z")),
+            )
             tracked: list[str] = [path for path in tracked_output.split("\0") if path]
             tracked_secrets: list[str] = [
                 path

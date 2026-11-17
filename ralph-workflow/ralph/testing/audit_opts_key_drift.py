@@ -56,7 +56,7 @@ def _index_module(name: str, tree: ast.Module) -> _Module:
     module = _Module(name=name)
     for node in ast.walk(tree):
         match True:
-            case _ if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
+            case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 module.functions.setdefault(node.name, node)
             case _ if isinstance(node, ast.Call):
                 if node.keywords:

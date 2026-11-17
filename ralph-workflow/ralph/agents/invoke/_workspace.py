@@ -7,7 +7,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from functools import partial
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from loguru import logger
 
@@ -56,18 +56,13 @@ _create_watchdog_observer = create_watchdog_observer
 CrossProcessWatchLockProtocol = _CrossProcessWatchLockProtocol
 
 if TYPE_CHECKING:
+    from ralph.agents.invoke._handler_with_dispatch import _HandlerWithDispatch
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 
 STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
-
-
-@runtime_checkable
-class _DispatchHandler(Protocol):
-    def dispatch(self, event: object) -> None: ...
-
 
 
 class WorkspaceMonitor:
@@ -98,21 +93,11 @@ class WorkspaceMonitor:
         "_workspace",
     )
     _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}
-    _shared_lock: ClassVar[threading.Lock | None] = None
-
-
-    @classmethod
-    def _lock(cls) -> threading.Lock:
-        existing = cls._shared_lock
-        if existing is not None:
-            return existing
-        created = threading.Lock()
-        cls._shared_lock = created
-        return created
+    _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
     def shared_watch_snapshot(cls) -> list[tuple[str, tuple[WorkspaceMonitor, ...]]]:
-        with cls._lock():
+        with cls._shared_lock:
             return [
                 (key, tuple(sorted(shared.monitors, key=id)))
                 for key, shared in sorted(cls._shared_watches.items())
@@ -189,7 +174,7 @@ class WorkspaceMonitor:
             return
 
         key = shared_workspace_key(self._workspace)
-        with self._lock():
+        with self._shared_lock:
             if self._attach_existing_watch(key):
                 return
             if self._watch_capacity_is_predicted():
@@ -351,12 +336,15 @@ class WorkspaceMonitor:
         if self._on_event is not None:
             try:
                 arity = callback_arity(self._on_event)
-                callback: object = self._on_event
                 if arity == TWO_ARG_ARITY:
-                    if callable(callback):
-                        callback(kind, weight)
-                elif callable(callback):
-                    callback()
+                    two_arg = cast(
+                        "Callable[[WorkspaceChangeKind, float], None]",
+                        self._on_event,
+                    )
+                    two_arg(kind, weight)
+                else:
+                    zero_arg = cast("Callable[[], None]", self._on_event)
+                    zero_arg()
             except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 logger.opt(exception=True).debug(
                     "workspace monitor: on_event callback raised (suppressed)"
@@ -404,7 +392,7 @@ class WorkspaceMonitor:
         handler_to_close: WorkspaceChangeCoalescer | None = None
         cross_process_owner_id: str | None = None
         if key is not None:
-            with self._lock():
+            with self._shared_lock:
                 shared = self._shared_watches.get(key)
                 if shared is not None:
                     shared.monitors.discard(self)
@@ -606,7 +594,7 @@ class WorkspaceMonitor:
 
     @classmethod
     def _record_event_for_key(cls, key: str, src_path: str) -> None:
-        with cls._lock():
+        with cls._shared_lock:
             shared = cls._shared_watches.get(key)
             monitors = tuple(shared.monitors) if shared is not None else ()
         for monitor in monitors:
@@ -615,9 +603,7 @@ class WorkspaceMonitor:
     def dispatch_event(self, event: object) -> None:
         if self._handler is None:
             return
-        handler = self._handler
-        if not isinstance(handler, _DispatchHandler):
-            return
+        handler = cast("_HandlerWithDispatch", self._handler)
         handler.dispatch(event)
         if isinstance(handler, WorkspaceChangeCoalescer):
             handler.flush()

@@ -103,30 +103,14 @@ def _strip_ansi(value: object) -> str:
         return ""
 
 
-_ENTRY_ATTR_NAMES = frozenset(
-    {
-        "timestamp",
-        "phase",
-        "cycle",
-        "iter",
-        "agent",
-        "severity",
-        "body",
-        "grouping_role",
-        "indent_level",
-    }
-)
-
-
 def _extract_field(entry: object, name: str) -> object:
     if entry is None:
         return None
     if isinstance(entry, dict):
         value: object = entry.get(name)
         return value
-    if name in _ENTRY_ATTR_NAMES:
-        return getattr(entry, name, None)
-    return None
+    raw: object = getattr(entry, name, None)
+    return raw
 
 
 def _extract_indent_level(entry: object) -> int:

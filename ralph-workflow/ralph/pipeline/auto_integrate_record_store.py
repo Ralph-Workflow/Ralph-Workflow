@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 
 
 class IntegrationRecordStore:
-    __slots__ = ("_backend", "_workspace_root")
-
     def __init__(
         self,
         workspace_root: Path,
@@ -86,7 +84,7 @@ class IntegrationRecordStore:
                     pre_feature_sha="",
                     pre_target_sha=None,
                 )
-                initial_record = base.with_transition(transition, **dict(fields))
+                initial_record = base.with_transition(transition, **fields)
                 self.write(initial_record)
                 return initial_record
             elif transition.name == "CLEAR":
@@ -104,7 +102,7 @@ class IntegrationRecordStore:
             expected_sha = fields.get("integrated_feature_sha")
             if expected_sha is None or current.integrated_feature_sha == expected_sha:
                 return current
-        updated = current.with_transition(transition, **dict(fields))
+        updated = current.with_transition(transition, **fields)
         self.write(updated)
         return updated
 
@@ -117,7 +115,7 @@ def apply_record_transition(
     **fields: object,
 ) -> IntegrationRecord:
     store = IntegrationRecordStore(workspace_root, backend=backend)
-    return store.transition(transition, **dict(fields))
+    return store.transition(transition, **fields)
 
 
 __all__ = [

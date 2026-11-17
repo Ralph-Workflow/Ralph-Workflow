@@ -48,7 +48,6 @@ __all__ = [
 
 
 class ConflictStageEntries(dict[str, dict[int, tuple[str, str]]]):
-    __slots__ = ('failures',)
     def __init__(
         self,
         mapping: dict[str, dict[int, tuple[str, str]]] | None = None,

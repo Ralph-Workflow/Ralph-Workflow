@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.git.git_command_queue import route_git_method
 
@@ -44,15 +44,21 @@ def _snapshot_pre_staged_index(repo: Repo, paths: list[str]) -> dict[str, str | 
 def _restore_pre_staged_index(repo: Repo, snapshots: dict[str, str | None]) -> None:
     for path, entry in snapshots.items():
         if entry == _STAGED_DELETION_SENTINEL:
-            route_git_method(repo, "update_index", ("--force-remove", path))
+            _ = cast(
+                "None",
+                route_git_method(repo, "update_index", ("--force-remove", path)),
+            )
             continue
         if entry is None:
             continue
         mode, blob_sha = entry.split(",", 1)
-        route_git_method(
-            repo,
-            "update_index",
-            ("--add", "--cacheinfo", f"{mode},{blob_sha},{path}"),
+        _ = cast(
+            "None",
+            route_git_method(
+                repo,
+                "update_index",
+                ("--add", "--cacheinfo", f"{mode},{blob_sha},{path}"),
+            ),
         )
 
 

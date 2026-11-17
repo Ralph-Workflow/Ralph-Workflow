@@ -1,9 +1,9 @@
 from pydantic import Field
 
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._post_commit_route_when import PostCommitRouteWhen
-from ralph.pydantic_compat import RalphBaseModel
 
 
-class PostCommitRoute(RalphBaseModel):
+class PostCommitRoute(_FrozenPolicyModel):
     when: PostCommitRouteWhen = Field(..., description="Route condition")
     target: str = Field(..., description="Target phase when condition matches")

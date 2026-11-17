@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
 from dataclasses import replace
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 from loguru import logger
@@ -188,16 +190,41 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
+@runtime_checkable
+class _CatalogModule(Protocol):
+    def default_catalog(self) -> AgentCatalog: ...
+
+
+@runtime_checkable
+class _RegistryModule(Protocol):
+    AgentRegistry: type[AgentRegistry]
+
+
+@runtime_checkable
+class _ExecutionStateModule(Protocol):
+    def strategy_for_command(
+        self,
+        command: str,
+        transport: AgentTransport,
+        *,
+        label_scope: str | None = None,
+        registry: ChildLivenessRegistry | None = None,
+        subagent_pid_source: object = None,
+    ) -> BaseExecutionStrategy: ...
+
+
 def default_catalog() -> AgentCatalog:
-    from ralph.agents.catalog import default_catalog as _default_catalog
+    module: object = import_module("ralph.agents.catalog")
+    if not isinstance(module, _CatalogModule):
+        raise TypeError("ralph.agents.catalog does not expose default_catalog")
+    return module.default_catalog()
 
-    return _default_catalog()
 
-
-def _registry_module() -> type[AgentRegistry]:
-    from ralph.agents.registry import AgentRegistry as _AgentRegistry
-
-    return _AgentRegistry
+def _registry_module() -> _RegistryModule:
+    module: object = import_module("ralph.agents.registry")
+    if not isinstance(module, _RegistryModule):
+        raise TypeError("ralph.agents.registry does not expose AgentRegistry")
+    return module
 
 
 def strategy_for_command(
@@ -208,9 +235,10 @@ def strategy_for_command(
     registry: ChildLivenessRegistry | None = None,
     subagent_pid_source: object = None,
 ) -> BaseExecutionStrategy:
-    from ralph.agents.execution_state import strategy_for_command as _strategy_for_command
-
-    return _strategy_for_command(
+    module: object = import_module("ralph.agents.execution_state")
+    if not isinstance(module, _ExecutionStateModule):
+        raise TypeError("ralph.agents.execution_state does not expose strategy_for_command")
+    return module.strategy_for_command(
         command,
         transport,
         label_scope=label_scope,
@@ -370,7 +398,7 @@ def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = N
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(payload, dict):
-            credential_payload = {str(key): value for key, value in payload.items()}
+            credential_payload = cast("dict[str, object]", payload)
             if any(
                 isinstance(token := credential_payload.get(key), str) and token.strip()
                 for key in _CURSOR_AUTH_TOKEN_KEYS
@@ -513,7 +541,9 @@ def invoke_agent(
                 _subagent_pid_registry,
                 subagent_pid_source,
             ) = (
-                _registry_module()().build_subagent_pid_registry(transport_for_registry)
+                _registry_module()
+                .AgentRegistry()
+                .build_subagent_pid_registry(transport_for_registry)
             )
         execution_strategy = strategy_for_command(
             config.cmd,
@@ -613,9 +643,7 @@ def _fail_for_missing_credentials(
     extra_env = options.extra_env or {}
     if extra_env.get(required_env_var):
         return
-    from ralph.config._env import getenv
-
-    getter = env_getter if env_getter is not None else getenv
+    getter = env_getter if env_getter is not None else os.environ.get
     if getter(required_env_var):
         return
     raise MissingCredentialsError(config.cmd.split()[0], f"{required_env_var} not set")

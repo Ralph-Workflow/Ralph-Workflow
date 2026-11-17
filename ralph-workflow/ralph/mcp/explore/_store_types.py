@@ -8,9 +8,8 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
-from ralph.mcp.explore._narrowing import as_sqlite_rows, coerce_float, coerce_int, is_int_or_float
 from ralph.mcp.explore._store_types_payload import (
     ContentCacheChunk,
     ContentCachePayload,
@@ -72,7 +71,7 @@ def _parse_add_column(sql: str) -> tuple[str, str]:
 
 def _column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
     pragma_cur = cur.execute(f"PRAGMA table_info({table})")
-    info_rows = as_sqlite_rows(pragma_cur.fetchall())
+    info_rows = cast("list[sqlite3.Row]", pragma_cur.fetchall())
     for row in info_rows:
         value_obj: object = row["name"]
         if isinstance(value_obj, str) and value_obj == column:
@@ -387,16 +386,16 @@ def _row_int(row: sqlite3.Row, key: str) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return coerce_int(value)
+    return int(cast("int | str | float", value))
 
 
 def _row_float(row: sqlite3.Row, key: str) -> float:
     value: object = row[key]
     if isinstance(value, bool):
         return float(value)
-    if is_int_or_float(value):
+    if isinstance(value, (int, float)):
         return float(value)
-    return coerce_float(value)
+    return float(cast("int | str | float", value))
 
 
 def _row_bool(row: sqlite3.Row, key: str) -> bool:
@@ -423,7 +422,7 @@ def _row_int_opt(row: sqlite3.Row | None, idx: int) -> int:
         return int(bool(value))
     if isinstance(value, int):
         return value
-    return coerce_int(value)
+    return int(cast("int | str | float", value))
 
 
 def _row_to_file(row: sqlite3.Row) -> FileRow:

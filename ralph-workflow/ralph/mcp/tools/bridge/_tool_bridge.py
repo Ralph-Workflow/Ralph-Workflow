@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
 from ralph.mcp.tools.bridge._registered_tool import RegisteredTool
@@ -15,6 +15,7 @@ from ralph.mcp.tools.tool_error import ToolError
 from ralph.mcp.tools.tool_result import ToolResult
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
 
     from ralph.mcp.tools.bridge._registration_handler import RegistrationHandler
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
@@ -57,8 +58,6 @@ def _retired_replacement(name: str) -> str | None:
 
 
 class ToolBridge:
-    __slots__ = ('_session', '_tools')
-
     def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
         self._session = session
@@ -153,7 +152,10 @@ class ToolBridge:
         if effective_session is None:
             return True
 
-        checker = getattr(effective_session, "check_capability", None)
+        checker = cast(
+            "Callable[[str], object] | None",
+            getattr(effective_session, "check_capability", None),
+        )
         if not callable(checker):
             return True
 

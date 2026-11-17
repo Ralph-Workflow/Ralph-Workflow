@@ -9,7 +9,7 @@ import threading
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 if sys.platform != "win32":
     import fcntl
@@ -330,21 +330,7 @@ def _stale_age_or_none(
     return age_seconds
 
 
-
-class _ReapThreadLock:
-    __slots__ = ()
-    _lock: ClassVar[threading.Lock | None] = None
-
-    @classmethod
-    def get(cls) -> threading.Lock:
-        existing = cls._lock
-        if existing is not None:
-            return existing
-        created = threading.Lock()
-        cls._lock = created
-        return created
-
-
+_reap_thread_lock = threading.Lock()
 
 
 def _flock(fd: int, *, exclusive: bool) -> None:
@@ -354,7 +340,7 @@ def _flock(fd: int, *, exclusive: bool) -> None:
 
 @contextlib.contextmanager
 def _reap_mutex(ralph_dir: Path) -> Iterator[None]:
-    with _ReapThreadLock.get():
+    with _reap_thread_lock:
         ralph_dir.mkdir(parents=True, exist_ok=True)
         p = ralph_dir / "reap.mutex"
         with p.open("a+b") as handle:
@@ -671,7 +657,6 @@ __all__ = [
     "_STRUCTURAL_LOCK_DIRS",
     "_UNPROVABLE_LOCK_CEILING_S",
     "ProbeExecutorStatus",
-    "_ReapThreadLock",
     "_can_rule_out_non_git_process",
     "_check_git_liveness",
     "_check_pid_liveness",
@@ -709,6 +694,7 @@ __all__ = [
     "_read_proc_status",
     "_reap_mutex",
     "_reap_stale_lock",
+    "_reap_thread_lock",
     "_recover_stale_git_lock",
     "_reset_probe_executor",
     "_resolve_environ_gitdir",

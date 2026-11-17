@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 EXECUTION_RESULT_STATUSES: tuple[str, ...] = ("completed", "partial", "failed")
 
 
-class PhaseInvocationGate(RalphBaseModel):
+class PhaseInvocationGate(_FrozenPolicyModel):
     upstream_execution_phase: str
     minimum_elapsed_seconds: float
     always_invoke_statuses: list[str] = Field(

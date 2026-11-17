@@ -16,8 +16,6 @@ _OBSERVATION_LOG_CAPACITY: int = 512
 
 
 class CapabilityObservationRecorder:
-    __slots__ = ("_observations", "_observed_capabilities")
-
     def __init__(self) -> None:
         self._observations: deque[CapabilityObservation] = deque(maxlen=_OBSERVATION_LOG_CAPACITY)
         self._observed_capabilities: set[DisplayCapability] = set()

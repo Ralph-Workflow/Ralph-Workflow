@@ -49,25 +49,23 @@ if TYPE_CHECKING:
     from ralph.recovery.attempt_facts import AttemptFacts
     from ralph.recovery.controller import RecoveryController
 
+    class _AttemptRunnerModule(Protocol):
+        def build_entry_point_recovery_controller(
+            self,
+            entry_point: AgentEntryPoint,
+            **kwargs: object,
+        ) -> RecoveryController: ...
 
-class _AttemptRunnerModule(Protocol):
-    def build_entry_point_recovery_controller(
-        self,
-        entry_point: AgentEntryPoint,
-        **kwargs: object,
-    ) -> RecoveryController: ...
+        def run_agent_attempt(
+            self,
+            entry_point: AgentEntryPoint,
+            **kwargs: object,
+        ) -> AttemptResult: ...
 
-    def run_agent_attempt(
-        self,
-        entry_point: AgentEntryPoint,
-        **kwargs: object,
-    ) -> AttemptResult: ...
+    class _AttemptRunnerDepsModule(Protocol):
+        AttemptRunnerDeps: type[AttemptRunnerDeps]
 
-
-class _AttemptRunnerDepsModule(Protocol):
-    AttemptRunnerDeps: type[AttemptRunnerDeps]
-
-    def raw_attempt_invoke(self, invoke: RawAgentInvoke) -> AttemptInvoke: ...
+        def raw_attempt_invoke(self, invoke: RawAgentInvoke) -> AttemptInvoke: ...
 
 
 def _run_canary_probe_attempt(

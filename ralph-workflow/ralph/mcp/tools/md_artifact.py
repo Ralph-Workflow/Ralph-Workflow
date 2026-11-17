@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -58,7 +59,6 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.tools.text_edits import (
     RejectedTextEdits,
-    TextEdit,
     apply_text_edits,
     parse_text_edits,
     sha256_text,
@@ -66,6 +66,10 @@ from ralph.mcp.tools.text_edits import (
 from ralph.phases.required_artifacts import validation_corrective_action
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.mcp.tools.text_edits import TextEdit
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 REPAIR_HINT: str = (
     f"The submitted document is staged as this artifact's draft. Repair it in place with "
@@ -374,12 +378,8 @@ def _submit_canonical(
         ),
         receipt_secret=session.broker_secret,
     )
-    worker_namespace_obj = getattr(session, "worker_namespace", None)
-    worker_artifact_dir_obj = getattr(session, "worker_artifact_dir", None)
-    worker_namespace = worker_namespace_obj if isinstance(worker_namespace_obj, Path) else None
-    worker_artifact_dir = (
-        worker_artifact_dir_obj if isinstance(worker_artifact_dir_obj, Path) else None
-    )
+    worker_namespace = cast("Path | None", getattr(session, "worker_namespace", None))
+    worker_artifact_dir = cast("Path | None", getattr(session, "worker_artifact_dir", None))
     if worker_namespace is None and worker_artifact_dir is not None:
         worker_namespace = worker_artifact_dir.parent
     submit_artifact_canonical(
@@ -424,8 +424,7 @@ def _params(params: dict[str, object]) -> tuple[str, str]:
 
 
 def _artifact_type_param(params: dict[str, object]) -> str:
-    from ralph.mcp.artifacts.markdown import specs as _markdown_specs
-    _ = _markdown_specs
+    import_module("ralph.mcp.artifacts.markdown.specs")
     artifact_type = params.get("artifact_type")
     if not isinstance(artifact_type, str) or not artifact_type:
         raise InvalidParamsError("Missing 'artifact_type' parameter")

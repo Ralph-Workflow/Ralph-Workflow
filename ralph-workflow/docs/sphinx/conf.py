@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import Protocol
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ralph import __version__
 from ralph.project_urls import (

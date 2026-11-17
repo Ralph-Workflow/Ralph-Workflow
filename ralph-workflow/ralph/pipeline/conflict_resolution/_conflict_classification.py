@@ -11,8 +11,6 @@ __all__ = ["ConflictClassification"]
 
 
 class ConflictClassification(dict[str, "ConflictSight"]):
-    __slots__ = ("reasons",)
-
     def __init__(
         self,
         mapping: Mapping[str, ConflictSight] | None = None,

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,6 @@ from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
-from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
@@ -355,21 +355,7 @@ def _make_production_invoke_agent(
     return typed
 
 
-def _invoke_execute_agent_effect(
-    target: object,
-    config: object,
-    pipeline_deps: object,
-    workspace_scope: object,
-    remaining: Mapping[str, object],
-) -> object:
-    runner = _effect_executor_module.execute_agent_effect
-    return runner(
-        target,
-        config,
-        pipeline_deps,
-        workspace_scope,
-        **dict(remaining),
-    )
+_effect_executor_module = importlib.import_module("ralph.pipeline.effect_executor")
 
 
 def _production_effect_invoke() -> AttemptInvoke:
@@ -378,49 +364,14 @@ def _production_effect_invoke() -> AttemptInvoke:
         *args: object,
         **kwargs: object,
     ) -> object:
-        options = dict(kwargs)
-        positional = list(args)
-        config = options.pop("config", None)
-        pipeline_deps = options.pop("pipeline_deps", None)
-        workspace_scope = options.pop("workspace_scope", None)
-        if config is None and positional:
-            config = positional.pop(0)
-        if pipeline_deps is None and positional:
-            pipeline_deps = positional.pop(0)
-        if workspace_scope is None and positional:
-            workspace_scope = positional.pop(0)
-        del positional
-        return _invoke_execute_agent_effect(
-            target,
-            config,
-            pipeline_deps,
-            workspace_scope,
-            options,
-        )
+        config = kwargs.pop("config")
+        pipeline_deps = kwargs.pop("pipeline_deps")
+        workspace_scope = kwargs.pop("workspace_scope")
+        runner: AttemptInvoke = _effect_executor_module.execute_agent_effect
+        result: object = runner(target, config, pipeline_deps, workspace_scope, *args, **kwargs)
+        return result
 
     return invoke
-
-
-def _run_project_policy_attempt_with_kwargs(
-    *,
-    effect: object | None,
-    invocation: object | None,
-    config: UnifiedConfig,
-    controller: RecoveryController,
-    deps: AttemptRunnerDeps,
-    state: object | None,
-    execute_kwargs: Mapping[str, object],
-) -> AttemptResult:
-    return run_agent_attempt(
-        AgentEntryPoint.PROJECT_POLICY,
-        effect=effect,
-        invocation=invocation,
-        config=config,
-        controller=controller,
-        deps=deps,
-        state=state,
-        **dict(execute_kwargs),
-    )
 
 
 def _run_project_policy_attempt(
@@ -434,14 +385,15 @@ def _run_project_policy_attempt(
     **execute_kwargs: object,
 ) -> AttemptResult:
     del args
-    return _run_project_policy_attempt_with_kwargs(
+    return run_agent_attempt(
+        AgentEntryPoint.PROJECT_POLICY,
         effect=effect,
         invocation=invocation,
         config=config,
         controller=controller,
         deps=deps,
         state=state,
-        execute_kwargs=execute_kwargs,
+        **execute_kwargs,
     )
 
 

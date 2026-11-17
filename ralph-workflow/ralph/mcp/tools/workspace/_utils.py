@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.coordination import (
@@ -13,6 +13,7 @@ from ralph.mcp.tools.coordination import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
 
     from ralph.workspace import Workspace
 
@@ -41,11 +42,7 @@ FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    if attribute_name == "is_parallel_worker":
-        return getattr(obj, "is_parallel_worker", default)
-    if attribute_name == "check_edit_area":
-        return getattr(obj, "check_edit_area", default)
-    return default
+    return cast("object | None", getattr(obj, attribute_name, default))
 
 
 def required_string_param(params: dict[str, object], name: str) -> str:
@@ -104,7 +101,8 @@ def is_parallel_worker(session: object) -> bool:
     flag = _attribute_value(session, "is_parallel_worker", default=False)
     if callable(flag):
         try:
-            return bool(flag())
+            executable = cast("Callable[[], object]", flag)
+            return bool(executable())
         except TypeError:
             return False
     return bool(flag)
@@ -116,7 +114,8 @@ def check_edit_area_restriction(session: object, path: str) -> None:
     checker = _attribute_value(session, "check_edit_area")
     if not callable(checker):
         return
-    outcome = checker(path)
+    callable_checker = cast("Callable[[str], object]", checker)
+    outcome = callable_checker(path)
     if is_policy_approved(outcome):
         return
     raise CapabilityDeniedError(f"Write to '{path}' denied: edit area restriction")

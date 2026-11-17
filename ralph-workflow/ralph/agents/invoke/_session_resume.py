@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 
@@ -15,37 +15,25 @@ if TYPE_CHECKING:
     from ralph.pipeline.agent_retry_intent import AgentRetryAction
 
 
-def _as_workspace_monitor_factory(
-    value: object,
-) -> Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None]:
-    def _factory(
-        path: Path, classifier: WorkspaceChangeClassifier | None
-    ) -> WorkspaceMonitor | None:
-        result = value(path, classifier)
-        return result if result is None or callable(getattr(result, "set_on_event", None)) else None
-
-    return _factory
-
-
 def fresh_session_options(
     opts: InvokeOptions,
     *,
     prior_session_id: str | None = None,
-    workspace_monitor_factory: object = _INVOKE_OPTS_UNSET,
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None | object
+    ) = _INVOKE_OPTS_UNSET,
 ) -> InvokeOptions:
     del prior_session_id
-    if workspace_monitor_factory is _INVOKE_OPTS_UNSET:
-        return replace(opts, session_id=None)
-    factory: (
-        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
-    )
-    if workspace_monitor_factory is None:
-        factory = None
-    else:
-        if not callable(workspace_monitor_factory):
-            raise TypeError("workspace_monitor_factory must be callable or None")
-        factory = _as_workspace_monitor_factory(workspace_monitor_factory)
-    return replace(opts, session_id=None, workspace_monitor_factory=factory)
+    if workspace_monitor_factory is not _INVOKE_OPTS_UNSET:
+        return replace(
+            opts,
+            session_id=None,
+            workspace_monitor_factory=cast(
+                "Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None",
+                workspace_monitor_factory,
+            ),
+        )
+    return replace(opts, session_id=None)
 
 
 def resolve_resume_session_id(

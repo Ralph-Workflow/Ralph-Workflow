@@ -36,7 +36,6 @@ DEFAULT_MAX_RECOVERY_ATTEMPTS = 3
 
 
 class RebaseStateMachine:
-    __slots__ = ('checkpoint', 'max_recovery_attempts', 'persist',)
     def __init__(
         self,
         checkpoint: RebaseCheckpoint,

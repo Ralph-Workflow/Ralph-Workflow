@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,18 +13,11 @@ if TYPE_CHECKING:
 MAX_AGENT_NAME_LENGTH = 20
 
 
+@dataclass
 class CommitLoggingSession:
-    __slots__ = ("attempt_counter", "is_noop", "run_dir")
-
-    def __init__(
-        self,
-        run_dir: Path,
-        attempt_counter: int = 0,
-        is_noop: bool = False,
-    ) -> None:
-        self.run_dir = run_dir
-        self.attempt_counter = attempt_counter
-        self.is_noop = is_noop
+    run_dir: Path
+    attempt_counter: int = 0
+    is_noop: bool = False
 
     @classmethod
     def new(

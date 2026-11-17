@@ -5,7 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
@@ -1028,7 +1028,7 @@ class RunGitCleanupPort:
         if not DEFAULT_FILE_BACKEND.exists(path):
             return None
         try:
-            parsed: object = json.loads(DEFAULT_FILE_BACKEND.read_text(path))
+            parsed = cast("object", json.loads(DEFAULT_FILE_BACKEND.read_text(path)))
         except (OSError, ValueError):
             return None
         if not isinstance(parsed, Mapping):

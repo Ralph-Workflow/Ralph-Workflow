@@ -7,12 +7,6 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 
 class MemoryWorkspace:
-    __slots__ = (
-        '_dirs',
-        '_root',
-        '_storage',
-        'explore_index',
-    )
     def __init__(self, root: str = "/workspace") -> None:
         self._storage: dict[str, str] = {}
         self._dirs: set[str] = {""}

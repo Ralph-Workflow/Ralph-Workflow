@@ -123,22 +123,22 @@ def _catches(handler_type: ast.expr | None, catchers: frozenset[str]) -> bool:
 def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
     evaluated: list[ast.expr] = []
     match True:
-        case _ if (any(isinstance(node, _t) for _t in (ast.Assign, ast.AugAssign, ast.Expr))) or (
+        case _ if isinstance(node, (ast.Assign, ast.AugAssign, ast.Expr)) or (
             isinstance(node, ast.AnnAssign) and node.value is not None
         ):
             evaluated = [node.value] if node.value is not None else []
-        case _ if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
+        case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
             evaluated = [*node.decorator_list, *defaults]
         case _ if isinstance(node, ast.ClassDef):
             evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
         case _ if isinstance(node, ast.Return) and node.value is not None:
             evaluated = [node.value]
-        case _ if (any(isinstance(node, _t) for _t in (ast.If, ast.While))):
+        case _ if isinstance(node, (ast.If, ast.While)):
             evaluated = [node.test]
-        case _ if (any(isinstance(node, _t) for _t in (ast.For, ast.AsyncFor))):
+        case _ if isinstance(node, (ast.For, ast.AsyncFor)):
             evaluated = [node.iter]
-        case _ if (any(isinstance(node, _t) for _t in (ast.With, ast.AsyncWith))):
+        case _ if isinstance(node, (ast.With, ast.AsyncWith)):
             evaluated = [item.context_expr for item in node.items]
         case _ if isinstance(node, ast.Match):
             evaluated = [node.subject]
@@ -192,7 +192,7 @@ def _is_main_guard(test: ast.expr) -> bool:
 def _target_names(target: ast.expr) -> list[str]:
     if isinstance(target, ast.Name):
         return [target.id]
-    if (any(isinstance(target, _t) for _t in (ast.Tuple, ast.List))):
+    if isinstance(target, (ast.Tuple, ast.List)):
         return [name for element in target.elts for name in _target_names(element)]
     if isinstance(target, ast.Starred):
         return _target_names(target.value)
@@ -246,7 +246,7 @@ class _OpCollector:
             self.statement(statement)
 
     def statement(self, node: ast.stmt) -> None:
-        if not (any(isinstance(node, _t) for _t in (ast.Try, ast.TryStar))):
+        if not isinstance(node, (ast.Try, ast.TryStar)):
             self.reads(node)
         match True:
             case _ if isinstance(node, ast.Import):
@@ -262,7 +262,7 @@ class _OpCollector:
                 self.from_import(node)
             case _ if isinstance(node, ast.If):
                 self.conditional(node)
-            case _ if (any(isinstance(node, _t) for _t in (ast.Try, ast.TryStar))):
+            case _ if isinstance(node, (ast.Try, ast.TryStar)):
                 self.try_block(node)
             case _ if isinstance(node, ast.ClassDef):
                 self.class_body(node)
@@ -289,7 +289,7 @@ class _OpCollector:
         for expression in expressions:
             for call in _calls(expression):
                 self.call(call.func, call)
-        if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             for decorator in reversed(node.decorator_list):
                 if isinstance(decorator, ast.Name):
                     self.call(decorator, None)
@@ -327,7 +327,7 @@ class _OpCollector:
     def binds(self, node: ast.stmt) -> None:
         targets: list[ast.expr] = []
         match True:
-            case _ if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
+            case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self.ops.append(_Bind(node.name))
                 self.rebind(node.name)
                 if isinstance(node, ast.FunctionDef):
@@ -336,11 +336,11 @@ class _OpCollector:
                 targets.append(node.name)
             case _ if isinstance(node, ast.Assign):
                 targets.extend(node.targets)
-            case _ if (any(isinstance(node, _t) for _t in (ast.AugAssign, ast.For, ast.AsyncFor))) or (
+            case _ if isinstance(node, (ast.AugAssign, ast.For, ast.AsyncFor)) or (
                 isinstance(node, ast.AnnAssign) and node.value is not None
             ):
                 targets.append(node.target)
-            case _ if (any(isinstance(node, _t) for _t in (ast.With, ast.AsyncWith))):
+            case _ if isinstance(node, (ast.With, ast.AsyncWith)):
                 targets.extend(item.optional_vars for item in node.items if item.optional_vars)
         for name in [name for target in targets for name in _target_names(target)]:
             self.ops.append(_Bind(name))
@@ -348,10 +348,10 @@ class _OpCollector:
 
     def nested(self, node: ast.stmt) -> None:
         match True:
-            case _ if (any(isinstance(node, _t) for _t in (ast.For, ast.AsyncFor, ast.While))):
+            case _ if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
                 self.statements(node.body)
                 self.statements(node.orelse)
-            case _ if (any(isinstance(node, _t) for _t in (ast.With, ast.AsyncWith))):
+            case _ if isinstance(node, (ast.With, ast.AsyncWith)):
                 self.statements(node.body)
             case _ if isinstance(node, ast.Match):
                 for case in node.cases:

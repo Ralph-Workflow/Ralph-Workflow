@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, MutableMapping
-
-from ralph.config._env import copy_environ, del_environ
 
 MALLOC_DEBUG_NOISE_VARS: tuple[str, ...] = (
     "MallocStackLogging",
@@ -41,7 +40,7 @@ def child_env_for_spawn(
     allow_broker_secret: bool = False,
     cwd: str | None = None,
 ) -> dict[str, str]:
-    child_env = copy_environ() if env is None else dict(env)
+    child_env = os.environ.copy() if env is None else dict(env)
     if cwd is not None:
         child_env["PWD"] = cwd
         child_env.pop("OLDPWD", None)
@@ -60,7 +59,7 @@ def sanitize_process_environment() -> tuple[str, ...]:
     removed: list[str] = []
     for name in MALLOC_DEBUG_NOISE_VARS:
         try:
-            del_environ(name)
+            del os.environ[name]
         except KeyError:
             continue
         removed.append(name)

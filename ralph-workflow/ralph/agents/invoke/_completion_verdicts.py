@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import AgentExecutionState
@@ -53,10 +53,10 @@ def _raise_if_transport_reported_error(
 ) -> None:
     for line in output:
         try:
-            event: object = json.loads(line)
+            event = cast("object", json.loads(line))
         except json.JSONDecodeError:
             continue
-        if isinstance(event, dict) and event.get("type") == "error":
+        if isinstance(event, dict) and cast("dict[str, object]", event).get("type") == "error":
             raise AgentInvocationError(agent_name, int(handle.returncode or 0), "", output)
 
 

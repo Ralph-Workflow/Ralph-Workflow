@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
 from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
@@ -13,6 +13,8 @@ from ralph.workspace._shared_awareness import SharedAwarenessSidecar
 from ralph.workspace.awareness import awareness_for_workspace
 
 if TYPE_CHECKING:
+    from queue import Queue
+
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke.watchdog_observer import (
         WatchObserverFactory,
@@ -90,6 +92,6 @@ def _mark_workspace_event_queue_overflow(workspace: Path) -> None:
 
 
 def bind_observer_overflow(observer: _WatchObserverProtocol, workspace: Path) -> None:
-    event_queue = getattr(observer, "event_queue", None)
+    event_queue = cast("Queue[object] | None", getattr(observer, "event_queue", None))
     if isinstance(event_queue, DroppingEventQueue):
         event_queue.set_overflow_callback(partial(_mark_workspace_event_queue_overflow, workspace))

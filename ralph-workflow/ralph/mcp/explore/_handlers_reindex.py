@@ -6,12 +6,11 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
-from ralph.mcp.explore._narrowing import is_str_or_number
 from ralph.mcp.explore._pipeline_writer import ReindexWriter
-from ralph.mcp.explore._thread_state import CancelFlagBox
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     _new_cancel_token,
@@ -38,12 +37,15 @@ from ralph.mcp.tools.workspace._utils import (
     _tool_json,
 )
 
+if TYPE_CHECKING:
+    from ralph.workspace.protocol import Workspace
+
+
 logger = logging.getLogger(__name__)
 
 
-_REINDEX_CANCEL = CancelFlagBox(flags=BoundedFlagRegistry())
-_REINDEX_CANCEL_FLAGS: BoundedFlagRegistry = _REINDEX_CANCEL.flags
-_REINDEX_CANCEL_LOCK: threading.Lock = _REINDEX_CANCEL.lock
+_REINDEX_CANCEL_FLAGS: BoundedFlagRegistry = BoundedFlagRegistry()
+_REINDEX_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 
 def handle_ralph_reindex(
@@ -68,7 +70,7 @@ def handle_ralph_reindex(
     if isinstance(path_scope_raw, list):
         normalized_scope: list[str] = []
         for p in path_scope_raw:
-            if not is_str_or_number(p):
+            if not isinstance(p, (str, int, float)):
                 continue
             try:
                 normalized_scope.append(normalize_index_path(str(p)))
@@ -92,7 +94,7 @@ def handle_ralph_reindex(
         with contextlib.suppress(Exception):
             session.explore_index = handle
         with contextlib.suppress(Exception):
-            workspace.explore_index = handle
+            cast("Workspace", workspace).explore_index = handle
     _ = cold_built
 
     started_at = time.time()

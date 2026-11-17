@@ -99,7 +99,7 @@ def as_str_list(value: object, *, field: str | None = None) -> list[str]:
 
 
 def as_sequence(value: object, *, field: str | None = None) -> Sequence[object]:
-    if any(isinstance(value, _t) for _t in (str, bytes)) or not isinstance(value, Sequence):
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
         msg = _field_message(field, f"expected Sequence[object], got {type(value).__name__}")
         raise TypeError(msg)
     return value
@@ -121,7 +121,7 @@ def optional_int(value: object, *, field: str | None = None) -> int | None:
 
 def optional_float(value: object, *, field: str | None = None) -> float | None:
     del field
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     if isinstance(value, int | float):
         return float(value)

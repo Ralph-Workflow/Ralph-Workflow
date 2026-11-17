@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -130,18 +130,10 @@ def build_invoke_options_from_config(
     )
 
 
-def _get_os_descendant_field(value: object, fallback: float | None) -> float | None:
+def _get_os_descendant_field(value: float | None | object, fallback: float | None) -> float | None:
     if value is _INVOKE_OPTS_UNSET:
         return fallback
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        msg = "os-descendant field must be float | None"
-        raise TypeError(msg)
-    if isinstance(value, int | float):
-        return float(value)
-    msg = "os-descendant field must be float | None"
-    raise TypeError(msg)
+    return cast("float | None", value)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:

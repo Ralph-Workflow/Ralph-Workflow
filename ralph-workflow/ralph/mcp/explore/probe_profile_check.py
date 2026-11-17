@@ -142,13 +142,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     with tempfile.TemporaryDirectory(prefix="ralph-probe-profile-") as raw_tmp:
         tmp = Path(raw_tmp)
         workspace, _index_dir, handle = _build_indexed_workspace(tmp)
-        class _Session:
-            __slots__ = ("explore_index",)
-
-            def __init__(self, explore_index: object) -> None:
-                self.explore_index = explore_index
-
-        session: object = _Session(handle)
+        session_body: dict[str, object] = {"explore_index": handle}
+        session_cls: type[object] = type("_Session", (), session_body)
+        session: object = session_cls()
 
         def _run_probe() -> object:
             return staleness_probe(session, workspace_root=workspace)
@@ -161,14 +157,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         probe_rows: list[tuple[str, float]] = _table_rows(probe_profiler, top=top_n)
         metadata_rows: list[tuple[str, float]] = _table_rows(metadata_profiler, top=top_n)
 
-    sys.stdout.write(f"=== staleness_probe cumulative-time (top {top_n}) ===\n")
+    print(f"=== staleness_probe cumulative-time (top {top_n}) ===")
     for name, cumtime in probe_rows:
-        sys.stdout.write(f"  {cumtime:8.6f}  {name}\n")
-    sys.stdout.write("\n")
-    sys.stdout.write(f"=== serving_metadata cumulative-time (top {top_n}) ===\n")
+        print(f"  {cumtime:8.6f}  {name}")
+    print()
+    print(f"=== serving_metadata cumulative-time (top {top_n}) ===")
     for name, cumtime in metadata_rows:
-        sys.stdout.write(f"  {cumtime:8.6f}  {name}\n")
-    sys.stdout.write("\n")
+        print(f"  {cumtime:8.6f}  {name}")
+    print()
 
     failures: list[str] = []
     failures.extend(
@@ -188,11 +184,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     if failures:
-        sys.stdout.write("FAIL\n")
+        print("FAIL")
         for f in failures:
-            sys.stdout.write(f"  {f}\n")
+            print(f"  {f}")
         return 1
-    sys.stdout.write("OK\n")
+    print("OK")
     if out_path is not None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {

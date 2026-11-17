@@ -7,14 +7,13 @@ import shutil
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 import tomli_w
 from loguru import logger
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import (
     CODEX_NATIVE_FEATURE_OVERRIDES,
     RALPH_MCP_SERVER_NAME,
@@ -96,7 +95,7 @@ def prepare_codex_home(
 def _mapping_at(config: dict[str, object], key: str) -> dict[str, object]:
     value = config.get(key)
     if isinstance(value, dict):
-        return (as_object_dict(value) or {})
+        return cast("dict[str, object]", value)
     return {}
 
 
@@ -151,21 +150,21 @@ def _parse_source_config(base_config: str, source_config: Path) -> dict[str, obj
         raise CodexConfigError(msg) from exc
     if not isinstance(parsed, dict):
         return {}
-    return (as_object_dict(parsed) or {})
+    return cast("dict[str, object]", parsed)
 
 
 def _same_toml_value(left: object, right: object) -> bool:
     if isinstance(left, float) and isinstance(right, float):
         return left == right or (math.isnan(left) and math.isnan(right))
     if isinstance(left, dict) and isinstance(right, dict):
-        left_map = (as_object_dict(left) or {})
-        right_map = (as_object_dict(right) or {})
+        left_map = cast("dict[str, object]", left)
+        right_map = cast("dict[str, object]", right)
         return left_map.keys() == right_map.keys() and all(
             _same_toml_value(value, right_map[key]) for key, value in left_map.items()
         )
     if isinstance(left, list) and isinstance(right, list):
-        left_seq = list(left)
-        right_seq = list(right)
+        left_seq = cast("list[object]", left)
+        right_seq = cast("list[object]", right)
         return len(left_seq) == len(right_seq) and all(
             _same_toml_value(one, other) for one, other in zip(left_seq, right_seq, strict=True)
         )

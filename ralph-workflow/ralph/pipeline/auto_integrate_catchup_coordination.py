@@ -9,7 +9,7 @@ import time
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from git import Repo
 from git.exc import InvalidGitRepositoryError, NoSuchPathError
@@ -33,7 +33,7 @@ REMOTE_SYNC_INTERVAL_SECONDS: Final = 300.0
 def remote_sync_interval_seconds(config: UnifiedConfig | None) -> float:
     general: object = getattr(config, "general", None)
     configured: object = getattr(general, "auto_integrate_remote_interval_seconds", None)
-    if isinstance(configured, bool) or not (any(isinstance(configured, _t) for _t in (int, float))):
+    if isinstance(configured, bool) or not isinstance(configured, (int, float)):
         return REMOTE_SYNC_INTERVAL_SECONDS
     interval = float(configured)
     if not math.isfinite(interval) or interval <= 0.0:
@@ -100,10 +100,11 @@ def _fetch_allowed(state_path: Path, interval_seconds: float) -> bool:
     if interval_seconds <= 0.0:
         return True
     try:
-        loaded: object = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(loaded, dict):
-            return True
-        fetch_after = float(loaded["fetch_after"])
+        payload = cast(
+            "dict[str, str | float | int]",
+            json.loads(state_path.read_text(encoding="utf-8")),
+        )
+        fetch_after = float(payload["fetch_after"])
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return True
     if not math.isfinite(fetch_after):

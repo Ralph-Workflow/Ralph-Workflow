@@ -303,7 +303,7 @@ def run_rebase_or_merge(
                 environmental_reason,
                 git_ops,
             )
-    if not (any(isinstance(rebase_outcome, _t) for _t in (RebaseConflicts, RebaseFailed))):
+    if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,

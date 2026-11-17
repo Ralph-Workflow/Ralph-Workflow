@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -68,8 +69,7 @@ def read_commit_message_payload_from_path(
 
 
 def _payload_from_markdown_text(text: str) -> dict[str, object] | None:
-    from ralph.mcp.artifacts.markdown import specs as _markdown_specs
-    _ = _markdown_specs
+    import_module("ralph.mcp.artifacts.markdown.specs")
     content, diagnostics = parse_and_validate(text, get_spec(COMMIT_MESSAGE_TYPE))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         return None
@@ -104,11 +104,11 @@ def normalize_commit_message_content(content: dict[str, object]) -> dict[str, ob
 
 def render_commit_message_content(content: dict[str, object]) -> str:
     normalized = normalize_commit_message_content(content)
-    kind = normalized["type"]
+    kind = cast("str", normalized["type"])
     if kind == _SKIP_KIND:
-        return f"{_SKIP_PREFIX} {normalized['reason']}"
+        return f"{_SKIP_PREFIX} {cast('str', normalized['reason'])}"
 
-    subject = normalized["subject"]
+    subject = cast("str", normalized["subject"])
     body = _render_commit_body(normalized)
     return subject if not body else f"{subject}\n\n{body}"
 

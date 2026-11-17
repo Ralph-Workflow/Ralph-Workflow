@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import os
 import re
 import sqlite3
 import time
@@ -26,7 +27,6 @@ from .tool_result import ContentBlock, ToolResult
 from .workspace_like import WorkspaceLike
 
 if TYPE_CHECKING:
-    import os
     from collections.abc import Callable
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
@@ -280,19 +280,11 @@ def handle_read_env(
     _workspace: WorkspaceLike,
     params: dict[str, object],
     *,
-    env: dict[str, str] | os._Environ[str] | None = None,
+    env: dict[str, str] | os._Environ[str] = os.environ,
 ) -> ToolResult:
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
-    if env is None:
-        from ralph.config._env import getenv
-
-        if name in _BROKER_SECRET_ENV_NAMES:
-            value = _BROKER_SECRET_DENIED_TEXT
-        else:
-            value = getenv(name) or "[not found]"
-    else:
-        value = read_env_value(env, name)
+    value = read_env_value(env, name)
     return ToolResult(
         content=[ToolContent.text_content(f"{name}={value}")],
         is_error=False,

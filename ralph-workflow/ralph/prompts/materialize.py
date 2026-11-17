@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 import typing
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from ralph.checked_accessors import as_bool, as_path, as_str, optional_str
-from ralph.config._env import environ, getenv
+from ralph.checked_accessors import optional_str
 from ralph.config.enums import AgentTransport
 from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.mcp.artifacts.development_result import DEVELOPMENT_RESULT_ARTIFACT_TYPE
@@ -40,13 +41,11 @@ from ralph.pipeline.phase_entry_cleaner import (
 from ralph.pipeline.phase_entry_cleaner import (
     is_fresh_phase_entry,
 )
-from ralph.pipeline.work_unit import WorkUnit
-from ralph.policy.models import ROLE_REVIEW, ArtifactsPolicy, PipelinePolicy
+from ralph.policy.models import ROLE_REVIEW
 from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
-from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.commit_evidence import (
@@ -85,7 +84,6 @@ from ralph.prompts.payload_refs import (
 )
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
-from ralph.prompts.types import SessionCapabilities
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 from ralph.skills.manager import SkillManager
 from ralph.skills.resolver import (
@@ -93,7 +91,6 @@ from ralph.skills.resolver import (
     resolve_installed_skills_for_agent,
     skill_template_variables,
 )
-from ralph.workspace.protocol import Workspace
 
 PLAN_MD_DRAFT_PATH = ".agent/artifacts/.plan.draft.md"
 PARTIAL_DEVELOPMENT_RESULT_CONTEXT_PATH = (
@@ -111,10 +108,14 @@ __all__ = [
     "tool_name_prefix_for_transport",
 ]
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.policy.models import PhaseDefinition
+    from ralph.pipeline.work_units import WorkUnit
+    from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
+    from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+    from ralph.prompts.types import SessionCapabilities
+    from ralph.workspace.protocol import Workspace
 
 
 class _RepoGitProtocol(typing.Protocol):
@@ -147,71 +148,6 @@ class _RepoFactoryProtocol(typing.Protocol):
 Repo: _RepoFactoryProtocol | None = None
 
 
-def _optional_typed[T](value: object, expected: type[T]) -> T | None:
-    if value is None:
-        return None
-    if not isinstance(value, expected):
-        raise TypeError(f"expected {expected.__name__} | None, got {type(value).__name__}")
-    return value
-
-
-def _optional_path(value: object) -> Path | None:
-    if value is None:
-        return None
-    return as_path(value)
-
-
-def _optional_multimodal_entries(
-    value: object,
-) -> list[MultimodalSidecarEntry] | None:
-    if value is None:
-        return None
-    if not isinstance(value, list):
-        raise TypeError(f"expected list[MultimodalSidecarEntry] | None, got {type(value).__name__}")
-    entries: list[MultimodalSidecarEntry] = []
-    for item in value:
-        if not isinstance(item, MultimodalSidecarEntry):
-            raise TypeError(
-                f"expected MultimodalSidecarEntry, got {type(item).__name__}"
-            )
-        entries.append(item)
-    return entries
-
-
-def _optional_soft_tripwires(
-    value: object,
-) -> list[dict[str, object]] | str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, list):
-        raise TypeError(
-            f"expected list[dict[str, object]] | str | None, got {type(value).__name__}"
-        )
-    from ralph.checked_accessors import as_mapping
-
-    return [dict(as_mapping(item)) for item in value]
-
-
-def _require_workspace(value: object) -> Workspace:
-    if not isinstance(value, Workspace):
-        raise TypeError(f"expected Workspace, got {type(value).__name__}")
-    return value
-
-
-def _require_pipeline_policy(value: object) -> PipelinePolicy:
-    if not isinstance(value, PipelinePolicy):
-        raise TypeError(f"expected PipelinePolicy, got {type(value).__name__}")
-    return value
-
-
-def _require_session_caps(value: object) -> SessionCapabilities:
-    if not isinstance(value, SessionCapabilities):
-        raise TypeError(f"expected SessionCapabilities, got {type(value).__name__}")
-    return value
-
-
 @dataclass(frozen=True)
 class PromptPhaseOptions:
     artifacts_policy: ArtifactsPolicy | None = None
@@ -233,6 +169,16 @@ class PromptPhaseOptions:
     last_proposal_ref: str | None = None
 
 
+def __getattr__(name: str) -> object:
+    if name == "MultimodalSidecarEntry":
+        module = import_module(
+            "ralph.prompts._multimodal_sidecar_entry",
+        )
+        return typing.cast("object", module.MultimodalSidecarEntry)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
+
 def materialize_prompt_for_phase(
     context: PromptPhaseContext | None = None,
     options: PromptPhaseOptions | None = None,
@@ -242,11 +188,11 @@ def materialize_prompt_for_phase(
         agent_raw = kwargs.get("agent") or kwargs.get("agent_name")
         agent_name_str = _extract_agent_name(agent_raw)
         context = PromptPhaseContext(
-            phase=as_str(kwargs["phase"]),
-            workspace=_require_workspace(kwargs["workspace"]),
-            pipeline_policy=_require_pipeline_policy(kwargs["pipeline_policy"]),
-            session_caps=_require_session_caps(kwargs["session_caps"]),
-            workspace_root=as_path(kwargs["workspace_root"]),
+            phase=cast("str", kwargs["phase"]),
+            workspace=cast("Workspace", kwargs["workspace"]),
+            pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
+            session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
+            workspace_root=cast("Path", kwargs["workspace_root"]),
             agent=agent_name_str,
         )
     elif context.agent is None and ("agent" in kwargs or "agent_name" in kwargs):
@@ -263,15 +209,19 @@ def materialize_prompt_for_phase(
             )
     if options is None:
         opts = PromptPhaseOptions(
-            artifacts_policy=_optional_typed(kwargs.get("artifacts_policy"), ArtifactsPolicy),
-            worker_namespace=_optional_path(kwargs.get("worker_namespace")),
-            previous_phase=optional_str(kwargs.get("previous_phase")),
-            resume_existing_phase=as_bool(kwargs.get("resume_existing_phase", False)),
-            multimodal_entries=_optional_multimodal_entries(kwargs.get("multimodal_entries")),
-            work_unit=_optional_typed(kwargs.get("work_unit"), WorkUnit),
+            artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
+            worker_namespace=cast("Path | None", kwargs.get("worker_namespace")),
+            previous_phase=cast("str | None", kwargs.get("previous_phase")),
+            resume_existing_phase=cast("bool", kwargs.get("resume_existing_phase", False)),
+            multimodal_entries=cast(
+                "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
+            ),
+            work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
             proposal_ref=optional_str(kwargs.get("proposal_ref")),
             tree_sha=optional_str(kwargs.get("tree_sha")),
-            soft_tripwires=_optional_soft_tripwires(kwargs.get("soft_tripwires")),
+            soft_tripwires=cast(
+                "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
+            ),
             last_review_rejection_reason=optional_str(kwargs.get("last_review_rejection_reason")),
             rollback_ref=optional_str(kwargs.get("rollback_ref")),
             last_proposal_ref=optional_str(kwargs.get("last_proposal_ref")),
@@ -288,7 +238,7 @@ def materialize_prompt_for_phase(
             proposal_ref=options.proposal_ref or optional_str(kwargs.get("proposal_ref")),
             tree_sha=options.tree_sha or optional_str(kwargs.get("tree_sha")),
             soft_tripwires=options.soft_tripwires
-            or _optional_soft_tripwires(kwargs.get("soft_tripwires")),
+            or cast("list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")),
             last_review_rejection_reason=options.last_review_rejection_reason
             or optional_str(kwargs.get("last_review_rejection_reason")),
             rollback_ref=options.rollback_ref or optional_str(kwargs.get("rollback_ref")),
@@ -389,9 +339,9 @@ def _render_prompt_for_phase(
     tmpl_ctx = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     workspace_root_for_resolver = Path(workspace.absolute_path("."))
-    raw_prompt_path = getenv(_PROMPT_PATH_ENV) or ""
+    raw_prompt_path = os.environ.get(_PROMPT_PATH_ENV, "")
     if raw_prompt_path:
-        source_prompt_path = resolve_effective_prompt_path(workspace_root_for_resolver, environ())
+        source_prompt_path = resolve_effective_prompt_path(workspace_root_for_resolver, os.environ)
         prompt_content = _read_optional(workspace, str(source_prompt_path))
     else:
         prompt_content = _read_optional(workspace, "PROMPT.md")
@@ -1398,8 +1348,8 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         except (OSError, RuntimeError, ValueError, AttributeError):
             untracked = ""
         finally:
-            close = getattr(repo, "close", None)
-            if callable(close):
+            close = cast("Callable[[], None] | None", getattr(repo, "close", None))
+            if close is not None:
                 close()
     else:
         untracked = _git_output(

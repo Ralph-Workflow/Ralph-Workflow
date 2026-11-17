@@ -114,13 +114,11 @@ LivenessProc = _LivenessProc
 def _extract_cpu_seconds(val: object) -> float:
     if isinstance(val, _CpuTimesObj):
         return float(val.user) + float(val.system)
-    match val:
-        case list() | tuple() if len(val) >= _MIN_TUPLE_LEN_TWO:
-            return float(val[0]) + float(val[1])
-        case int() | float():
-            return float(val)
-        case _:
-            raise TypeError(f"Unrecognized cpu_times shape: {type(val)!r}")
+    if isinstance(val, (tuple, list)) and len(val) >= _MIN_TUPLE_LEN_TWO:
+        return float(val[0]) + float(val[1])
+    if isinstance(val, (int, float)):
+        return float(val)
+    raise TypeError(f"Unrecognized cpu_times shape: {type(val)!r}")
 
 
 def _extract_io_bytes(val: object) -> float:
@@ -128,15 +126,13 @@ def _extract_io_bytes(val: object) -> float:
         return float(val.read_bytes) + float(val.write_bytes)
     if isinstance(val, dict):
         return float(val.get("read_bytes", 0.0)) + float(val.get("write_bytes", 0.0))
-    match val:
-        case list() | tuple() if len(val) >= _MIN_TUPLE_LEN_FOUR:
-            return float(val[2]) + float(val[3])
-        case list() | tuple() if len(val) >= _MIN_TUPLE_LEN_TWO:
-            return float(val[0]) + float(val[1])
-        case int() | float():
-            return float(val)
-        case _:
-            raise TypeError(f"Unrecognized io_counters shape: {type(val)!r}")
+    if isinstance(val, (tuple, list)) and len(val) >= _MIN_TUPLE_LEN_FOUR:
+        return float(val[2]) + float(val[3])
+    if isinstance(val, (tuple, list)) and len(val) >= _MIN_TUPLE_LEN_TWO:
+        return float(val[0]) + float(val[1])
+    if isinstance(val, (int, float)):
+        return float(val)
+    raise TypeError(f"Unrecognized io_counters shape: {type(val)!r}")
 
 
 def _extract_voluntary_ctx(val: object) -> float:
@@ -144,13 +140,11 @@ def _extract_voluntary_ctx(val: object) -> float:
         return float(val.voluntary)
     if isinstance(val, dict):
         return float(val.get("voluntary", 0.0))
-    match val:
-        case list() | tuple() if len(val) >= 1:
-            return float(val[0])
-        case int() | float():
-            return float(val)
-        case _:
-            raise TypeError(f"Unrecognized num_ctx_switches shape: {type(val)!r}")
+    if isinstance(val, (tuple, list)) and len(val) >= 1:
+        return float(val[0])
+    if isinstance(val, (int, float)):
+        return float(val)
+    raise TypeError(f"Unrecognized num_ctx_switches shape: {type(val)!r}")
 
 
 def _collect_tree(

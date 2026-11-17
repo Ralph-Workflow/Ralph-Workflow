@@ -1,28 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
-
-if TYPE_CHECKING:
-    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+from ralph.policy.validation import PolicyValidationError
 
 _DEVELOPMENT_DRAIN = "development"
 _DEVELOPMENT_CLASS = "development"
 _CLI_CHAIN_NAME = "cli_developer"
 
 
-def _agents_error(message: str) -> PolicyValidationError:
-    from ralph.policy.validation._policy_validation_error import PolicyValidationError
-
-    return PolicyValidationError(message, source="agents")
-
-
 def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig) -> str:
     if agent is not None and not agent.strip():
-        raise _agents_error("--developer-agent must name an agent")
+        raise PolicyValidationError("--developer-agent must name an agent", source="agents")
     if model is not None and not model.strip():
-        raise _agents_error("--developer-model must name a model")
+        raise PolicyValidationError("--developer-model must name a model", source="agents")
     base = agent.strip() if agent is not None else current.agents[0]
     if model is None:
         return base
@@ -42,9 +32,10 @@ def apply_developer_override(policy: AgentsPolicy, config: object) -> AgentsPoli
     binding = policy.agent_drains.get(_DEVELOPMENT_DRAIN)
     current = policy.agent_chains.get(binding.chain) if binding is not None else None
     if binding is None or current is None:
-        raise _agents_error(
+        raise PolicyValidationError(
             "--developer-agent/--developer-model need a bound `development` drain; "
             'add `development = "<chain>"` under [agent_drains]',
+            source="agents",
         )
     pinned = AgentChainConfig(
         agents=[_agent_spec(agent, model, current)],

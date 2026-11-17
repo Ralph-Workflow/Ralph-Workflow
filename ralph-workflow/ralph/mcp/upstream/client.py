@@ -3,8 +3,12 @@ from __future__ import annotations
 import base64
 import json
 import threading
-from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping, Sequence
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 import httpx
 
@@ -15,7 +19,6 @@ from ralph.mcp.multimodal.resources import (
     build_media_identity,
     new_artifact_id,
 )
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -37,8 +40,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class HttpUpstreamClient:
-    __slots__ = ("_caller", "_server")
-
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -101,7 +102,7 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
     for item in raw_tools:
         if not isinstance(item, Mapping):
             continue
-        item_map = (as_object_dict(item) or {})
+        item_map = cast("Mapping[str, object]", item)
         name = item_map.get("name")
         if not isinstance(name, str) or not name:
             continue
@@ -109,7 +110,7 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
         description = str(description_raw) if description_raw is not None else ""
         schema_raw = item_map.get("inputSchema") or item_map.get("input_schema")
         if isinstance(schema_raw, Mapping):
-            input_schema: dict[str, object] = dict(as_object_dict(schema_raw) or {})
+            input_schema: dict[str, object] = dict(cast("Mapping[str, object]", schema_raw))
         else:
             input_schema = {}
         tools.append(UpstreamTool(name=name, description=description, input_schema=input_schema))
@@ -119,13 +120,13 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
 def _json_rpc_result(raw: object, context: str) -> JsonObject:
     if not isinstance(raw, Mapping):
         raise UpstreamCallError(f"unexpected response type from {context}")
-    raw_map = (as_object_dict(raw) or {})
+    raw_map = cast("Mapping[str, object]", raw)
     err = raw_map.get("error")
     if err is not None:
         raise UpstreamCallError(f"JSON-RPC error from {context}: {err}")
     result = raw_map.get("result")
     if isinstance(result, Mapping):
-        return dict(as_object_dict(result) or {})
+        return dict(cast("Mapping[str, object]", result))
     return {}
 
 
@@ -265,8 +266,19 @@ def _normalize_media_block(
         artifact_id = new_artifact_id()
         if _workspace is not None:
             try:
-                from ralph.mcp.tools.workspace._media_io import write_durable_media_cache
-                from ralph.mcp.tools.workspace._media_session import _workspace_artifact_loader
+                _media_io_mod: ModuleType = import_module("ralph.mcp.tools.workspace._media_io")
+                _media_session_mod: ModuleType = import_module(
+                    "ralph.mcp.tools.workspace._media_session"
+                )
+
+                write_durable_media_cache = cast(
+                    "Callable[[object, str, bytes], str]",
+                    _media_io_mod.write_durable_media_cache,
+                )
+                _workspace_artifact_loader = cast(
+                    "Callable[[object, str, str], Callable[[], bytes | None]]",
+                    _media_session_mod._workspace_artifact_loader,
+                )
 
                 cache_path = write_durable_media_cache(_workspace, artifact_id, raw_bytes)
                 if cache_path:
@@ -312,25 +324,25 @@ def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> l
     content = result.get("content")
     if content is None:
         return None
-    if any(isinstance(content, _t) for _t in (list, tuple)):
-        return list(content)
-    msg = (
-        f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
-        f"field that is not a list of blocks (got {type(content).__name__}); "
-        "Ralph cannot normalize it, so it is refused rather than forwarded"
-    )
-    raise UpstreamCallError(msg)
+    if not isinstance(content, (list, tuple)):
+        msg = (
+            f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
+            f"field that is not a list of blocks (got {type(content).__name__}); "
+            "Ralph cannot normalize it, so it is refused rather than forwarded"
+        )
+        raise UpstreamCallError(msg)
+    return list(cast("Sequence[object]", content))
 
 
 def carries_upstream_media_blocks(content: object) -> bool:
     if content is None:
         return False
-    if not (any(isinstance(content, _t) for _t in (list, tuple))):
+    if not isinstance(content, (list, tuple)):
         return True
-    for block in content:
+    for block in cast("Sequence[object]", content):
         if not isinstance(block, Mapping):
             return True
-        typed_block: Mapping[str, object] = (as_object_dict(block) or {})
+        typed_block: Mapping[str, object] = cast("Mapping[str, object]", block)
         raw_type: object = typed_block.get("type")
         if not isinstance(raw_type, str):
             return True

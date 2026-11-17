@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts._artifact_persistence import (
     DEFAULT_ARTIFACT_PERSISTENCE,
@@ -46,17 +46,21 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 
 def _resolve_artifact_dir(session: CoordinationSessionLike, workspace: WorkspaceLike) -> Path:
-    worker = getattr(session, "worker_artifact_dir", None)
-    return worker if isinstance(worker, Path) else _artifact_dir(workspace)
+    worker = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    return worker if worker is not None else _artifact_dir(workspace)
 
 
 def _session_run_id(session: CoordinationSessionLike) -> str | None:
-    value = getattr(session, "run_id", None)
+    value = cast("object", getattr(session, "run_id", None))
     return value if isinstance(value, str) and value else None
 
 
 def _session_drain(session: CoordinationSessionLike) -> str | None:
-    value = getattr(session, "drain", None)
+    try:
+        attributes = cast("dict[str, object]", vars(session))
+    except TypeError:
+        return None
+    value = attributes.get("drain")
     return value if isinstance(value, str) else None
 
 

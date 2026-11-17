@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.testing._audit_scope import build_parent_map_from_nodes, qualified_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class _WriteAuditExemptions(Protocol):
+    EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]]
 
 
 _OPEN_MODE_POSITION = 1
@@ -516,12 +521,14 @@ def _registered_violations(
     rel_path: str,
     parents: dict[ast.AST, ast.AST],
 ) -> list[FilesystemWriteViolation]:
-    from ralph.testing.audit_filesystem_write_consolidation import EXEMPT_CALL_SITES
-
     kept: list[FilesystemWriteViolation] = []
+    write_audit_module = cast(
+        "_WriteAuditExemptions",
+        importlib.import_module("ralph.testing.audit_filesystem_write_consolidation"),
+    )
     for violation, node in violations:
         scope = qualified_scope(node, parents)
-        if (rel_path, scope, violation.kind) in EXEMPT_CALL_SITES:
+        if (rel_path, scope, violation.kind) in write_audit_module.EXEMPT_CALL_SITES:
             continue
         kept.append(violation)
     return kept

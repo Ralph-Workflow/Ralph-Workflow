@@ -456,7 +456,7 @@ def logging_configurator_violations() -> list[str]:
     return [
         violation
         for invariant in _INVARIANTS
-        if (any(isinstance(invariant, _t) for _t in (Invariant, FunctionBodyInvariant, CallSiteInvariant)))
+        if isinstance(invariant, (Invariant, FunctionBodyInvariant, CallSiteInvariant))
         and invariant.rel_path in {"logging.py", "cli/main.py"}
         for violation in invariant.violations()
     ]

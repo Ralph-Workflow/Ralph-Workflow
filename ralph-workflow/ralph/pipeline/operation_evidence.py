@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -53,7 +53,7 @@ _IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
 
 def identity_fingerprint(record: IntegrationRecord) -> str:
     payload: dict[str, object] = {
-        field: getattr(record, field) for field in _IDENTITY_FINGERPRINT_FIELDS
+        field: cast("object", getattr(record, field)) for field in _IDENTITY_FINGERPRINT_FIELDS
     }
     return hashlib.sha256(
         json.dumps(
@@ -111,8 +111,6 @@ def _should_capture_repair_facts(
 
 
 class SubprocessOperationEvidenceCollector:
-    __slots__ = ("_backend",)
-
     def __init__(self, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
         self._backend = backend
 

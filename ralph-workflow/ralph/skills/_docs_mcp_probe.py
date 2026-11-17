@@ -23,7 +23,7 @@ def probe_docs_mcp(url: str, *, timeout: float = 2.0) -> bool:
         return False
     try:
         response = httpx.get(url, timeout=timeout)
-    except (httpx.HTTPError, OSError, TimeoutError, ValueError):
+    except Exception:
         logging.exception("docs mcp probe failed")
         return False
     else:

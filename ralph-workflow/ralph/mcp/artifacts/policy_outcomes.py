@@ -1,18 +1,14 @@
 from __future__ import annotations
 
+from typing import cast
+
 APPROVED_POLICY_OUTCOMES = frozenset({"approved", "allow", "allowed"})
 
 
 def _attribute_value(
     obj: object, attribute_name: str, default: object | None = None
 ) -> object | None:
-    if attribute_name == "name":
-        return getattr(obj, "name", default)
-    if attribute_name == "value":
-        return getattr(obj, "value", default)
-    if attribute_name == "status":
-        return getattr(obj, "status", default)
-    return default
+    return cast("object | None", getattr(obj, attribute_name, default))
 
 
 def is_policy_approved(outcome: object | None) -> bool:

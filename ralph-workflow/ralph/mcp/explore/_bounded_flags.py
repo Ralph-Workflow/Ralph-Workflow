@@ -2,8 +2,6 @@ from __future__ import annotations
 
 
 class BoundedFlagRegistry(dict[str, bool]):
-    __slots__ = ("_max_entries",)
-
     def __init__(self, max_entries: int = 256) -> None:
         super().__init__()
         self._max_entries = max_entries

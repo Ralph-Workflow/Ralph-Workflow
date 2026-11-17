@@ -1,13 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-from ralph.instance_status import InstanceStatus
+from dataclasses import FrozenInstanceError
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from ralph._supervising_tracker import WorkflowInstanceTracker
     from ralph.display.snapshot import PipelineSnapshot
+    from ralph.instance_status import InstanceStatus
+else:
+    InstanceStatus = import_module("ralph.instance_status").InstanceStatus
+
+
+@runtime_checkable
+class _TrackerModule(Protocol):
+    WorkflowInstanceTracker: type[WorkflowInstanceTracker]
+
 
 __all__ = [
     "InstanceStatus",
@@ -19,13 +27,64 @@ __all__ = [
 _UNSET_PHASE = "__unset__"
 
 
-@dataclass(frozen=True, slots=True)
 class WorkflowInstanceView:
-    instance_id: str
-    run_id: str | None
-    lifecycle_status: InstanceStatus
-    current_stage: str | None
-    recent_activity: tuple[str, ...]
+    _current_stage: str | None
+    _instance_id: str
+    _lifecycle_status: InstanceStatus
+    _recent_activity: tuple[str, ...]
+    _run_id: str | None
+
+    __slots__ = (
+        "_current_stage",
+        "_instance_id",
+        "_lifecycle_status",
+        "_recent_activity",
+        "_run_id",
+    )
+
+    def __init__(
+        self,
+        instance_id: str,
+        run_id: str | None,
+        lifecycle_status: InstanceStatus,
+        current_stage: str | None,
+        recent_activity: tuple[str, ...],
+    ) -> None:
+        object.__setattr__(self, "_instance_id", instance_id)
+        object.__setattr__(self, "_run_id", run_id)
+        object.__setattr__(self, "_lifecycle_status", lifecycle_status)
+        object.__setattr__(self, "_current_stage", current_stage)
+        object.__setattr__(self, "_recent_activity", recent_activity)
+
+    @property
+    def instance_id(self) -> str:
+        return self._instance_id
+
+    @property
+    def run_id(self) -> str | None:
+        return self._run_id
+
+    @property
+    def lifecycle_status(self) -> InstanceStatus:
+        return self._lifecycle_status
+
+    @property
+    def current_stage(self) -> str | None:
+        return self._current_stage
+
+    @property
+    def recent_activity(self) -> tuple[str, ...]:
+        return self._recent_activity
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise FrozenInstanceError(f"cannot set attribute '{name}'")
+
+    def __repr__(self) -> str:
+        return (
+            f"WorkflowInstanceView(instance_id={self._instance_id!r}, "
+            f"run_id={self._run_id!r}, lifecycle_status={self._lifecycle_status!r}, "
+            f"current_stage={self._current_stage!r}, recent_activity={self._recent_activity!r})"
+        )
 
 
 def instance_view_from_snapshot(
@@ -95,6 +154,7 @@ def _recent_activity(snapshot: PipelineSnapshot) -> tuple[str, ...]:
 
 def __getattr__(name: str) -> object:
     if name == "WorkflowInstanceTracker":
-        from ralph._supervising_tracker import WorkflowInstanceTracker
-        return WorkflowInstanceTracker
+        tracker_module: object = import_module("ralph._supervising_tracker")
+        if isinstance(tracker_module, _TrackerModule):
+            return tracker_module.WorkflowInstanceTracker
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

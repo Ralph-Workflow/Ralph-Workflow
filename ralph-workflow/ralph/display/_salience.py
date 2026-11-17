@@ -70,8 +70,6 @@ def _priority_key(bid: RoleBid) -> tuple[int, str]:
 
 
 class SalienceAllocator:
-    __slots__ = ("_frame_index", "_steady_frames", "_was_lit")
-
     def __init__(self) -> None:
         self._frame_index = 0
         self._steady_frames: dict[str, int] = {}

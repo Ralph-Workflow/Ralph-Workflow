@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib
 import os
+import sys
 import threading
 from collections import deque
 from dataclasses import dataclass, field, replace
@@ -85,12 +87,20 @@ class _SpawnGit(Protocol):
     ) -> GitRunResult: ...
 
 
+class _SpawnModule(Protocol):
+    _spawn_git: object
+
+
 def _is_git_method(value: object) -> TypeGuard[Callable[..., object]]:
     return callable(value)
 
 
 def _is_spawn_git(value: object) -> TypeGuard[_SpawnGit]:
     return callable(value)
+
+
+def _is_spawn_module(value: object) -> TypeGuard[_SpawnModule]:
+    return hasattr(value, "_spawn_git")
 
 
 _HEALTH_LOG_CAP: int = 256
@@ -107,12 +117,6 @@ class QueuedCallOutcome:
 
 
 class GitCommandQueue:
-    __slots__ = (
-        'common_dir',
-        'consecutive_timeouts',
-        'execute_lock',
-        'outcome_log',
-    )
     common_dir: Path
     execute_lock: threading.RLock
     consecutive_timeouts: int
@@ -185,7 +189,7 @@ _REGISTRY: _QueueRegistry = _QueueRegistry()
 
 
 def _resolve_common_dir(repo_or_path: RepoPath | Path | str) -> Path:
-    if not isinstance(repo_or_path, Path) and not isinstance(repo_or_path, str):
+    if not isinstance(repo_or_path, (Path, str)):
         return _normalize_git_dir(Path(repo_or_path.git_dir))
     path = Path(repo_or_path).expanduser()
     return _normalize_git_dir(path)
@@ -272,35 +276,6 @@ def route_git_method(
     return second_result
 
 
-
-_GIT_CMD_METHOD_NAMES = frozenset(
-    {
-        "add",
-        "cat_file",
-        "check_ignore",
-        "commit_tree",
-        "diff",
-        "diff_tree",
-        "for_each_ref",
-        "ls_files",
-        "ls_tree",
-        "read_tree",
-        "reset",
-        "rev_parse",
-        "rm",
-        "status",
-        "update_index",
-        "update_ref",
-        "write_tree",
-    }
-)
-
-
-def _git_cmd_method(git_attr: object, method_name: str) -> object:
-    if method_name not in _GIT_CMD_METHOD_NAMES:
-        raise AttributeError(f"repo.git has no method named {method_name!r}")
-    return getattr(git_attr, method_name)
-
 def _dispatch_git_method(
     queue: GitCommandQueue,
     repo: GitMethodRepo,
@@ -314,7 +289,7 @@ def _dispatch_git_method(
         msg = f"repo {repo!r} has no .git attribute"
         raise AttributeError(msg)
     try:
-        method: object = _git_cmd_method(git_attr, method_name)
+        method: object = getattr(git_attr, method_name)
     except AttributeError as exc:
         queue.record_outcome("error")
         raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
@@ -357,7 +332,14 @@ def route_run_git(
     options: GitRunOptions | None = None,
     call_class: GitCallClass | None = None,
 ) -> GitRunResult:
-    from ralph.git.subprocess_runner import _spawn_git as spawn_git
+    spawn_module: object = sys.modules.get("ralph.git.subprocess_runner")
+    if spawn_module is None:
+        spawn_module = importlib.import_module("ralph.git.subprocess_runner")
+    if not _is_spawn_module(spawn_module):
+        raise TypeError("ralph.git.subprocess_runner has no _spawn_git")
+    spawn_git: object = spawn_module._spawn_git
+    if not _is_spawn_git(spawn_git):
+        raise TypeError("ralph.git.subprocess_runner._spawn_git is not callable")
 
     effective_options = _apply_call_class_deadline(options, call_class)
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
@@ -468,7 +450,7 @@ def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
 
 
 def _repo_or_open(repo_or_path: RepoPath | Path | str) -> RepoPath:
-    if any(isinstance(repo_or_path, _t) for _t in (Path, str)):
+    if isinstance(repo_or_path, (Path, str)):
         return Repo(Path(repo_or_path))
     return repo_or_path
 

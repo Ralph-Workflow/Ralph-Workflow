@@ -42,24 +42,6 @@ def read_meta_file(meta_path: Path) -> dict[str, object] | None:
 
 
 class ClaudeSubagentTranscriptTails:
-    __slots__ = (
-        "_claude_code_version",
-        "_clock",
-        "_completed_dispatch_ids",
-        "_dispatch_lock",
-        "_monitor_stop",
-        "_poll_interval",
-        "_probed_dispatch_ids",
-        "_project_key",
-        "_r7_sink",
-        "_session_id",
-        "_stopped",
-        "_subagent_sink",
-        "_tails",
-        "_tails_lock",
-        "_thread",
-    )
-
     def __init__(
         self,
         *,

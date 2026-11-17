@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
@@ -118,8 +119,7 @@ def read_product_spec_artifact(repo_root: Path) -> dict[str, object] | None:
     except (FileNotFoundError, OSError):
         return None
 
-    from ralph.mcp.artifacts.markdown import specs as _markdown_specs
-    _ = _markdown_specs
+    import_module("ralph.mcp.artifacts.markdown.specs")
     content, diagnostics = parse_and_validate(markdown, get_spec(PRODUCT_SPEC_ARTIFACT_TYPE))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         return None

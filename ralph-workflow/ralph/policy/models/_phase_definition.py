@@ -1,9 +1,10 @@
 from pathlib import PurePosixPath
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
 from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
 from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
 from ralph.policy.models._phase_invocation_gate import PhaseInvocationGate
@@ -14,7 +15,6 @@ from ralph.policy.models._phase_transition import PhaseTransition
 from ralph.policy.models._phase_verification_policy import PhaseVerificationPolicy
 from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
 from ralph.policy.models._types import PhaseRole
-from ralph.pydantic_compat import RalphBaseModel
 
 
 def _validate_allowed_directory_entry(entry: str) -> str:
@@ -30,7 +30,7 @@ def _validate_allowed_directory_entry(entry: str) -> str:
     return entry
 
 
-class PhaseDefinition(RalphBaseModel):
+class PhaseDefinition(_FrozenPolicyModel):
     drain: str = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
 
@@ -192,7 +192,7 @@ class PhaseDefinition(RalphBaseModel):
     def _reject_legacy_fields(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        d = data
+        d: dict[str, object] = cast("dict[str, object]", data)
         if d.get("embeds_analysis"):
             raise ValueError(
                 "PhaseDefinition.embeds_analysis has been removed. "

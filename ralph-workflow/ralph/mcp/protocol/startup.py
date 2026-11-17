@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import errno
 import json
+import os
 import socket
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
 from ralph.mcp.protocol._heartbeat_policy import HeartbeatPolicy
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
 from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._preflight_tcp_deps import PreflightTcpDeps
@@ -269,12 +269,12 @@ def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
     if len(body) != length:
         raise PermanentPreflightError("failed to read MCP response body")
     try:
-        payload = json.loads(body)
+        payload = cast("object", json.loads(body))
     except json.JSONDecodeError as exc:
         raise PermanentPreflightError(f"failed to parse MCP response JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise PermanentPreflightError("failed to parse MCP response JSON: expected object")
-    return (as_object_dict(payload) or {})
+    return cast("JsonRpcResponse", payload)
 
 
 def _read_content_length(reader: io.BufferedReader) -> int:
@@ -372,10 +372,9 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
 
 
 def mcp_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    from ralph.config._env import getenv
-
     default = timedelta(milliseconds=6_000)
-    raw = getenv(MCP_PROBE_TIMEOUT_MS_ENV, env)
+    env_map = os.environ if env is None else env
+    raw = env_map.get(MCP_PROBE_TIMEOUT_MS_ENV)
     if raw is None:
         return default
     try:
@@ -386,10 +385,9 @@ def mcp_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelt
 
 
 def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:
-    from ralph.config._env import getenv
-
     default_ms = 2000
-    raw = getenv(MCP_SUPERVISION_INTERVAL_MS_ENV, env)
+    env_map = os.environ if env is None else env
+    raw = env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV)
     if raw is None:
         return HeartbeatPolicy(interval=timedelta(milliseconds=default_ms))
     try:

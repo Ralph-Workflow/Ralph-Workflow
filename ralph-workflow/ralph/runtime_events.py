@@ -11,14 +11,14 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._failure_origin import FailureOrigin
 
 
-@dataclass(slots=True)
+@dataclass
 class RuntimeEventRecorder:
     _latest: FailureOrigin | None = None
     detail: str | None = None
 
     def record(self, origin: FailureOrigin, detail: str) -> None:
-        object.__setattr__(self, "_latest", origin)
-        object.__setattr__(self, "detail", detail)
+        self._latest = origin
+        self.detail = detail
 
     def latest(self) -> FailureOrigin | None:
         return self._latest

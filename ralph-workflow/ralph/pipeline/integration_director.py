@@ -488,19 +488,6 @@ def _build_observation(
 
 
 class IntegrationDirector:
-    __slots__ = (
-        "_agent_active",
-        "_head_probe",
-        "_in_progress_probe",
-        "_merge_base_probe",
-        "_remote",
-        "_remote_probe",
-        "_repeat_threshold",
-        "_root",
-        "_target",
-        "_unknown_budget",
-    )
-
     def __init__(
         self,
         root: Path,

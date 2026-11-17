@@ -77,34 +77,25 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
-class _AgyModelsProbeCache:
-    __slots__ = ("output",)
-
-    def __init__(self) -> None:
-        self.output: str | None = None
-
-
 def _make_default_agy_models_probe() -> Callable[[], str]:
-    cache = _AgyModelsProbeCache()
+    cached_output: str | None = None
 
     def probe() -> str:
-        cached = cache.output
-        if cached is not None:
-            return cached
-        try:
-            result = run_process(
-                "agy",
-                ("models",),
-                options=ProcessRunOptions(
-                    capture_output=True, timeout=5.0, label="agents:agy-models"
-                ),
-            )
-        except (OSError, ProcessExecutionError):
-            resolved = ""
-        else:
-            resolved = result.stdout if result.returncode == 0 else ""
-        cache.output = resolved
-        return resolved
+        nonlocal cached_output
+        if cached_output is None:
+            try:
+                result = run_process(
+                    "agy",
+                    ("models",),
+                    options=ProcessRunOptions(
+                        capture_output=True, timeout=5.0, label="agents:agy-models"
+                    ),
+                )
+            except (OSError, ProcessExecutionError):
+                cached_output = ""
+            else:
+                cached_output = result.stdout if result.returncode == 0 else ""
+        return cached_output
 
     return probe
 
@@ -226,8 +217,6 @@ def _seed_catalog_with_builtins(catalog: AgentCatalog) -> None:
 
 
 class AgentRegistry:
-    __slots__ = ("_catalog", "_catalog_typed", "_ccs_defaults", "agents")
-
     def __init__(
         self,
         *,

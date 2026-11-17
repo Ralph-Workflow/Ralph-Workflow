@@ -122,7 +122,7 @@ def _module_level_functions(
 ) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     if not isinstance(tree, ast.Module):
         return []
-    return [node for node in tree.body if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)))]
+    return [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
 
 def _call_unmerged_index_violations(rel: str, node: ast.Call) -> list[Violation]:

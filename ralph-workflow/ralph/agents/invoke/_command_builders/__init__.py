@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._process_reader import _agent_command_name
 from ralph.config.enums import AgentTransport
@@ -28,10 +29,7 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    transport = config.transport
-    if transport is None:
-        return AgentTransport.GENERIC
-    return transport
+    return cast("AgentTransport", config.transport)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
@@ -39,7 +37,7 @@ def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
     if prompt_path.is_absolute() or workspace_path is None:
         return prompt_path
     if prompt_file == "PROMPT.md":
-        return resolve_effective_prompt_path(workspace_path)
+        return resolve_effective_prompt_path(workspace_path, os.environ)
     return workspace_path / prompt_path
 
 
@@ -63,14 +61,9 @@ def _read_multimodal_sidecar(
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
         return None
     artifacts = data.get("artifacts")
-    if not isinstance(artifacts, list) or not artifacts:
-        return None
-    typed_artifacts: list[dict[str, object]] = []
-    for entry in artifacts:
-        if not isinstance(entry, dict):
-            return None
-        typed_artifacts.append({str(key): value for key, value in entry.items()})
-    return typed_artifacts
+    if isinstance(artifacts, list) and artifacts:
+        return cast("list[dict[str, object]]", artifacts)
+    return None
 
 
 def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:

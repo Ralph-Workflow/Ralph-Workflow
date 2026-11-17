@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ralph.agents.parsers._event_classification import is_user_prompt_event_line
 
@@ -15,7 +16,7 @@ def _looks_like_chat_template_marker(line: str) -> bool:
 
 
 def _prompt_edge_sentences(prompt: str) -> tuple[str, ...]:
-    parts = list(_SENTENCE_BOUNDARY.split(prompt))
+    parts = cast("list[str]", _SENTENCE_BOUNDARY.split(prompt))
     sentences = tuple(sentence.strip() for sentence in parts if sentence.strip())
     if len(sentences) < _MIN_SENTENCE_PAIR:
         return ()

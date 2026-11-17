@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     import socket
@@ -30,7 +30,7 @@ def receive_bounded_line(connection: socket.socket) -> bytes:
 
 def decode_json_object(raw: bytes, *, label: str) -> dict[str, object]:
     try:
-        decoded: object = json.loads(raw.decode("utf-8"))
+        decoded = cast("object", json.loads(raw.decode("utf-8")))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"malformed {label} JSON") from exc
     if not isinstance(decoded, dict):
@@ -39,8 +39,7 @@ def decode_json_object(raw: bytes, *, label: str) -> dict[str, object]:
     for key, item in decoded.items():
         if not isinstance(key, str):
             raise TypeError(f"{label} keys must be strings")
-        value: object = item
-        payload[key] = value
+        payload[key] = cast("object", item)
     return payload
 
 

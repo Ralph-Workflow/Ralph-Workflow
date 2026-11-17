@@ -94,7 +94,7 @@ def _run_conflict_resolution_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **dict(execute_kwargs),
+        **execute_kwargs,
     )
 
 
@@ -465,7 +465,7 @@ def invoke_resolution_agent(
         )
     except (AgentInvocationError, OSError, RuntimeError, ValueError, KeyError) as exc:
         _record_attempt_failure(session, exc)
-        if (any(isinstance(exc, _t) for _t in (AgentInactivityTimeoutError, SupervisionInfrastructureError))):
+        if isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError)):
             _record_resolution_termination(session, exc)
             _log_resolution_termination(exc, unresolved_paths)
         else:
@@ -569,10 +569,10 @@ def _record_resolution_termination(session: ResolutionSession | None, exc: Excep
         raw_kind = diagnostic.get("last_activity_kind")
         session.last_activity_kind = raw_kind if isinstance(raw_kind, str) else None
         raw_at = diagnostic.get("last_activity_at")
-        session.last_activity_at = float(raw_at) if (any(isinstance(raw_at, _t) for _t in (int, float))) else None
+        session.last_activity_at = float(raw_at) if isinstance(raw_at, (int, float)) else None
         raw_duration = diagnostic.get("invocation_elapsed_seconds")
         session.last_duration_seconds = (
-            float(raw_duration) if (any(isinstance(raw_duration, _t) for _t in (int, float))) else exc.timeout_seconds
+            float(raw_duration) if isinstance(raw_duration, (int, float)) else exc.timeout_seconds
         )
         return
     session.terminal_reason = (

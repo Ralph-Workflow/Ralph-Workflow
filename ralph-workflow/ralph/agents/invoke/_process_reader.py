@@ -10,7 +10,7 @@ import threading
 import traceback
 from collections import deque
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TextIO, TypeGuard, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, TextIO, TypeGuard, cast, runtime_checkable
 
 import psutil
 from loguru import logger
@@ -112,7 +112,7 @@ from ralph.mcp.server._activity_sink import (
     set_active_sink,
     set_subagent_sink,
 )
-from ralph.process._spawn_env import child_env_for_spawn, scrub_activity_relay_controls
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.child_liveness import (
     AliveBy,
     ChildLivenessRegistry,
@@ -184,8 +184,7 @@ def _subagent_activity_observed(watchdog: _EvidenceSummaryWatchdog) -> bool | No
         return None
     if channel is None:
         return None
-    counter_raw: object = getattr(channel, "counter", None)
-    counter = counter_raw if isinstance(counter_raw, int) and not isinstance(counter_raw, bool) else None
+    counter = cast("int | None", getattr(channel, "counter", None))
     if counter is None:
         return False
     return counter > 0
@@ -300,51 +299,11 @@ def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
 
 
-@runtime_checkable
-class _WritableTextStream(Protocol):
-    def fileno(self) -> int: ...
-    def write(self, data: str) -> int: ...
-    def flush(self) -> None: ...
-    def close(self) -> None: ...
-    @property
-    def encoding(self) -> str | None: ...
-    @property
-    def errors(self) -> str | None: ...
-
-
-@runtime_checkable
-class _LineIterableStream(Protocol):
-    def __iter__(self) -> object: ...
-
-
-def _idle_diagnostic_value(
-    item: object,
-) -> str | int | float | bool | list[object] | None:
-    if isinstance(item, str | int | float | bool):
-        return item
-    if isinstance(item, list):
-        return list(item)
-    return None
-
-
-def _as_idle_diagnostic(
-    value: dict[str, object],
-) -> dict[str, str | int | float | bool | list[object]] | None:
-    result: dict[str, str | int | float | bool | list[object]] = {}
-    for key, item in value.items():
-        converted = _idle_diagnostic_value(item)
-        if converted is not None:
-            result[key] = converted
-    return result
-
-
 def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
     stream = handle.stdin
     if stream is None:
         return
-    if not isinstance(stream, _WritableTextStream):
-        return
-    text_stream = stream
+    text_stream = cast("TextIO", stream)
     try:
         write_fd = os.dup(text_stream.fileno())
     except (AttributeError, OSError, ValueError):
@@ -533,8 +492,8 @@ def _raise_on_relay_health_error(reader: object, agent_name: str) -> None:
     raw_provider: object = getattr(reader, "_relay_health_error", None)
     if not callable(raw_provider):
         return
-    detail_obj: object = raw_provider()
-    detail = detail_obj if isinstance(detail_obj, str) else None
+    provider = cast("Callable[[], str | None]", raw_provider)
+    detail = provider()
     if isinstance(detail, str) and detail:
         raise SupervisionInfrastructureError(agent_name, detail)
 
@@ -571,7 +530,7 @@ def _convert_idle_stream_timeout_to_agent_error(
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
-    env = child_env_for_spawn(None)
+    env = scrub_activity_relay_controls(os.environ.copy())
     env.pop(_BROKER_ENV_VAR_NAME, None)
     if extra_env:
         env.update(extra_env)
@@ -676,8 +635,7 @@ class ProcessLineReader:
         self._stderr_lock = threading.Lock()
         self._stderr_capture = ""
         self._stderr_capture_truncated = False
-        agy_cli_log_path_raw: object = getattr(ctx, "agy_cli_log_path", None)
-        agy_cli_log_path = agy_cli_log_path_raw if isinstance(agy_cli_log_path_raw, Path) else None
+        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
         self._agy_cli_log = (
             agy_cli_log
             if agy_cli_log is not None
@@ -737,14 +695,18 @@ class ProcessLineReader:
     def _strategy_registry_and_prefix(
         self,
     ) -> tuple[ChildLivenessRegistry | None, str]:
-        registry_raw: object = getattr(self._strategy, "_registry", None)
-        registry = registry_raw if isinstance(registry_raw, ChildLivenessRegistry) else None
+        registry = cast(
+            "ChildLivenessRegistry | None",
+            getattr(self._strategy, "_registry", None),
+        )
         if registry is None:
             return None, ""
-        active_prefix_fn: object = getattr(self._strategy, "_active_label_prefix", None)
+        active_prefix_fn = cast(
+            "Callable[[], str | None] | None",
+            getattr(self._strategy, "_active_label_prefix", None),
+        )
         try:
-            prefix_obj: object = active_prefix_fn() if callable(active_prefix_fn) else ""
-            prefix = prefix_obj if isinstance(prefix_obj, str) else ""
+            prefix = active_prefix_fn() if active_prefix_fn is not None else ""
         except AttributeError:
             prefix = ""
         return registry, prefix or ""
@@ -876,13 +838,13 @@ class ProcessLineReader:
         oldest_secs: float | None = oldest_secs_from_legacy
         scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
-        reg_raw: object = getattr(self._strategy, "_registry", None)
-        reg = reg_raw if isinstance(reg_raw, ChildLivenessRegistry) else None
+        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if reg is not None:
             try:
-                prefix_fn: object = getattr(self._strategy, "_active_label_prefix", lambda: None)
-                label_prefix_obj: object = prefix_fn() if callable(prefix_fn) else None
-                label_prefix = label_prefix_obj if isinstance(label_prefix_obj, str) else None
+                label_prefix = cast(
+                    "str | None",
+                    getattr(self._strategy, "_active_label_prefix", lambda: None)(),
+                )
                 reg_snap = reg.snapshot(label_prefix or "")
                 verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
                 alive_by = verdict.alive_by
@@ -922,12 +884,10 @@ class ProcessLineReader:
         return reader
 
     def _start_stderr_thread(self) -> threading.Thread | None:
-        stderr_pipe_obj: object = getattr(self._handle, "stderr", None)
-        if not isinstance(stderr_pipe_obj, _LineIterableStream):
+        stderr_pipe = cast("IO[str] | None", getattr(self._handle, "stderr", None))
+        if stderr_pipe is None:
             return None
-        reader = threading.Thread(
-            target=self._read_stderr_thread, args=(stderr_pipe_obj,), daemon=True
-        )
+        reader = threading.Thread(target=self._read_stderr_thread, args=(stderr_pipe,), daemon=True)
         reader.start()
         return reader
 
@@ -955,7 +915,7 @@ class ProcessLineReader:
     def _quota_channel_for(self, line: str) -> ContentChannel:
         return line_channel(self._parser_key, line)
 
-    def _read_stderr_thread(self, stderr_pipe: _LineIterableStream) -> None:
+    def _read_stderr_thread(self, stderr_pipe: IO[str]) -> None:
         try:
             for line in stderr_pipe:
                 self._append_stderr(line)
@@ -989,8 +949,8 @@ class ProcessLineReader:
             self._opencode_subagent_probe.poll()
 
     def _read_thread(self) -> None:
-        stdout_pipe_obj: object = self._handle.stdout
-        if not isinstance(stdout_pipe_obj, _LineIterableStream):
+        stdout_pipe = cast("IO[str] | None", self._handle.stdout)
+        if stdout_pipe is None:
             with self._lines_lock:
                 self._reader_done[0] = True
             self._lines_event.set()
@@ -998,7 +958,7 @@ class ProcessLineReader:
 
         self._announce_pre_output_progress()
         try:
-            for line in stdout_pipe_obj:
+            for line in stdout_pipe:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
@@ -1184,7 +1144,10 @@ class ProcessLineReader:
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=_as_idle_diagnostic(merged_diag),
+            diagnostic=cast(
+                "dict[str, str | int | float | bool | list[object]] | None",
+                merged_diag,
+            ),
         )
         wrapper.__cause__ = typed_exc
         return pending, wrapper
@@ -1645,12 +1608,15 @@ def _run_subprocess_and_read_lines(
         try:
             if ctx.show_progress:
                 agent_name = _agent_command_name(ctx.config)
-                progress_iter = tqdm(
-                    lines_iter,
-                    desc=f"[{agent_name}]",
-                    unit="line",
-                    leave=False,
-                    file=sys.stdout,
+                progress_iter = cast(
+                    "Iterator[str]",
+                    tqdm(
+                        lines_iter,
+                        desc=f"[{agent_name}]",
+                        unit="line",
+                        leave=False,
+                        file=sys.stdout,
+                    ),
                 )
                 for line in progress_iter:
                     stripped_line = line.rstrip()

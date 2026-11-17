@@ -4,7 +4,7 @@ import os
 import signal
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -17,24 +17,12 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from ralph.interrupt.signal_getter import SignalGetter
-    from ralph.interrupt.signal_handler import SignalHandler
     from ralph.interrupt.signal_setter import SignalSetter
     from ralph.process.manager import ProcessManager
 
 
-def _default_signal_getter(signum: int, /) -> SignalHandler:
-    return signal.getsignal(signum)
-
-
-def _default_signal_setter(signum: int, handler: SignalHandler, /) -> SignalHandler:
-    return signal.signal(signum, handler)
-
-
-def legacy_bridge_pids(kwargs: dict[str, object]) -> list[int]:
-    raw = kwargs.pop("bridge_pids", ())
-    if not isinstance(raw, list) and not isinstance(raw, tuple):
-        return []
-    return [item for item in raw if isinstance(item, int) and not isinstance(item, bool)]
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
@@ -75,7 +63,7 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = legacy_bridge_pids(kwargs)
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         del bridge_pgids, bridge_pids_legacy
@@ -91,7 +79,7 @@ class InterruptController:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = legacy_bridge_pids(kwargs)
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
@@ -105,8 +93,8 @@ class InterruptController:
 def install_force_kill_handler(
     on_force_interrupt: Callable[[], None],
     *,
-    signal_getter: SignalGetter = _default_signal_getter,
-    signal_setter: SignalSetter = _default_signal_setter,
+    signal_getter: SignalGetter = _DEFAULT_SIGNAL_GETTER,
+    signal_setter: SignalSetter = _DEFAULT_SIGNAL_SETTER,
     signum: int = signal.SIGINT,
 ) -> Callable[[], None]:
     previous = signal_getter(signum)

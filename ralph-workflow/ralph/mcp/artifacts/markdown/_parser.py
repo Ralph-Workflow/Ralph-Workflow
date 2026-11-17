@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ralph.mcp.artifacts.markdown._diagnostic import Diagnostic
 from ralph.mcp.artifacts.markdown._document import ParsedDocument
@@ -29,8 +30,6 @@ _PARSER_ROUTING_CONSUMER = (
 
 
 class _SectionBuilder:
-    __slots__ = ('block', 'block_lines', 'blocks', 'items', 'level', 'line', 'lines', 'name')
-
     def __init__(self, name: str, line: int, level: int) -> None:
         self.name = name
         self.line = line
@@ -87,11 +86,11 @@ def parse_markdown_document(
 
     sections: list[ParsedSection] = []
     current: _SectionBuilder | None = None
-    last_item_box: list[ParsedItem | None] = [None]
+    last_item: ParsedItem | None = None
     item_fields: list[ParsedLine] = []
 
     def finish_item() -> None:
-        last_item = last_item_box[0]
+        nonlocal last_item
         if last_item is not None and current is not None:
             current.items.append(
                 ParsedItem(
@@ -102,13 +101,13 @@ def parse_markdown_document(
                     fields=tuple(item_fields),
                 )
             )
-        last_item_box[0] = None
+        last_item = None
         item_fields.clear()
 
     for line_number, line in enumerate(lines[start:], start=start + 1):
         block_heading = _BLOCK_HEADING.fullmatch(line)
         if block_heading is not None and (
-            allow_nested_headings or block_heading.group("marks") == "###"
+            allow_nested_headings or cast("str", block_heading.group("marks")) == "###"
         ):
             finish_item()
             if current is None:
@@ -129,7 +128,7 @@ def parse_markdown_document(
             continue
         heading = _HEADING.fullmatch(line)
         if heading is not None and (
-            allow_nested_headings or heading.group("marks") == "##"
+            allow_nested_headings or cast("str", heading.group("marks")) == "##"
         ):
             finish_item()
             if current is not None:
@@ -137,7 +136,7 @@ def parse_markdown_document(
             current = _SectionBuilder(
                 heading.group("name"),
                 line_number,
-                len(heading.group("marks")),
+                len(cast("str", heading.group("marks"))),
             )
             continue
         if not line.strip():
@@ -169,10 +168,10 @@ def parse_markdown_document(
         if item is not None:
             finish_item()
             current.finish_block()
-            checkbox = item.group("checked")
-            identifier = item.group("identifier")
-            item_text = item.group("text")
-            last_item_box[0] = ParsedItem(
+            checkbox = cast("str | None", item.group("checked"))
+            identifier = cast("str", item.group("identifier"))
+            item_text = cast("str", item.group("text"))
+            last_item = ParsedItem(
                 identifier=identifier,
                 text=item_text,
                 line=line_number,
@@ -182,7 +181,7 @@ def parse_markdown_document(
         if current.block is not None:
             current.block_lines.append(ParsedLine(line_number, line.strip()))
             continue
-        if line[0].isspace() and last_item_box[0] is not None:
+        if line[0].isspace() and last_item is not None:
             item_fields.append(ParsedLine(line_number, line.strip()))
             continue
         finish_item()

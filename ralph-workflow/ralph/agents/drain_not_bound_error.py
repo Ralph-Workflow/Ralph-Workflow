@@ -1,6 +1,4 @@
 class DrainNotBoundError(Exception):
-    __slots__ = ("available_drains", "drain")
-
     def __init__(self, drain: str, available_drains: set[str]) -> None:
         self.drain = drain
         self.available_drains = available_drains

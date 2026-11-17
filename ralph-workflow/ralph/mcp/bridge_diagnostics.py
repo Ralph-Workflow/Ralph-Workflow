@@ -17,8 +17,15 @@ def classify_probe_failure(
     exc_text = str(exc).lower()
     if "saturated_dispatch" in exc_text or "_saturated_dispatch" in exc_text:
         return "saturated"
-    if (
-        any(isinstance(exc, _t) for _t in (ConnectionResetError, ConnectionRefusedError, BrokenPipeError)) or "connection reset" in exc_text or "connection refused" in exc_text or "broken pipe" in exc_text or any(isinstance(exc, _t) for _t in (ValueError, json.JSONDecodeError, UnicodeDecodeError)) or any(code in exc_text for code in ("500", "502", "503", "504")) or "malformed" in exc_text or "spawn_id_mismatch" in exc_text or "protocol" in exc_text
+    if isinstance(exc, (ConnectionResetError, ConnectionRefusedError, BrokenPipeError)) or (
+        "connection reset" in exc_text
+        or "connection refused" in exc_text
+        or "broken pipe" in exc_text
+        or isinstance(exc, (ValueError, json.JSONDecodeError, UnicodeDecodeError))
+        or any(code in exc_text for code in ("500", "502", "503", "504"))
+        or "malformed" in exc_text
+        or "spawn_id_mismatch" in exc_text
+        or "protocol" in exc_text
     ):
         return "fatal"
     if isinstance(exc, TimeoutError):

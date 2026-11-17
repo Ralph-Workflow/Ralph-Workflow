@@ -6,11 +6,11 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-from ralph.checked_accessors import as_mapping, optional_str
+from ralph.checked_accessors import optional_str
 from ralph.git.scoped_auto_commit import capture_pre_write_contents, snapshot_dirty_paths_strict
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -40,6 +40,7 @@ from ralph.skills._prune import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
@@ -135,7 +136,7 @@ def _worktree_modified_paths(workspace_root: Path, relative: str) -> frozenset[s
     except (GitCommandError, OSError):
         return frozenset()
     finally:
-        close = getattr(repo, "close", None)
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):
             close()
     return frozenset(line.strip() for line in raw.splitlines() if line.strip())
@@ -578,10 +579,9 @@ def _root_skill_marker_valid(resolved: Path, name: str) -> bool:
         actual_hash = hashlib.sha256(skill_file.read_bytes()).hexdigest()
     except (OSError, json.JSONDecodeError):
         return False
-    try:
-        recorded = dict(as_mapping(recorded_raw))
-    except TypeError:
+    if not isinstance(recorded_raw, dict):
         return False
+    recorded = cast("dict[str, object]", recorded_raw)
     expected_hash = _compute_skill_hash(name)
     return (
         recorded.get("managed_by") == "ralph-workflow"

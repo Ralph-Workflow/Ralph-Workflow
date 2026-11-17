@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,114 +53,51 @@ __all__ = [
     "validate_policy_completeness",
 ]
 
-
-def _load_agentchainconfig() -> object:
-    from ralph.policy.models import AgentChainConfig
-    return AgentChainConfig
-
-def _load_agentdrainconfig() -> object:
-    from ralph.policy.models import AgentDrainConfig
-    return AgentDrainConfig
-
-def _load_agentspolicy() -> object:
-    from ralph.policy.models import AgentsPolicy
-    return AgentsPolicy
-
-def _load_artifactcontract() -> object:
-    from ralph.policy.models import ArtifactContract
-    return ArtifactContract
-
-def _load_artifactspolicy() -> object:
-    from ralph.policy.models import ArtifactsPolicy
-    return ArtifactsPolicy
-
-def _load_checkpointpolicymismatcherror() -> object:
-    from ralph.policy.validation import CheckpointPolicyMismatchError
-    return CheckpointPolicyMismatchError
-
-def _load_commitreviewpolicy() -> object:
-    from ralph.policy.models import CommitReviewPolicy
-    return CommitReviewPolicy
-
-def _load_drainname() -> object:
-    from ralph.policy.models import DrainName
-    return DrainName
-
-def _load_phasedefinition() -> object:
-    from ralph.policy.models import PhaseDefinition
-    return PhaseDefinition
-
-def _load_phasetransition() -> object:
-    from ralph.policy.models import PhaseTransition
-    return PhaseTransition
-
-def _load_pipelinepolicy() -> object:
-    from ralph.policy.models import PipelinePolicy
-    return PipelinePolicy
-
-def _load_policybundle() -> object:
-    from ralph.policy.models import PolicyBundle
-    return PolicyBundle
-
-def _load_policyvalidationerror() -> object:
-    from ralph.policy.validation import PolicyValidationError
-    return PolicyValidationError
-
-def _load_load_policy() -> object:
-    from ralph.policy.loader import load_policy
-    return load_policy
-
-def _load_load_policy_or_die() -> object:
-    from ralph.policy.loader import load_policy_or_die
-    return load_policy_or_die
-
-def _load_validate_chain_exists() -> object:
-    from ralph.policy.validation import validate_chain_exists
-    return validate_chain_exists
-
-def _load_validate_checkpoint_compatible() -> object:
-    from ralph.policy.validation import validate_checkpoint_compatible
-    return validate_checkpoint_compatible
-
-def _load_validate_drain_bound() -> object:
-    from ralph.policy.validation import validate_drain_bound
-    return validate_drain_bound
-
-def _load_validate_phase_exists_in_policy() -> object:
-    from ralph.policy.validation import validate_phase_exists_in_policy
-    return validate_phase_exists_in_policy
-
-def _load_validate_policy_completeness() -> object:
-    from ralph.policy.validation import validate_policy_completeness
-    return validate_policy_completeness
-
-_LOADERS: dict[str, Callable[[], object]] = {
-    "AgentChainConfig": _load_agentchainconfig,
-    "AgentDrainConfig": _load_agentdrainconfig,
-    "AgentsPolicy": _load_agentspolicy,
-    "ArtifactContract": _load_artifactcontract,
-    "ArtifactsPolicy": _load_artifactspolicy,
-    "CheckpointPolicyMismatchError": _load_checkpointpolicymismatcherror,
-    "CommitReviewPolicy": _load_commitreviewpolicy,
-    "DrainName": _load_drainname,
-    "PhaseDefinition": _load_phasedefinition,
-    "PhaseTransition": _load_phasetransition,
-    "PipelinePolicy": _load_pipelinepolicy,
-    "PolicyBundle": _load_policybundle,
-    "PolicyValidationError": _load_policyvalidationerror,
-    "load_policy": _load_load_policy,
-    "load_policy_or_die": _load_load_policy_or_die,
-    "validate_chain_exists": _load_validate_chain_exists,
-    "validate_checkpoint_compatible": _load_validate_checkpoint_compatible,
-    "validate_drain_bound": _load_validate_drain_bound,
-    "validate_phase_exists_in_policy": _load_validate_phase_exists_in_policy,
-    "validate_policy_completeness": _load_validate_policy_completeness,
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "AgentChainConfig": ("ralph.policy.models", "AgentChainConfig"),
+    "AgentDrainConfig": ("ralph.policy.models", "AgentDrainConfig"),
+    "AgentsPolicy": ("ralph.policy.models", "AgentsPolicy"),
+    "ArtifactContract": ("ralph.policy.models", "ArtifactContract"),
+    "ArtifactsPolicy": ("ralph.policy.models", "ArtifactsPolicy"),
+    "CheckpointPolicyMismatchError": (
+        "ralph.policy.validation",
+        "CheckpointPolicyMismatchError",
+    ),
+    "CommitReviewPolicy": ("ralph.policy.models", "CommitReviewPolicy"),
+    "DrainName": ("ralph.policy.models", "DrainName"),
+    "PhaseDefinition": ("ralph.policy.models", "PhaseDefinition"),
+    "PhaseTransition": ("ralph.policy.models", "PhaseTransition"),
+    "PipelinePolicy": ("ralph.policy.models", "PipelinePolicy"),
+    "PolicyBundle": ("ralph.policy.models", "PolicyBundle"),
+    "PolicyValidationError": ("ralph.policy.validation", "PolicyValidationError"),
+    "load_policy": ("ralph.policy.loader", "load_policy"),
+    "load_policy_or_die": ("ralph.policy.loader", "load_policy_or_die"),
+    "validate_chain_exists": ("ralph.policy.validation", "validate_chain_exists"),
+    "validate_checkpoint_compatible": (
+        "ralph.policy.validation",
+        "validate_checkpoint_compatible",
+    ),
+    "validate_drain_bound": ("ralph.policy.validation", "validate_drain_bound"),
+    "validate_phase_exists_in_policy": (
+        "ralph.policy.validation",
+        "validate_phase_exists_in_policy",
+    ),
+    "validate_policy_completeness": (
+        "ralph.policy.validation",
+        "validate_policy_completeness",
+    ),
 }
 
 
 def __getattr__(name: str) -> object:
-    loader = _LOADERS.get(name)
-    if loader is None:
+    try:
+        module_name, attr_name = _LAZY_EXPORTS[name]
+    except KeyError as exc:
         msg = f"module {__name__!r} has no attribute {name!r}"
-        raise AttributeError(msg)
-    return loader()
+        raise AttributeError(msg) from exc
+
+    module = import_module(module_name)
+    namespace = cast("dict[str, object]", module.__dict__)
+    value = namespace[attr_name]
+    cast("dict[str, object]", globals())[name] = value
+    return value

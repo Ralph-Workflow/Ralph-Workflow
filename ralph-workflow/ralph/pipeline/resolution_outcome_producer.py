@@ -77,8 +77,16 @@ def classify_resolution_failure(
 def stop_resolution_outcome_from_legacy(
     outcome: object,
 ) -> StopResolutionOutcome:
-    if (
-        any(isinstance(outcome, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))
+    if isinstance(
+        outcome,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
     ):
         return outcome
     result: StopResolutionOutcome

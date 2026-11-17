@@ -130,3 +130,4 @@ def _selftest() -> None:
 
 if __name__ == "__main__":
     _selftest()
+    print("hardening self-test: ok")

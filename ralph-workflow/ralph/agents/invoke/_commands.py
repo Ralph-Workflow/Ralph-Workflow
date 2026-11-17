@@ -6,7 +6,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 __all__ = ["_agent_transport", "claude_mcp_config"]
 
@@ -17,23 +17,12 @@ from ralph.agents.invoke._types import _BuildCommandOptions
 from ralph.config.enums import AgentTransport
 from ralph.mcp.transport.claude import claude_mcp_config
 
-
-def _as_str_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    return {key: item for key, item in value.items() if isinstance(key, str)}
-
-
 if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    transport = config.transport
-    if isinstance(transport, AgentTransport):
-        return transport
-    msg = "agent config transport must be resolved before command build"
-    raise TypeError(msg)
+    return cast("AgentTransport", config.transport)
 
 
 def _shell_single_quote(value: str) -> str:
@@ -98,18 +87,20 @@ def _merge_interactive_settings_json(settings_json: str | None, sentinel_path: P
     if settings_json is None:
         return json.dumps(settings)
     try:
-        parsed_obj: object = json.loads(settings_json)
+        parsed_obj = cast("object", json.loads(settings_json))
     except json.JSONDecodeError:
         return settings_json
-    parsed_dict = _as_str_object_dict(parsed_obj)
-    if parsed_dict is None:
+    if not isinstance(parsed_obj, dict):
         return settings_json
+    parsed_dict = cast("dict[str, object]", parsed_obj)
 
     merged = dict(parsed_dict)
     merged.setdefault("skipDangerousModePermissionPrompt", True)
 
     parsed_hooks = parsed_dict.get("hooks")
-    existing_hooks = _as_str_object_dict(parsed_hooks) or {}
+    existing_hooks = (
+        cast("dict[str, object]", parsed_hooks) if isinstance(parsed_hooks, dict) else {}
+    )
     default_hooks = settings["hooks"]
     merged_hooks: dict[str, object] = dict(existing_hooks)
     if isinstance(default_hooks, dict):

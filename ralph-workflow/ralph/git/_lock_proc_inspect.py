@@ -149,12 +149,18 @@ def _is_unreadable_os_error(e: OSError) -> bool:
 
 
 def _is_dead_process_os_error(e: OSError) -> bool:
-    return any(isinstance(e, _t) for _t in (FileNotFoundError, ProcessLookupError)) or e.errno in (errno.ENOENT, errno.ESRCH)
+    return isinstance(e, (FileNotFoundError, ProcessLookupError)) or e.errno in (
+        errno.ENOENT,
+        errno.ESRCH,
+    )
 
 
-def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
+def _fd_path_is_lock(
+    fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None
+) -> bool:
+    path = Path(fd_path)
     try:
-        target = str(fd_link.readlink())
+        target = str(path.readlink())
     except OSError:
         return False
     if target == lock_resolved:
@@ -164,7 +170,7 @@ def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] |
     if not (target.endswith(".lock") or ".lock" in target):
         return False
     try:
-        st = fd_link.stat()
+        st = path.stat()
     except OSError:
         return False
     return (st.st_dev, st.st_ino) == lock_ident
@@ -185,7 +191,7 @@ def _pid_holds_lock_fd(
         return "unknown"
     for fd_link in fd_links:
         try:
-            is_lock = _fd_is_lock(fd_link, lock_resolved, lock_ident)
+            is_lock = _fd_path_is_lock(str(fd_link), lock_resolved, lock_ident)
         except OSError as e:
             if _is_unreadable_os_error(e):
                 return "unknown"
@@ -228,7 +234,7 @@ def _scan_lock_fd_holders_unlocked(
         except OSError:
             continue
         for fd_link in fd_links:
-            if _fd_is_lock(fd_link, lock_resolved, lock_ident):
+            if _fd_path_is_lock(str(fd_link), lock_resolved, lock_ident):
                 return "live"
     return "not_live"
 
@@ -341,7 +347,7 @@ def _pid_has_gitdir_environ(
 
     try:
         targets = {
-            Path(os.fsdecode(g) if any(isinstance(g, _t) for _t in (bytes, bytearray)) else g).resolve()
+            Path(os.fsdecode(g) if isinstance(g, (bytes, bytearray)) else g).resolve()
             for g in (gitdir, gitdir_common)
         }
     except OSError:

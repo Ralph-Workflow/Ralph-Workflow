@@ -27,20 +27,6 @@ _SENTENCE_ENDING_PUNCT_PATTERN: Final[re.Pattern[str]] = re.compile(_SENTENCE_EN
 _SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\s+(?=[A-Z])")
 
 
-class _SentenceState:
-    __slots__ = ("has_phrase", "token_id")
-
-    def __init__(self) -> None:
-        self.has_phrase = False
-        self.token_id = ""
-
-    def flush(self, out: list[tuple[str, str]]) -> None:
-        if self.has_phrase:
-            out.append(("", self.token_id))
-        self.has_phrase = False
-        self.token_id = ""
-
-
 def _count_ratchet_phrases(line: str, phrase_re: re.Pattern[str]) -> int:
     return sum(1 for _ in phrase_re.finditer(line))
 
@@ -84,12 +70,20 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
     phrase_re = re.compile(rf"(?i)(?:{phrase_alts})")
     lines = content.splitlines()
     total = len(lines)
-    sentence_state = _SentenceState()
+    sentence_has_phrase = False
+    sentence_token_id = ""
+
+    def flush() -> None:
+        nonlocal sentence_has_phrase, sentence_token_id
+        if sentence_has_phrase:
+            out.append(("", sentence_token_id))
+        sentence_has_phrase = False
+        sentence_token_id = ""
 
     for index, raw_line in enumerate(lines):
         stripped = raw_line.strip()
         if stripped.startswith("#"):
-            sentence_state.flush(out)
+            flush()
             in_excluded = stripped in _EXCLUDED_SECTION_HEADINGS
             in_table = stripped == markers.GUARD_INVENTORY_HEADING
             in_comment = False
@@ -104,9 +98,9 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
         if in_excluded or in_table:
             continue
         if not stripped:
-            sentence_state.flush(out)
+            flush()
             continue
-        sentence_state.has_phrase, sentence_state.token_id, out = _scan_body_line(
+        sentence_has_phrase, sentence_token_id, out = _scan_body_line(
             stripped,
             lines,
             index,
@@ -114,11 +108,11 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
             in_comment=in_comment,
             control_re=control_re,
             phrase_re=phrase_re,
-            sentence_has_phrase=sentence_state.has_phrase,
-            sentence_token_id=sentence_state.token_id,
+            sentence_has_phrase=sentence_has_phrase,
+            sentence_token_id=sentence_token_id,
             out=out,
         )
-    sentence_state.flush(out)
+    flush()
     return out
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
@@ -13,6 +14,9 @@ from ralph.skills._agent_paths import (
     project_skill_root,
 )
 from ralph.skills._content import _MANAGED_MARKER, BASELINE_SKILL_NAMES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _candidate_skill_paths(workspace_root: Path) -> list[str]:
@@ -80,7 +84,7 @@ def _tracked_descendants(root: Path, workspace_root: Path) -> list[str]:
             paths = [line.strip() for line in raw.splitlines() if line.strip()]
             return sorted(set(paths))
         finally:
-            close = getattr(repo_obj, "close", None)
+            close = cast("Callable[[], object] | None", getattr(repo_obj, "close", None))
             if callable(close):
                 close()
     except ImportError:
@@ -141,6 +145,6 @@ def _diff_written_paths(
                 written.append(path)
         return written
     finally:
-        close = getattr(repo, "close", None)
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
         if callable(close):
             close()

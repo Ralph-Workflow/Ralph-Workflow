@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol._access_decision import AccessDecision
 from ralph.mcp.protocol._access_denied_code import AccessDeniedCode
@@ -144,9 +145,10 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
 
 
 def _policy_validation_error_type() -> type[Exception]:
-    from ralph.policy.validation import PolicyValidationError
-
-    return PolicyValidationError
+    return cast(
+        "type[Exception]",
+        import_module("ralph.policy.validation").PolicyValidationError,
+    )
 
 
 _APPROVED_POLICY_VALUES = {"approved", "allow", "allowed"}
@@ -166,15 +168,8 @@ def normalize_token(value: str) -> str:
 def extract_text_field(value: object, field_name: str) -> str | None:
     if isinstance(value, dict):
         field_value = value.get(field_name)
-        return field_value if isinstance(field_value, str) else None
-    if field_name == "status":
-        field_value = getattr(value, "status", None)
-    elif field_name == "name":
-        field_value = getattr(value, "name", None)
-    elif field_name == "value":
-        field_value = getattr(value, "value", None)
     else:
-        return None
+        field_value = getattr(value, field_name, None)
     return field_value if isinstance(field_value, str) else None
 
 
@@ -182,7 +177,7 @@ def extract_named_value(value: object) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, Enum):
-        enum_value: object = value.value
+        enum_value = cast("object", value.value)
         if isinstance(enum_value, str):
             return enum_value
     for field_name in ("status", "name", "value"):

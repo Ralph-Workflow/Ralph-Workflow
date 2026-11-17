@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 
 
 class PhaseHandlerNotFoundError(Exception):
-    __slots__ = ("phase",)
-
     def __init__(self, phase: str) -> None:
         self.phase = phase
         msg = (

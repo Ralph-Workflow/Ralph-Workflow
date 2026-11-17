@@ -7,6 +7,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Mapping, MutableMapping
 
+__all__ = [
+    "copy_environ",
+    "del_environ",
+    "environ",
+    "getenv",
+    "os",
+    "pop_environ",
+    "resolve_config_home",
+    "resolve_environ",
+    "set_environ",
+    "setdefault_environ",
+    "update_environ",
+]
+
 
 def getenv(name: str, env: Mapping[str, str] | None = None) -> str | None:
     source = os.environ if env is None else env

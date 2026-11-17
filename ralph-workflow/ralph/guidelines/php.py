@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,32 +17,26 @@ if TYPE_CHECKING:
         anti_patterns: tuple[str, ...]
 
         def summary(self) -> str: ...
-
         def total_checks(self) -> int: ...
 
 
+@dataclass
 class PHPGuidelines:
-    __slots__ = (
-        "anti_patterns",
-        "api_design_checks",
-        "concurrency_checks",
-        "documentation_checks",
-        "frameworks",
-        "idioms",
-        "observability_checks",
-        "performance_checks",
-        "quality_checks",
-        "resource_checks",
-        "secrets_checks",
-        "security_checks",
-        "testing_checks",
-    )
+    frameworks: tuple[str, ...] = ()
+    quality_checks: tuple[str, ...] = field(init=False)
+    security_checks: tuple[str, ...] = field(init=False)
+    performance_checks: tuple[str, ...] = field(init=False)
+    testing_checks: tuple[str, ...] = field(init=False)
+    documentation_checks: tuple[str, ...] = field(init=False)
+    idioms: tuple[str, ...] = field(init=False)
+    anti_patterns: tuple[str, ...] = field(init=False)
 
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
         self.quality_checks = (
-            "Use PHP 8+ features such as union types, attributes, and match where they improve clarity.",
+            "Use PHP 8+ features such as union types, attributes, and match "
+            "where they improve clarity.",
             "Follow PSR-1/PSR-12 coding standards and keep PSR-4 autoloading tidy.",
             "Keep public APIs small and expressive with typed request/response signatures.",
             "Favor value objects, DTOs, and named arguments for constructors and factory helpers.",
@@ -54,18 +49,25 @@ class PHPGuidelines:
         )
         self.performance_checks = (
             "Profile before optimizing and justify non-obvious performance trade-offs.",
-            "Avoid repeated database queries inside loops; batch work and eager load relationships.",
-            "Cache expensive computations and rendered fragments only when invalidation remains clear.",
+            "Avoid repeated database queries inside loops; batch work and eager load "
+            "relationships.",
+            "Cache expensive computations and rendered fragments only when "
+            "invalidation remains clear.",
         )
         self.testing_checks = (
             "Cover validation, authorization, and persistence failure paths in automated tests.",
-            "Exercise controller, route, or HTTP behavior with integration-style tests when the framework supports them.",
-            "Protect serialization, database side effects, and exception handling instead of just happy paths.",
+            "Exercise controller, route, or HTTP behavior with integration-style tests "
+            "when the framework supports them.",
+            "Protect serialization, database side effects, and exception handling "
+            "instead of just happy paths.",
         )
         self.documentation_checks = (
-            "Document public classes, functions, and console commands with actual behavior, arguments, and return values.",
-            "Keep setup docs, environment requirements, and deployment notes in sync with the live PHP stack and Composer configuration.",
-            "Explain middleware, listener, and lifecycle behavior that affects request flow or bootstrapping.",
+            "Document public classes, functions, and console commands with actual behavior, "
+            "arguments, and return values.",
+            "Keep setup docs, environment requirements, and deployment notes in sync "
+            "with the live PHP stack and Composer configuration.",
+            "Explain middleware, listener, and lifecycle behavior that affects "
+            "request flow or bootstrapping.",
         )
         self.idioms = (
             "Prefer Composer ecosystem conventions over custom abstractions.",
@@ -77,22 +79,23 @@ class PHPGuidelines:
             "Do not suppress errors with the @ operator.",
             "Resist register_globals-style behavior and global state.",
         )
-        self.concurrency_checks = ()
-        self.resource_checks = ()
-        self.observability_checks = ()
-        self.secrets_checks = ()
-        self.api_design_checks = ()
+
         for framework in normalized_frameworks:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
         framework_name = framework.casefold()
+
         if framework_name == "laravel":
             self.quality_checks += (
-                "Use Eloquent relationships intentionally and avoid ad hoc query building when eager loading fits.",
-                "Follow Laravel conventions for service providers, middleware, and route structure.",
-                "Leverage Laravel's validation system instead of rolling custom checks where possible.",
-                "Use middleware for cross-cutting concerns like logging, authentication, and feature flags.",
+                "Use Eloquent relationships intentionally and avoid ad hoc query building "
+                "when eager loading fits.",
+                "Follow Laravel conventions for service providers, middleware, "
+                "and route structure.",
+                "Leverage Laravel's validation system instead of rolling custom checks "
+                "where possible.",
+                "Use middleware for cross-cutting concerns like logging, authentication, "
+                "and feature flags.",
             )
             self.security_checks += (
                 "Keep CSRF protection enabled on state-changing routes.",
@@ -101,9 +104,11 @@ class PHPGuidelines:
             )
             self.performance_checks += (
                 "Review Eloquent queries for N+1 risks and eager load where needed.",
-                "Push slow work to queues or async jobs when it shouldn't run in the request cycle.",
+                "Push slow work to queues or async jobs when it shouldn't run in "
+                "the request cycle.",
             )
             return
+
         if framework_name == "symfony":
             self.quality_checks += (
                 "Follow Symfony best practices for bundles, services, and controllers.",
@@ -115,11 +120,16 @@ class PHPGuidelines:
                 "Use voters or access control expressions for authorization.",
             )
             self.documentation_checks += (
-                "Document service wiring, bundles, and configuration conventions when defaults are overridden.",
+                "Document service wiring, bundles, and configuration conventions "
+                "when defaults are overridden.",
             )
 
     def summary(self) -> str:
-        return f"{len(self.quality_checks)} quality checks, {len(self.security_checks)} security checks, {len(self.anti_patterns)} anti-patterns"
+        return (
+            f"{len(self.quality_checks)} quality checks, "
+            f"{len(self.security_checks)} security checks, "
+            f"{len(self.anti_patterns)} anti-patterns"
+        )
 
     def total_checks(self) -> int:
         return sum(
@@ -131,11 +141,6 @@ class PHPGuidelines:
                 len(self.documentation_checks),
                 len(self.idioms),
                 len(self.anti_patterns),
-                len(self.concurrency_checks),
-                len(self.resource_checks),
-                len(self.observability_checks),
-                len(self.secrets_checks),
-                len(self.api_design_checks),
             ]
         )
 

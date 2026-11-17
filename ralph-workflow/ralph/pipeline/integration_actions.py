@@ -251,8 +251,6 @@ class _ProductionGitOps:
 
 
 class _SystemClock:
-    __slots__ = ("_wait_event",)
-
     def __init__(self) -> None:
         self._wait_event = Event()
 

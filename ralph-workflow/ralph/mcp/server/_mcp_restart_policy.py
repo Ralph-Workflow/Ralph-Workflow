@@ -88,36 +88,15 @@ def next_budget_decision(
     now_fn: Callable[[], float] = _now if _now is not None else time.monotonic
     now = now_fn()
     raw_max: object = getattr(policy, "max_restarts", 20)
-    max_restarts = _coerce_restart_limit(raw_max, default=20)
+    max_restarts: int = int(raw_max) if isinstance(raw_max, (int, float)) else 20
     if current_count >= max_restarts:
         return "absolute_cap"
     raw_rolling: object = getattr(policy, "rolling_max_in_window", None)
-    rolling_limit = _coerce_optional_number(raw_rolling)
-    if rolling_limit is not None:
+    if isinstance(raw_rolling, (int, float)):
         rolling_count = sum(1 for ts in rolling_history if now - ts <= rolling_window_s)
-        if rolling_count >= rolling_limit:
+        if rolling_count >= raw_rolling:
             return "window_drain"
     return "ok"
-
-
-def _coerce_restart_limit(value: object, *, default: int) -> int:
-    if isinstance(value, bool):
-        return default
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    return default
-
-
-def _coerce_optional_number(value: object) -> int | float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return value
-    return None
 
 
 __all__ = ["McpRestartPolicy", "next_budget_decision"]

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import tomllib
+from os import getenv
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.checked_accessors import as_mapping
-from ralph.config._config_load_error import ConfigLoadError, ConfigTomlError
-from ralph.config._env import getenv
+from ralph.config._config_load_error import ConfigLoadError
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
 from ralph.config._toml_fallback import (
     emit_config_failure_warning,
@@ -42,11 +41,18 @@ def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
             data.pop(field, None)
 
 
+class _ConfigTomlError(ConfigLoadError):
+    pass
+
+
+ConfigTomlError = _ConfigTomlError
+
+
 def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(dict(as_mapping(result[key])), dict(as_mapping(value)))
+            result[key] = deep_merge(cast("dict[str, object]", result[key]), value)
         else:
             result[key] = value
     return result
@@ -62,7 +68,7 @@ def load_toml(path: Path) -> dict[str, object]:
         source = path.read_text(encoding="utf-8")
         data: dict[str, object] = tomllib.loads(source)
     except (
-        tomllib.TOMLDecodeError,
+        cast("type[ValueError]", tomllib.TOMLDecodeError),
         UnicodeDecodeError,
         OSError,
     ) as exc:
@@ -519,10 +525,10 @@ def _attribute_validation_error_to_layer(
     file_layers: list[tuple[Path, dict[str, object]]],
     cli_overrides: dict[str, object] | None,
 ) -> Path:
-    details: list[dict[str, object]] = [dict(as_mapping(item)) for item in exc.errors()]
+    details = cast("list[dict[str, object]]", exc.errors())
     blamed: set[int] = set()
     for detail in details:
-        loc = _error_loc(detail.get("loc"))
+        loc = cast("tuple[object, ...]", detail.get("loc") or ())
         if cli_overrides and _loc_in_data(loc, cli_overrides):
             continue
         owner = next(
@@ -532,14 +538,6 @@ def _attribute_validation_error_to_layer(
         if owner is not None:
             blamed.add(owner)
     return file_layers[min(blamed)][0] if blamed else local_path
-
-
-def _error_loc(raw: object) -> tuple[object, ...]:
-    if isinstance(raw, tuple):
-        return raw
-    if isinstance(raw, list):
-        return tuple(raw)
-    return ()
 
 
 def _loc_in_data(loc: tuple[object, ...], data: dict[str, object]) -> bool:

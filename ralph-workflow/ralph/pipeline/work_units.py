@@ -59,15 +59,11 @@ def sanitize_ownership_paths(paths: list[str]) -> list[str]:
     return safe
 
 
-def _is_plain_int(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
 def _step_ref(step: Mapping[str, object]) -> str | None:
     candidate = step.get("id") or step.get("step_id")
     if not isinstance(candidate, str):
         number = step.get("number")
-        candidate = f"S-{number}" if _is_plain_int(number) else ""
+        candidate = f"S-{number}" if type(number) is int else ""
     return candidate if re.fullmatch(r"S-[1-9][0-9]*", candidate) else None
 
 
@@ -122,7 +118,7 @@ def _has_unsafe_step_graph(artifact: Mapping[str, object]) -> bool:
             continue
         raw_dependencies = step.get("depends_on")
         graph[ref] = (
-            {f"S-{number}" for number in raw_dependencies if _is_plain_int(number)}
+            {f"S-{number}" for number in raw_dependencies if type(number) is int}
             if _is_list(raw_dependencies)
             else set()
         )

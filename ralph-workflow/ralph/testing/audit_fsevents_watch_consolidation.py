@@ -119,7 +119,7 @@ def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
 def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     aliases: list[ast.expr] = []
     for node in nodes:
-        if not (any(isinstance(node, _t) for _t in (ast.Assign, ast.NamedExpr, ast.AnnAssign))):
+        if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
             continue
         value = node.value
         if (isinstance(value, ast.Attribute) and value.attr == "schedule") or (
@@ -139,14 +139,14 @@ def _has_recursive_true_kwarg(call: ast.Call) -> bool:
 
 
 def _has_loop_ancestor(ancestors: list[ast.AST]) -> bool:
-    return any((any(isinstance(ancestor, _t) for _t in (ast.For, ast.AsyncFor, ast.While))) for ancestor in ancestors)
+    return any(isinstance(ancestor, (ast.For, ast.AsyncFor, ast.While)) for ancestor in ancestors)
 
 
 def _nearest_enclosing_function(
     ancestors: list[ast.AST],
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     for ancestor in ancestors:
-        if (any(isinstance(ancestor, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
+        if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef)):
             return ancestor
     return None
 

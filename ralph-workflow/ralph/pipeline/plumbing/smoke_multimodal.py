@@ -205,13 +205,10 @@ def read_media_registry_for_fixture(
         coerced: dict[str, str] = {}
         for key in entry:
             value = entry[key]
-            match value:
-                case str():
-                    coerced[str(key)] = value
-                case bool() | int():
-                    coerced[str(key)] = str(value)
-                case _:
-                    pass
+            if isinstance(value, str):
+                coerced[str(key)] = value
+            elif isinstance(value, bool | int):
+                coerced[str(key)] = str(value)
         return coerced if coerced else None
     return None
 

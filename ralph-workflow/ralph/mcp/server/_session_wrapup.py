@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import os as _os
 import time as _time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
-from ralph.config._env import getenv
 from ralph.mcp.protocol.cycle_deadline_env import read_published_epoch
 from ralph.mcp.protocol.env import DEV_DEADLINE_EPOCH_ENV
 
@@ -42,7 +42,7 @@ def session_warning_scope(before_warning: object) -> Iterator[None]:
 
 
 def development_wrapup_notice() -> str:
-    deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV, getenv)
+    deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV, _os.environ.get)
     if deadline_epoch is None:
         return _STATIC_DEVELOPMENT_WRAPUP_NOTICE
 

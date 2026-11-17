@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -236,8 +236,6 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
 
 
 class _IntegrationClockAdapter:
-    __slots__ = ("_clock",)
-
     def __init__(self, clock: AgentClock) -> None:
         self._clock = clock
 
@@ -300,24 +298,24 @@ def _extract_clock_candidate(
     active_session: ResolutionSession, pipeline_deps: PipelineDeps | None
 ) -> object:
     if active_session.ledger is not None:
-        c1: object = getattr(active_session.ledger, "clock", None)
+        c1 = cast("object", getattr(active_session.ledger, "clock", None))
         if c1 is not None:
             return c1
-        c2: object = getattr(active_session.ledger, "_clock", None)
+        c2 = cast("object", getattr(active_session.ledger, "_clock", None))
         if c2 is not None:
             return c2
     if pipeline_deps is not None:
-        c3: object = getattr(pipeline_deps, "recovery_clock", None)
+        c3 = cast("object", getattr(pipeline_deps, "recovery_clock", None))
         if c3 is not None:
             return c3
     store: object = active_session.unavailability_store
     if store is None and pipeline_deps is not None:
-        store = getattr(pipeline_deps, "unavailability_store", None)
+        store = cast("object", getattr(pipeline_deps, "unavailability_store", None))
     if store is not None:
-        c4: object = getattr(store, "clock", None)
+        c4 = cast("object", getattr(store, "clock", None))
         if c4 is not None:
             return c4
-        c5: object = getattr(store, "_clock", None)
+        c5 = cast("object", getattr(store, "_clock", None))
         if c5 is not None:
             return c5
     return None

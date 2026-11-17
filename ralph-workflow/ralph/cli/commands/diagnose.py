@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -56,6 +57,8 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from ralph.display.context import DisplayContext
     from ralph.pipeline._integration_status import IntegrationStatus
 
@@ -76,10 +79,16 @@ def __getattr__(name: str) -> object:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def _load_starter_prompt_sentinel() -> str:
-    from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
 
-    return STARTER_PROMPT_SENTINEL
+
+def _load_starter_prompt_sentinel() -> str:
+    return cast(
+        "str",
+        _module_attr(import_module("ralph.cli.commands.init"), "STARTER_PROMPT_SENTINEL"),
+    )
 
 
 def _run_fs_health_for_diagnose(workspace_root: Path) -> FsHealth:

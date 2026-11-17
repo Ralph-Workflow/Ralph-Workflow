@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import NotRequired, TypedDict, Unpack
+
     from rich.console import Console
 
     from ralph.agents.chain import ChainManager
@@ -16,6 +18,17 @@ if TYPE_CHECKING:
     )
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
+
+    class _PhaseContextArgs(TypedDict):
+        workspace: Workspace
+        registry: AgentRegistry
+        chain_manager: ChainManager
+        pipeline_policy: PipelinePolicy
+        agents_policy: AgentsPolicy
+        artifacts_policy: ArtifactsPolicy
+        config: NotRequired[UnifiedConfig | None]
+        console: NotRequired[Console | None]
+        workspace_probe: NotRequired[WorkspaceChangeProbe | None]
 
 
 @dataclass(frozen=True)
@@ -31,53 +44,9 @@ class PhaseContext:
     workspace_probe: WorkspaceChangeProbe | None = None
 
     @classmethod
-    def construct(
-        cls,
-        *,
-        workspace: Workspace,
-        registry: AgentRegistry,
-        chain_manager: ChainManager,
-        pipeline_policy: PipelinePolicy,
-        agents_policy: AgentsPolicy,
-        artifacts_policy: ArtifactsPolicy,
-        config: UnifiedConfig | None = None,
-        console: Console | None = None,
-        workspace_probe: WorkspaceChangeProbe | None = None,
-    ) -> PhaseContext:
-        return cls(
-            workspace=workspace,
-            registry=registry,
-            chain_manager=chain_manager,
-            pipeline_policy=pipeline_policy,
-            agents_policy=agents_policy,
-            artifacts_policy=artifacts_policy,
-            config=config,
-            console=console,
-            workspace_probe=workspace_probe,
-        )
+    def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        return cls(**kwargs)
 
     @classmethod
-    def model_construct(
-        cls,
-        *,
-        workspace: Workspace,
-        registry: AgentRegistry,
-        chain_manager: ChainManager,
-        pipeline_policy: PipelinePolicy,
-        agents_policy: AgentsPolicy,
-        artifacts_policy: ArtifactsPolicy,
-        config: UnifiedConfig | None = None,
-        console: Console | None = None,
-        workspace_probe: WorkspaceChangeProbe | None = None,
-    ) -> PhaseContext:
-        return cls.construct(
-            workspace=workspace,
-            registry=registry,
-            chain_manager=chain_manager,
-            pipeline_policy=pipeline_policy,
-            agents_policy=agents_policy,
-            artifacts_policy=artifacts_policy,
-            config=config,
-            console=console,
-            workspace_probe=workspace_probe,
-        )
+    def model_construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        return cls.construct(**kwargs)

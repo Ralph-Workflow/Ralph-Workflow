@@ -8,12 +8,11 @@ import tomllib
 from contextlib import suppress
 from pathlib import Path
 from re import Match
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
-from ralph.checked_accessors import as_mapping
 from ralph.config import _env
 from ralph.config._agent_overrides import opencode_binary_override
 from ralph.config.agents_file_writer import write_agents_toml
@@ -238,13 +237,13 @@ def _agents_write_target(path: Path) -> Path:
 
 
 def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
-    parsed = dict(as_mapping(tomllib.loads(text)))
+    parsed = cast("dict[str, object]", tomllib.loads(text))
     raw_chains = parsed.get("agent_chains")
     if not isinstance(raw_chains, dict):
         return {}
     return {
         name: entries
-        for name, entries in dict(as_mapping(raw_chains)).items()
+        for name, entries in cast("dict[str, object]", raw_chains).items()
         if isinstance(entries, list) and all(isinstance(entry, str) for entry in entries)
     }
 
@@ -329,8 +328,8 @@ def _inactive_agent_pattern(name: str) -> re.Pattern[str]:
 
 def _configured_agent_names(text: str) -> set[str]:
     try:
-        parsed = dict(as_mapping(tomllib.loads(text)))
-    except (TypeError, ValueError):
+        parsed = cast("dict[str, object]", tomllib.loads(text))
+    except ValueError:
         return set()
     agents = parsed.get("agents")
     if not isinstance(agents, dict):

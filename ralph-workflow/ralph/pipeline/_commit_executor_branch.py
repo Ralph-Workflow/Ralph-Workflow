@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+import os
+from collections.abc import Callable, Iterator
 from contextlib import suppress
 from pathlib import Path
 from typing import Final
 
 from loguru import logger
 
-from ralph.config import _env
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_git_dir,
@@ -21,7 +21,7 @@ _HEX_SHA_LEN: Final[int] = 40
 _REF_PARTS_COUNT: Final[int] = 2
 
 type _EnvGetter = Callable[[str], str | None]
-_DEFAULT_ENV_GETTER: _EnvGetter = _env.getenv
+_DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
 
 
 def _is_git_worktree(repo_root: Path) -> bool:
@@ -203,23 +203,7 @@ def _branch_from_worktree_metadata(repo_root: Path) -> str | None:
     return None
 
 
-def _yield_nonempty_str(value: object) -> Iterator[str]:
-    if isinstance(value, str) and value.strip():
-        yield value.strip()
-
-
-def _branch_names_from_config(config: object) -> Iterator[str]:
-    yield from _yield_nonempty_str(getattr(config, "feature_branch", None))
-    yield from _yield_nonempty_str(getattr(config, "branch", None))
-    yield from _yield_nonempty_str(getattr(config, "target_branch", None))
-    general_obj: object = getattr(config, "general", None)
-    if general_obj is None:
-        return
-    yield from _yield_nonempty_str(getattr(general_obj, "feature_branch", None))
-    yield from _yield_nonempty_str(getattr(general_obj, "branch", None))
-
-
-def _candidate_branch_names(repo_root: Path, opts: Mapping[str, object]) -> Iterator[str]:
+def _candidate_branch_names(repo_root: Path, **opts: object) -> Iterator[str]:
     branch = detached_branch_name(repo_root)
     if branch:
         yield branch
@@ -232,9 +216,10 @@ def _candidate_branch_names(repo_root: Path, opts: Mapping[str, object]) -> Iter
     if from_wt:
         yield from_wt
 
-    yield from _yield_nonempty_str(opts.get("branch"))
-    yield from _yield_nonempty_str(opts.get("feature_branch"))
-    yield from _yield_nonempty_str(opts.get("target_branch"))
+    for key in ("branch", "feature_branch", "target_branch"):
+        val = opts.get(key)
+        if isinstance(val, str) and val.strip():
+            yield val.strip()
 
     raw_env_getter = opts.get("env_getter")
     env_getter: _EnvGetter = raw_env_getter if callable(raw_env_getter) else _DEFAULT_ENV_GETTER
@@ -244,22 +229,30 @@ def _candidate_branch_names(repo_root: Path, opts: Mapping[str, object]) -> Iter
 
     config = opts.get("config")
     if config is not None:
-        yield from _branch_names_from_config(config)
+        for attr in ("feature_branch", "branch", "target_branch"):
+            attr_val: object = getattr(config, attr, None)
+            if isinstance(attr_val, str) and attr_val.strip():
+                yield attr_val.strip()
+        general_obj: object = getattr(config, "general", None)
+        if general_obj is not None:
+            for general_attr in ("feature_branch", "branch"):
+                gen_val: object = getattr(general_obj, general_attr, None)
+                if isinstance(gen_val, str) and gen_val.strip():
+                    yield gen_val.strip()
 
     yield repo_root.name
 
 
-def _resolve_branch_for_reattach(repo_root: Path, opts: Mapping[str, object]) -> str | None:
+def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
     from ralph.pipeline._commit_reattach_fallback import (
         integration_target_branch,
         occupied_worktree_branches,
     )
 
-    forwarded = dict(opts)
-    integration_target = integration_target_branch(**forwarded)
-    occupied = occupied_worktree_branches(repo_root, **forwarded)
+    integration_target = integration_target_branch(**opts)
+    occupied = occupied_worktree_branches(repo_root, **opts)
 
-    for candidate in _candidate_branch_names(repo_root, opts):
+    for candidate in _candidate_branch_names(repo_root, **opts):
         if not candidate:
             continue
         if candidate == repo_root.name:
@@ -288,8 +281,8 @@ def _resolve_branch_for_reattach(repo_root: Path, opts: Mapping[str, object]) ->
     return None
 
 
-def _preferred_feature_branch(repo_root: Path, opts: Mapping[str, object]) -> str:
-    for candidate in _candidate_branch_names(repo_root, opts):
+def _preferred_feature_branch(repo_root: Path, **opts: object) -> str:
+    for candidate in _candidate_branch_names(repo_root, **opts):
         if candidate and _branch_exists(repo_root, candidate):
             return candidate
     return repo_root.name
@@ -379,19 +372,18 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
 
     if not _is_head_detached(repo_root):
         return False
-    forwarded = dict(opts)
-    branch = _resolve_branch_for_reattach(repo_root, forwarded)
+    branch = _resolve_branch_for_reattach(repo_root, **opts)
     if branch:
         logger.info("Detached HEAD detected; safely reattaching to branch '{}'", branch)
         reattach_head_to_branch(repo_root, branch)
         return True
     detached_head_sha = _detached_head_sha(repo_root)
-    integration_target = integration_target_branch(**forwarded)
-    occupied = occupied_worktree_branches(repo_root, **forwarded)
+    integration_target = integration_target_branch(**opts)
+    occupied = occupied_worktree_branches(repo_root, **opts)
     if fast_forward_reattach(
         repo_root,
         detached_head_sha=detached_head_sha,
-        candidates=_candidate_branch_names(repo_root, forwarded),
+        candidates=_candidate_branch_names(repo_root, **opts),
         branch_exists=_branch_exists,
         integration_target=integration_target,
         occupied=occupied,
@@ -400,7 +392,7 @@ def _reattach_head_if_detached(repo_root: Path, **opts: object) -> bool:
     fresh = create_fresh_branch_for_detached(
         repo_root,
         detached_head_sha=detached_head_sha,
-        candidates=_candidate_branch_names(repo_root, forwarded),
+        candidates=_candidate_branch_names(repo_root, **opts),
         branch_exists=_branch_exists,
         integration_target=integration_target,
         occupied=occupied,

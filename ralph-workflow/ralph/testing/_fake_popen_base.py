@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import IO
 
-from ralph.process.manager import DeadlineTimeoutExpired
 from ralph.testing._process_state import ProcessState
 from ralph.testing._process_streams import ProcessStreams
 
@@ -57,36 +56,3 @@ class FakePopen:
 
     def kill(self) -> None:
         self._killed = True
-
-
-class FakeImmortalPopen(FakePopen):
-    __slots__ = ()
-
-    def wait(self, timeout: float | None = None) -> int:
-        raise DeadlineTimeoutExpired(["fake-immortal"], timeout or 0.0, timeout_cause="hard_cap")
-
-    def terminate(self) -> None:
-        return
-
-    def kill(self) -> None:
-        return
-
-
-class FakeStubbornPopen(FakePopen):
-    __slots__ = ()
-
-    def __init__(self, pid: int, *, final_returncode: int = -9) -> None:
-        super().__init__(pid)
-        self._final_returncode = final_returncode
-
-    def wait(self, timeout: float | None = None) -> int:
-        if self._killed:
-            self._returncode = self._final_returncode
-            return self._final_returncode
-        raise DeadlineTimeoutExpired(["fake-stubborn"], timeout or 0.0, timeout_cause="hard_cap")
-
-    def terminate(self) -> None:
-        return
-
-
-__all__ = ["FakeImmortalPopen", "FakePopen", "FakeStubbornPopen"]

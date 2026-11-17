@@ -6,13 +6,10 @@ import os
 import secrets
 import string
 import tempfile
-import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from ralph.config._env import getenv
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -40,7 +37,7 @@ def _config_dir_path(config_dir: Path | None) -> Path:
 
 
 def _legacy_config_path(canonical_path: Path) -> Path | None:
-    xdg = getenv("XDG_CONFIG_HOME")
+    xdg = os.environ.get("XDG_CONFIG_HOME")
     if not xdg:
         return None
     candidate = Path(xdg) / _CONFIG_FILENAME
@@ -108,7 +105,7 @@ def _identity_lock(lock_path: Path) -> Iterator[None]:
                 continue
             if time.monotonic() - started >= _LOCK_TIMEOUT_SECONDS:
                 raise OSError("timed out acquiring telemetry identity lock") from None
-            threading.Event().wait(_LOCK_POLL_SECONDS)
+            time.sleep(_LOCK_POLL_SECONDS)
     try:
         yield
     finally:

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from ralph.config._env import getenv
 from ralph.mcp.tool_contract import expand_tool_names_with_aliases
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
@@ -50,8 +50,7 @@ def build_nanocoder_mcp_config(
         merged_config = merge_existing_upstreams(
             "nanocoder", current_config, unsafe_mode=True, workspace_path=workspace_path
         )
-        mcp_servers_value = merged_config.get("mcpServers", {})
-        merged_servers = dict(mcp_servers_value) if isinstance(mcp_servers_value, dict) else {}
+        merged_servers = dict(cast("dict[str, object]", merged_config.get("mcpServers", {})))
     else:
         merged_servers = dict(agent_servers)
     merged_servers["ralph"] = ralph_server
@@ -64,12 +63,13 @@ def load_existing_nanocoder_upstream_servers(
     *,
     env: dict[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    config_dir = getenv(_NANOCODER_CONFIG_DIR_ENV, env)
+    active_env = env if env is not None else cast("dict[str, str]", os.environ)
+    config_dir = active_env.get(_NANOCODER_CONFIG_DIR_ENV)
     paths: tuple[Path, ...]
     if config_dir:
         paths = (Path(config_dir).expanduser() / ".mcp.json",)
     else:
-        paths = _nanocoder_mcp_config_paths(workspace_path, env=env)
+        paths = _nanocoder_mcp_config_paths(workspace_path, env=active_env)
     servers = _load_mcpservers_from_paths(paths)
     servers.pop(RALPH_MCP_SERVER_NAME, None)
     return normalize_upstream_mcp_servers(servers)
@@ -78,25 +78,27 @@ def load_existing_nanocoder_upstream_servers(
 def _nanocoder_mcp_config_paths(
     workspace_path: Path | None, *, env: Mapping[str, str] | None = None
 ) -> tuple[Path, ...]:
-    config_dir = getenv(_NANOCODER_CONFIG_DIR_ENV, env)
+    active_env: Mapping[str, str] = env if env is not None else os.environ
+    config_dir = active_env.get(_NANOCODER_CONFIG_DIR_ENV)
     paths: list[Path] = []
     if config_dir:
         paths.append(Path(config_dir).expanduser() / ".mcp.json")
     else:
         if workspace_path is not None:
             paths.append(workspace_path / ".mcp.json")
-        paths.append(_global_nanocoder_config_dir(env=env) / ".mcp.json")
+        paths.append(_global_nanocoder_config_dir(env=active_env) / ".mcp.json")
     return tuple(paths)
 
 
 def _global_nanocoder_config_dir(env: Mapping[str, str] | None = None) -> Path:
-    appdata = getenv("APPDATA", env)
+    active_env: Mapping[str, str] = env if env is not None else os.environ
+    appdata = active_env.get("APPDATA")
     if appdata:
         return Path(appdata) / "nanocoder"
-    home = Path(getenv("HOME", env) or str(Path.home()))
+    home = Path(active_env.get("HOME") or str(Path.home()))
     if platform.system() == "Darwin":
         return home / "Library" / "Preferences" / "nanocoder"
-    xdg = getenv("XDG_CONFIG_HOME", env)
+    xdg = active_env.get("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / "nanocoder"
     return home / ".config" / "nanocoder"
@@ -115,17 +117,18 @@ def _parse_nanocoder_mcp_servers(existing: str | None) -> dict[str, object]:
         for item in decoded:
             if not isinstance(item, dict):
                 continue
-            name = item.get("name")
+            item_map = cast("dict[str, object]", item)
+            name = item_map.get("name")
             if not isinstance(name, str) or not name:
                 continue
-            mapped[name] = {key: value for key, value in item.items() if key != "name"}
+            mapped[name] = {key: value for key, value in item_map.items() if key != "name"}
         return mapped
 
     if not isinstance(decoded, dict):
         return {}
     wrapped = decoded.get("mcpServers")
     if isinstance(wrapped, dict):
-        return dict(wrapped)
+        return cast("dict[str, object]", wrapped)
     return {}
 
 

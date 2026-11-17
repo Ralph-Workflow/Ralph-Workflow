@@ -13,12 +13,11 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph import __version__
-from ralph.config import _env as _config_env
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.multimodal.capabilities import (
@@ -210,29 +209,6 @@ def _poll_registry_build_gate(
     _base_poll_registry_build_gate(env_map, t0, budget_s, clock_fn=_clock)
 
 
-def _process_environ() -> MutableMapping[str, str]:
-    return _config_env.os.environ
-
-
-def _coerce_path_item(item: object) -> Path | None:
-    if isinstance(item, Path):
-        return item
-    if isinstance(item, str):
-        return Path(item)
-    return None
-
-
-def _as_path_tuple(value: object) -> tuple[Path, ...]:
-    if not isinstance(value, tuple):
-        return ()
-    paths: list[Path] = []
-    for item in value:
-        path = _coerce_path_item(item)
-        if path is not None:
-            paths.append(path)
-    return tuple(paths)
-
-
 def _poll_bounded_pre_serve(
     *,
     workspace_root: Path,
@@ -247,7 +223,7 @@ def _poll_bounded_pre_serve(
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        allowed_roots = _as_path_tuple(getattr(effective_session, "allowed_roots", ()))
+        allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
         ws = (
             workspace
             if workspace is not None
@@ -301,7 +277,7 @@ def build_standalone_http_server(
     t0: float | None = None,
 ) -> _StandaloneHttpServer:
     _extras = extras or McpServerExtras()
-    env_map = _process_environ() if env is None else env
+    env_map = os.environ if env is None else env
     if t0 is None:
         t0 = _clock()
     effective_session = _extras.session or AgentSession(
@@ -458,7 +434,7 @@ def load_runtime_upstream_servers(
     mcp_config: McpConfig,
     env: Mapping[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
-    env_map = _process_environ() if env is None else env
+    env_map = os.environ if env is None else env
     raw_upstream = env_map.get(UPSTREAM_MCP_CONFIG_ENV)
     env_servers = load_upstream_mcp_servers(raw_upstream)
     return merge_mcp_toml_into_upstreams(env_servers, _mcp_toml_upstream_servers(mcp_config))
@@ -478,7 +454,7 @@ def run_standalone_server(
     if transport != DEFAULT_TRANSPORT:
         raise ValueError(f"Unsupported transport: {transport}")
 
-    env_map = _process_environ() if env is None else env
+    env_map = os.environ if env is None else env
     t0 = _clock()
 
     def _stage(name: str) -> None:
@@ -500,8 +476,8 @@ def run_standalone_server(
 
     protect_broker_secret()
     sanitize_process_environment()
-    relay_sender = ActivityRelaySender.from_environment(dict(_process_environ()))
-    scrub_activity_relay_environment(_process_environ())
+    relay_sender = ActivityRelaySender.from_environment(dict(os.environ))
+    scrub_activity_relay_environment(os.environ)
 
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     remaining_s = max(0.0, real_deadline_s - (_clock() - t0))
@@ -673,36 +649,17 @@ def exit_when_owner_exits(
     return watcher
 
 
-def _coerce_optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    raise TypeError(f"agent_transport must be str | None, got {type(value).__name__}")
-
-
 def main(argv: Sequence[str] | None = None) -> None:
     sanitize_process_environment()
     install_shutdown_signal_handlers()
-    exit_when_owner_exits(_process_environ())
+    exit_when_owner_exits(os.environ)
     args = parse_args(argv)
-    workspace_arg: object = args.workspace
-    host_arg: object = args.host
-    port_arg: object = args.port
-    agent_transport_arg: object = args.agent_transport
-    if not isinstance(workspace_arg, Path):
-        raise TypeError(f"workspace must be Path, got {type(workspace_arg).__name__}")
-    if not isinstance(host_arg, str):
-        raise TypeError(f"host must be str, got {type(host_arg).__name__}")
-    if not isinstance(port_arg, int) or isinstance(port_arg, bool):
-        raise TypeError(f"port must be int, got {type(port_arg).__name__}")
-    agent_transport = _coerce_optional_str(agent_transport_arg)
     run_standalone_server(
-        workspace_arg,
+        cast("Path", args.workspace),
         transport=DEFAULT_TRANSPORT,
-        host=host_arg,
-        port=port_arg,
-        agent_transport=agent_transport,
+        host=cast("str", args.host),
+        port=cast("int", args.port),
+        agent_transport=cast("str | None", args.agent_transport),
     )
 
 

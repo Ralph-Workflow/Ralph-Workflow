@@ -9,7 +9,11 @@ from ralph.recovery.connectivity_event import ConnectivityEvent
 from ralph.recovery.connectivity_state import ConnectivityState
 
 __all__ = ["ConnectivityEvent", "ConnectivityMonitor", "ConnectivityState"]
-_DEFAULT_PROBE_TARGETS = [("1.1.1.1", 53), ("8.8.8.8", 53)]
+
+_DEFAULT_PROBE_TARGETS = [
+    ("1.1.1.1", 53),
+    ("8.8.8.8", 53),
+]
 _DEFAULT_PROBE_INTERVAL_S: float = 10.0
 _DEFAULT_PROBE_TIMEOUT_S: float = 2.0
 
@@ -17,7 +21,8 @@ _DEFAULT_PROBE_TIMEOUT_S: float = 2.0
 async def _default_probe(host: str, port: int, timeout_s: float) -> bool:
     try:
         pair: tuple[asyncio.StreamReader, asyncio.StreamWriter] = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=timeout_s
+            asyncio.open_connection(host, port),
+            timeout=timeout_s,
         )
         writer = pair[1]
         writer.close()
@@ -33,19 +38,6 @@ ListenerCallable = Callable[[ConnectivityEvent], None]
 
 
 class ConnectivityMonitor:
-    __slots__ = (
-        "_current_state",
-        "_interval",
-        "_listeners",
-        "_online_event",
-        "_probe",
-        "_seen_online",
-        "_stopped",
-        "_targets",
-        "_task",
-        "_timeout",
-    )
-
     def __init__(
         self,
         *,
@@ -112,7 +104,7 @@ class ConnectivityMonitor:
         while not self._stopped:
             reachable = await self._probe_once()
             new_state = self._state_after_probe(reachable=reachable)
-            if not reachable and (not self._seen_online):
+            if not reachable and not self._seen_online:
                 self._online_event.set()
             if new_state != self._current_state:
                 self._current_state = new_state

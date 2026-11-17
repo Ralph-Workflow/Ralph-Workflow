@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from dataclasses import replace
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -170,15 +170,15 @@ def _identity_max(ctx: PhaseContext) -> int:
 
 
 def _identity_max_from_untyped_policy(policy: object) -> int:
-    counters = getattr(policy, "loop_counters", None)
+    counters = cast("object", getattr(policy, "loop_counters", None))
     if not isinstance(counters, dict):
         return DEFAULT_IDENTITY_MAX
-    cfg_obj = counters.get(COMMIT_REVIEW_IDENTITY_COUNTER)
+    cfg_obj = cast("object", counters.get(COMMIT_REVIEW_IDENTITY_COUNTER))
     if cfg_obj is None:
         return DEFAULT_IDENTITY_MAX
     if isinstance(cfg_obj, LoopCounterConfig):
         return cfg_obj.default_max
-    raw = getattr(cfg_obj, "default_max", DEFAULT_IDENTITY_MAX)
+    raw = cast("object", getattr(cfg_obj, "default_max", DEFAULT_IDENTITY_MAX))
     if isinstance(raw, bool) or not isinstance(raw, int):
         return DEFAULT_IDENTITY_MAX
     return raw

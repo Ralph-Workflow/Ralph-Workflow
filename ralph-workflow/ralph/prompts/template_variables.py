@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import time as _time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.protocol.capability_mapping import SessionDrain
@@ -258,27 +258,16 @@ def _policy_flag_value(flag: PolicyFlag) -> str:
     return flag.value
 
 
-def _session_attribute(session: object, attribute: str) -> object | None:
-    match attribute:
-        case "capabilities":
-            if not hasattr(session, "capabilities"):
-                return None
-            return session.capabilities
-        case "policy_flags":
-            if not hasattr(session, "policy_flags"):
-                return None
-            return session.policy_flags
-        case _:
-            return None
-
-
 def _resolve_session_iterable(session: object, attribute: str) -> Sequence[str] | None:
-    candidate = _session_attribute(session, attribute)
+    try:
+        attributes = cast("dict[str, object]", vars(session))
+        candidate = attributes.get(attribute)
+    except TypeError:
+        return None
     if candidate is None:
         return None
     if callable(candidate):
-        retrieved: object = candidate()
-        candidate = retrieved
+        candidate = cast("Callable[[], object]", candidate)()
     if isinstance(candidate, str | bytes):
         return None
     if isinstance(candidate, Iterable):

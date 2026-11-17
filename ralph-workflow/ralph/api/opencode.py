@@ -11,7 +11,6 @@ from loguru import logger
 
 from ralph.agents.system_clock import SystemClock
 from ralph.api.model_entry import ModelEntry
-from ralph.config import _env as config_env
 from ralph.executor.process import ProcessRunOptions, run_process
 
 if TYPE_CHECKING:
@@ -41,8 +40,6 @@ _TTL_SECONDS: float = 300.0
 
 
 class _CatalogFetcher:
-    __slots__ = ("__dict__", "_cache", "_cached_at", "_clock")
-
     def __init__(self, *, clock: _ClockProtocol | None = None) -> None:
         self._cache: list[ModelEntry] | None = None
         self._cached_at: float | None = None
@@ -181,9 +178,7 @@ def list_providers() -> list[str]:
 
 
 def _path_command_candidates(command: str, env_path: str | None = None) -> tuple[str, ...]:
-    path_value = (
-        env_path if env_path is not None else config_env.os.environ.get("PATH", "")
-    )
+    path_value = env_path if env_path is not None else os.environ.get("PATH", "")
     seen: set[str] = set()
     candidates: list[str] = []
     for entry in path_value.split(os.pathsep):

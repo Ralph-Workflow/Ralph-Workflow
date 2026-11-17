@@ -51,8 +51,6 @@ class ExecResourceEntry:
 
 
 class ExecResourceResolver:
-    __slots__ = ('_entries', '_roots')
-
     def register(self, spill_path: Path) -> str:
         spill_path = spill_path.resolve()
         if not self._is_under_trusted_root(spill_path):

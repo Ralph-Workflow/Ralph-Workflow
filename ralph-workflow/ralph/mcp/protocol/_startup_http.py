@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
 from ralph.mcp.protocol._retryable_preflight_error import RetryablePreflightError
 from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
@@ -204,14 +203,14 @@ def _read_legacy_sse_jsonrpc_message(lines: Iterable[str]) -> JsonRpcResponse:
         event, data = _read_sse_event(lines)
         if event == "message":
             try:
-                payload = json.loads(data)
+                payload = cast("object", json.loads(data))
             except json.JSONDecodeError as exc:
                 raise PermanentPreflightError(
                     f"failed to parse legacy SSE JSON-RPC payload: {exc}"
                 ) from exc
             if not isinstance(payload, dict):
                 raise PermanentPreflightError("legacy SSE JSON-RPC payload is not an object")
-            return (as_object_dict(payload) or {})
+            return cast("JsonRpcResponse", payload)
 
 
 def _read_sse_event(lines: Iterable[str]) -> tuple[str | None, str]:
@@ -355,22 +354,6 @@ def post_http_jsonrpc(
     return response_payload
 
 
-def _resolve_http_jsonrpc_post_args(
-    endpoint_or_target: str | HttpEndpointTarget,
-    target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-    payload: JsonRpcResponse | None,
-) -> tuple[str, JsonRpcResponse]:
-    if isinstance(endpoint_or_target, HttpEndpointTarget):
-        endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
-        return endpoint, (as_object_dict(target_or_payload) or {})
-    endpoint = str(endpoint_or_target)
-    if payload is not None:
-        return endpoint, payload
-    if isinstance(target_or_payload, HttpEndpointTarget):
-        return endpoint, {}
-    return endpoint, target_or_payload
-
-
 def post_http_jsonrpc_with_session(
     endpoint_or_target: str | HttpEndpointTarget,
     target_or_payload: HttpEndpointTarget | JsonRpcResponse,
@@ -379,9 +362,15 @@ def post_http_jsonrpc_with_session(
     session_id: str | None = None,
     post_fn: HttpPostFn = _default_http_post,
 ) -> tuple[JsonRpcResponse, str | None]:
-    endpoint, payload_obj = _resolve_http_jsonrpc_post_args(
-        endpoint_or_target, target_or_payload, payload
-    )
+    if isinstance(endpoint_or_target, HttpEndpointTarget):
+        endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
+        payload_obj = cast("JsonRpcResponse", target_or_payload)
+    elif isinstance(target_or_payload, HttpEndpointTarget):
+        endpoint = str(endpoint_or_target)
+        payload_obj = payload or {}
+    else:
+        endpoint = str(endpoint_or_target)
+        payload_obj = target_or_payload if payload is None else payload
 
     is_idempotent = jsonrpc_request_is_idempotent(payload_obj)
     try:
@@ -409,7 +398,7 @@ def post_http_jsonrpc_with_session(
         ) from exc
 
     if response.status_code == _HTTP_ACCEPTED and not response.content.strip():
-        next_session_id = response.headers.get("mcp-session-id")
+        next_session_id = cast("str | None", response.headers.get("mcp-session-id"))
         return {}, next_session_id or session_id
 
     if response.status_code != _HTTP_OK:
@@ -418,14 +407,14 @@ def post_http_jsonrpc_with_session(
         )
     normalized_body = _normalize_http_jsonrpc_body(response.content)
     try:
-        response_payload = json.loads(normalized_body)
+        response_payload = cast("object", json.loads(normalized_body))
     except json.JSONDecodeError as exc:
         raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
     if not isinstance(response_payload, dict):
         raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    session_id = response.headers.get("mcp-session-id")
+    session_id = cast("str | None", response.headers.get("mcp-session-id"))
     return (
-        (as_object_dict(response_payload) or {}),
+        cast("JsonRpcResponse", response_payload),
         session_id,
     )
 

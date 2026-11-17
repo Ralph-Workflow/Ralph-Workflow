@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
@@ -47,7 +48,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.process._spawn_env import child_env_for_spawn
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import (
     DeadlineTimeoutExpired,
     ProcessTerminationIssuer,
@@ -102,7 +103,7 @@ def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
     raw = params.get("max_runtime_ms")
     if raw is None:
         return None
-    if (any(isinstance(raw, _t) for _t in (int, float))) and raw > 0:
+    if isinstance(raw, (int, float)) and raw > 0:
         max_ms = int(raw)
         hard_max_ms = int(EXEC_JOB_CEILING_MAX_S * 1000)
         return min(max_ms, hard_max_ms)
@@ -149,20 +150,14 @@ def parse_exec_timeout(params: Mapping[str, object]) -> int:
     return min(timeout_ms, EXEC_MAX_TIMEOUT_MS)
 
 
-
-def _shell_source_text(command_value: object, argv_value: object) -> str | None:
-    if isinstance(command_value, str):
-        return command_value
-    if command_value is None and isinstance(argv_value, str):
-        return argv_value
-    return None
-
-
 def _shell_command_source(params: Mapping[str, object]) -> str | None:
     command_value = params.get("command")
     argv_value = params.get("argv")
-    source = _shell_source_text(command_value, argv_value)
-    if source is None:
+    if isinstance(command_value, str):
+        source = command_value
+    elif command_value is None and isinstance(argv_value, str):
+        source = argv_value
+    else:
         return None
     stripped = source.strip()
     if stripped and (
@@ -395,7 +390,12 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
 
 
 def _child_env(cwd: Path) -> dict[str, str]:
-    return child_env_for_spawn(None, cwd=str(cwd))
+    env = scrub_activity_relay_controls(dict(os.environ))
+    env.pop("RALPH_BROKER_SECRET", None)
+    env["PWD"] = str(cwd)
+    env.pop("OLDPWD", None)
+    scrub_activity_relay_controls(env)
+    return env
 
 
 def run_command(
@@ -674,7 +674,9 @@ def handle_exec_command(
         summary=summary,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
-        exec_resource_resolver=getattr(session, "exec_resource_resolver", None),
+        exec_resource_resolver=cast(
+            "object | None", getattr(session, "exec_resource_resolver", None)
+        ),
     )
 
 

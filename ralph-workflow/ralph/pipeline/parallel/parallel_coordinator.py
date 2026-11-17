@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -49,8 +49,6 @@ if TYPE_CHECKING:
 
 
 class ParallelCoordinator:
-    __slots__ = ("activity_router",)
-
     def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
         self.activity_router = activity_router
 
@@ -223,25 +221,27 @@ def _prepare_executor(
     agent_label_scope = bundle.session.session_id
     command = same_workspace.worker_commands.get(unit.unit_id, same_workspace.executor_command)
     manifest_path = same_workspace.worker_manifest_paths.get(unit.unit_id)
-    worker_executor: AgentExecutor = subprocess_executor.SubprocessAgentExecutor(
-        command,
-        signal_bridge=same_workspace.signal_bridge,
-        cwd=same_workspace.repo_root,
-        extra_env={
-            str(MCP_ENDPOINT_ENV): bundle.mcp_handle.endpoint,
-            str(WORKER_ID_ENV): unit.unit_id,
-            str(WORKER_NAMESPACE_ENV): str(worker_namespace),
-            str(WORKER_ARTIFACT_DIR_ENV): str(worker_artifact_dir),
-            str(RALPH_PARALLEL_WORKER_MANIFEST_ENV): (
-                str(manifest_path) if manifest_path is not None else ""
-            ),
-            str(AGENT_LABEL_SCOPE_ENV): agent_label_scope,
-        },
-        activity_router=activity_router,
-        raw_overflow_root=worker_namespace / "logs",
-    )
     return (
-        worker_executor,
+        cast(
+            "AgentExecutor",
+            subprocess_executor.SubprocessAgentExecutor(
+                command,
+                signal_bridge=same_workspace.signal_bridge,
+                cwd=same_workspace.repo_root,
+                extra_env={
+                    str(MCP_ENDPOINT_ENV): bundle.mcp_handle.endpoint,
+                    str(WORKER_ID_ENV): unit.unit_id,
+                    str(WORKER_NAMESPACE_ENV): str(worker_namespace),
+                    str(WORKER_ARTIFACT_DIR_ENV): str(worker_artifact_dir),
+                    str(RALPH_PARALLEL_WORKER_MANIFEST_ENV): (
+                        str(manifest_path) if manifest_path is not None else ""
+                    ),
+                    str(AGENT_LABEL_SCOPE_ENV): agent_label_scope,
+                },
+                activity_router=activity_router,
+                raw_overflow_root=worker_namespace / "logs",
+            ),
+        ),
         bundle,
         worker_namespace,
     )

@@ -76,7 +76,7 @@ def _run_session_runtime_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **dict(execute_kwargs),
+        **execute_kwargs,
     )
 
 
@@ -85,20 +85,6 @@ if AgentEntryPoint.SESSION_RUNTIME not in registered_entry_points():
 
 
 class ManagedAgentSessionRuntime:
-    __slots__ = (
-        "_agent_config",
-        "_agent_name",
-        "_agent_session",
-        "_attempt_deps",
-        "_bridge",
-        "_config",
-        "_controller",
-        "_deps",
-        "_master_prompt_file",
-        "_request",
-        "_workspace_root",
-    )
-
     def __init__(
         self,
         *,

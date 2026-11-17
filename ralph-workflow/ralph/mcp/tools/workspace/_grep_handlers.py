@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore.dirty_paths import resolve_explore_index
 from ralph.mcp.explore.ranking import (
@@ -43,18 +43,6 @@ from ralph.mcp.tools.workspace._utils import (
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore
     from ralph.workspace import Workspace
-
-
-
-def _coerce_grep_line(line_raw: object) -> int:
-    if isinstance(line_raw, int) and not isinstance(line_raw, bool):
-        return line_raw
-    if isinstance(line_raw, str):
-        try:
-            return int(line_raw)
-        except ValueError:
-            return 0
-    return 0
 
 
 def _freshness_for_grep(
@@ -351,8 +339,8 @@ def _live_grep(
     matches: list[dict[str, object]] = []
     skipped_files = 0
     truncated = False
-    include_list: list[object] = list(include) if include is not None else []
-    exclude_list: list[object] = list(exclude) if exclude is not None else []
+    include_list: list[object] = list(cast("Iterable[object]", include)) if include else []
+    exclude_list: list[object] = list(cast("Iterable[object]", exclude)) if exclude else []
     for file_path in all_files:
         if include_list and not any(match_glob(file_path, str(p)) for p in include_list):
             continue
@@ -568,7 +556,16 @@ def handle_grep_files(
                 line_raw: object = row.get("line") or 0
                 ev_raw: object = row.get("evidence_id", "")
                 path_v = str(path_raw) if path_raw is not None else ""
-                line_v = _coerce_grep_line(line_raw)
+                line_v: int
+                if isinstance(line_raw, int) and not isinstance(line_raw, bool):
+                    line_v = line_raw
+                elif isinstance(line_raw, str):
+                    try:
+                        line_v = int(line_raw)
+                    except ValueError:
+                        line_v = 0
+                else:
+                    line_v = 0
                 ev = str(ev_raw) if ev_raw is not None else ""
                 ranked_items.append(
                     score_grep_match(

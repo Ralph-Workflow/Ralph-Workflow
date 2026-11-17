@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -29,17 +29,14 @@ def cache_path(environ: Mapping[str, str]) -> Path:
 
 def load_state(path: Path) -> VersionCheckState | None:
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8"))
+        parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return None
     if not isinstance(parsed, dict):
         return None
-    raw = {str(key): value for key, value in parsed.items()}
+    raw = cast("dict[str, object]", parsed)
     last_checked = raw.get("last_checked")
-    if (
-        not (any(isinstance(last_checked, _t) for _t in (int, float)))
-        or isinstance(last_checked, bool)
-    ):
+    if not isinstance(last_checked, (int, float)) or isinstance(last_checked, bool):
         return None
     latest_version = raw.get("latest_version")
     if not isinstance(latest_version, str):

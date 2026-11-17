@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.server._startup_watch_verdict import StartupVerdict
@@ -11,35 +12,16 @@ if TYPE_CHECKING:
 STAGE_POLL_INTERVAL_S: Final[float] = 0.25
 
 
+@dataclass
 class StartupWatch:
-    __slots__ = (
-        "_next_stage_poll_at",
-        "boot_allowance_s",
-        "child_started_at",
-        "clock",
-        "envelope_s",
-        "read_stage",
-        "spawn_start",
-        "stage_poll_interval_s",
-    )
-
-    def __init__(
-        self,
-        spawn_start: float,
-        envelope_s: float,
-        boot_allowance_s: float,
-        read_stage: Callable[[], str | None],
-        clock: Callable[[], float] = time.monotonic,
-        stage_poll_interval_s: float = STAGE_POLL_INTERVAL_S,
-    ) -> None:
-        self.spawn_start = spawn_start
-        self.envelope_s = envelope_s
-        self.boot_allowance_s = boot_allowance_s
-        self.read_stage = read_stage
-        self.clock = clock
-        self.stage_poll_interval_s = stage_poll_interval_s
-        self.child_started_at: float | None = None
-        self._next_stage_poll_at = 0.0
+    spawn_start: float
+    envelope_s: float
+    boot_allowance_s: float
+    read_stage: Callable[[], str | None]
+    clock: Callable[[], float] = time.monotonic
+    stage_poll_interval_s: float = STAGE_POLL_INTERVAL_S
+    child_started_at: float | None = field(default=None, init=False)
+    _next_stage_poll_at: float = field(default=0.0, init=False)
 
     @property
     def split_phases(self) -> bool:

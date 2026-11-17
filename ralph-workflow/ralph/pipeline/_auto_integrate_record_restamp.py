@@ -42,22 +42,19 @@ def _is_valid_collector_evidence_key(key: str) -> bool:
 def _parse_raw_evidence_pairs(raw_evidence: object) -> tuple[tuple[str, str], ...] | None:
     if isinstance(raw_evidence, dict):
         raw_evidence = list(raw_evidence.items())
-    if not (any(isinstance(raw_evidence, _t) for _t in (list, tuple))):
+    if not isinstance(raw_evidence, (list, tuple)):
         return None
     pairs: list[tuple[str, str]] = []
     for item in raw_evidence:
-        match item:
-            case list() | tuple():
-                match item:
-                    case [k, v] if isinstance(k, str) and isinstance(v, str):
-                        pairs.append((k, v))
-            case dict():
-                k = item.get("key") or item.get("name")
-                v = item.get("value") or item.get("content")
-                if isinstance(k, str) and isinstance(v, str):
+        if isinstance(item, (list, tuple)):
+            match item:
+                case [k, v] if isinstance(k, str) and isinstance(v, str):
                     pairs.append((k, v))
-            case _:
-                pass
+        elif isinstance(item, dict):
+            k = item.get("key") or item.get("name")
+            v = item.get("value") or item.get("content")
+            if isinstance(k, str) and isinstance(v, str):
+                pairs.append((k, v))
     return tuple(pairs)
 
 

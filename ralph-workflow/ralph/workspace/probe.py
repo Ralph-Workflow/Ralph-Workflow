@@ -5,7 +5,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from ralph.workspace.awareness import _awareness_by_workspace, _AwarenessRegistry
+from ralph.workspace.awareness import _awareness_by_workspace, _awareness_lock
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -165,10 +165,10 @@ def _extract_tracked_dirty_paths(workspace: Workspace) -> list[str] | None:
 
     if isinstance(workspace, _HasRoot):
         root = workspace.root
-        if any(isinstance(root, _t) for _t in (Path, str)):
+        if isinstance(root, (Path, str)):
             with suppress(Exception):
                 key = str(Path(root).absolute())
-                with _AwarenessRegistry.lock():
+                with _awareness_lock:
                     active = _awareness_by_workspace.get(key)
                 if active is not None:
                     return _extract_from_candidate(active)
@@ -274,7 +274,6 @@ WorkspaceChangeProbe = _WorkspaceChangeProbe
 
 
 class DefaultWorkspaceChangeProbe:
-    __slots__ = ('_baselines', '_max_files', '_version_baselines',)
     def __init__(self, *, max_files: int = DEFAULT_MAX_SNAPSHOT_FILES) -> None:
         self._baselines: dict[str, dict[str, str]] = {}
         self._version_baselines: dict[str, str | None] = {}

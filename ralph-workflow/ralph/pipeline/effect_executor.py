@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -36,7 +36,6 @@ from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
-from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.parallel_display import (
     ParallelDisplay,
     emit_activity_line,
@@ -118,11 +117,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping
     from contextvars import Token
 
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline._agent_effect_runner import AgentEffectRunner
     from ralph.pipeline.agent_execution_deps import (
+        _InvokeAgentFn,
         _ShowPhaseStartFn,
     )
     from ralph.pipeline.effects import InvokeAgentEffect
@@ -135,93 +136,8 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
-
-@runtime_checkable
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> object | None: ...
-
-
-@runtime_checkable
-class _InvokeAgentFn(Protocol):
-    def __call__(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> object: ...
-
-
-@runtime_checkable
-class _SessionIdSetter(Protocol):
-    def __call__(self, session_id: str | None) -> None: ...
-
-
-@runtime_checkable
-class _OnRetryFailure(Protocol):
-    def __call__(self, lines: list[str]) -> object: ...
-
-
-@runtime_checkable
-class _UriProvider(Protocol):
-    def __call__(self) -> object: ...
-
-
-def _is_text(value: object) -> TypeGuard[str]:
-    return isinstance(value, str)
-
-
-def _is_path(value: object) -> TypeGuard[Path]:
-    return isinstance(value, Path)
-
-
-def _is_bool(value: object) -> TypeGuard[bool]:
-    return isinstance(value, bool)
-
-
-def _is_plain_int(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_agent_config(value: object) -> TypeGuard[AgentConfig]:
-    return isinstance(value, AgentConfig)
-
-
-def _is_invoke_options(value: object) -> TypeGuard[InvokeOptions]:
-    return isinstance(value, InvokeOptions)
-
-
-def _is_registry_like(value: object) -> TypeGuard[_RegistryLike]:
-    return isinstance(value, _RegistryLike)
-
-
-def _is_invoke_agent_fn(value: object) -> TypeGuard[_InvokeAgentFn]:
-    return isinstance(value, _InvokeAgentFn)
-
-
-def _is_session_id_setter(value: object) -> TypeGuard[_SessionIdSetter]:
-    return isinstance(value, _SessionIdSetter)
-
-
-def _is_on_retry_failure(value: object) -> TypeGuard[_OnRetryFailure]:
-    return isinstance(value, _OnRetryFailure)
-
-
-def _is_uri_provider(value: object) -> TypeGuard[_UriProvider]:
-    return isinstance(value, _UriProvider)
-
-
-def _as_exception_type(value: object) -> type[Exception] | None:
-    if isinstance(value, type) and issubclass(value, Exception):
-        return value
-    return None
-
-
-def _as_restart_aware_bridge(value: object) -> RestartAwareMcpBridge:
-    if isinstance(value, RestartAwareMcpBridge):
-        return value
-    msg = f"expected RestartAwareMcpBridge, got {type(value).__name__}"
-    raise TypeError(msg)
+    class _KwargsMaterializeMasterPromptFn(Protocol):
+        def __call__(self, **kwargs: object) -> str: ...
 
 
 _VERBOSE_LOG_LEVEL = 2
@@ -490,32 +406,46 @@ def execute_agent_effect(
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
-    injected_result = _execute_injected_agent_runner(
-        effect,
-        config,
-        pipeline_deps,
-        workspace_scope,
-        injected,
-        display_context=display_context,
-        display=display,
-        verbosity=verbosity,
-        state=state,
-        policy_bundle=policy_bundle,
-        bridge=bridge,
-        raw_output_sink=raw_output_sink,
-        rendered_output_sink=rendered_output_sink,
-        raw_line_sink=raw_line_sink,
-        run_id=run_id,
-        required_artifact=required_artifact,
-        session_id=session_id,
-        extra_env=extra_env,
-        raise_resumable_exit=raise_resumable_exit,
-        agent_invocation_error_sink=agent_invocation_error_sink,
-        attempt_finalizer=attempt_finalizer,
-        opts=dict(opts),
-    )
-    if injected_result is not None:
-        return injected_result
+    if injected.agent_runner is not None:
+        injected_controller, injected_ledger = _controller_and_ledger_from_deps(
+            pipeline_deps, injected
+        )
+        if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
+            logger.error(
+                "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+                effect.agent_name,
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(
+                    action=None,
+                    session_id=None,
+                    failure_reason="Agent unavailable or spent in failure ledger",
+                )
+            )
+            return PipelineEvent.AGENT_FAILURE
+        return injected.agent_runner(
+            effect,
+            config,
+            pipeline_deps,
+            workspace_scope,
+            display_context=display_context,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+            bridge=bridge,
+            raw_output_sink=raw_output_sink,
+            rendered_output_sink=rendered_output_sink,
+            raw_line_sink=raw_line_sink,
+            run_id=run_id,
+            required_artifact=required_artifact,
+            session_id=session_id,
+            extra_env=extra_env,
+            raise_resumable_exit=raise_resumable_exit,
+            agent_invocation_error_sink=agent_invocation_error_sink,
+            attempt_finalizer=attempt_finalizer,
+            **opts,
+        )
     verdict = inspect_integration_resolution(
         workspace_scope.root,
         state.rebase if state is not None else RebaseState(),
@@ -524,8 +454,7 @@ def execute_agent_effect(
 
     resolved_display_context = get_display_context(display, display_context)
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
-    agent_config_raw = registry.get(effect.agent_name)
-    agent_config = agent_config_raw if _is_agent_config(agent_config_raw) else None
+    agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
     if agent_config is None:
         return _agent_not_found_failure(effect.agent_name)
 
@@ -571,19 +500,14 @@ def execute_agent_effect(
     show_phase_start_cb: _ShowPhaseStartFn | None = None
     if state is not None and policy_bundle is not None:
         show_phase_start_cb = show_phase_start_with_context
-    set_session_id_raw = opts.get("set_session_id_cb")
-    invocation_options_raw = opts.get("invocation_options")
-    worker_namespace_raw = opts.get("worker_namespace")
-    worker_artifact_dir_raw = opts.get("worker_artifact_dir")
-    parallel_worker_raw = opts.get("parallel_worker", False)
     deps = build_agent_execution_deps(
         pipeline_deps=pipeline_deps,
         invoke_agent=_invoke_agent_from_registry_or_opts(pipeline_deps, opts),
         agent_invocation_error=_agent_invocation_error_from_opts(opts),
         agent_registry=AgentRegistry,
         show_phase_start_cb=show_phase_start_cb,
-        set_session_id_cb=(
-            set_session_id_raw if _is_session_id_setter(set_session_id_raw) else None
+        set_session_id_cb=cast(
+            "Callable[[str | None], None] | None", opts.get("set_session_id_cb")
         ),
     )
     invocation_started = time.monotonic()
@@ -604,16 +528,11 @@ def execute_agent_effect(
         display=display,
         invocation_started_monotonic=invocation_started,
         clock=active_clock,
-        invocation_options=(
-            invocation_options_raw if _is_invoke_options(invocation_options_raw) else None
-        ),
-        worker_namespace=worker_namespace_raw if _is_path(worker_namespace_raw) else None,
-        worker_artifact_dir=(
-            worker_artifact_dir_raw if _is_path(worker_artifact_dir_raw) else None
-        ),
-        parallel_worker=parallel_worker_raw if _is_bool(parallel_worker_raw) else False,
+        invocation_options=cast("InvokeOptions | None", opts.get("invocation_options")),
+        worker_namespace=cast("Path | None", opts.get("worker_namespace")),
+        worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
+        parallel_worker=cast("bool", opts.get("parallel_worker", False)),
     )
-    on_retry_failure_raw = opts.get("on_retry_failure")
     invocation_outcome = "crashed"
     try:
         result = _invoke_agent_with_recovery(
@@ -628,8 +547,8 @@ def execute_agent_effect(
             required_artifact=required_artifact,
             session_id=session_id,
             extra_env=extra_env,
-            on_retry_failure=(
-                on_retry_failure_raw if _is_on_retry_failure(on_retry_failure_raw) else None
+            on_retry_failure=cast(
+                "Callable[[list[str]], object] | None", opts.get("on_retry_failure")
             ),
             raise_resumable_exit=raise_resumable_exit,
             agent_invocation_error_sink=agent_invocation_error_sink,
@@ -709,11 +628,12 @@ def _pipeline_profile(policy_bundle: PolicyBundle | None) -> str:
     raw_phase_names: object = getattr(policy_bundle.pipeline, "phases", {})
     if not isinstance(raw_phase_names, dict):
         return "custom"
-    return (
-        "default"
-        if all(name in _DEFAULT_PHASE_NAMES for name in raw_phase_names)
-        else "custom"
-    )
+    phase_names = cast("Mapping[object, object]", raw_phase_names)
+    return "default" if all(name in _DEFAULT_PHASE_NAMES for name in phase_names) else "custom"
+
+
+class _RegistryLike(Protocol):
+    def get(self, name: str) -> object | None: ...
 
 
 def _registry_from_pipeline_deps(
@@ -721,35 +641,24 @@ def _registry_from_pipeline_deps(
     config: UnifiedConfig,
 ) -> _RegistryLike:
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        registry = pipeline_deps.registry_factory(config)
-        if _is_registry_like(registry):
-            return registry
-    from_config = AgentRegistry.from_config(config)
-    if _is_registry_like(from_config):
-        return from_config
-    msg = "agent registry factory did not produce a registry with get()"
-    raise TypeError(msg)
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+    return cast("_RegistryLike", AgentRegistry.from_config(config))
 
 
 def _invoke_agent_from_registry_or_opts(
     pipeline_deps: PipelineDeps | None,
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
-    invoke_raw = opts.get("invoke_agent")
-    if _is_invoke_agent_fn(invoke_raw):
-        return invoke_raw
+    invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
+    if invoke is not None:
+        return invoke
     if pipeline_deps is not None and pipeline_deps.invoke_agent is not None:
-        deps_invoke = pipeline_deps.invoke_agent
-        if _is_invoke_agent_fn(deps_invoke):
-            return deps_invoke
-    if _is_invoke_agent_fn(invoke_agent):
-        return invoke_agent
-    msg = "invoke_agent is not callable"
-    raise TypeError(msg)
+        return pipeline_deps.invoke_agent
+    return invoke_agent
 
 
 def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception]:
-    error = _as_exception_type(opts.get("agent_invocation_error"))
+    error = cast("type[Exception] | None", opts.get("agent_invocation_error"))
     if error is not None:
         return error
     return AgentInvocationError
@@ -1071,11 +980,7 @@ def _demotion_after_finalization(
     if controller is not None:
         status = controller.ledger.status(phase, agent)
         demoted = not status.is_eligible
-        demotion_reason = (
-            status.reason
-            if any(isinstance(status, _t) for _t in (Cooldown, Spent))
-            else None
-        )
+        demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
         return demoted, demotion_reason
     if ledger is not None:
         return record_ledger_only_demotion(
@@ -1218,9 +1123,7 @@ def _resolve_bridge_and_run_id(
     if bridge is None:
         bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
     elif run_id is None:
-        bridge_run_id: object = getattr(bridge, "run_id", effective_run_id)
-        if _is_text(bridge_run_id):
-            effective_run_id = bridge_run_id
+        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     return bridge, effective_run_id, own_bridge
 
 
@@ -1266,7 +1169,7 @@ def _invoke_agent_with_recovery(
             required_artifact_resolved=True,
         )
         bridge_ctx = _AgentBridgeCtx(
-            bridge=bridge, session=None, master_prompt_file=master_prompt_file
+            bridge=bridge, session=cast("object", None), master_prompt_file=master_prompt_file
         )
         raw_output: deque[str] = (
             raw_output_sink
@@ -1491,7 +1394,8 @@ def _start_bridge(
         ctx.effect.activity_only_supervision
         and pipeline_deps.bridge_factory is build_session_bridge
     ):
-        return _as_restart_aware_bridge(
+        return cast(
+            "RestartAwareMcpBridge",
             build_session_bridge(
                 workspace_root=ctx.workspace_scope.root,
                 drain=ctx.effect.drain or ctx.effect.phase,
@@ -1505,9 +1409,10 @@ def _start_bridge(
                 worker_artifact_dir=ctx.worker_artifact_dir,
                 allowed_roots=ctx.workspace_scope.allowed_roots,
                 conflict_activity_relay=True,
-            )
+            ),
         )
-    return _as_restart_aware_bridge(
+    return cast(
+        "RestartAwareMcpBridge",
         pipeline_deps.bridge_factory(
             workspace_root=ctx.workspace_scope.root,
             drain=ctx.effect.drain or ctx.effect.phase,
@@ -1520,7 +1425,7 @@ def _start_bridge(
             worker_namespace=ctx.worker_namespace,
             worker_artifact_dir=ctx.worker_artifact_dir,
             allowed_roots=ctx.workspace_scope.allowed_roots,
-        )
+        ),
     )
 
 
@@ -1540,14 +1445,15 @@ def _materialize_master_prompt(
     )
     workspace_root = ctx.workspace_scope.root
     phase_name = str(ctx.effect.phase)
-    materialize_kwargs: dict[str, object] = {}
+    kwargs: dict[str, object] = {"workspace_root": workspace_root, "name": phase_name}
     if _accepts_keyword(materialize, "worker_namespace"):
-        materialize_kwargs["worker_namespace"] = ctx.worker_namespace
+        kwargs["worker_namespace"] = ctx.worker_namespace
     if planning_style is not None and _accepts_keyword(materialize, "planning_style"):
-        materialize_kwargs["planning_style"] = planning_style
+        kwargs["planning_style"] = planning_style
     if _accepts_keyword(materialize, "transport"):
-        materialize_kwargs["transport"] = ctx.agent_config.transport
-    return materialize(workspace_root, phase_name, **materialize_kwargs)
+        kwargs["transport"] = ctx.agent_config.transport
+    dynamic_materialize = cast("_KwargsMaterializeMasterPromptFn", materialize)
+    return dynamic_materialize(**kwargs)
 
 
 def _accepts_keyword(
@@ -1632,9 +1538,10 @@ def _bridge_endpoint_uri(bridge: object) -> str:
     raw_uri: object = getattr(bridge, "agent_endpoint_uri", None)
     if raw_uri is None:
         return ""
-    if _is_uri_provider(raw_uri):
+    if callable(raw_uri):
+        uri_fn = cast("Callable[[], object]", raw_uri)
         try:
-            return str(raw_uri())
+            return str(uri_fn())
         except (OSError, RuntimeError, ValueError, KeyError):
             return ""
     return str(raw_uri)
@@ -2008,12 +1915,12 @@ def _resolve_recovery_session_id(
 ) -> str | None:
     if _failure_requires_fresh_session(exc, inactivity_error_type):
         return None
-    resumable_session_id: object = getattr(exc, "resumable_session_id", None)
-    if _is_text(resumable_session_id) and resumable_session_id:
+    resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
+    if isinstance(resumable_session_id, str) and resumable_session_id:
         return resumable_session_id
     if extracted_session_id:
         return extracted_session_id
-    parsed_output: object = getattr(exc, "parsed_output", None)
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list) and parsed_output:
         parsed_session_id = extract_transport_session_id(tuple(str(item) for item in parsed_output))
         if parsed_session_id:
@@ -2027,17 +1934,17 @@ def recovery_attempts_for_effect(effect: InvokeAgentEffect, config: UnifiedConfi
 
 def surfaces_supervision_error(effect: InvokeAgentEffect, exc: BaseException) -> bool:
     del effect
-    return any(isinstance(exc, _t) for _t in (AgentInactivityTimeoutError, SupervisionInfrastructureError))
+    return isinstance(exc, (AgentInactivityTimeoutError, SupervisionInfrastructureError))
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
-    raw: object = getattr(config.general, "max_same_agent_retries", 10)
-    return raw if _is_plain_int(raw) and raw >= 0 else 10
+    raw = cast("object", getattr(config.general, "max_same_agent_retries", 10))
+    return raw if isinstance(raw, int) and raw >= 0 else 10
 
 
 def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[Exception]) -> bool:
     if isinstance(exc, inactivity_error_type):
-        session_resume_safe: object = getattr(exc, "session_resume_safe", False)
+        session_resume_safe = cast("object", getattr(exc, "session_resume_safe", False))
         return session_resume_safe is not True
     return contains_casefolded_marker(_recovery_error_parts(exc), _SESSION_NOT_FOUND_SUBSTRINGS)
 
@@ -2101,7 +2008,7 @@ def _recovery_context_lines(
     _error_parts_fn = _fn or _recovery_error_parts
     if rendered_output:
         return _tail_recovery_context_lines(rendered_output, untruncated=untruncated)
-    parsed_output: object = getattr(exc, "parsed_output", None)
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
     if isinstance(parsed_output, list) and parsed_output:
         return _tail_recovery_context_lines(
             [str(item) for item in parsed_output], untruncated=untruncated

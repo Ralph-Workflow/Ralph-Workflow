@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,26 +17,19 @@ if TYPE_CHECKING:
         anti_patterns: tuple[str, ...]
 
         def summary(self) -> str: ...
-
         def total_checks(self) -> int: ...
 
 
+@dataclass
 class PythonGuidelines:
-    __slots__ = (
-        "anti_patterns",
-        "api_design_checks",
-        "concurrency_checks",
-        "documentation_checks",
-        "frameworks",
-        "idioms",
-        "observability_checks",
-        "performance_checks",
-        "quality_checks",
-        "resource_checks",
-        "secrets_checks",
-        "security_checks",
-        "testing_checks",
-    )
+    frameworks: tuple[str, ...] = ()
+    quality_checks: tuple[str, ...] = field(init=False)
+    security_checks: tuple[str, ...] = field(init=False)
+    performance_checks: tuple[str, ...] = field(init=False)
+    testing_checks: tuple[str, ...] = field(init=False)
+    documentation_checks: tuple[str, ...] = field(init=False)
+    idioms: tuple[str, ...] = field(init=False)
+    anti_patterns: tuple[str, ...] = field(init=False)
 
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
@@ -54,7 +48,8 @@ class PythonGuidelines:
         )
         self.performance_checks = (
             "Use generators and iterators for large data processing paths.",
-            "Prefer comprehensions when they improve clarity and avoid unnecessary temporary loops.",
+            "Prefer comprehensions when they improve clarity and avoid unnecessary temporary"
+            " loops.",
             "Profile before optimizing and justify non-obvious performance trade-offs.",
         )
         self.testing_checks = (
@@ -77,16 +72,13 @@ class PythonGuidelines:
             "Do not use bare except clauses.",
             "Avoid global mutable state and hidden side effects.",
         )
-        self.concurrency_checks = ()
-        self.resource_checks = ()
-        self.observability_checks = ()
-        self.secrets_checks = ()
-        self.api_design_checks = ()
+
         for framework in normalized_frameworks:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
         framework_name = framework.casefold()
+
         if framework_name == "django":
             self.quality_checks += (
                 "Use Django ORM features intentionally and avoid ad hoc SQL where ORM fits.",
@@ -99,6 +91,7 @@ class PythonGuidelines:
                 "Use Django authentication and permission mechanisms consistently.",
             )
             return
+
         if framework_name == "fastapi":
             self.quality_checks += (
                 "Use Pydantic models for request and response validation.",
@@ -110,10 +103,12 @@ class PythonGuidelines:
                 "Use HTTPS redirect and trusted proxy configuration where deployment requires it.",
             )
             return
+
         if framework_name == "flask":
             self.quality_checks += (
                 "Use Blueprints to keep route registration and application structure modular.",
-                "Use Flask-SQLAlchemy and application factories consistently when the project adopts them.",
+                "Use Flask-SQLAlchemy and application factories consistently when the"
+                " project adopts them.",
             )
             self.security_checks += (
                 "Store Flask SECRET_KEY securely and never commit it.",
@@ -121,7 +116,11 @@ class PythonGuidelines:
             )
 
     def summary(self) -> str:
-        return f"{len(self.quality_checks)} quality checks, {len(self.security_checks)} security checks, {len(self.anti_patterns)} anti-patterns"
+        return (
+            f"{len(self.quality_checks)} quality checks, "
+            f"{len(self.security_checks)} security checks, "
+            f"{len(self.anti_patterns)} anti-patterns"
+        )
 
     def total_checks(self) -> int:
         return sum(
@@ -133,10 +132,5 @@ class PythonGuidelines:
                 len(self.documentation_checks),
                 len(self.idioms),
                 len(self.anti_patterns),
-                len(self.concurrency_checks),
-                len(self.resource_checks),
-                len(self.observability_checks),
-                len(self.secrets_checks),
-                len(self.api_design_checks),
             ]
         )

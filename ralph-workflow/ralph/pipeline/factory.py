@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import dataclasses
 import time
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import ralph.pipeline.session_bridge as _session_bridge
-from ralph.display.context import DisplayContext
-from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
@@ -17,7 +15,7 @@ from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Iterable
     from contextlib import AbstractContextManager
     from datetime import timedelta
     from pathlib import Path
@@ -26,6 +24,8 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._types import InvokeOptions
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.protocol.startup import HeartbeatPolicy
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.phases.required_artifacts import RequiredArtifact
@@ -78,26 +78,6 @@ class ArtifactRequirementsResolverFn(Protocol):
         phase: str,
         drain: str | None = None,
     ) -> RequiredArtifact | None: ...
-
-
-def _is_display_context(value: object) -> TypeGuard[DisplayContext]:
-    return isinstance(value, DisplayContext)
-
-
-def _is_model_identity(value: object) -> TypeGuard[MultimodalModelIdentity | None]:
-    return value is None or isinstance(value, MultimodalModelIdentity)
-
-
-def _is_master_prompt_fn(value: object) -> TypeGuard[MaterializeMasterPromptFn]:
-    return callable(value)
-
-
-def _is_phase_prompt_fn(value: object) -> TypeGuard[PhasePromptMaterializerFn]:
-    return callable(value)
-
-
-def _is_artifact_resolver_fn(value: object) -> TypeGuard[ArtifactRequirementsResolverFn]:
-    return callable(value)
 
 
 class InvokeAgentFn(Protocol):
@@ -159,8 +139,7 @@ def _materialize_prompt_for_phase(
     options: PromptPhaseOptions | None = None,
     **kwargs: object,
 ) -> str:
-    extras: Mapping[str, object] = kwargs
-    return materialize_prompt_for_phase(context, options, **extras)
+    return materialize_prompt_for_phase(context, options, **kwargs)
 
 
 def _resolve_phase_required_artifact(
@@ -185,11 +164,14 @@ def _mcp_supervisor_factory(
     on_restart: Callable[[int], None] | None,
     agent_label_scope: str,
 ) -> AbstractContextManager[object, bool | None]:
-    return McpSupervisor(
-        bridge,
-        check_interval=check_interval,
-        on_restart=on_restart,
-        agent_label_scope=agent_label_scope,
+    return cast(
+        "AbstractContextManager[object, bool | None]",
+        McpSupervisor(
+            bridge,
+            check_interval=check_interval,
+            on_restart=on_restart,
+            agent_label_scope=agent_label_scope,
+        ),
     )
 
 
@@ -460,14 +442,87 @@ class PipelineDeps:
         validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None,
         recovery_clock: Clock | None = None,
     ) -> None:
-        effective_core = _resolve_pipeline_core(
-            core,
-            display_context=display_context,
-            model_identity=model_identity,
-            master_prompt_materializer=master_prompt_materializer,
-            phase_prompt_materializer=phase_prompt_materializer,
-            artifact_requirements_resolver=artifact_requirements_resolver,
-        )
+        core_overrides: dict[str, object] = {}
+        if display_context is not _UNSET:
+            core_overrides["display_context"] = display_context
+        if model_identity is not _UNSET:
+            core_overrides["model_identity"] = model_identity
+        if master_prompt_materializer is not _UNSET:
+            core_overrides["master_prompt_materializer"] = master_prompt_materializer
+        if phase_prompt_materializer is not _UNSET:
+            core_overrides["phase_prompt_materializer"] = phase_prompt_materializer
+        if artifact_requirements_resolver is not _UNSET:
+            core_overrides["artifact_requirements_resolver"] = artifact_requirements_resolver
+
+        if core is None:
+            if display_context is _UNSET:
+                raise ValueError("display_context is required when core is not provided")
+            effective_core = PipelineCore(
+                display_context=cast("DisplayContext", display_context),
+                model_identity=(
+                    None
+                    if model_identity is _UNSET
+                    else cast("MultimodalModelIdentity | None", model_identity)
+                ),
+                master_prompt_materializer=(
+                    _materialize_master_prompt
+                    if master_prompt_materializer is _UNSET
+                    else cast("MaterializeMasterPromptFn", master_prompt_materializer)
+                ),
+                phase_prompt_materializer=(
+                    _materialize_prompt_for_phase
+                    if phase_prompt_materializer is _UNSET
+                    else cast("PhasePromptMaterializerFn", phase_prompt_materializer)
+                ),
+                artifact_requirements_resolver=(
+                    _resolve_phase_required_artifact
+                    if artifact_requirements_resolver is _UNSET
+                    else cast(
+                        "ArtifactRequirementsResolverFn",
+                        artifact_requirements_resolver,
+                    )
+                ),
+            )
+        elif core_overrides:
+            effective_core = core
+            if "display_context" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    display_context=cast("DisplayContext", core_overrides["display_context"]),
+                )
+            if "model_identity" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    model_identity=cast(
+                        "MultimodalModelIdentity | None", core_overrides["model_identity"]
+                    ),
+                )
+            if "master_prompt_materializer" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    master_prompt_materializer=cast(
+                        "MaterializeMasterPromptFn",
+                        core_overrides["master_prompt_materializer"],
+                    ),
+                )
+            if "phase_prompt_materializer" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    phase_prompt_materializer=cast(
+                        "PhasePromptMaterializerFn",
+                        core_overrides["phase_prompt_materializer"],
+                    ),
+                )
+            if "artifact_requirements_resolver" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    artifact_requirements_resolver=cast(
+                        "ArtifactRequirementsResolverFn",
+                        core_overrides["artifact_requirements_resolver"],
+                    ),
+                )
+        else:
+            effective_core = core
 
         object.__setattr__(self, "core", effective_core)
         object.__setattr__(self, "registry_factory", registry_factory)

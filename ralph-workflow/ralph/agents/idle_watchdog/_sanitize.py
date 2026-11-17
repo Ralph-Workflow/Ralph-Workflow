@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import cast
 
 _SUBAGENT_DESCRIPTION_MAX = 200
 
@@ -68,16 +69,11 @@ _JSON_DECODER = json.JSONDecoder(strict=False)
 
 def _decode_json_at(text: str, pos: int) -> tuple[object, int]:
     try:
-        value, end = _JSON_DECODER.raw_decode(text, pos)
+        decoded = cast("tuple[object, int]", _JSON_DECODER.raw_decode(text, pos))
     except (json.JSONDecodeError, ValueError):
         return None, -1
+    value, end = decoded
     return value, end
-
-
-def _is_json_container(value: object) -> bool:
-    if isinstance(value, dict):
-        return True
-    return isinstance(value, list)
 
 
 def _redact_json_fragments(text: str) -> str:
@@ -90,7 +86,7 @@ def _redact_json_fragments(text: str) -> str:
         ch = text[i]
         if ch in {"{", "["}:
             parsed, end = _decode_json_at(text, i)
-            if parsed is not None and _is_json_container(parsed) and end > i:
+            if parsed is not None and isinstance(parsed, (dict, list)) and end > i:
                 try:
                     redacted_obj = _redact_json_values(parsed)
                     redacted_text = json.dumps(redacted_obj, ensure_ascii=False)
@@ -104,33 +100,3 @@ def _redact_json_fragments(text: str) -> str:
         out.append(ch)
         i += 1
     return "".join(out)
-
-
-StatusDiagnostic = dict[str, str | int | float | bool | list[object]]
-
-
-def as_status_diagnostic(values: dict[str, object]) -> StatusDiagnostic:
-    result: StatusDiagnostic = {}
-    for key, value in values.items():
-        typed = _status_diagnostic_value(value)
-        if typed is not None:
-            result[key] = typed
-    return result
-
-
-def _status_diagnostic_value(
-    value: object,
-) -> str | int | float | bool | list[object] | None:
-    match value:
-        case bool() as flag:
-            return flag
-        case str() as text:
-            return text
-        case int() as number:
-            return number
-        case float() as number:
-            return number
-        case list() as items:
-            return list(items)
-        case _:
-            return None

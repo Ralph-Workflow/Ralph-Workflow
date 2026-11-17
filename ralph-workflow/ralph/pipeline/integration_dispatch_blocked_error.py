@@ -7,8 +7,6 @@ if TYPE_CHECKING:
 
 
 class IntegrationDispatchBlockedError(RuntimeError):
-    __slots__ = ("phase", "verdict")
-
     def __init__(self, phase: str, verdict: IntegrationResolutionVerdict) -> None:
         self.phase = phase
         self.verdict = verdict

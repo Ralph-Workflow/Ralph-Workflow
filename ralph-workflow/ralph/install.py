@@ -37,7 +37,6 @@ from ralph._install_runtime import (
     write_build_flavor,
     write_dev_launcher,
 )
-from ralph.config import _env as config_env
 from ralph.install_transaction import (
     cleanup_staging,
     create_candidate,
@@ -77,9 +76,7 @@ def global_executable(
 ) -> str | None:
     excluded = own_bin if own_bin is not None else _own_environment_bin()
     entries = (
-        search_path
-        if search_path is not None
-        else config_env.os.environ.get("PATH", os.defpath)
+        search_path if search_path is not None else os.environ.get("PATH", os.defpath)
     ).split(os.pathsep)
     if excluded is not None:
         entries = [entry for entry in entries if not entry or not _same_directory(entry, excluded)]

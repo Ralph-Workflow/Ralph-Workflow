@@ -8,8 +8,6 @@ from ralph.pipeline.config_file_fingerprint import compute_config_file_fingerpri
 
 
 class ConfigFileFingerprintWatcher:
-    __slots__ = ("_attempted_fingerprints", "_default_path", "_last_fingerprints")
-
     def __init__(self, default_path: Path | str | None = None) -> None:
         self._default_path: Path | None = (
             Path(default_path).resolve() if default_path is not None else None
