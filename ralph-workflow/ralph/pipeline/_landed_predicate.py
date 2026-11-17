@@ -42,7 +42,7 @@ class LandedDecision:
             f"expected {'; '.join(self.expected)}; "
             f"proof failures: {'; '.join(self.failures) or 'none'}; "
             f"preserved copy: {preserved}; "
-            f"land the expected commit and run '{RESUME_COMMAND}'"
+            f"land the expected commit; resume point: {RESUME_COMMAND}"
         )
 
 

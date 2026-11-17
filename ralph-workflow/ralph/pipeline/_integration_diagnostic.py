@@ -30,6 +30,7 @@ from ralph.pipeline._integration_diagnostic_evidence import (
     snapshot_has_unreadable,
 )
 from ralph.pipeline._integration_diagnostic_handoff import (
+    _feature_tip_for,
     _invoke_and_judge,
     budget_spent_record,
     escalate_diagnostic_budget_to_ladder,
@@ -238,6 +239,7 @@ def _handle_diagnostic_generic_failure(
                 env=env,
                 clock=clock,
                 target=target.target,
+                feature_tip=_feature_tip_for(target),
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -413,8 +415,8 @@ def _pre_pass_failure(
 ) -> bool:
     if ladder_terminal_state(root, record, ledger=ledger, git=git) is not None:
         logger.info(
-            "Integration diagnostic: the cleanup ladder already ended in a state that "
-            "needs an operator; the retained integration starts no new diagnostic round"
+            "Integration diagnostic: the cleanup ladder already ended in a terminal "
+            "complete_in_place state; the retained integration starts no new diagnostic round"
         )
         return False
     if terminal_for_now:
@@ -423,6 +425,7 @@ def _pre_pass_failure(
             ResolutionTerminalMarker,
             resolution_terminal_marker,
         )
+        from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
         tip = _current_target_tip(root, record)
         key = _terminal_for_now_key(reason, tip)
@@ -430,16 +433,50 @@ def _pre_pass_failure(
         if marker is not None and record.repair_last_error == key:
             return False
         target_record = _bump_attempt(record, key, repair_attempt_cap=repair_attempt_cap)
+        gate_key = record.resolution_gate_key
+        if isinstance(gate_key, ResolutionAttemptKey):
+            attempt_key: ResolutionAttemptKey | None = gate_key
+        elif (
+            isinstance(gate_key, tuple)
+            and len(gate_key) == len(ResolutionAttemptKey._fields)
+            and isinstance(gate_key[1], (tuple, list))
+        ):
+            attempt_key = ResolutionAttemptKey(
+                gate_key[0],
+                tuple(gate_key[1]),
+                gate_key[2],
+            )
+        else:
+            attempt_key = None
+        write_record(root, target_record, backend=backend)
+        try:
+            escalate_diagnostic_budget_to_ladder(
+                root,
+                target_record,
+                reason=reason,
+                ledger=ledger,
+                git=git,
+                fs=fs,
+                env=env,
+                clock=clock,
+                target=record.target,
+                feature_tip=_feature_tip_for(target_record),
+            )
+        except (OSError, RuntimeError, ValueError, KeyError):
+            terminal_emitter.critical(
+                "Integration diagnostic budget spent but ladder escalation raised; "
+                "the durable ledger keeps the climb and the next seam resumes it",
+            )
         terminal_marker = ResolutionTerminalMarker(
-            record.resolution_gate_key,
-            "LandedProofFailed",
+            attempt_key,
+            "complete_in_place",
             RESUME_COMMAND,
         )
         target_record = target_record.with_resolution_terminal_marker(
             terminal_marker.as_record_value()
         )
         write_record(root, target_record, backend=backend)
-        logger.warning("Integration ladder terminal state: LandedProofFailed ({})", reason)
+        logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)
@@ -455,6 +492,7 @@ def _pre_pass_failure(
                 env=env,
                 clock=clock,
                 target=record.target,
+                feature_tip=_feature_tip_for(target_record),
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -494,6 +532,7 @@ def _run_completion_pre_pass(
                 env=env,
                 clock=clock,
                 target=record.target,
+                feature_tip=_feature_tip_for(record),
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -504,8 +543,8 @@ def _run_completion_pre_pass(
             return False
         if step.outcome == "terminal":
             logger.info(
-                "Integration diagnostic: the cleanup ladder ended in a state that needs "
-                "an operator ({}); the retained integration waits and starts no new "
+                "Integration diagnostic: the cleanup ladder ended in a terminal "
+                "complete_in_place state ({}); the retained integration starts no new "
                 "diagnostic round",
                 step.reason,
             )
@@ -670,6 +709,7 @@ def _settle_exhausted_cap(
             env=env,
             clock=clock,
             target=record.target,
+            feature_tip=_feature_tip_for(target_record),
         )
     except (OSError, RuntimeError, ValueError, KeyError):
         terminal_emitter.critical(
@@ -758,6 +798,7 @@ def handoff_integration_diagnostic(
                     env=env,
                     clock=clock,
                     target=record.target,
+                    feature_tip=_feature_tip_for(target_record),
                 )
             except (OSError, RuntimeError, ValueError, KeyError):
                 terminal_emitter.critical(

@@ -5691,13 +5691,6 @@ ralph.pipeline.resolution_outcome_exhausted
    :members:
    :show-inheritance:
 
-ralph.pipeline.resolution_outcome_needs_operator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.resolution_outcome_needs_operator
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.resolution_outcome_producer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

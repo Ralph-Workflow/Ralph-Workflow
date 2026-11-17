@@ -31,9 +31,10 @@ __all__ = ["CASES", "Expected"]
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_rebase_recovery_matrix": (
         "2f980b011 stages policy gitlinks before the resolution chain runs, so vendor/link "
-        "is picked per policy instead of escalating as out of reach; the driver now resolves "
-        "the stop with four operator lines, the landing pass launches no further resolver, "
-        "and the rebase still lands without content loss"
+        "is picked per policy instead of escalating as out of reach; the driver announces that "
+        "staging even when other conflicts remain, then resolves the stop with five operator "
+        "lines, the landing pass launches no further resolver, and the rebase still lands "
+        "without content loss"
     ),
 }
 
@@ -86,7 +87,7 @@ CASES: tuple[tuple[str, ScenarioRunner, Expected], ...] = (
     (
         "partial-out-of-reach-and-declared-decision",
         _partial_out_of_reach_and_declared_decision,
-        Expected(0, 4, "WARNING", "delete/modify declaration", "landed"),
+        Expected(0, 5, "WARNING", "delete/modify declaration", "landed"),
     ),
     (
         "marker-leaving-resolver-bounded",

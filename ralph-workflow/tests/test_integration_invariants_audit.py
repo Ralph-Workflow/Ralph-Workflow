@@ -3,11 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.testing import audit_integration_invariants
+from ralph.testing.audit_integration_no_legacy import audit_modules
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "restored_gated_e6e382c62_version": (
         "4959fb143 added checks for a conflict-recovery redesign that is reverted; the file returns"
         " to the gated e6e382c62 version, which pins the restored behaviour"
+    ),
+    "test_planted_operator_parking_literals_fail_no_legacy_audit": (
+        "pins the no-legacy audit rule family that rejects NeedsOperator, "
+        "operator action required, LandedProofFailed, and a LadderState parking member"
     ),
 }
 
@@ -254,3 +259,21 @@ def test_clean_tree_makes_main_report_success(tmp_path: Path) -> None:
     tree = _clean_tree(tmp_path)
 
     assert audit_integration_invariants.main([str(tree)]) == 0
+
+
+def test_planted_operator_parking_literals_fail_no_legacy_audit() -> None:
+    planted = {
+        "ralph/pipeline/planted_needs_operator.py": 'state = "NeedsOperator"\n',
+        "ralph/pipeline/planted_operator_action.py": (
+            'msg = "operator action required: land the commit"\n'
+        ),
+        "ralph/pipeline/planted_landed_proof.py": 'state = "LandedProofFailed"\n',
+        "ralph/pipeline/planted_ladder_state.py": (
+            "from enum import StrEnum\n"
+            "class LadderState(StrEnum):\n"
+            '    NEEDS_OPERATOR = "NeedsOperator"\n'
+        ),
+    }
+    rules = {v.rule for v in audit_modules(planted, ignore_transitional=True)}
+    assert "operator-parking terminal literal reappeared" in rules
+    assert "operator-parking LadderState member reappeared" in rules

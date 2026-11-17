@@ -16,10 +16,8 @@ if TYPE_CHECKING:
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
@@ -68,6 +66,30 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
+
+
+class _ExecFakeClock(FakeClock):
+    def now(self) -> float:
+        return self.monotonic()
+
+
+def _install_exec_fake_clock(
+    clock: FakeClock | None = None,
+    *,
+    record_sleeps: list[float] | None = None,
+) -> tuple[FakeClock, object]:
+    active = clock if clock is not None else _ExecFakeClock()
+
+    class _Adapter:
+        def now(self) -> float:
+            return active.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            if record_sleeps is not None:
+                record_sleeps.append(seconds)
+            active.sleep(seconds)
+
+    return active, install_executors(clock=_Adapter())
 
 
 def _ensure_parity_session_controller(
@@ -347,69 +369,77 @@ def test_transient_failure_retries_the_same_agent_using_recovery_controller_hand
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
-    )
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    called: list[str] = []
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        called: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        if agent_name == "one":
-            raise ConnectionError("provider unavailable")
-        return False
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            if agent_name == "one":
+                raise ConnectionError("provider unavailable")
+            return False
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+            )
+            is False
         )
-        is False
-    )
-    assert called[:2] == ["one", "two"]
-    assert called.count("one") == 1
-    assert called.count("two") == 3
+        assert called[:2] == ["one", "two"]
+        assert called.count("one") == 1
+        assert called.count("two") == 3
+    finally:
+        reset_executors(token)
 
 
 def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     sleeps: list[float] = []
-    monkeypatch.setattr("ralph.pipeline.conflict_resolution.driver._sleep_seconds", sleeps.append)
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-
-    called: list[str] = []
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        if agent_name == "one":
-            raise ConnectionError("provider unavailable")
-        return False
-
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
+    _clock, token = _install_exec_fake_clock(record_sleeps=sleeps)
+    try:
+        monkeypatch.setattr(
+            driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two")
         )
-        is False
-    )
-    assert called[:2] == ["one", "two"]
-    assert sleeps == []
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+
+        called: list[str] = []
+
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            if agent_name == "one":
+                raise ConnectionError("provider unavailable")
+            return False
+
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+            )
+            is False
+        )
+        assert called[:2] == ["one", "two"]
+        assert sleeps == []
+    finally:
+        reset_executors(token)
 
 
 def test_conflict_failures_call_recovery_controller_handle(
@@ -437,29 +467,33 @@ def test_conflict_failures_call_recovery_controller_handle(
         )
 
     monkeypatch.setattr(RecoveryController, "finalize_attempt", _spy)
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        raise RuntimeError(f"launch failed for {agent_name}")
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            raise RuntimeError(f"launch failed for {agent_name}")
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+            )
+            is False
         )
-        is False
-    )
-    assert handled
-    assert any("launch failed for one" in item for item in handled)
+        assert handled
+        assert any("launch failed for one" in item for item in handled)
+    finally:
+        reset_executors(token)
 
 
 def test_next_round_keeps_the_successful_highest_priority_candidate(
@@ -543,30 +577,34 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
 def test_launch_failure_is_not_collapsed_to_candidate_declined(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    session = ResolutionSession()
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        session = ResolutionSession()
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        raise RuntimeError("provider unreachable")
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            raise RuntimeError("provider unreachable")
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
-    assert session.terminal_reason is ResolutionTerminationReason.EXCEPTION
+        assert session.terminal_reason is ResolutionTerminationReason.EXCEPTION
+    finally:
+        reset_executors(token)
 
 
 def test_failed_invoke_routes_launch_provider_and_decline_through_shared_finalizer(
@@ -603,42 +641,44 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_shared_finaliz
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three")
     )
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
-    )
-    _install_seams(
-        monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
-    )
-    outcomes: list[BaseException | bool] = [
-        RuntimeError("launch failed: cannot spawn agent"),
-        ConnectionError("provider unavailable"),
-        ConnectionError("provider unavailable"),
-        False,
-    ]
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        item = outcomes.pop(0) if outcomes else False
-        if isinstance(item, BaseException):
-            raise item
-        return item
-
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(
+            monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, _CONFLICTED]
         )
-        is False
-    )
-    assert seen[0] == "launch"
-    assert "provider" in seen
-    assert "decline" in seen
+        outcomes: list[BaseException | bool] = [
+            RuntimeError("launch failed: cannot spawn agent"),
+            ConnectionError("provider unavailable"),
+            ConnectionError("provider unavailable"),
+            False,
+        ]
+
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            item = outcomes.pop(0) if outcomes else False
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+            )
+            is False
+        )
+        assert seen[0] == "launch"
+        assert "provider" in seen
+        assert "decline" in seen
+    finally:
+        reset_executors(token)
 
 
 def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
@@ -905,7 +945,7 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
     from ralph.pipeline.events import PipelineEvent
 
     def _exhausted_pi(*args: object, **kwargs: object) -> object:
-        effect_executor_module._set_last_captured_retry_intent(
+        effect_executor_module.set_last_captured_retry_intent(
             AgentRetryIntent(
                 failure_reason="PiContextExhaustedExitError",
                 skip_same_agent_retries=True,
@@ -1018,7 +1058,7 @@ def test_an_uninstalled_candidate_is_unavailable_not_declining(
     from ralph.pipeline.events import PipelineEvent
 
     def _agent_not_found(*args: object, **kwargs: object) -> object:
-        effect_executor_module._set_last_captured_retry_intent(
+        effect_executor_module.set_last_captured_retry_intent(
             AgentRetryIntent(
                 failure_reason=effect_executor_module.AGENT_NOT_FOUND_REASON,
                 skip_same_agent_retries=True,
@@ -1056,36 +1096,40 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("pi", "claude"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
-    session = ResolutionSession()
-    called: list[str] = []
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
+        session = ResolutionSession()
+        called: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        if agent_name == "pi":
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            return False
-        return True
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            if agent_name == "pi":
+                session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+                return False
+            return True
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+                session=session,
+            )
+            is True
         )
-        is True
-    )
-    assert called == ["pi", "claude"]
-    assert "pi" in skipped_candidates(session, ("pi", "claude"))
-    assert "claude" not in skipped_candidates(session, ("pi", "claude"))
+        assert called == ["pi", "claude"]
+        assert "pi" in skipped_candidates(session, ("pi", "claude"))
+        assert "claude" not in skipped_candidates(session, ("pi", "claude"))
+    finally:
+        reset_executors(token)
 
 
 def test_shared_controller_advances_past_a_cooling_candidate(
@@ -1115,74 +1159,82 @@ def test_a_live_candidate_behind_the_cursor_is_still_invoked(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("alpha", "beta", "gamma")
     )
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock, total_limit=1)
-    for agent in ("beta", "gamma"):
-        ledger.record(
-            AttemptFact(
-                phase=PHASE_RESOLUTION,
-                agent=agent,
-                artifact_valid=False,
+    clock = _ExecFakeClock()
+    _clock, token = _install_exec_fake_clock(clock)
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        ledger = AgentFailureLedger(clock=clock, total_limit=1)
+        for agent in ("beta", "gamma"):
+            ledger.record(
+                AttemptFact(
+                    phase=PHASE_RESOLUTION,
+                    agent=agent,
+                    artifact_valid=False,
+                )
             )
-        )
-    session = ResolutionSession(chain_cursor=1, ledger=ledger)
-    called: list[str] = []
+        session = ResolutionSession(chain_cursor=1, ledger=ledger)
+        called: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        return False
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            return False
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
-    assert called
-    assert set(called) == {"alpha"}
+        assert called
+        assert set(called) == {"alpha"}
+    finally:
+        reset_executors(token)
 
 
 def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    session = ResolutionSession()
+    _clock, token = _install_exec_fake_clock()
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        session = ResolutionSession()
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        if agent_name == "two":
-            session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-        return False
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            if agent_name == "two":
+                session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+            return False
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=_clock.monotonic,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
-    assert skipped_candidates(session, ("one", "two")) == frozenset()
-    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+        assert skipped_candidates(session, ("one", "two")) == frozenset()
+        assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+    finally:
+        reset_executors(token)
 
 
 def test_conflict_invocations_skip_cooldown_and_restore_priority(

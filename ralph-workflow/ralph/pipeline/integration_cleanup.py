@@ -5,7 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, cast
+from typing import TYPE_CHECKING, Final, Literal, Protocol, cast
 
 from loguru import logger
 
@@ -446,6 +446,34 @@ def run_residue_cleanup(
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("planning-residue cleanup raised; leaving tree untouched: {}", exc)
         return ResidueCleanupOutcome(refused=True)
+
+
+def run_normal_cleanup_rung(
+    root: Path,
+    *,
+    target: str | None = None,
+    warn: Callable[[str], None] | None = None,
+) -> tuple[Literal["succeeded", "failed", "waiting"], str]:
+    git = RunGitCleanupPort()
+    baseline = capture_planning_baseline(root, git=git)
+    if baseline is None:
+        return "failed", "failed:baseline-unreadable"
+    outcome = run_residue_cleanup(
+        root,
+        baseline=baseline,
+        git=git,
+        ledger=OwnerResidueLedgerPort(),
+        target=target,
+        warn=warn,
+    )
+    if outcome.clean or outcome.resumed:
+        return "succeeded", "ok:residue-cleanup"
+    if outcome.operation_blocked or outcome.operation_unknown:
+        kind = outcome.operation_kind.value if outcome.operation_kind is not None else "unknown"
+        return "waiting", f"waiting:operation-{kind}"
+    if outcome.refused or outcome.unreadable or outcome.flag_probe_unknown:
+        return "failed", "failed:residue-cleanup-refused"
+    return "failed", "failed:residue-cleanup"
 
 
 def _default_warn(message: str) -> None:
@@ -1093,5 +1121,6 @@ __all__ = [
     "residue_attribution",
     "residue_observation",
     "restore_quarantined_untracked",
+    "run_normal_cleanup_rung",
     "run_residue_cleanup",
 ]

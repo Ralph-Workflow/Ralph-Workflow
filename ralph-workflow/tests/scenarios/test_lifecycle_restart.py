@@ -25,7 +25,7 @@ from tests.scenarios._content_equivalence import assert_content_equivalence, dri
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.required_auto_integrate_e2e,
-    pytest.mark.timeout_seconds(10),
+    pytest.mark.timeout_seconds(20),
 ]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {

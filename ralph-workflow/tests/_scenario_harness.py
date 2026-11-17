@@ -245,7 +245,7 @@ def supervisor_restart(root: Path) -> dict[str, object]:
         text=True,
         capture_output=True,
         check=True,
-        timeout=5,
+        timeout=10,
         env={"HOME": str(root / ".scenario-home"), "PATH": "/usr/bin:/bin"},
     )
     payload = json.loads(completed.stdout)

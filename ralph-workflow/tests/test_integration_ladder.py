@@ -472,7 +472,7 @@ def test_run_ladder_rung_dispatches_quarantine_to_the_executor(tmp_path: Path) -
     assert "restore_tree_to_head" in git.calls
 
 
-def test_run_ladder_rung_rung1_is_not_owned_here(tmp_path: Path) -> None:
+def test_run_ladder_rung_normal_cleanup_owns_residue_cleanup(tmp_path: Path) -> None:
     result = run_ladder_rung(
         CleanupLadderRung.NORMAL_CLEANUP,
         root=tmp_path,
@@ -483,7 +483,7 @@ def test_run_ladder_rung_rung1_is_not_owned_here(tmp_path: Path) -> None:
         state_dir=tmp_path / ".agent",
     )
     assert result.outcome == "failed"
-    assert result.reason == "failed:not-owned-here"
+    assert result.reason == "failed:baseline-unreadable"
 
 
 def test_owner_projection_routes_every_ladder_action_to_its_rung() -> None:

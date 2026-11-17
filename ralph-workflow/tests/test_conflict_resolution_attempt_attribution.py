@@ -4,16 +4,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     finalize_resolution_attempt_failure,
     invoke_resolution_agent,
 )
+from ralph.pipeline.effect_executor import set_last_captured_retry_intent
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -58,38 +58,41 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     session = ResolutionSession(
         recovery_controller=RecoveryController(options=RecoveryControllerOptions())
     )
-    driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_args: False,
-        session=session,
-    )
-    assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
+    token = install_executors(clock=FakeClock())
+    try:
+        driver_module.run_conflict_resolution_outcome(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=lambda *_args: False,
+            session=session,
+        )
+        assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
 
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
-    driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_args: False,
-        session=session,
-    )
+        monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
+        driver_module.run_conflict_resolution_outcome(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=lambda *_args: False,
+            session=session,
+        )
+    finally:
+        reset_executors(token)
     assert session.terminal_reason is not ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.terminal_reason is None
 
@@ -100,9 +103,6 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     chain = ("one", "two", "three")
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
     clock = FakeClock()
-    monkeypatch.setattr(
-        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
-    )
     _install_seams(monkeypatch)
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(
@@ -118,21 +118,25 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         return False
 
     config = _config()
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=config,
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+    token = install_executors(clock=clock)
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=config,
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
+    finally:
+        reset_executors(token)
     assert len(called) == 9
     rounds_spent = max(index for index, _ in called)
     assert rounds_spent <= config.conflict_resolution.max_rounds_per_stop
@@ -148,7 +152,6 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     monkeypatch.setattr(
         "ralph.pipeline.effect_executor.execute_agent_effect",
@@ -186,31 +189,34 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         recovery_controller=RecoveryController(options=RecoveryControllerOptions()),
     )
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            session=session,
+    token = install_executors(clock=FakeClock())
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
+    finally:
+        reset_executors(token)
     assert charged == ["one", "two"]
 
 
 def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.events import PipelineEvent
 
-    effect_executor_module._set_last_captured_retry_intent(
+    set_last_captured_retry_intent(
         AgentRetryIntent(
             failure_reason="PiProviderFailureExitError",
             skip_same_agent_retries=True,
@@ -250,9 +256,6 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     clock = FakeClock()
-    monkeypatch.setattr(
-        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
-    )
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     lines: list[str] = []
     monkeypatch.setattr(
@@ -266,21 +269,25 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
         ),
     )
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=lambda *_args: True,
-            session=session,
+    token = install_executors(clock=clock)
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=lambda *_args: True,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
+    finally:
+        reset_executors(token)
     assert any(
         line.startswith(ResolutionTerminationReason.RESOLUTION_INCOMPLETE.value) for line in lines
     )
@@ -307,9 +314,6 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
         driver_module, "resolution_chain_agents", lambda _bundle: ("ghost", "healthy")
     )
     clock = FakeClock()
-    monkeypatch.setattr(
-        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
-    )
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(
@@ -329,21 +333,25 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
             session.last_attempt_saw_activity = True
         return False
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+    token = install_executors(clock=clock)
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
+    finally:
+        reset_executors(token)
     assert called == ["ghost", "healthy"]
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True

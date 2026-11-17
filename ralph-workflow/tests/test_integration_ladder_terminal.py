@@ -40,6 +40,13 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "terminal_complete_in_place": (
+        "ladder terminals now emit complete_in_place with a resume point instead of "
+        "NeedsOperator; assertions pin the autonomous terminal wording"
+    ),
+}
+
 _DESTRUCTIVE_GIT_CALLS = (
     "reset_hard",
     "clean_untracked",
@@ -154,7 +161,7 @@ def test_changed_resolution_key_reopens_the_terminal_attempt(tmp_path: Path) -> 
             state_dir=tmp_path / ".agent",
         )
 
-    terminal = [message for _level, message in captured if "NeedsOperator" in message]
+    terminal = [message for _level, message in captured if "complete_in_place" in message]
     assert first.outcome == "terminal"
     assert second.outcome == "terminal"
     assert len(terminal) == 2, captured

@@ -438,13 +438,11 @@ tests/test_config_auto_commit.py|0,1,0
 tests/test_config_bootstrap.py|0,2,0
 tests/test_conflict_budget_durability.py|0,1,0
 tests/test_conflict_budget_typed_setter.py|0,1,0
-tests/test_conflict_resolution_attempt_attribution.py|5,1,1
 tests/test_conflict_resolution_cross_path_budget.py|6,0,0
 tests/test_conflict_resolution_futile_loop.py|9,0,2
 tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
-tests/test_conflict_resolution_phase_parity.py|8,1,2
 tests/test_conflict_resolution_pipeline.py|8,1,1
 tests/test_conflict_resolution_pipeline_outcome.py|5,0,0
 tests/test_conflict_resolution_rebase_loop.py|16,0,9

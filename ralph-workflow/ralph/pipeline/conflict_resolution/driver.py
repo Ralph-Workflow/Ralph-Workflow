@@ -17,6 +17,7 @@ from ralph.git.merge import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
+from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
 )
@@ -98,10 +99,12 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import Clock as IntegrationClock
 from ralph.pipeline.integration_actions import current_clock, install_executors
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
+    ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
 )
@@ -109,6 +112,53 @@ from ralph.pipeline.state import PipelineState
 from ralph.recovery.attempt_facts import AttemptFacts
 
 _ACTIVE_SESSION: list[ResolutionSession | None] = [None]
+
+
+def stop_outcome_from_attempt_result(
+    session: ResolutionSession,
+    attempt: AttemptResult | StopResolutionOutcome,
+    *,
+    agent_name: str | None = None,
+) -> StopResolutionOutcome:
+    if not isinstance(attempt, AttemptResult):
+        return attempt
+    if attempt.event == PipelineEvent.AGENT_SUCCESS:
+        return ResolvedOutcome(
+            terminal_reason=session.terminal_reason,
+            unresolved_paths=session.unresolved_paths,
+        )
+    controller = session.recovery_controller
+    until: float | None = None
+    if controller is not None:
+        agents: list[str] = []
+        if agent_name is not None:
+            agents.append(agent_name)
+        state = session.recovery_state
+        if isinstance(state, PipelineState):
+            chain = state.chain_for_phase(PHASE_RESOLUTION)
+            if chain is not None:
+                agents.extend(name for name in chain.agents if name not in agents)
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, agents) if agents else 0
+        if wait_ms > 0:
+            until = float(controller.clock.epoch()) + (wait_ms / 1000.0)
+    failure_cause = (
+        session.last_failure_cause
+        if session.last_failure_cause is not ResolutionFailureCause.NONE
+        else None
+    )
+    if until is not None:
+        return RetryLaterOutcome(
+            until=until,
+            terminal_reason=session.terminal_reason,
+            unresolved_paths=session.unresolved_paths,
+            failure_cause=failure_cause,
+        )
+    return RetryLaterOutcome(
+        on_change="resolver_agent_eligibility_changed",
+        terminal_reason=session.terminal_reason,
+        unresolved_paths=session.unresolved_paths,
+        failure_cause=failure_cause,
+    )
 
 
 def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
@@ -282,6 +332,7 @@ __all__ = [
     "run_rebase_conflict_resolution_pipeline",
     "select_resolution_action",
     "stage_mechanical_conflicts",
+    "stop_outcome_from_attempt_result",
     "unmerged_paths",
 ]
 
@@ -578,10 +629,11 @@ def _prepare_conflicted_paths(
         for link in staged_links:
             kinds.pop(link, None)
         conflicted = tuple(path for path in conflicted if path not in staged_links)
-        if not conflicted:
+        if staged_links:
             emit_conflict_phase_line(
                 display, "gitlink conflicts staged per policy without spending the resolution chain"
             )
+        if not conflicted:
             return (), True, (), None
 
     unreachable = out_of_reach_paths(kinds)

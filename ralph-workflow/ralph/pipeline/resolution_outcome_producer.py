@@ -15,7 +15,6 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
 from ralph.pipeline.resolution_outcome_exhausted import Exhausted
-from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
 from ralph.pipeline.resolution_outcome_resolved import Resolved
 from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
@@ -93,15 +92,6 @@ def stop_resolution_outcome_from_legacy(
     match outcome:
         case Resolved():
             result = ResolvedOutcome()
-        case NeedsOperator(command=command):
-            result = WaitingOutcome(
-                external_condition=(
-                    f"operator action required: {command}"
-                    if command
-                    else "operator action required"
-                ),
-                resumes_when="operator resolves the conflict",
-            )
         case RetryLater(until=until, on_change=on_change):
             result = RetryLaterOutcome(until=until, on_change=on_change)
         case Exhausted(agents=agents):

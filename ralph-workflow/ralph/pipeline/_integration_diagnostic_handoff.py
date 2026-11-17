@@ -47,7 +47,7 @@ from ralph.pipeline.integration_ladder import (
     record_salvage_attempt,
     resume_rung,
     run_ladder_rung,
-    terminal_operator_message,
+    terminal_completion_message,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.integration_preservation_bundle import (
@@ -350,13 +350,20 @@ def ladder_terminal_state(
     )
 
 
+def _feature_tip_for(record: IntegrationRecord) -> str | None:
+    return record.integrated_feature_sha or record.pre_feature_sha or None
+
+
 def _write_terminal_marker(root: Path, record: IntegrationRecord) -> None:
     from ralph.pipeline.auto_integrate_record import read_record, write_record
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
     current = read_record(root) or record
+    gate = current.resolution_gate_key
+    attempt_key = None if gate is None else ResolutionAttemptKey(gate[0], tuple(gate[1]), gate[2])
     marker = ResolutionTerminalMarker(
-        current.resolution_gate_key,
-        "NeedsOperator",
+        attempt_key,
+        "complete_in_place",
         RESUME_COMMAND,
     )
     write_record(root, current.with_resolution_terminal_marker(marker.as_record_value()))
@@ -433,7 +440,7 @@ def _handle_completion_in_place_escalation(
 
     logger.info(
         "escalated autonomously to completion-in-place; resolved work preserved, "
-        "target landed={}, no terminal marker emitted",
+        "target landed={}, terminal complete_in_place facts recorded",
         landed_sha,
     )
     return LadderStepResult(
@@ -473,13 +480,14 @@ def escalate_record_fact_outcome(
     ladder = ledger if ledger is not None else AttemptLedger(root)
     plumbing = git if git is not None else default_git_plumbing()
     effective_target = record.target if target is None else target
+    effective_tip = feature_tip if feature_tip is not None else _feature_tip_for(record)
     terminal = ladder_terminal_state(root, record, ledger=ladder, git=plumbing)
     if terminal is not None:
         return terminal
     if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
         marker = ResolutionTerminalMarker(
             record.resolution_gate_key,
-            "NeedsOperator",
+            "complete_in_place",
             RESUME_COMMAND,
         )
         return LadderStepResult(
@@ -510,7 +518,7 @@ def escalate_record_fact_outcome(
         state_dir=state_dir,
         target=effective_target,
         branch=branch,
-        feature_tip=feature_tip,
+        feature_tip=effective_tip,
         decided_signature=decided,
         fresh_signature=fresh,
         terminal_when_disabled=True,
@@ -553,7 +561,7 @@ def escalate_record_fact_outcome(
         state_dir=state_dir,
         observed_head=observed_head,
     )
-    if is_disabled_signature_step(step) and feature_tip is not None:
+    if (decision.terminal or is_disabled_signature_step(step)) and effective_tip is not None:
         cip_step = _handle_completion_in_place_escalation(
             root=root,
             record=record,
@@ -563,13 +571,14 @@ def escalate_record_fact_outcome(
             fs=fs,
             state_dir=state_dir,
             effective_target=effective_target,
-            feature_tip=feature_tip,
+            feature_tip=effective_tip,
             rung=rung,
         )
         if cip_step is not None:
             return cip_step
 
     if decision.terminal:
+        terminal_evidence = {**step.evidence, "next_strategy": "completion_in_place"}
         terminal_step = LadderStepResult(
             rung,
             "terminal",
@@ -577,9 +586,9 @@ def escalate_record_fact_outcome(
             preserved_ref=step.preserved_ref,
             preserved_sidecar=step.preserved_sidecar,
             quarantined_paths=step.quarantined_paths,
-            evidence=step.evidence,
+            evidence=terminal_evidence,
         )
-        message = terminal_operator_message(
+        message = terminal_completion_message(
             record,
             reason=decision.reason,
             observed_head=observed_head,
