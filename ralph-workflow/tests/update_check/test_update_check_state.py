@@ -129,6 +129,13 @@ def test_refresh_not_due_within_ttl() -> None:
     assert is_refresh_due(state, now=1000.0 + DEFAULT_TTL_SECONDS - 1) is False
 
 
-def test_refresh_due_at_ttl_boundary() -> None:
+def test_refresh_due_at_ttl_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    config = home / ".config"
+    config.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
     state = VersionCheckState(last_checked=1000.0, latest_version="0.9.1")
     assert is_refresh_due(state, now=1000.0 + DEFAULT_TTL_SECONDS) is True

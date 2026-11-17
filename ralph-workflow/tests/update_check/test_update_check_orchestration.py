@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.update_check import (
     UpdateCheckDeps,
@@ -11,6 +12,9 @@ from ralph.update_check import (
 from ralph.update_check.compare import is_newer
 from ralph.update_check.environment import InstallInfo, InstallKind
 from ralph.update_check.state import VersionCheckState, is_refresh_due
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class _FakeConsole:
@@ -31,6 +35,18 @@ class _FakeDisplayContext:
 _INSTALL = InstallInfo(InstallKind.PIPX, "pipx upgrade ralph-workflow")
 
 
+def _isolated_environ(tmp_path: Path) -> dict[str, str]:
+    config = tmp_path / "config"
+    cache = tmp_path / "cache"
+    config.mkdir(parents=True, exist_ok=True)
+    cache.mkdir(parents=True, exist_ok=True)
+    return {
+        "HOME": str(tmp_path / "home"),
+        "XDG_CONFIG_HOME": str(config),
+        "XDG_CACHE_HOME": str(cache),
+    }
+
+
 def _deps(
     *,
     state: VersionCheckState | None,
@@ -40,6 +56,7 @@ def _deps(
     spawn_calls: list[Callable[[], None]] | None = None,
     saved: list[tuple[Path, VersionCheckState]] | None = None,
     current: str = "0.8.24",
+    environ: Mapping[str, str] | None = None,
 ) -> UpdateCheckDeps:
     def _spawn(target: Callable[[], None]) -> None:
         if spawn_calls is not None:
@@ -51,7 +68,7 @@ def _deps(
 
     return UpdateCheckDeps(
         current_version=current,
-        environ={},
+        environ=dict(environ) if environ is not None else {},
         now=lambda: now,
         is_disabled=lambda _env: disabled,
         cache_path=lambda _env: Path("/cache/version-check.json"),
@@ -176,12 +193,25 @@ def test_update_status_uses_fresh_cache_without_fetch() -> None:
     assert status.latest_version == "0.9.1"
 
 
-def test_update_status_cache_only_when_network_disallowed() -> None:
+def test_update_status_cache_only_when_network_disallowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    config = home / ".config"
+    config.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+
     def _boom() -> str | None:
         raise AssertionError("must not fetch when network is disallowed")
 
     stale = VersionCheckState(last_checked=0.0, latest_version="0.8.5")
-    deps = _deps(state=stale, now=10_000_000.0, fetch_latest=_boom)
+    deps = _deps(
+        state=stale,
+        now=10_000_000.0,
+        fetch_latest=_boom,
+        environ=_isolated_environ(tmp_path),
+    )
     status = update_status(allow_network=False, deps=deps)
     assert status.latest_version == "0.8.5"
     assert status.update_available is False

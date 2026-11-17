@@ -10,7 +10,11 @@ if TYPE_CHECKING:
 
 
 def _isolated_env(tmp_path: Path, **overrides: str) -> dict[str, str]:
-    env = {"XDG_CONFIG_HOME": str(tmp_path / "config")}
+    home = tmp_path / "home"
+    config = tmp_path / "config"
+    home.mkdir(parents=True, exist_ok=True)
+    config.mkdir(parents=True, exist_ok=True)
+    env = {"HOME": str(home), "XDG_CONFIG_HOME": str(config)}
     env.update(overrides)
     return env
 

@@ -17,6 +17,7 @@ from ralph.git.merge import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
@@ -115,6 +116,9 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.classifier import FailureContext
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+from ralph.recovery.failure_classifier import typed_outcome_reason
 
 _ACTIVE_SESSION: list[ResolutionSession | None] = [None]
 
@@ -292,6 +296,13 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
         ResolutionTerminationReason.CANDIDATE_EXITED,
+    }
+)
+
+_LAUNCH_PRESERVED_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = frozenset(
+    {
+        ResolutionTerminationReason.TOOL_SURFACE_DEAD,
+        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     }
 )
 
@@ -993,6 +1004,110 @@ def _handle_repaired_or_fast_forward(
     return True
 
 
+def _charge_followup_attempt_failure(
+    session: ResolutionSession | None,
+    agent_name: str,
+    *,
+    facts: AttemptFacts,
+    exc: BaseException | None = None,
+    outcome: ConflictAttemptOutcome | None = None,
+    policy_bundle: PolicyBundle | None = None,
+    candidates: Sequence[str] = (),
+    failed_index: int = 0,
+) -> None:
+    controller = ensure_session_controller(session, policy_bundle)
+    if session is None:
+        return
+    agents = list(candidates) if candidates else [agent_name]
+    bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
+    recovery_state = (
+        session.recovery_state
+        if isinstance(session.recovery_state, PipelineState)
+        else PipelineState(
+            phase=PHASE_RESOLUTION,
+            phase_chains={
+                PHASE_RESOLUTION: AgentChainState(
+                    agents=agents,
+                    current_index=bounded_index,
+                    retries=0,
+                )
+            },
+        )
+    )
+    typed_outcome = (
+        outcome if outcome is not None and outcome is not ConflictAttemptOutcome.RAW else None
+    )
+    unresolved_count = facts.unresolved_count or 0
+    typed_reason = (
+        typed_outcome_reason(typed_outcome, unresolved_count) if typed_outcome is not None else None
+    )
+    if typed_outcome is not None:
+        logger.info(
+            "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
+            typed_outcome.value,
+            agent_name,
+            PHASE_RESOLUTION,
+            typed_reason,
+        )
+        session.last_attempt_outcome = typed_outcome
+    raw_failure: BaseException | str = exc if exc is not None else (typed_reason or "")
+    new_state, _effects, _failure_event = controller.handle(
+        recovery_state,
+        raw_failure,
+        FailureContext(
+            phase=PHASE_RESOLUTION,
+            agent=agent_name,
+            facts=facts,
+            outcome=typed_outcome,
+            unresolved_count=unresolved_count,
+        ),
+        workspace_changed=bool(facts.workspace_changed),
+        artifact_valid=bool(facts.artifact_valid),
+        facts=facts,
+    )
+    session.recovery_state = new_state
+    attempt_outcome = controller.last_attempt_outcome
+    if attempt_outcome is not None:
+        session.last_attempt_result = AttemptResult(
+            PipelineEvent.AGENT_FAILURE,
+            facts,
+            attempt_outcome,
+            ((1, attempt_outcome),),
+        )
+        evidence = typed_reason or attempt_outcome.reason
+        if evidence:
+            session.last_recovery_reason = evidence
+            session.last_attempt_evidence = evidence
+    if exc is not None:
+        session.last_attempt_failure = exc
+    candidates_tuple = tuple(agents)
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
+        candidates_tuple,
+        current_index=failed_index,
+        exclude_current=True,
+    )
+    if selection.agent is not None and selection.index is not None:
+        next_cursor = failed_index if selection.index < failed_index else selection.index
+    elif candidates:
+        next_cursor = controller.next_conflict_candidate(candidates, failed_index=failed_index)
+    else:
+        next_cursor = failed_index
+    session.chain_cursor = next_cursor
+    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
+    chain_agents = list(chain_state.agents) if chain_state is not None else list(candidates_tuple)
+    same_candidate = chain_state is not None and chain_state.current_index == next_cursor
+    next_retries = chain_state.retries if (chain_state is not None and same_candidate) else 0
+    session.recovery_state = new_state.with_phase_chain(
+        PHASE_RESOLUTION,
+        AgentChainState(
+            agents=chain_agents,
+            current_index=min(next_cursor, max(len(chain_agents) - 1, 0)),
+            retries=next_retries,
+        ),
+    )
+
+
 def _classify_incomplete_success(
     attempt: RoundAttempt,
     session: ResolutionSession,
@@ -1008,43 +1123,41 @@ def _classify_incomplete_success(
         attempt.agent_name,
     )
     unresolved_count = len(session.unresolved_paths)
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+    from ralph.recovery.failure_classifier import typed_outcome_reason
+
+    typed = (
+        ConflictAttemptOutcome.STALLED_NO_PROGRESS
+        if not (attempt.probe_changed or attempt.count_dropped)
+        else ConflictAttemptOutcome.UNRESOLVED_REMAINING
+    )
+    logger.info(
+        "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
+        typed.value,
+        attempt.agent_name,
+        PHASE_RESOLUTION,
+        typed_outcome_reason(typed, unresolved_count),
+    )
     made_progress = attempt.probe_changed or attempt.count_dropped
     session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
     session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-    del policy_bundle
-    controller = session.recovery_controller
-    if controller is None:
-        return
-    facts = AttemptFacts(
-        artifact_valid=False,
-        workspace_changed=made_progress,
-        unresolved_count=unresolved_count,
-    )
-    ordinal = controller.next_attempt_ordinal(PHASE_RESOLUTION, attempt.agent_name)
-    outcome = controller.finalize_attempt(
-        PHASE_RESOLUTION,
+    _charge_followup_attempt_failure(
+        session,
         attempt.agent_name,
-        facts=facts,
-        attempt_failed=True,
-        attempt_key=f"conflict-incomplete:{PHASE_RESOLUTION}:{attempt.agent_name}:{ordinal}",
+        facts=AttemptFacts(
+            artifact_valid=False,
+            workspace_changed=made_progress,
+            unresolved_count=unresolved_count,
+        ),
+        outcome=(
+            ConflictAttemptOutcome.UNRESOLVED_REMAINING
+            if made_progress
+            else ConflictAttemptOutcome.STALLED_NO_PROGRESS
+        ),
+        candidates=candidates,
+        failed_index=attempt.candidate_offset,
+        policy_bundle=policy_bundle,
     )
-    session.last_attempt_result = AttemptResult(
-        event=PipelineEvent.AGENT_FAILURE,
-        facts=facts,
-        outcome=outcome,
-        attempt_outcomes=((1, outcome),),
-    )
-    if outcome.reason:
-        session.last_recovery_reason = outcome.reason
-        session.last_attempt_evidence = outcome.reason
-    selection = controller.preferred_agent_index(
-        PHASE_RESOLUTION,
-        list(candidates),
-        current_index=attempt.candidate_offset,
-        exclude_current=True,
-    )
-    if selection.index is not None:
-        session.chain_cursor = selection.index
 
 
 def _execute_round_loop(
@@ -1071,11 +1184,18 @@ def _execute_round_loop(
         round_index = session.rounds_spent
         last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
         last_invoked_charge: bool = session.charge_conflict_budget
+        invoked_any = False
         if round_index >= round_cap:
             _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
         while round_index < round_cap:
             if not can_continue_rounds(session, candidates):
-                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
+                _handle_dead_candidate_chain(
+                    session,
+                    conflicted,
+                    display,
+                    candidates=candidates,
+                    preserve_launch_reasons=invoked_any,
+                )
                 break
             round_index += 1
             _push_round_status(display, root, target, round_index, round_cap, stop)
@@ -1155,20 +1275,35 @@ def _execute_round_loop(
                     session.charge_conflict_budget = last_invoked_charge
                 else:
                     _handle_dead_candidate_chain(
-                        session, conflicted, display, candidates=candidates
+                        session,
+                        conflicted,
+                        display,
+                        candidates=candidates,
+                        preserve_launch_reasons=invoked_any,
                     )
                 break
+            invoked_any = True
             session.rounds_spent = round_index
             last_invoked_reason = session.terminal_reason
             last_invoked_charge = session.charge_conflict_budget
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 if not _escalate_unreachable_remainder(session, display):
                     _handle_dead_candidate_chain(
-                        session, conflicted, display, candidates=candidates
+                        session,
+                        conflicted,
+                        display,
+                        candidates=candidates,
+                        preserve_launch_reasons=True,
                     )
                 break
             if not can_continue_rounds(session, candidates):
-                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
+                _handle_dead_candidate_chain(
+                    session,
+                    conflicted,
+                    display,
+                    candidates=candidates,
+                    preserve_launch_reasons=True,
+                )
                 break
     finally:
         if prompt_path is not None:
@@ -1349,6 +1484,8 @@ def _handle_dead_candidate_chain(
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
     candidates: Sequence[str] = (),
+    *,
+    preserve_launch_reasons: bool = False,
 ) -> None:
     from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
@@ -1362,10 +1499,10 @@ def _handle_dead_candidate_chain(
     barred = skipped_candidates(session, tuple(candidates))
     live_candidates = [agent for agent in candidates if agent not in barred]
 
-    if (
-        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
-        or session.terminal_reason is None
-    ):
+    current = session.terminal_reason
+    if preserve_launch_reasons and current in _LAUNCH_PRESERVED_TERMINATION_REASONS:
+        pass
+    elif current in _CHAIN_STATE_TERMINATION_REASONS or current is None:
         session.terminal_reason = _dead_chain_reason(
             live_candidates,
             controller,

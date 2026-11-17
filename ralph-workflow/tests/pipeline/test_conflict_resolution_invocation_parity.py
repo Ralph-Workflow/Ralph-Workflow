@@ -58,6 +58,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "dual finalization via finalize_resolution_attempt_failure is removed; "
         "failures finalize only through run_agent_attempt → finalize_attempt"
     ),
+    "test_session_module_has_no_private_launch_eligibility_gate": (
+        "invariant 13 aspect-2: conflict_resolution owns no private launch gate; "
+        "refusal is only via shared effect_executor / run_agent_attempt"
+    ),
+
     "test_retry_later_until_comes_from_shared_cooldown_when_deadline_needed": (
         "RetryLaterOutcome.until must be taken from the shared cooldown wait when a "
         "deadline is required"
@@ -78,6 +83,19 @@ def test_session_module_has_no_finalize_resolution_attempt_failure() -> None:
     }
     assert "finalize_resolution_attempt_failure" not in names
     assert "finalize_resolution_attempt_failure" not in conflict_session.__all__
+
+
+def test_session_module_has_no_private_launch_eligibility_gate() -> None:
+    source = Path(inspect.getsourcefile(conflict_session) or "").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    names = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert "_candidate_cannot_be_launched" not in names
+    assert "_refusal_attempt_result" not in names
+    assert "cannot be launched" not in source
 
 
 def test_invoke_resolution_agent_returns_shared_attempt_result(

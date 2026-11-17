@@ -21,9 +21,9 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.conflict_resolution.invoker import invoke_resolution_stop_outcome
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
-    invoke_resolution_agent,
     wrap_activity_listener,
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -38,10 +38,10 @@ from tests._session_registry_instance import _RegistryInstance
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_output": (
-        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
+        "invoke_resolution_stop_outcome returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
     "test_silent_infrastructure_failure_does_not_charge_conflict_budget": (
-        "invoke_resolution_agent returns the sealed RetryLaterOutcome and records failure details on the session"
+        "invoke_resolution_stop_outcome returns the sealed RetryLaterOutcome and records failure details on the session"
     ),
 }
 
@@ -89,7 +89,7 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    resolved = invoke_resolution_agent(
+    resolved = invoke_resolution_stop_outcome(
         agent_name="resolver",
         prompt_path=Path("/workspace/prompt.md"),
         config=UnifiedConfig.model_validate({"general": {}}),
@@ -154,7 +154,7 @@ def test_silent_infrastructure_failure_does_not_charge_conflict_budget(
         "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
         execute,
     )
-    resolved = invoke_resolution_agent(
+    resolved = invoke_resolution_stop_outcome(
         agent_name="resolver",
         prompt_path=Path("/workspace/prompt.md"),
         config=UnifiedConfig.model_validate({"general": {}}),

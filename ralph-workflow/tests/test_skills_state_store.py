@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
@@ -21,6 +23,16 @@ def test_default_state_path_is_in_home_config(tmp_path: Path) -> None:
     path = default_state_path()
     assert path.name == "ralph-workflow-capabilities.json"
     assert ".config" in str(path)
+
+
+def test_default_state_path_prefers_xdg_config_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    xdg = tmp_path / "xdg-config"
+    xdg.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    path = default_state_path()
+    assert path == xdg / "ralph-workflow-capabilities.json"
 
 
 def test_load_capability_state_returns_empty_when_file_not_found(

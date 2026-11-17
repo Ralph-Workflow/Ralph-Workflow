@@ -19,8 +19,8 @@ from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
-from ralph.pipeline.conflict_resolution.driver import stop_outcome_from_attempt_result
-from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
+from ralph.pipeline.conflict_resolution.invoker import invoke_resolution_stop_outcome
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.parallel import worker_runtime
@@ -70,9 +70,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "RetryLaterOutcome and McpServerError evidence"
     ),
     "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": (
-        "invoke_resolution_agent reports a typed outcome instead of a boolean; "
-        "the conflict-session case asserts the RetryLaterOutcome that carries "
-        "the MCP server error"
+        "conflict_session public entry maps AttemptResult through "
+        "invoke_resolution_stop_outcome to RetryLaterOutcome for MCP server errors"
     ),
 }
 
@@ -479,7 +478,7 @@ def _drive_conflict_session(
     prompt_path = tmp_path / "resolution_prompt.md"
     prompt_path.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
-    launched = invoke_resolution_agent(
+    launched = invoke_resolution_stop_outcome(
         agent_name="resolver",
         prompt_path=prompt_path,
         config=UnifiedConfig.model_validate({"general": {"agent_idle_timeout_seconds": 300.0}}),
@@ -491,7 +490,7 @@ def _drive_conflict_session(
         session=session,
     )
     return _ConflictOutcome(
-        launched=stop_outcome_from_attempt_result(session, launched, agent_name="resolver"),
+        launched=launched,
         last_attempt_evidence=session.last_attempt_evidence,
     )
 
@@ -651,7 +650,7 @@ _ENTRY_PATHS: tuple[_EntryPath, ...] = (
     ),
     _EntryPath(
         "conflict_session",
-        "ralph/pipeline/conflict_resolution/session.py:363",
+        "ralph/pipeline/conflict_resolution/invoker.py:invoke_resolution_stop_outcome",
         _drive_conflict_session,
         _assert_conflict_outcome,
         False,

@@ -145,14 +145,6 @@ def _apply_clear_host_contention_signals() -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _warm_pygments_python_lexer() -> Generator[None, None, None]:
-    from pygments.lexers import get_lexer_by_name
-
-    get_lexer_by_name("python")
-    yield
-
-
-@pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     from ralph.agents import registry
 
@@ -334,6 +326,9 @@ def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     config.stash[gc_collect_iterations_key] = 0
     _bypass_macos_git_shim()
+    from pygments.lexers import get_lexer_by_name
+
+    get_lexer_by_name("python")
 
 
 _MACOS_GIT_SHIM = "/usr/bin/git"

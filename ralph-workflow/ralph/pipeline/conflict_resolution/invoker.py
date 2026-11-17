@@ -19,6 +19,44 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
+def invoke_resolution_stop_outcome(
+    *,
+    agent_name: str,
+    prompt_path: Path,
+    config: UnifiedConfig,
+    pipeline_deps: PipelineDeps | None,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+    display: ParallelDisplay | None,
+    display_context: DisplayContext | None,
+    session: ResolutionSession,
+    require_completion_evidence: bool = True,
+) -> StopResolutionOutcome:
+    from ralph.pipeline.conflict_resolution import driver as _driver
+
+    patched = _driver.invoke_resolution_agent
+    deps = pipeline_deps
+    if deps is None:
+        from ralph.display.context import make_display_context
+        from ralph.pipeline.factory import DefaultPipelineFactory
+
+        deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
+    attempt = patched(
+        agent_name=agent_name,
+        prompt_path=prompt_path,
+        config=config,
+        pipeline_deps=deps,
+        workspace_scope=workspace_scope,
+        policy_bundle=policy_bundle,
+        display=display,
+        display_context=display_context,
+        unresolved_paths=session.unresolved_paths,
+        session=session,
+        require_completion_evidence=require_completion_evidence,
+    )
+    return _driver.stop_outcome_from_attempt_result(session, attempt, agent_name=agent_name)
+
+
 def default_invoker(
     *,
     config: UnifiedConfig,
@@ -40,31 +78,20 @@ def default_invoker(
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> StopResolutionOutcome:
         del round_index
-        from ralph.pipeline.conflict_resolution import driver as _driver
-
-        patched = _driver.invoke_resolution_agent
-        deps = pipeline_deps
-        if deps is None:
-            from ralph.display.context import make_display_context
-            from ralph.pipeline.factory import DefaultPipelineFactory
-
-            deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
-        attempt = patched(
+        return invoke_resolution_stop_outcome(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
-            pipeline_deps=deps,
+            pipeline_deps=pipeline_deps,
             workspace_scope=workspace_scope,
             policy_bundle=policy_bundle,
             display=display,
             display_context=display_context,
-            unresolved_paths=session.unresolved_paths,
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        return _driver.stop_outcome_from_attempt_result(session, attempt, agent_name=agent_name)
 
     return _invoke
 
 
-__all__ = ["default_invoker"]
+__all__ = ["default_invoker", "invoke_resolution_stop_outcome"]

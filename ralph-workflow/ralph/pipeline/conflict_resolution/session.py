@@ -342,17 +342,6 @@ def _resolve_invoke_pipeline_deps(
     return caller_deps, effective_deps, workspace_scope
 
 
-def _refusal_attempt_result(session: ResolutionSession | None, agent_name: str) -> AttemptResult:
-    attempt = _ungated_failure_attempt_result(
-        facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
-        reason=f"agent {agent_name} cannot be launched",
-    )
-    if session is not None:
-        session.last_attempt_result = attempt
-        session.last_attempt_failure = attempt.outcome.reason
-    return attempt
-
-
 def _attempt_result_after_invoke_failure(
     *,
     session: ResolutionSession | None,
@@ -432,8 +421,6 @@ def invoke_resolution_agent(
         import dataclasses
 
         effective_deps = dataclasses.replace(effective_deps, recovery_controller=controller)
-    if _candidate_cannot_be_launched(agent_name, session):
-        return _refusal_attempt_result(session, agent_name)
     effect = InvokeAgentEffect(
         agent_name=agent_name,
         phase=PHASE_RESOLUTION,
@@ -476,37 +463,6 @@ def invoke_resolution_agent(
         )
     _capture_attempt_on_session(session, attempt, agent_name)
     return attempt
-
-
-def _candidate_cannot_be_launched(
-    agent_name: str,
-    session: ResolutionSession | None,
-) -> bool:
-    if session is not None:
-        controller = session.recovery_controller
-        if (
-            controller is not None
-            and not controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
-        ):
-            logger.warning(
-                "conflict_resolution: refusing to launch unavailable agent '{}'",
-                agent_name,
-            )
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            session.last_failure_cause = ResolutionFailureCause.NONE
-            session.charge_conflict_budget = False
-            return True
-        ledger = session_ledger(session)
-        if ledger is not None and not ledger.is_available(PHASE_RESOLUTION, agent_name):
-            logger.warning(
-                "conflict_resolution: refusing to launch unavailable agent '{}'",
-                agent_name,
-            )
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            session.last_failure_cause = ResolutionFailureCause.NONE
-            session.charge_conflict_budget = False
-            return True
-    return False
 
 
 def _record_attempt_without_agent_work(session: ResolutionSession | None) -> None:

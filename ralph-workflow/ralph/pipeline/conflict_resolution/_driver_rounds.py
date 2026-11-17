@@ -36,7 +36,6 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
-from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -48,6 +47,7 @@ from ralph.pipeline.resolution_outcome import (
     assert_never,
 )
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -204,82 +204,72 @@ def _handle_candidate_failure(
     *,
     workspace_changed: bool = False,
 ) -> None:
-    del invoker_result, policy_bundle
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+    del invoker_result
     fault = classify_attempt_fault(session.terminal_reason)
     _remember_dead_surface(session, agent_name)
     if session.terminal_reason is None:
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
         )
-    from ralph.recovery.controller import RecoveryController
-
-    already_finalized = session.last_attempt_result is not None
     controller = session.recovery_controller
-    if not already_finalized and isinstance(controller, RecoveryController):
-        _finalize_mock_path_failure(
+    still_eligible = (
+        controller is not None
+        and hasattr(controller, "agent_eligibility")
+        and controller.agent_eligibility(PHASE_RESOLUTION, agent_name).is_eligible
+    )
+    if session.last_attempt_result is None:
+        if isinstance(session.last_attempt_failure, BaseException):
+            typed_outcome = ConflictAttemptOutcome.RAW
+            exc: BaseException | None = session.last_attempt_failure
+        else:
+            typed_outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
+            exc = None
+        _driver_mod._charge_followup_attempt_failure(
             session,
-            controller,
             agent_name,
+            facts=AttemptFacts(
+                artifact_valid=False,
+                workspace_changed=workspace_changed,
+                unresolved_count=len(session.unresolved_paths),
+            ),
+            exc=exc,
+            outcome=typed_outcome,
             candidates=candidates,
-            offset=offset,
-            workspace_changed=workspace_changed,
+            failed_index=offset,
+            policy_bundle=policy_bundle,
         )
+    elif still_eligible and controller is not None and hasattr(controller, "finalize_attempt"):
+        facts = AttemptFacts(
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
+            unresolved_count=len(session.unresolved_paths),
+        )
+        ordinal = controller.next_attempt_ordinal(PHASE_RESOLUTION, agent_name)
+        outcome = controller.finalize_attempt(
+            PHASE_RESOLUTION,
+            agent_name,
+            facts=facts,
+            attempt_failed=True,
+            attempt_key=f"conflict-followup:{PHASE_RESOLUTION}:{agent_name}:{ordinal}",
+        )
+        from ralph.pipeline.attempt_result import AttemptResult
+        from ralph.pipeline.events import PipelineEvent
+
+        session.last_attempt_result = AttemptResult(
+            event=PipelineEvent.AGENT_FAILURE,
+            facts=facts,
+            outcome=outcome,
+            attempt_outcomes=((1, outcome),),
+        )
+        if outcome.reason:
+            session.last_recovery_reason = outcome.reason
+            session.last_attempt_evidence = outcome.reason
     if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     else:
         session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-
-
-def _finalize_mock_path_failure(
-    session: ResolutionSession,
-    controller: object,
-    agent_name: str,
-    *,
-    candidates: tuple[str, ...],
-    offset: int,
-    workspace_changed: bool,
-) -> None:
-    from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
-    from ralph.recovery.controller import RecoveryController
-
-    if not isinstance(controller, RecoveryController):
-        raise RecoveryControllerUnavailableError(
-            "conflict resolution requires the run's shared RecoveryController; none is bound"
-        )
-    facts = AttemptFacts(
-        artifact_valid=False,
-        workspace_changed=workspace_changed,
-        unresolved_count=len(session.unresolved_paths),
-    )
-    exc = (
-        session.last_attempt_failure
-        if isinstance(session.last_attempt_failure, BaseException)
-        else None
-    )
-    outcome = controller.finalize_attempt(
-        PHASE_RESOLUTION,
-        agent_name,
-        facts=facts,
-        attempt_failed=True,
-        exc=exc,
-    )
-    session.last_attempt_result = AttemptResult(
-        event=PipelineEvent.AGENT_FAILURE,
-        facts=facts,
-        outcome=outcome,
-        attempt_outcomes=((1, outcome),),
-    )
-    if outcome.reason:
-        session.last_recovery_reason = outcome.reason
-        session.last_attempt_evidence = outcome.reason
-    selection = controller.preferred_agent_index(
-        PHASE_RESOLUTION,
-        list(candidates) if candidates else [agent_name],
-        current_index=offset,
-        exclude_current=True,
-    )
-    if selection.index is not None:
-        session.chain_cursor = selection.index
 
 
 def _execute_single_candidate(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,11 +13,15 @@ from ralph.skills._capability_state import CapabilityState
 if TYPE_CHECKING:
     from ralph.mcp.artifacts.file_backend import FileBackend
 
-DEFAULT_STATE_PATH: Path = Path.home() / ".config" / "ralph-workflow-capabilities.json"
+_CAPABILITIES_FILE_NAME = "ralph-workflow-capabilities.json"
+DEFAULT_STATE_PATH: Path = Path.home() / ".config" / _CAPABILITIES_FILE_NAME
 
 
 def default_state_path() -> Path:
-    return DEFAULT_STATE_PATH
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / _CAPABILITIES_FILE_NAME
+    return Path.home() / ".config" / _CAPABILITIES_FILE_NAME
 
 
 def load_capability_state(path: Path | None = None) -> CapabilityState:
