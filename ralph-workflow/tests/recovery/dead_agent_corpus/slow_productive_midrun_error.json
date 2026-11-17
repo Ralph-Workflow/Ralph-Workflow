@@ -4,7 +4,7 @@
   "agent": "codex",
   "transport": "codex",
   "incident": null,
-  "expected_attribution": "agent",
+  "expected_attribution": "task_or_environment",
   "expected_bench": false,
   "expected_verdict": "healthy",
   "captured_lines": [

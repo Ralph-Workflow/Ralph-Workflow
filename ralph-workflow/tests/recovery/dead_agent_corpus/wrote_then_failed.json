@@ -4,7 +4,7 @@
   "agent": "opencode",
   "transport": "opencode",
   "incident": null,
-  "expected_attribution": "agent",
+  "expected_attribution": "task_or_environment",
   "expected_bench": false,
   "expected_verdict": "not_agent_fault",
   "captured_lines": [

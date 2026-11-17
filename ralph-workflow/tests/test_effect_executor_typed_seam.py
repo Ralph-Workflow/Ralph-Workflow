@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 
 from ralph.pipeline.effect_executor import (
+    clear_agent_effect_dependencies,
+    current_agent_effect_dependencies,
     execute_agent_effect,
     install_agent_effect_dependencies,
     reset_agent_effect_dependencies,
@@ -18,6 +20,40 @@ def test_display_context_is_required_keyword_parameter() -> None:
     param = _param("display_context")
     assert param.kind is inspect.Parameter.KEYWORD_ONLY
     assert param.default is inspect.Parameter.empty
+
+
+def test_clear_agent_effect_dependencies_drops_leaked_ambient_runner() -> None:
+    def runner(*_args: object, **_kwargs: object) -> PipelineEvent:
+        return PipelineEvent.AGENT_SUCCESS
+
+    install_token = install_agent_effect_dependencies(agent_runner=runner)
+    try:
+        assert current_agent_effect_dependencies().agent_runner is runner
+        clear_token = clear_agent_effect_dependencies()
+        try:
+            assert current_agent_effect_dependencies().agent_runner is None
+        finally:
+            reset_agent_effect_dependencies(clear_token)
+        assert current_agent_effect_dependencies().agent_runner is runner
+    finally:
+        reset_agent_effect_dependencies(install_token)
+    assert current_agent_effect_dependencies().agent_runner is None
+
+
+def test_clear_agent_effect_dependencies_stops_ambient_reads_from_seeing_leaked_runner() -> None:
+    def runner(*_args: object, **_kwargs: object) -> PipelineEvent:
+        return PipelineEvent.AGENT_SUCCESS
+
+    leak_token = install_agent_effect_dependencies(agent_runner=runner)
+    try:
+        clear_token = clear_agent_effect_dependencies()
+        try:
+            assert current_agent_effect_dependencies().agent_runner is None
+            assert current_agent_effect_dependencies().recovery_controller is None
+        finally:
+            reset_agent_effect_dependencies(clear_token)
+    finally:
+        reset_agent_effect_dependencies(leak_token)
 
 
 def test_display_and_injected_runner_dependencies_are_typed() -> None:

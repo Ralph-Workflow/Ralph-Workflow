@@ -11,8 +11,10 @@ from ralph.git.rebase.rebase_conflicts import RebaseConflicts
 from ralph.pipeline.auto_integrate_rebase_merge import run_rebase_or_merge
 from ralph.pipeline.integration_actions import (
     GitOps,
+    clear_executors,
     create_backup_ref,
     current_agent_runner,
+    current_clock,
     current_git_ops,
     default_agent_runner,
     default_git_ops,
@@ -20,6 +22,7 @@ from ralph.pipeline.integration_actions import (
     fast_forward_target,
     install_executors,
     reset_executors,
+    system_clock_active,
 )
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
 
@@ -180,6 +183,60 @@ def test_the_installed_executors_are_the_ones_the_seams_resolve() -> None:
 
     assert current_git_ops() is default_git_ops()
     assert current_agent_runner() is default_agent_runner()
+
+
+def test_clear_executors_drops_leaked_ambient_install() -> None:
+    fake_git_ops = _RecordingGitOps()
+    fake_runner = _RecordingAgentRunner()
+    install_token = install_executors(fake_git_ops, fake_runner)
+    try:
+        assert current_git_ops() is fake_git_ops
+        clear_token = clear_executors()
+        try:
+            assert current_git_ops() is default_git_ops()
+            assert current_agent_runner() is default_agent_runner()
+        finally:
+            reset_executors(clear_token)
+        assert current_git_ops() is fake_git_ops
+    finally:
+        reset_executors(install_token)
+    assert current_git_ops() is default_git_ops()
+    assert current_agent_runner() is default_agent_runner()
+
+
+def test_clear_executors_stops_partial_install_from_inheriting_leaked_clock() -> None:
+    class _LeakedClock:
+        def now(self) -> float:
+            return 0.0
+
+        def monotonic(self) -> float:
+            return 0.0
+
+        def epoch(self) -> float:
+            return 0.0
+
+        def sleep(self, seconds: float) -> None:
+            del seconds
+
+    leaked_clock = _LeakedClock()
+    leak_token = install_executors(clock=leaked_clock)
+    try:
+        assert current_clock() is leaked_clock
+        clear_token = clear_executors()
+        try:
+            assert system_clock_active()
+            partial = install_executors(_RecordingGitOps())
+            try:
+                assert system_clock_active()
+                assert current_clock() is not leaked_clock
+            finally:
+                reset_executors(partial)
+        finally:
+            reset_executors(clear_token)
+        assert current_clock() is leaked_clock
+    finally:
+        reset_executors(leak_token)
+    assert system_clock_active()
 
 
 def test_a_nested_scope_inherits_the_installed_executor() -> None:

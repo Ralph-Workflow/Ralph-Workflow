@@ -197,6 +197,10 @@ def reset_agent_effect_dependencies(
     _AGENT_EFFECT_DEPENDENCIES.reset(token)
 
 
+def clear_agent_effect_dependencies() -> Token[AgentEffectDependencies | None]:
+    return _AGENT_EFFECT_DEPENDENCIES.set(None)
+
+
 def current_agent_effect_dependencies() -> AgentEffectDependencies:
     return _AGENT_EFFECT_DEPENDENCIES.get() or AgentEffectDependencies()
 

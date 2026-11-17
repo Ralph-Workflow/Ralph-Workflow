@@ -15,6 +15,7 @@ from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
     RESOLVED,
+    IntegrationBlockKind,
     IntegrationState,
     TreeReadinessAssessment,
     UnknownKind,
@@ -26,6 +27,12 @@ from ralph.pipeline.integration_resolution_types import IntegrationResolutionVer
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_unmerged_query_failure_falls_back_to_porcelain_unmerged_paths": (
+        "restore porcelain-unmerged fallback when the unmerged-path query fails"
+    ),
+}
 
 
 def _observe_unmerged(
@@ -55,7 +62,7 @@ def test_unmerged_paths_block_non_resolution_dispatch(
         assert_non_resolution_dispatch_allowed("development_commit", verdict)
 
 
-def test_unmerged_query_failure_is_unknown_without_porcelain_path_fallback(
+def test_unmerged_query_failure_falls_back_to_porcelain_unmerged_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _observe_unmerged(monkeypatch, UnmergedPathsObservation(query_ok=False))
@@ -67,14 +74,13 @@ def test_unmerged_query_failure_is_unknown_without_porcelain_path_fallback(
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.integration_state is IntegrationState.UNKNOWN
-    assert verdict.status is RESOLVED
-    assert verdict.dispatch_allowed
-    assert verdict.unknown_kinds == (UnknownKind.PORCELAIN_UNREADABLE,)
-    assert verdict.block_kinds == ()
-    assert "fallback-derived.py" not in " ".join(verdict.reasons)
-    assert "fallback-derived.py" not in " ".join(verdict.blocking_reasons)
-    assert "unmerged paths remain" not in " ".join(verdict.reasons)
+    assert verdict.integration_state is IntegrationState.KNOWN_BLOCKED
+    assert verdict.status is RECOVERABLE
+    assert verdict.dispatch_allowed is False
+    assert verdict.block_kinds == (IntegrationBlockKind.UNMERGED_PATHS,)
+    assert verdict.unknown_kinds == ()
+    assert "fallback-derived.py" in " ".join(verdict.reasons)
+    assert "unmerged paths remain" in " ".join(verdict.reasons)
 
 
 @pytest.mark.parametrize(

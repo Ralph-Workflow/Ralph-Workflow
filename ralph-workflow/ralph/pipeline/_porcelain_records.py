@@ -22,6 +22,15 @@ _INDEX_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "A", "D", "R", "C",
 _WORKTREE_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "D", "T", "A"})
 
 
+def _unmerged_paths_from_text(text: str) -> tuple[str, ...]:
+    blob = text.replace("\n", "\0")
+    return tuple(
+        entry.path
+        for entry in _decode_porcelain_entries(parse_porcelain_z(blob))
+        if entry.xy in UNMERGED_PORCELAIN_XY
+    )
+
+
 def _porcelain_to_state(text: str) -> WorktreeState:
     from ralph.pipeline.integration_observation import WorktreeState
 

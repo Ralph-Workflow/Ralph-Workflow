@@ -159,6 +159,8 @@ def _probe_porcelain(
     probe: Callable[[Path], tuple[bool, str]],
     observe_unmerged: Callable[[Path], UnmergedPathsObservation],
 ) -> tuple[ProbeOutcome, str]:
+    from ralph.pipeline._porcelain_records import _unmerged_paths_from_text
+
     try:
         readable, porcelain_output = probe(root)
     except Exception as exc:
@@ -169,9 +171,11 @@ def _probe_porcelain(
     if not readable:
         return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
     observed = observe_unmerged(root)
-    if not observed.query_ok:
-        return Unknown(UnknownKind.PORCELAIN_UNREADABLE), porcelain_output
-    unmerged_paths = tuple(sorted(observed.paths))
+    unmerged_paths: tuple[str, ...] = (
+        tuple(sorted(observed.paths))
+        if observed.query_ok
+        else _unmerged_paths_from_text(porcelain_output)
+    )
     if unmerged_paths:
         return (
             KnownBlocked(

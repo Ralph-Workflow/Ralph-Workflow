@@ -122,19 +122,17 @@ class _FastForwardStatus:
 def _parse_ff_status(raw_outcome: object) -> _FastForwardStatus:
     from ralph.pipeline.resolution_outcome import (
         ResolvedOutcome,
-        RetryLaterOutcome,
-        WaitingOutcome,
+        is_stop_resolution_outcome,
+        stop_resolution_outcome_reason,
     )
 
-    match raw_outcome:
-        case ResolvedOutcome():
-            return _FastForwardStatus(ok=True, skip_reason="")
-        case RetryLaterOutcome(on_change=on_change):
-            return _FastForwardStatus(ok=False, skip_reason=on_change or "")
-        case WaitingOutcome(external_condition=cond):
-            return _FastForwardStatus(ok=False, skip_reason=cond or "")
-        case _:
-            return _FastForwardStatus(ok=False, skip_reason=str(raw_outcome))
+    if isinstance(raw_outcome, ResolvedOutcome):
+        ok, skip_reason = True, ""
+    elif is_stop_resolution_outcome(raw_outcome):
+        ok, skip_reason = False, stop_resolution_outcome_reason(raw_outcome)
+    else:
+        ok, skip_reason = False, str(raw_outcome)
+    return _FastForwardStatus(ok=ok, skip_reason=skip_reason)
 
 
 def _integrate_once_owned(

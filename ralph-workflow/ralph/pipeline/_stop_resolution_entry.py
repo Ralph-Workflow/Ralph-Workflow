@@ -118,21 +118,24 @@ def compute_resolution_attempt_key(
             from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
             controller = current_agent_effect_dependencies().recovery_controller
-        if controller is None:
+        if controller is None and config is not None:
             return KeyUnavailable(
                 "recovery controller required; pass the session/pipeline_deps controller "
                 "or an explicit recovery_controller"
             )
-        try:
-            candidates = (
-                chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
-            )
-            eligibility = controller.chain_eligibility(phase, candidates)
-            effective_agents = tuple(
-                sorted(agent for agent, status in eligibility if status.is_eligible)
-            )
-        except (OSError, RuntimeError, ValueError, KeyError) as exc:
-            return KeyUnavailable(f"agent eligibility unavailable: {exc}")
+        if controller is not None:
+            try:
+                candidates = (
+                    chain_agents if chain_agents is not None else controller.agents_for_phase(phase)
+                )
+                eligibility = controller.chain_eligibility(phase, candidates)
+                effective_agents = tuple(
+                    sorted(agent for agent, status in eligibility if status.is_eligible)
+                )
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
+                return KeyUnavailable(f"agent eligibility unavailable: {exc}")
+        else:
+            effective_agents = ()
     try:
         fingerprint = (
             config_fingerprint

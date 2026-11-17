@@ -87,6 +87,11 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_assert_structural_parity": "ruff format reflow of selection-token equality assertion; contract unchanged",
+}
+
+
 @pytest.mark.required_auto_integrate_e2e
 @pytest.mark.parametrize(
     "mode",
@@ -573,25 +578,27 @@ def _run_parity_resolver_side(
         git_ops=before_after.git_ops,
         clock=_ParityIntegrationClock(clock),
     )
-    deps_token = install_agent_effect_dependencies(
-        agent_runner=agent, recovery_controller=controller
-    )
-    with _capture_invocation_status_lines() as status_lines:
+    try:
+        deps_token = install_agent_effect_dependencies(
+            agent_runner=agent, recovery_controller=controller
+        )
         try:
-            attempt_stop_resolution(
-                "parity-resolver-side",
-                StopResolutionTrigger(
-                    name="rebase_stop",
-                    root=root,
-                    target="main",
-                    resolver=_parity_resolver(config, bundle, clock, controller, display),
-                    conflict_config=config.conflict_resolution,
-                    force_retry=True,
-                ),
-            )
+            with _capture_invocation_status_lines() as status_lines:
+                attempt_stop_resolution(
+                    "parity-resolver-side",
+                    StopResolutionTrigger(
+                        name="rebase_stop",
+                        root=root,
+                        target="main",
+                        resolver=_parity_resolver(config, bundle, clock, controller, display),
+                        conflict_config=config.conflict_resolution,
+                        force_retry=True,
+                    ),
+                )
         finally:
             reset_agent_effect_dependencies(deps_token)
-            reset_executors(token)
+    finally:
+        reset_executors(token)
     controller_lines = tuple(status_lines)
     return _ParitySideResult(
         controller=controller,
@@ -641,8 +648,8 @@ def _run_parity_ordinary_side(
         last_connectivity_state="online",
     )
     token = install_agent_effect_dependencies(agent_runner=agent, recovery_controller=controller)
-    with _capture_invocation_status_lines() as status_lines:
-        try:
+    try:
+        with _capture_invocation_status_lines() as status_lines:
             for _ in _PARITY_AGENTS:
                 state = run_pipeline_step(
                     state=state,
@@ -656,8 +663,8 @@ def _run_parity_ordinary_side(
                     pipeline_subscriber=None,
                     recovery_controller=controller,
                 )
-        finally:
-            reset_agent_effect_dependencies(token)
+    finally:
+        reset_agent_effect_dependencies(token)
     return _ParitySideResult(
         controller=controller,
         agent=agent,

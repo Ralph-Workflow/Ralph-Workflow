@@ -250,6 +250,25 @@ SCENARIOS = (
         no_ledger_charge=True,
     ),
     MatrixScenario(
+        "ac16_exit_zero_alone_not_positive_proof",
+        ("AC16",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    TerminationIssuer.AGENT_EXIT,
+                    observed=0,
+                    reported=0,
+                    liveness=False,
+                ),
+                returncode=0,
+                message="first-run dialog awaiting Enter: press enter to continue",
+            ),
+        ),
+        ProbeOutcome.INCONCLUSIVE,
+        expected_kind="unknown",
+        no_ledger_charge=True,
+    ),
+    MatrixScenario(
         "runtime_live_end",
         ("AC3", "AC7"),
         (
@@ -277,6 +296,21 @@ SCENARIOS = (
             ),
         ),
         expected_kind="unknown",
+    ),
+    MatrixScenario(
+        "quota_words_in_prompt_are_data",
+        ("AC4",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(),
+                message="your credits exhausted for this period",
+                parsed_output=(
+                    '{"type":"user_prompt","content":"your credits exhausted for this period"}',
+                ),
+            ),
+        ),
+        expected_kind="unknown",
+        no_ledger_charge=True,
     ),
     MatrixScenario(
         "workspace_progress",
@@ -324,6 +358,14 @@ SCENARIOS = (
         None,
         True,
         expected_kind="unknown",
+    ),
+    MatrixScenario(
+        "probe_budget_exhausted",
+        ("AC7",),
+        (MatrixScenario.Script(facts=termination_facts()),),
+        None,
+        expected_kind="unknown",
+        no_ledger_charge=True,
     ),
     MatrixScenario(
         "existing_outcome",

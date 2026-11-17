@@ -103,6 +103,10 @@ def _assert_corpus_expectations(
     agent = scenario.attempts[-1].agent
     record = observation.verdict_record if isinstance(observation.verdict_record, dict) else {}
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
+    assert case.expected_attribution in {"agent", "runtime", "task_or_environment", "unknown"}
+    if case.expected_attribution in {"runtime", "task_or_environment"}:
+        assert case.expected_bench is False
+        assert case.expected_verdict != "agent_dead"
     if case.label == "negative":
         assert observation.outcome_kind != "agent_dead"
         assert observation.availability is True
@@ -110,6 +114,8 @@ def _assert_corpus_expectations(
         if isinstance(record, dict):
             assert record.get("verdict") != "agent_dead"
         return
+    assert case.expected_bench is True
+    assert case.expected_verdict == "agent_dead"
     assert observation.invocations == (agent,)
     if scenario.probe_outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK:
         assert observation.outcome_kind == "agent_dead"
@@ -450,6 +456,187 @@ def test_ac16_probe_could_not_run_keeps_a_selectable(
     assert observation.ledger_status == "eligible"
     assert controller.snapshot()["spent_agents"] == {}
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac3_runtime_attribution_label_and_selectability(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("runtime_live_end")
+    )
+
+    assert observation.outcome_kind == "runtime_ended"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    record = observation.verdict_record
+    assert isinstance(record, dict)
+    attrib = as_mapping(record.get("attribution", {}))
+    assert attrib.get("attribution") == "runtime"
+    assert attrib.get("runtime_cause") == "runtime_kill_quota_misread"
+    assert attrib.get("counts_toward_agent_state") is False
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac4_prompt_side_quota_words_never_bench(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("quota_words_in_prompt_are_data")
+    )
+
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    assert AGENT_A not in controller.unavailability_store.snapshot().get(
+        "unavailability_reasons", {}
+    )
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("failed_probe_benches")
+    )
+
+    assert observation.outcome_kind == "agent_dead"
+    assert observation.availability is False
+    assert observation.wait_positive is True
+    assert observation.wait_ms > 0
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is False
+    assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) > 0
+    reasons = store.snapshot().get("unavailability_reasons", {})
+    assert reasons.get(AGENT_A) == DEAD
+    assert observation.unavailability_reasons.get(AGENT_A) == DEAD
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    assert controller.snapshot()["spent_agents"] == {}
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("probe_budget_exhausted")
+    )
+
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert observation.probe_calls == (AGENT_A,)
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    record = observation.verdict_record
+    if isinstance(record, dict):
+        assert as_mapping(record).get("probe_outcome") is None
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac16_positive_proof_only_exit_zero_alone_never_benches(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("ac16_exit_zero_alone_not_positive_proof")
+    )
+
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    record = observation.verdict_record
+    if isinstance(record, dict):
+        assert as_mapping(record).get("probe_outcome") == "inconclusive"
+
+
+def test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract() -> None:
+    from ralph.agents.invoke import BuildCommandOptions, build_command
+    from ralph.config.enums import AgentTransport
+    from ralph.config.models import AgentConfig
+    from ralph.recovery.canary_probe_launch import (
+        PROBE_NONINTERACTIVE_FLAGS,
+        probe_launch_override,
+    )
+
+    assert AgentEntryPoint.CANARY_PROBE in ENTRY_POINTS
+    assert AgentEntryPoint.CANARY_PROBE in registered_runners()
+    for entry_point in NON_PROBE_ENTRY_POINTS:
+        assert entry_point in registered_runners()
+
+    config = AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE)
+    flag = PROBE_NONINTERACTIVE_FLAGS[AgentTransport.CLAUDE_INTERACTIVE]
+    with probe_launch_override():
+        argv = build_command(config, "prompt.md", options=BuildCommandOptions())
+    assert flag in argv
+
+    for entry_point in NON_PROBE_ENTRY_POINTS:
+        observation, controller, _clock = run_matrix_scenario(
+            entry_point, _scenario("probe_could_not_run_rc1")
+        )
+        assert observation.outcome_kind == "unknown"
+        assert observation.availability is True
+        assert observation.ledger_status == "eligible"
+        assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+        assert controller.snapshot()["spent_agents"] == {}
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac17_pending_subagents_recorded_as_unattributed_end(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("ac17_pending_subagents_turn_end")
+    )
+
+    assert observation.outcome_kind == "runtime_ended"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    record = observation.verdict_record
+    assert isinstance(record, dict)
+    attrib = as_mapping(record.get("attribution", {}))
+    assert attrib.get("attribution") == "runtime"
+    assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
+    assert attrib.get("counts_toward_agent_state") is False
+    term_record = as_mapping(record.get("termination", {}))
+    assert term_record.get("issuer") == "unknown"
 
 
 def _case_for(scenario: MatrixScenario) -> CorpusCase:

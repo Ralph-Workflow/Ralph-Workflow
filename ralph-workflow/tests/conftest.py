@@ -96,6 +96,7 @@ def _isolate_test_environment_and_globals(
             _set_current_test_node(None)
             _apply_reset_default_process_manager()
             _apply_clear_host_contention_signals()
+            _apply_isolate_pipeline_thread_locals()
             _reset_rich_style_color_caches()
 
 
@@ -450,8 +451,13 @@ def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
 
 
 def _apply_isolate_pipeline_thread_locals() -> None:
+    from ralph.pipeline.effect_executor import clear_agent_effect_dependencies
+    from ralph.pipeline.integration_actions import clear_executors
+
     set_last_captured_session_id(None)
     set_last_captured_retry_intent(cleared_agent_retry_intent())
+    clear_agent_effect_dependencies()
+    clear_executors()
 
 
 def _configure_repo_identity(repo: Repo) -> None:

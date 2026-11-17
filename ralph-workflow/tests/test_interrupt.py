@@ -11,6 +11,12 @@ import pytest
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt": (
+        "isolate workspace to tmp_path so planning-baseline snapshot does not walk the live tree"
+    ),
+}
+
 INTERRUPTED_EXIT_CODE = 130
 
 ACTIVE_AGENT_CHAINS = {
@@ -140,8 +146,22 @@ def test_request_user_interrupt_sets_flag() -> None:
 
 def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    import subprocess
+
     saved_states: list[PipelineState] = []
+    (tmp_path / ".agent").mkdir()
+    (tmp_path / "PROMPT.md").write_text("# Goal\n\nInterrupt me.\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(["git", "add", "PROMPT.md"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "seed"], cwd=tmp_path, check=True, capture_output=True)
 
     def raise_keyboard_interrupt(
         _state: PipelineState,
@@ -165,6 +185,9 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     monkeypatch.setattr(
         runner_module, "load_policy_or_die", lambda _path: load_policy(defaults_dir)
     )
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
 
     state = PipelineState(phase="planning")
 

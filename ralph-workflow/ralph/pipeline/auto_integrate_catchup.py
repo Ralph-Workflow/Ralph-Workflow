@@ -646,6 +646,7 @@ def _advance_observed_target(
     try:
         from ralph.pipeline.resolution_outcome import (
             ResolvedOutcome,
+            is_stop_resolution_outcome,
             stop_resolution_outcome_reason,
         )
 
@@ -655,8 +656,15 @@ def _advance_observed_target(
             remote_sha,
             reclaim_target_worktree=False,
         )
-        advanced = isinstance(outcome, ResolvedOutcome)
-        refusal_reason = stop_resolution_outcome_reason(outcome)
+        if isinstance(outcome, ResolvedOutcome):
+            advanced = True
+            refusal_reason = ""
+        elif is_stop_resolution_outcome(outcome):
+            advanced = False
+            refusal_reason = stop_resolution_outcome_reason(outcome)
+        else:
+            advanced = False
+            refusal_reason = str(outcome)
     except (
         subprocess.SubprocessError,
         GitError,

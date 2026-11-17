@@ -283,23 +283,25 @@ def _run_parity_resolver_side(
         }
     )
     token = install_executors(clock=_ParityIntegrationClock(clock))
-    deps_token = install_agent_effect_dependencies(
-        agent_runner=agent, recovery_controller=controller
-    )
     try:
-        attempt_stop_resolution(
-            "parity-resolver-side",
-            StopResolutionTrigger(
-                name="rebase_stop",
-                root=root,
-                target="main",
-                resolver=_parity_resolver(config, bundle, clock, controller),
-                conflict_config=config.conflict_resolution,
-                force_retry=True,
-            ),
+        deps_token = install_agent_effect_dependencies(
+            agent_runner=agent, recovery_controller=controller
         )
+        try:
+            attempt_stop_resolution(
+                "parity-resolver-side",
+                StopResolutionTrigger(
+                    name="rebase_stop",
+                    root=root,
+                    target="main",
+                    resolver=_parity_resolver(config, bundle, clock, controller),
+                    conflict_config=config.conflict_resolution,
+                    force_retry=True,
+                ),
+            )
+        finally:
+            reset_agent_effect_dependencies(deps_token)
     finally:
-        reset_agent_effect_dependencies(deps_token)
         reset_executors(token)
     return controller
 

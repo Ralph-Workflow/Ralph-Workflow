@@ -22,6 +22,7 @@ __all__ = [
     "AgentRunner",
     "Clock",
     "GitOps",
+    "clear_executors",
     "create_backup_ref",
     "current_agent_runner",
     "current_clock",
@@ -331,6 +332,10 @@ def install_executors(
 
 def reset_executors(token: Token[_Executors | None]) -> None:
     _EXECUTORS.reset(token)
+
+
+def clear_executors() -> Token[_Executors | None]:
+    return _EXECUTORS.set(None)
 
 
 def current_git_ops() -> GitOps:

@@ -255,3 +255,38 @@ def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_terminat
             else:
                 expected_bench = outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK
                 assert verdict_benches_agent(verdict.verdict) is expected_bench
+
+
+def test_every_corpus_case_expected_attribution_matches_attribute_attempt() -> None:
+    from tests.recovery._corpus_derive import ALLOWED_ATTRIBUTIONS
+
+    mismatches: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for case in load_corpus():
+        assert case.expected_attribution in ALLOWED_ATTRIBUTIONS
+        seen.add(case.expected_attribution)
+        recorded = attribute_attempt(case.facts)
+        if recorded.attribution.value != case.expected_attribution:
+            mismatches.append((case.id, case.expected_attribution, recorded.attribution.value))
+        if case.expected_attribution in {"runtime", "task_or_environment"}:
+            assert case.expected_bench is False
+            assert case.expected_verdict != "agent_dead"
+        if case.label == "positive":
+            assert case.expected_bench is True
+            assert case.expected_verdict == "agent_dead"
+        if recorded.cleared or recorded.attribution.value in {
+            "runtime",
+            "task_or_environment",
+        }:
+            assert case.expected_bench is False
+        for outcome in _outcomes_for(case):
+            verdict = decide_dead_agent_verdict(case.facts, recorded, outcome)
+            record = verdict_record(PHASE, case.id, verdict)
+            attrib = record.get("attribution")
+            assert isinstance(attrib, dict)
+            assert attrib.get("attribution") == recorded.attribution.value
+    assert mismatches == [], (
+        "corpus expected_attribution metadata must match attribute_attempt; "
+        f"mismatches (id, expected, recorded)={mismatches!r}"
+    )
+    assert {"runtime", "task_or_environment", "unknown"} <= seen

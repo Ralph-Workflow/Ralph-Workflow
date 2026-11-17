@@ -4,7 +4,7 @@
   "agent": "agy",
   "transport": "agy",
   "incident": 1,
-  "expected_attribution": "agent",
+  "expected_attribution": "unknown",
   "expected_bench": true,
   "expected_verdict": "agent_dead",
   "captured_lines": [

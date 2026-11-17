@@ -331,21 +331,22 @@ def drive_integration(
     from tests.scenarios._rebase_recovery_harness import shared_executor_seam
 
     token = install_executors(agent_runner=counting, clock=clock_adapter)
-    with shared_executor_seam(inner), capture_operator_lines() as lines:
-        try:
-            result = integrate_before_planning(
-                effective_config,
-                WorkspaceScope(root),
-                state if state is not None else RebaseState(),
-                conflict_resolver=conflict_resolver,
-                rebase_stop_resolver=counting,
-            )
-            error: str | None = None
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
-            result = None
-            error = f"{type(exc).__name__}: {exc}"
-        finally:
-            reset_executors(token)
+    try:
+        with shared_executor_seam(inner), capture_operator_lines() as lines:
+            try:
+                result = integrate_before_planning(
+                    effective_config,
+                    WorkspaceScope(root),
+                    state if state is not None else RebaseState(),
+                    conflict_resolver=conflict_resolver,
+                    rebase_stop_resolver=counting,
+                )
+                error: str | None = None
+            except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+                result = None
+                error = f"{type(exc).__name__}: {exc}"
+    finally:
+        reset_executors(token)
     return IntegrationRun(
         state=result,
         error=error,

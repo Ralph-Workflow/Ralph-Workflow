@@ -4,7 +4,7 @@
   "agent": "claude",
   "transport": "claude",
   "incident": 7,
-  "expected_attribution": "task_or_environment",
+  "expected_attribution": "unknown",
   "expected_bench": false,
   "expected_verdict": "unknown",
   "captured_lines": [

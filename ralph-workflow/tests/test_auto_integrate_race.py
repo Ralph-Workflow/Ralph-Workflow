@@ -8,7 +8,6 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome, WaitingOutcome
 from ralph.workspace.scope import WorkspaceScope
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -130,6 +129,7 @@ def test_cas_race_target_advances_concurrently_via_orchestration(
 
 def test_fast_forward_target_missing_branch_is_reported(tmp_git_repo: Path) -> None:
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
+    from ralph.pipeline.resolution_outcome import WaitingOutcome
 
     _base_branch(tmp_git_repo)
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
@@ -152,6 +152,7 @@ def test_unreadable_target_is_retryable_but_a_missing_one_is_not(
         fast_forward_target,
         is_retryable_fast_forward_failure,
     )
+    from ralph.pipeline.resolution_outcome import RetryLaterOutcome, WaitingOutcome
 
     _commit(tmp_git_repo, "feat.txt", "feat\n", "feat")
     feature_sha = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
@@ -249,6 +250,7 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
 
 def test_fast_forward_target_non_ancestor_is_reported(tmp_git_repo: Path) -> None:
     from ralph.pipeline.auto_integrate_ff import fast_forward_target
+    from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 
     base = _base_branch(tmp_git_repo)
     base_seed_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()

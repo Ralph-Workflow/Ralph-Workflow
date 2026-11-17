@@ -359,11 +359,17 @@ def _dispatch_ref_comparison(
         )
         from ralph.pipeline.resolution_outcome import (
             ResolvedOutcome,
+            is_stop_resolution_outcome,
             stop_resolution_outcome_reason,
         )
 
-        refusal = stop_resolution_outcome_reason(ff_outcome)
         if isinstance(ff_outcome, ResolvedOutcome):
+            advanced, refusal = True, ""
+        elif is_stop_resolution_outcome(ff_outcome):
+            advanced, refusal = False, stop_resolution_outcome_reason(ff_outcome)
+        else:
+            advanced, refusal = False, str(ff_outcome)
+        if advanced:
             return reconcile_remote_publication(
                 config,
                 repo_root,
