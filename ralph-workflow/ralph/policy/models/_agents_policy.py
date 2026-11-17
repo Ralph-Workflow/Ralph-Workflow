@@ -4,10 +4,10 @@ from pydantic import ConfigDict, Field, model_validator
 
 from ralph.policy.models._agent_chain_config import AgentChainConfig
 from ralph.policy.models._agent_drain_config import AgentDrainConfig
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class AgentsPolicy(_FrozenPolicyModel):
+class AgentsPolicy(RalphBaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     agent_chains: dict[str, AgentChainConfig] = Field(

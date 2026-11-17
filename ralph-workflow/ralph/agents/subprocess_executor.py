@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 import time
 from pathlib import Path
 from subprocess import DEVNULL as _DEVNULL
@@ -17,6 +16,7 @@ from ralph.agents.agent_install_links import install_url_for
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.agents.invoke._quota_detection import is_provider_quota_output_line
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
+from ralph.config import _env as _config_env
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import (
@@ -92,7 +92,28 @@ def _missing_binary_message(command: Sequence[str]) -> str:
     return f"{what}\nWHY: {why}\nFIX: {fix}"
 
 
+class _DrainLineState:
+    __slots__ = ("last_line",)
+
+    def __init__(self) -> None:
+        self.last_line = ""
+
+
 class SubprocessAgentExecutor:
+    __slots__ = (
+        "_command",
+        "_cwd",
+        "_extra_env",
+        "_pm",
+        "_post_exit_drain_grace_seconds",
+        "_raw_logs",
+        "_raw_overflow_root",
+        "_signal_bridge",
+        "_subagent_sink",
+        "_subagent_sink_token",
+        "activity_router",
+    )
+
     def __init__(
         self,
         command: Sequence[str],
@@ -225,12 +246,14 @@ class SubprocessAgentExecutor:
     ) -> WorkerResult:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
-        last_line: str = ""
+        drain_state = _DrainLineState()
         activity_provider: ActivityProvider = detect_provider_from_command(list(self._command))
         if self._subagent_sink is not None:
             self._subagent_sink_token = set_subagent_sink(self._subagent_sink)
 
-        env = {**os.environ, **self._extra_env} if self._extra_env else None
+        env = (
+            {**dict(_config_env.os.environ), **self._extra_env} if self._extra_env else None
+        )
         pm = self._resolve_manager()
         handle: ManagedAsyncProcess | None = None
         try:
@@ -253,7 +276,6 @@ class SubprocessAgentExecutor:
             raise ExecutorError(f"Failed to start subprocess: {exc}") from exc
 
         async def drain_output() -> None:
-            nonlocal last_line
             if handle is None or handle.stdout is None:
                 return
             async for raw_line in drain_agent_lines(
@@ -287,7 +309,7 @@ class SubprocessAgentExecutor:
                 else:
                     on_output(line)
 
-                last_line = line
+                drain_state.last_line = line
 
         try:
             await self._supervise(handle, drain_output(), unit.unit_id)
@@ -303,7 +325,7 @@ class SubprocessAgentExecutor:
         return WorkerResult(
             unit_id=unit.unit_id,
             exit_code=exit_code,
-            final_message=last_line,
+            final_message=drain_state.last_line,
             duration_ms=duration_ms,
         )
 

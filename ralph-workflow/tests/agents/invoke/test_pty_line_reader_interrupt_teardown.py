@@ -63,6 +63,7 @@ def _make_reader_for_interrupt(teardown_calls: list[int] | None = None) -> PtyLi
     reader._monitor_stop = threading.Event()
     reader._agent_name = "nanocoder"
     reader._process_teardown = None if teardown_calls is None else _TrackTeardown(teardown_calls)
+    reader._supervisor = None
     return reader
 
 

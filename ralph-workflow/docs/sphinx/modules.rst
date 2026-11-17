@@ -748,9 +748,11 @@ ralph.policy.models
 ralph.policy.validation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+.. Note: ralph.policy.validation re-exports from its submodules; using
+   :no-members: avoids duplicate object-description warnings.
+
 .. automodule:: ralph.policy.validation
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.policy.explain
 ~~~~~~~~~~~~~~~~~~~~
@@ -3128,8 +3130,11 @@ ralph.mcp.tools.workspace
 ralph.mcp.tools.capability_denied_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. Note: re-exports CapabilityDeniedError from tool_error; :no-index: avoids duplicate object.
+
 .. automodule:: ralph.mcp.tools.capability_denied_error
    :members:
+   :no-index:
    :show-inheritance:
 
 ralph.mcp.tools.coordination_session_like
@@ -3142,8 +3147,11 @@ ralph.mcp.tools.coordination_session_like
 ralph.mcp.tools.invalid_params_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. Note: re-exports InvalidParamsError from tool_error; :no-index: avoids duplicate object.
+
 .. automodule:: ralph.mcp.tools.invalid_params_error
    :members:
+   :no-index:
    :show-inheritance:
 
 ralph.mcp.tools.text_edits

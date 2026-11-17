@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.config._env import getenv
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     OPENCODE_NATIVE_TOOLS_TO_KEEP,
@@ -61,7 +62,7 @@ def build_opencode_provider_config(
     if isinstance(existing_mcp, dict):
         existing_for_upstreams = {
             name: entry
-            for name, entry in cast("dict[str, object]", existing_mcp).items()
+            for name, entry in (as_object_dict(existing_mcp) or {}).items()
             if name != RALPH_MCP_SERVER_NAME
         }
         upstreams = normalize_upstream_mcp_servers(existing_for_upstreams)
@@ -77,7 +78,7 @@ def build_opencode_provider_config(
         "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
     }
     current_config_mcp: dict[str, object] = (
-        dict(cast("dict[str, object]", existing_mcp)) if isinstance(existing_mcp, dict) else {}
+        dict(as_object_dict(existing_mcp) or {}) if isinstance(existing_mcp, dict) else {}
     )
     current_config_mcp["ralph"] = ralph_entry
     current_config: dict[str, object] = {"mcp": current_config_mcp}
@@ -88,13 +89,13 @@ def build_opencode_provider_config(
     if not isinstance(experimental_obj, dict):
         experimental_obj = {}
         config_obj["experimental"] = experimental_obj
-    cast("dict[str, object]", experimental_obj)["mcp_timeout"] = _OPENCODE_MCP_CLIENT_TIMEOUT_MS
+    (as_object_dict(experimental_obj) or {})["mcp_timeout"] = _OPENCODE_MCP_CLIENT_TIMEOUT_MS
 
     permission_section_obj = config_obj.setdefault("permission", {})
     if not isinstance(permission_section_obj, dict):
         permission_section_obj = {}
         config_obj["permission"] = permission_section_obj
-    permission_section = cast("dict[str, object]", permission_section_obj)
+    permission_section = (as_object_dict(permission_section_obj) or {})
     permission_section["ralph_*"] = "allow"
     permission_section["mcp__ralph__*"] = "allow"
     for tool_name in ALL_RALPH_TOOLS:
@@ -109,7 +110,7 @@ def build_opencode_provider_config(
         existing_tools = {}
     orchestration_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_KEEP, True)
     config_obj["tools"] = {
-        **cast("dict[str, object]", existing_tools),
+        **(as_object_dict(existing_tools) or {}),
         **orchestration_overrides,
     }
 
@@ -167,26 +168,27 @@ def report_opencode_mcp_servers_outside_ralph_gate(
     return discovered
 
 
-def _opencode_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
-    active_env: Mapping[str, str] = os.environ
+def _opencode_config_paths(
+    workspace_path: Path | None, *, env: Mapping[str, str] | None = None
+) -> tuple[Path, ...]:
     paths: list[Path] = []
-    paths.extend(_global_config_dir(active_env) / name for name in _GLOBAL_CONFIG_BASENAMES)
+    paths.extend(_global_config_dir(env) / name for name in _GLOBAL_CONFIG_BASENAMES)
 
-    custom_config = active_env.get(_CONFIG_FILE_ENV)
+    custom_config = getenv(_CONFIG_FILE_ENV, env)
     if custom_config:
         paths.append(Path(custom_config).expanduser())
 
-    project_config_enabled = not _is_truthy(active_env.get(_DISABLE_PROJECT_CONFIG_ENV))
+    project_config_enabled = not _is_truthy(getenv(_DISABLE_PROJECT_CONFIG_ENV, env))
     if project_config_enabled:
         for directory in reversed(_project_directories(workspace_path)):
             paths.extend(directory / name for name in _DIRECTORY_CONFIG_BASENAMES)
 
     for directory in _dot_opencode_directories(
-        workspace_path, active_env, project_config_enabled=project_config_enabled
+        workspace_path, env, project_config_enabled=project_config_enabled
     ):
         paths.extend(directory / name for name in _DIRECTORY_CONFIG_BASENAMES)
 
-    paths.extend(_managed_config_dir(active_env) / name for name in _DIRECTORY_CONFIG_BASENAMES)
+    paths.extend(_managed_config_dir(env) / name for name in _DIRECTORY_CONFIG_BASENAMES)
     return tuple(paths)
 
 
@@ -203,17 +205,17 @@ def _project_directories(workspace_path: Path | None) -> tuple[Path, ...]:
 
 def _dot_opencode_directories(
     workspace_path: Path | None,
-    active_env: Mapping[str, str],
+    env: Mapping[str, str] | None,
     *,
     project_config_enabled: bool,
 ) -> tuple[Path, ...]:
-    config_dir_override = active_env.get(_CONFIG_DIR_ENV)
-    candidates: list[Path] = [_global_config_dir(active_env)]
+    config_dir_override = getenv(_CONFIG_DIR_ENV, env)
+    candidates: list[Path] = [_global_config_dir(env)]
     if project_config_enabled:
         candidates.extend(
             directory / _OPENCODE_DIRNAME for directory in _project_directories(workspace_path)
         )
-    candidates.append(_opencode_home(active_env) / _OPENCODE_DIRNAME)
+    candidates.append(_opencode_home(env) / _OPENCODE_DIRNAME)
     if config_dir_override:
         candidates.append(Path(config_dir_override).expanduser())
 
@@ -228,26 +230,26 @@ def _dot_opencode_directories(
     return tuple(selected)
 
 
-def _global_config_dir(active_env: Mapping[str, str]) -> Path:
-    xdg_config_home = active_env.get(_XDG_CONFIG_HOME_ENV)
+def _global_config_dir(env: Mapping[str, str] | None) -> Path:
+    xdg_config_home = getenv(_XDG_CONFIG_HOME_ENV, env)
     base = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
     return base / "opencode"
 
 
-def _opencode_home(active_env: Mapping[str, str]) -> Path:
-    test_home = active_env.get(_TEST_HOME_ENV)
+def _opencode_home(env: Mapping[str, str] | None) -> Path:
+    test_home = getenv(_TEST_HOME_ENV, env)
     return Path(test_home) if test_home else Path.home()
 
 
-def _managed_config_dir(active_env: Mapping[str, str]) -> Path:
-    override = active_env.get(_TEST_MANAGED_CONFIG_DIR_ENV)
+def _managed_config_dir(env: Mapping[str, str] | None) -> Path:
+    override = getenv(_TEST_MANAGED_CONFIG_DIR_ENV, env)
     if override:
         return Path(override)
     system_name = platform.system()
     if system_name == "Darwin":
         return Path("/Library/Application Support/opencode")
     if system_name == "Windows":
-        return Path(active_env.get(_PROGRAM_DATA_ENV) or "C:\\ProgramData") / "opencode"
+        return Path(getenv(_PROGRAM_DATA_ENV, env) or "C:\\ProgramData") / "opencode"
     return Path("/etc/opencode")
 
 
@@ -289,7 +291,7 @@ def _read_config_object(config_path: Path) -> dict[str, object] | None:
             config_path,
         )
         return None
-    return cast("dict[str, object]", decoded)
+    return (as_object_dict(decoded) or {})
 
 
 def _mcp_servers_from_config(config: dict[str, object], config_path: Path) -> dict[str, object]:
@@ -303,7 +305,7 @@ def _mcp_servers_from_config(config: dict[str, object], config_path: Path) -> di
             config_path,
         )
         return {}
-    return dict(cast("dict[str, object]", value))
+    return dict(as_object_dict(value) or {})
 
 
 def _normalize_opencode_server_entry(
@@ -311,7 +313,7 @@ def _normalize_opencode_server_entry(
 ) -> tuple[str, object] | None:
     if server_name == RALPH_MCP_SERVER_NAME or not isinstance(raw_entry, dict):
         return None
-    entry = cast("dict[str, object]", raw_entry)
+    entry = (as_object_dict(raw_entry) or {})
     if entry.get("enabled") is False or entry.get("disabled") is True:
         return None
 
@@ -333,10 +335,10 @@ def _server_argv(entry: dict[str, object]) -> list[str]:
     command = entry.get("command")
     if isinstance(command, str):
         raw_args = entry.get("args")
-        args = cast("list[object]", raw_args) if isinstance(raw_args, list) else []
+        args = list(raw_args) if isinstance(raw_args, list) else []
         return [command, *(arg for arg in args if isinstance(arg, str))] if command else []
     if isinstance(command, list):
-        return [part for part in cast("list[object]", command) if isinstance(part, str)]
+        return [part for part in command if isinstance(part, str)]
     return []
 
 
@@ -346,7 +348,7 @@ def _server_environment(entry: dict[str, object]) -> dict[str, str]:
         if isinstance(raw_environment, dict):
             return {
                 name: value
-                for name, value in cast("dict[str, object]", raw_environment).items()
+                for name, value in (as_object_dict(raw_environment) or {}).items()
                 if isinstance(value, str)
             }
     return {}
@@ -409,7 +411,7 @@ def _parse_opencode_config_content(existing: str | None) -> dict[str, object]:
         return {}
     if not isinstance(decoded, dict):
         return {}
-    return cast("dict[str, object]", decoded)
+    return (as_object_dict(decoded) or {})
 
 
 __all__ = [

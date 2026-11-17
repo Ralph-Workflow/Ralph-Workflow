@@ -750,33 +750,32 @@ def main(argv: list[str] | None = None) -> int:
     codebase_root = Path(args[0]) if args else Path(__file__).parent.parent.parent
 
     if not codebase_root.is_dir():
-        print(f"Error: directory not found: {codebase_root}", file=sys.stderr)
+        sys.stderr.write(f"Error: directory not found: {codebase_root}\n")
         return 2
 
-    print(f"Auditing cast policy in: {codebase_root}")
-    print()
+    sys.stdout.write(f"Auditing cast policy in: {codebase_root}\n\n")
 
     violations, files_checked = audit_codebase(codebase_root)
 
     if violations:
-        print(
+        sys.stdout.write(
             f"CAST POLICY VIOLATIONS FOUND: {len(violations)} violation(s) "
-            f"in {files_checked} file(s)"
+            f"in {files_checked} file(s)\n"
         )
-        print("=" * 72)
+        sys.stdout.write("=" * 72 + "\n")
         for v in violations:
-            print(f"  {v}")
-        print()
-        print(
+            sys.stdout.write(f"  {v}\n")
+        sys.stdout.write("\n")
+        sys.stdout.write(
             "These casts assert the shape of external data without a runtime check. "
             "Replace them with ralph.checked_accessors, a TypeGuard narrowing "
             "predicate, or move the cast into a registered boundary helper. "
             "See docs/ralph-workflow-policy/typechecking-policy.md section "
-            "'Type assertions and casts'."
+            "'Type assertions and casts'.\n"
         )
         return 1
 
-    print(f"No cast-policy violations found in {files_checked} file(s).")
+    sys.stdout.write(f"No cast-policy violations found in {files_checked} file(s).\n")
     return 0
 
 

@@ -673,10 +673,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     implementations = _implementation_runs(raw_implementations)
     if not implementations:
         error_payload: dict[str, str] = {"error": "no implementations selected"}
-        print(
-            json.dumps(error_payload, sort_keys=True),
-            file=sys.stdout,
-        )
+        sys.stdout.write(json.dumps(error_payload, sort_keys=True) + "\n")
         return 2
     mode_value: str = args.mode
     timeout_value: int = args.timeout_ms
@@ -699,7 +696,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             enforce_speedup=not quick_value,
             quick=quick_value,
         )
-    print(json.dumps(summary, sort_keys=True, default=str))
+    sys.stdout.write(json.dumps(summary, sort_keys=True, default=str) + "\n")
     return 0 if all_passed else 1
 
 

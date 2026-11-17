@@ -5,7 +5,7 @@ import tomllib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import tomli_w
 from loguru import logger
@@ -16,6 +16,7 @@ import ralph.mcp.transport.codex as _codex_transport
 import ralph.mcp.transport.kimi as _kimi_transport
 import ralph.mcp.transport.opencode as _opencode_transport
 from ralph.config.enums import AgentTransport
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol.startup import (
     PreflightError,
     initialize_request,
@@ -160,26 +161,26 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         config_path = codex_home / "config.toml"
         config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
         parsed = (
-            cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
+            (as_object_dict(tomllib.loads(config_text) or {})) if config_text.strip() else {}
         )
         mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
         existing_servers = (
-            cast("dict[str, object]", mcp_servers) if isinstance(mcp_servers, dict) else None
+            (as_object_dict(mcp_servers) or {}) if isinstance(mcp_servers, dict) else None
         )
         if existing_servers is None or server.name not in existing_servers:
             config_text = _augment_codex_config_with_server(config_text, server)
-            parsed = cast("dict[str, object]", tomllib.loads(config_text))
+            parsed = (as_object_dict(tomllib.loads(config_text) or {}))
         mcp_servers = parsed.get("mcp_servers")
         if not isinstance(mcp_servers, dict):
             raise AgentTransportProbeError(
                 "Codex config.toml missing [mcp_servers] table after probe synthesis"
             )
-        raw_entry = cast("dict[str, object]", mcp_servers).get(server.name)
+        raw_entry = (as_object_dict(mcp_servers) or {}).get(server.name)
         if not isinstance(raw_entry, dict):
             raise AgentTransportProbeError(
                 f"Codex config.toml missing [mcp_servers.{server.name}] table"
             )
-        entry = cast("dict[str, object]", raw_entry)
+        entry = (as_object_dict(raw_entry) or {})
         if server.transport == "http" and entry.get("url") != server.url:
             raise AgentTransportProbeError(
                 f"Codex config.toml mcp_servers.{server.name}.url mismatch"
@@ -199,10 +200,10 @@ def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServe
     if base_config.strip():
         parsed: object = tomllib.loads(base_config)
         if isinstance(parsed, dict):
-            config = cast("dict[str, object]", parsed)
+            config = (as_object_dict(parsed) or {})
     existing = config.get("mcp_servers")
     servers: dict[str, object] = (
-        dict(cast("dict[str, object]", existing)) if isinstance(existing, dict) else {}
+        dict(as_object_dict(existing) or {}) if isinstance(existing, dict) else {}
     )
     entry: dict[str, object] = {}
     if server.transport == "http":
@@ -240,11 +241,11 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
     mcp_section = parsed.get("mcp")
     if not isinstance(mcp_section, dict):
         raise AgentTransportProbeError("OpenCode config missing 'mcp' section")
-    typed_mcp = cast("dict[str, object]", mcp_section)
+    typed_mcp = (as_object_dict(mcp_section) or {})
     raw_ralph_entry = typed_mcp.get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_ralph_entry, dict):
         raise AgentTransportProbeError("OpenCode config missing Ralph mcp entry after synthesis")
-    ralph_entry = cast("dict[str, object]", raw_ralph_entry)
+    ralph_entry = (as_object_dict(raw_ralph_entry) or {})
     if ralph_entry.get("type") != "remote" or ralph_entry.get("url") != server.url:
         raise AgentTransportProbeError("OpenCode Ralph mcp entry shape mismatch (type/url)")
     http_handshake(server.url)
@@ -323,14 +324,14 @@ def _kimi_schema_violations(schema: object, path: str) -> list[str]:
         violations.append(f"{path}: composition branch list without 'type'")
     properties = schema.get("properties")
     if isinstance(properties, dict):
-        for name, sub in cast("dict[str, object]", properties).items():
+        for name, sub in (as_object_dict(properties) or {}).items():
             violations.extend(_kimi_schema_violations(sub, f"{path}.properties.{name}"))
     for key in _KIMI_COMPOSITION_KEYWORDS:
         seq = schema.get(key)
         if isinstance(seq, list):
-            for index, sub in enumerate(cast("list[object]", seq)):
+            for index, sub in enumerate(seq):
                 violations.extend(_kimi_schema_violations(sub, f"{path}.{key}[{index}]"))
-        elif isinstance(seq, dict):
+        if isinstance(seq, dict):
             violations.extend(_kimi_schema_violations(seq, f"{path}.{key}"))
     items = schema.get("items")
     if isinstance(items, dict):
@@ -363,10 +364,10 @@ def _validate_mcp_json_and_handshake(
     mcp_servers = parsed.get("mcpServers")
     if not isinstance(mcp_servers, dict):
         raise AgentTransportProbeError(f"{label} missing 'mcpServers'")
-    raw_entry = cast("dict[str, object]", mcp_servers).get(RALPH_MCP_SERVER_NAME)
+    raw_entry = (as_object_dict(mcp_servers) or {}).get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_entry, dict):
         raise AgentTransportProbeError(f"{label} missing Ralph entry; injected wiring is broken")
-    entry = cast("dict[str, object]", raw_entry)
+    entry = (as_object_dict(raw_entry) or {})
     ralph_url = entry.get(ralph_url_key)
     if ralph_url != server.url:
         raise AgentTransportProbeError(
@@ -432,7 +433,7 @@ def _parse_json_obj(text: str, label: str) -> dict[str, object]:
         raise AgentTransportProbeError(f"{label} is not valid JSON: {exc}") from exc
     if not isinstance(decoded, dict):
         raise AgentTransportProbeError(f"{label} top-level is not an object")
-    return cast("dict[str, object]", decoded)
+    return (as_object_dict(decoded) or {})
 
 
 def _redact(server: UpstreamMcpServer, exc: BaseException) -> str:

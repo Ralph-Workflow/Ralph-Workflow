@@ -1,26 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-@dataclass
 class JavaGuidelines:
-    frameworks: tuple[str, ...] = ()
-    quality_checks: tuple[str, ...] = field(init=False)
-    security_checks: tuple[str, ...] = field(init=False)
-    performance_checks: tuple[str, ...] = field(init=False)
-    testing_checks: tuple[str, ...] = field(init=False)
-    documentation_checks: tuple[str, ...] = field(init=False)
-    idioms: tuple[str, ...] = field(init=False)
-    anti_patterns: tuple[str, ...] = field(init=False)
-    concurrency_checks: tuple[str, ...] = field(init=False)
-    resource_checks: tuple[str, ...] = field(init=False)
-    observability_checks: tuple[str, ...] = field(init=False)
-    api_design_checks: tuple[str, ...] = field(init=False)
+    __slots__ = (
+        "anti_patterns",
+        "api_design_checks",
+        "concurrency_checks",
+        "documentation_checks",
+        "frameworks",
+        "idioms",
+        "observability_checks",
+        "performance_checks",
+        "quality_checks",
+        "resource_checks",
+        "secrets_checks",
+        "security_checks",
+        "testing_checks",
+    )
 
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
@@ -81,14 +82,13 @@ class JavaGuidelines:
             "Method contracts are explicit about nullability, exceptions, and side effects.",
             "Dependency injection boundaries stay clear and constructor-based where possible.",
         )
-
+        self.secrets_checks = ()
         for framework in normalized_frameworks:
             self._apply_framework(framework)
 
     def _apply_framework(self, framework: str) -> None:
         if framework.casefold() != "spring":
             return
-
         self.quality_checks += (
             "Use constructor injection.",
             "Follow Spring Boot conventions.",
@@ -107,11 +107,7 @@ class JavaGuidelines:
         )
 
     def summary(self) -> str:
-        return (
-            f"{len(self.quality_checks)} quality checks, "
-            f"{len(self.security_checks)} security checks, "
-            f"{len(self.anti_patterns)} anti-patterns"
-        )
+        return f"{len(self.quality_checks)} quality checks, {len(self.security_checks)} security checks, {len(self.anti_patterns)} anti-patterns"
 
     def total_checks(self) -> int:
         return sum(
@@ -126,6 +122,7 @@ class JavaGuidelines:
                 len(self.concurrency_checks),
                 len(self.resource_checks),
                 len(self.observability_checks),
+                len(self.secrets_checks),
                 len(self.api_design_checks),
             ]
         )

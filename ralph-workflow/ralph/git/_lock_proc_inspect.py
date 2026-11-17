@@ -141,10 +141,7 @@ def _is_unreadable_os_error(e: OSError) -> bool:
 
 
 def _is_dead_process_os_error(e: OSError) -> bool:
-    return isinstance(e, (FileNotFoundError, ProcessLookupError)) or e.errno in (
-        errno.ENOENT,
-        errno.ESRCH,
-    )
+    return any(isinstance(e, _t) for _t in (FileNotFoundError, ProcessLookupError)) or e.errno in (errno.ENOENT, errno.ESRCH)
 
 
 def _fd_path_is_lock(
@@ -291,7 +288,7 @@ def _pid_has_gitdir_environ(
 
     try:
         targets = {
-            Path(os.fsdecode(g) if isinstance(g, (bytes, bytearray)) else g).resolve()
+            Path(os.fsdecode(g) if any(isinstance(g, _t) for _t in (bytes, bytearray)) else g).resolve()
             for g in (gitdir, gitdir_common)
         }
     except OSError:

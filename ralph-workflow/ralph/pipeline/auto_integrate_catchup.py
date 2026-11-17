@@ -5,7 +5,7 @@ import threading
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 from git import GitError, Repo
 from loguru import logger
@@ -118,9 +118,11 @@ _CATCHUP_LEDGER_ACTION = "catchup_fast_forward"
 type _LeaseVerdict = Literal["acquired", "held", "unknown"]
 
 
-@dataclass
 class CatchupLedgerFailureBudget:
-    consecutive_failures: int = 0
+    __slots__ = ("consecutive_failures",)
+
+    def __init__(self, consecutive_failures: int = 0) -> None:
+        self.consecutive_failures = consecutive_failures
 
     def record_failure(self) -> int:
         self.consecutive_failures += 1
@@ -202,7 +204,8 @@ def _worktree_is_clean(root: Path) -> bool:
     repo: Repo | None = None
     try:
         repo = Repo(root)
-        status_out = cast("str", repo.git.status("--porcelain", "--untracked-files=no"))
+        status_raw: object = repo.git.status("--porcelain", "--untracked-files=no")
+        status_out = status_raw if isinstance(status_raw, str) else str(status_raw)
         return not status_out.strip()
     except (GitError, OSError, RuntimeError, ValueError, KeyError):
         return False
@@ -840,6 +843,27 @@ class _CatchupStallState:
 
 
 class AutoIntegrateCatchupWorker:
+    __slots__ = (
+        "_agent_phases",
+        "_clock",
+        "_config",
+        "_effective_clock",
+        "_interval",
+        "_jitter",
+        "_last_progress_at",
+        "_ledger",
+        "_ledger_failure_budget",
+        "_rebase_stop_resolver",
+        "_remote_client",
+        "_root",
+        "_stall_state",
+        "_stall_window",
+        "_stop_event",
+        "_thread",
+        "_tick",
+        "_wait",
+    )
+
     def __init__(
         self,
         config: UnifiedConfig,

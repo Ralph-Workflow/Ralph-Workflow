@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from importlib import import_module
-from os import getenv
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import ValidationError
 
 import ralph.policy
+from ralph.checked_accessors import as_mapping, as_sequence, as_str, as_str_list
 from ralph.config._developer_override import apply_developer_override
+from ralph.config._env import resolve_config_home
 from ralph.config._toml_fallback import (
     _emit_fallback_warning,
     validate_or_default,
@@ -41,16 +41,18 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
-from ralph.policy.validation import (
-    PolicyValidationError,
-    validate_artifact_types_supported,
-    validate_drain_contracts,
-    validate_policy_completeness,
-)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
     from ralph.workspace.scope import WorkspaceScope
+
+
+def _policy_error(message: str, *, source: str | None = None) -> PolicyValidationError:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
+    return PolicyValidationError(message, source=source)
+
 
 __all__ = [
     "PIPELINE_POLICY_FIELDS",
@@ -148,7 +150,7 @@ def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
 
 
 def _reject_phase_authored_pipeline_override(*, scope: str, path: Path) -> None:
-    raise PolicyValidationError(
+    raise _policy_error(
         f"{scope} pipeline.toml at '{path}' uses the obsolete phase-authored schema and must "
         f"not be merged with the bundled block-authored default pipeline. Remove the outdated "
         f"file so Ralph Workflow falls back to the current default pipeline template.",
@@ -169,7 +171,7 @@ def _handle_phase_authored_pipeline(
         _reject_phase_authored_pipeline_override(scope=scope, path=path)
     _emit_fallback_warning(
         path,
-        PolicyValidationError(
+        _policy_error(
             f"{scope} pipeline.toml at '{path}' uses the obsolete phase-authored schema "
             "and must not be merged with the bundled block-authored default pipeline. "
             "Remove the outdated file so Ralph Workflow falls back to the current "
@@ -340,7 +342,7 @@ def _coerce_agent_chain_config(
     if isinstance(value, AgentChainConfig):
         return value
     return AgentChainConfig(
-        agents=list(cast("Sequence[str]", value)),
+        agents=as_str_list(list(as_sequence(value))),
         max_retries=retry_budget,
         retry_delay_ms=retry_delay_ms,
     )
@@ -359,7 +361,7 @@ def _coerce_agent_drain_config(
             capability_class=value.capability_class,
         )
     return AgentDrainConfig(
-        chain=cast("str", value),
+        chain=as_str(value),
         drain_class=builtin_drain_classes.get(drain),
     )
 
@@ -372,9 +374,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     retry_delay_ms = retry_delay_ms_value if isinstance(retry_delay_ms_value, int) else 1000
     raw_agent_chains_obj: object = getattr(config, "agent_chains", {})
     raw_agent_chains = (
-        cast("Mapping[str, object]", raw_agent_chains_obj)
-        if isinstance(raw_agent_chains_obj, Mapping)
-        else {}
+        as_mapping(raw_agent_chains_obj) if isinstance(raw_agent_chains_obj, Mapping) else {}
     )
     chain_configs = {
         name: _coerce_agent_chain_config(
@@ -400,9 +400,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     }
     raw_agent_drains_obj: object = getattr(config, "agent_drains", {})
     raw_agent_drains = (
-        cast("Mapping[str, object]", raw_agent_drains_obj)
-        if isinstance(raw_agent_drains_obj, Mapping)
-        else {}
+        as_mapping(raw_agent_drains_obj) if isinstance(raw_agent_drains_obj, Mapping) else {}
     )
     drain_configs = {
         drain: _coerce_agent_drain_config(
@@ -660,6 +658,15 @@ def _load_policy_from_paths(
         strict_optional_files=strict_optional_files,
     )
 
+    from ralph.policy.validation._api import (
+        validate_drain_contracts,
+        validate_policy_completeness,
+    )
+    from ralph.policy.validation._artifact_type_closed_set import (
+        validate_artifact_types_supported,
+    )
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     try:
         validate_artifact_types_supported(
             artifacts_policy,
@@ -667,7 +674,7 @@ def _load_policy_from_paths(
             phases_by_drain=_phases_by_drain(pipeline_policy),
         )
     except PolicyValidationError as exc:
-        raise PolicyValidationError(exc.message, source="artifacts") from exc
+        raise _policy_error(exc.message, source="artifacts") from exc
 
     agents_policy = _load_agents_policy_from_path(
         agents_path, config=config, strict_optional_files=strict_optional_files
@@ -681,7 +688,7 @@ def _load_policy_from_paths(
         )
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
-        raise PolicyValidationError(
+        raise _policy_error(
             "Cross-policy validation failed (drain bindings / analysis contracts):\n"
             + "\n".join(msgs),
             source=None,
@@ -690,7 +697,7 @@ def _load_policy_from_paths(
     try:
         validate_drain_contracts(bundle)
     except PolicyValidationError as exc:
-        raise PolicyValidationError(
+        raise _policy_error(
             exc.message,
             source="agents",
         ) from exc
@@ -698,12 +705,14 @@ def _load_policy_from_paths(
     try:
         validate_policy_completeness(bundle)
     except PolicyValidationError as exc:
-        raise PolicyValidationError(
+        raise _policy_error(
             exc.message,
             source=exc.source or "completeness",
         ) from exc
 
-    import_module("ralph.phases").register_role_handlers(pipeline_policy)
+    from ralph.phases import register_role_handlers
+
+    register_role_handlers(pipeline_policy)
     warn_if_conflict_resolution_chain_has_no_fallback(bundle)
     return bundle
 
@@ -773,10 +782,8 @@ def default_dir() -> Path:
 
 
 def _global_policy_path(filename: str) -> Path:
-    xdg_config_home = getenv("XDG_CONFIG_HOME")
-    base_dir = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
     preferred_name = _GLOBAL_POLICY_FILENAME_MAP.get(filename, filename)
-    return base_dir / preferred_name
+    return resolve_config_home() / preferred_name
 
 
 def load_policy_or_die(
@@ -785,6 +792,8 @@ def load_policy_or_die(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     try:
         try:
             if config is None:

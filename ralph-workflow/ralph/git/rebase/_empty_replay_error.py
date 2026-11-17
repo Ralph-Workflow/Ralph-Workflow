@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
 
-
-class EmptyReplayError(RebaseContinuationError):
+class EmptyReplayError(Exception):
     pass
 
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import TypeAdapter, ValidationError
 
+from ralph.checked_accessors import as_mapping
 from ralph.config._toml_fallback import load_optional_toml
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.policy.models import (
@@ -16,13 +17,21 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBlock,
 )
-from ralph.policy.validation import PolicyValidationError
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
+
+
+def _policy_error(message: str, *, source: str | None = None) -> PolicyValidationError:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
+    return PolicyValidationError(message, source=source)
+
 
 PIPELINE_POLICY_FIELDS = frozenset(
     {
@@ -69,7 +78,7 @@ def load_toml(
     try:
         data = load_optional_toml(path, kind=resolved_kind, strict=strict)
     except (ValueError, UnicodeDecodeError) as exc:
-        raise PolicyValidationError(
+        raise _policy_error(
             (
                 f"Could not parse TOML at {path}: {exc}.\n"
                 "WHY: settings in a malformed TOML file are not safe to use, "
@@ -80,7 +89,7 @@ def load_toml(
             source=str(path.name),
         ) from exc
     except OSError as exc:
-        raise PolicyValidationError(
+        raise _policy_error(
             (
                 f"Could not read TOML at {path}: {exc}.\n"
                 "WHY: a file that Ralph cannot open is the same as a file "
@@ -114,7 +123,7 @@ def _phase_name_for_block(
 ) -> str:
     block = blocks.get(block_name)
     if block is None:
-        raise PolicyValidationError(
+        raise _policy_error(
             f"pipeline.toml block '{block_name}' is referenced but not defined",
             source="pipeline",
         )
@@ -122,12 +131,12 @@ def _phase_name_for_block(
         return block.phase_name
     if block_name in path:
         cycle = " -> ".join((*path, block_name))
-        raise PolicyValidationError(
+        raise _policy_error(
             f"pipeline.toml block graph contains a cycle: {cycle}",
             source="pipeline",
         )
     if not block.child_blocks:
-        raise PolicyValidationError(
+        raise _policy_error(
             "pipeline.toml group block "
             f"'{block_name}' must declare at least one child_blocks entry",
             source="pipeline",
@@ -140,7 +149,7 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     if raw_blocks is None:
         return data
     if not isinstance(raw_blocks, Mapping):
-        raise PolicyValidationError(
+        raise _policy_error(
             "pipeline.toml blocks must be a mapping of block names to block definitions",
             source="pipeline",
         )
@@ -152,7 +161,7 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     for block_name, block in blocks.items():
         if isinstance(block, IndividualPolicyBlock):
             if block.phase_name in phases:
-                raise PolicyValidationError(
+                raise _policy_error(
                     "pipeline.toml phase_name "
                     f"'{block.phase_name}' is declared by more than one individual block",
                     source="pipeline",
@@ -162,13 +171,13 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
         for child_name in block.child_blocks:
             if child_name not in blocks:
-                raise PolicyValidationError(
+                raise _policy_error(
                     "pipeline.toml group block "
                     f"'{block_name}' references unknown child_blocks entry '{child_name}'",
                     source="pipeline",
                 )
         if block.completion_block not in block.child_blocks:
-            raise PolicyValidationError(
+            raise _policy_error(
                 "pipeline.toml group block "
                 f"'{block_name}' completion_block '{block.completion_block}' "
                 "must also appear in child_blocks",
@@ -186,7 +195,7 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
     entry_block = data.get("entry_block")
     if not isinstance(entry_block, str) or not entry_block:
-        raise PolicyValidationError(
+        raise _policy_error(
             "pipeline.toml block-authored policies must declare entry_block",
             source="pipeline",
         )
@@ -203,7 +212,7 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     nested_pipeline = data.get("pipeline")
     if isinstance(nested_pipeline, Mapping) and not PIPELINE_POLICY_FIELDS.intersection(data):
-        raise PolicyValidationError(
+        raise _policy_error(
             "pipeline.toml uses the obsolete [pipeline] wrapper format. "
             "This redesign is a hard break; regenerate the policy with the "
             "new block-based schema.",
@@ -213,8 +222,7 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
-    details = cast("ValidationErrorDetails", exc.errors())
-    return [format_validation_error_detail(detail) for detail in details]
+    return [format_validation_error_detail(as_mapping(detail)) for detail in exc.errors()]
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
@@ -245,7 +253,7 @@ def validate_agents(data: dict[str, object]) -> AgentsPolicy:
     misplaced_pipeline_fields = sorted(set(data).intersection(PIPELINE_POLICY_FIELDS))
     if misplaced_pipeline_fields:
         fields = ", ".join(f"`{field}`" for field in misplaced_pipeline_fields)
-        raise PolicyValidationError(
+        raise _policy_error(
             f"agents.toml field(s) {fields} belong in pipeline.toml, not agents.toml.",
             source="agents",
         )
@@ -253,7 +261,7 @@ def validate_agents(data: dict[str, object]) -> AgentsPolicy:
         return AgentsPolicy.model_validate(data)
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
-        raise PolicyValidationError(
+        raise _policy_error(
             "agents.toml validation failed:\n" + "\n".join(msgs),
             source="agents",
         ) from exc
@@ -267,8 +275,7 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
     for route in phase_def.decisions.values():
         if route.target == target:
             return True
-    for routes_attr in ("bypass_routes", "result_status_post_commit"):
-        routes: dict[str, str] = getattr(phase_def, routes_attr)
+    for routes in (phase_def.bypass_routes, phase_def.result_status_post_commit):
         for route_target in routes.values():
             if route_target == target:
                 return True
@@ -278,19 +285,16 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
 def _edge_declared_in_normalized(normalized: dict[str, object], source: str, target: str) -> bool:
     phases = normalized.get("phases")
     if isinstance(phases, Mapping):
-        typed_phases: Mapping[str, PhaseDefinition] = cast("Mapping[str, PhaseDefinition]", phases)
-        phase_def = typed_phases.get(source)
-        if phase_def is not None and _phase_def_declares_edge(phase_def, target):
+        phase_def = phases.get(source)
+        if isinstance(phase_def, PhaseDefinition) and _phase_def_declares_edge(phase_def, target):
             return True
     routes = normalized.get("post_commit_routes")
     if isinstance(routes, list):
         for route in routes:
             if isinstance(route, Mapping):
-                typed_route: Mapping[str, object] = cast("Mapping[str, object]", route)
-                when_val = typed_route.get("when")
+                when_val = route.get("when")
                 if isinstance(when_val, Mapping):
-                    typed_when: Mapping[str, object] = cast("Mapping[str, object]", when_val)
-                    if typed_when.get("phase") == source and typed_route.get("target") == target:
+                    if when_val.get("phase") == source and route.get("target") == target:
                         return True
     return False
 
@@ -302,7 +306,7 @@ def _disable_incompatible_inherited_timebox(
     phases = normalized.get("phases")
     if not isinstance(timebox, Mapping) or not isinstance(phases, Mapping):
         return normalized
-    phase_names = set(cast("Mapping[str, PhaseDefinition]", phases))
+    phase_names = {phase_name for phase_name in phases if isinstance(phase_name, str)}
     for key in ("start_source", "start_entry", "guarded_entry", "end_entry", "finalization_target"):
         value = timebox.get(key)
         if not isinstance(value, str) or value not in phase_names:
@@ -362,7 +366,7 @@ def validate_pipeline(
         return PipelinePolicy.model_validate(normalized)
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
-        raise PolicyValidationError(
+        raise _policy_error(
             "pipeline.toml validation failed:\n" + "\n".join(msgs),
             source="pipeline",
         ) from exc
@@ -373,7 +377,7 @@ def validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
         return ArtifactsPolicy.model_validate(data)
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
-        raise PolicyValidationError(
+        raise _policy_error(
             "artifacts.toml validation failed:\n" + "\n".join(msgs),
             source="artifacts",
         ) from exc

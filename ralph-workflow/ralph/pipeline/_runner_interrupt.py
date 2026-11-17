@@ -3,7 +3,7 @@ from __future__ import annotations
 import signal
 import threading
 from contextlib import suppress
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -19,11 +19,16 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.interrupt.signal_getter import SignalGetter
+    from ralph.interrupt.signal_handler import SignalHandler
     from ralph.interrupt.signal_setter import SignalSetter
 
 
-_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
-_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+def _default_signal_getter(signum: int, /) -> SignalHandler:
+    return signal.getsignal(signum)
+
+
+def _default_signal_setter(signum: int, handler: SignalHandler, /) -> SignalHandler:
+    return signal.signal(signum, handler)
 
 
 def handle_keyboard_interrupt(
@@ -52,8 +57,12 @@ def handle_keyboard_interrupt(
     if isinstance(resolved_pm, ProcessManager):
         for record in resolved_pm.list_active():
             resolved_pm.record_terminal_reason(record.pid, "operator_cancellation")
-    resolved_getter: SignalGetter = signal_getter or _DEFAULT_SIGNAL_GETTER
-    resolved_setter: SignalSetter = signal_setter or _DEFAULT_SIGNAL_SETTER
+    resolved_getter: SignalGetter = (
+        signal_getter if signal_getter is not None else _default_signal_getter
+    )
+    resolved_setter: SignalSetter = (
+        signal_setter if signal_setter is not None else _default_signal_setter
+    )
     interrupt_done = threading.Event()
     interrupt_error: list[BaseException] = []
 

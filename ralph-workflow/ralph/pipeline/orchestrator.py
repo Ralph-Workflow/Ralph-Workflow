@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -27,6 +26,8 @@ if TYPE_CHECKING:
 
 
 class PhaseHandlerNotFoundError(Exception):
+    __slots__ = ("phase",)
+
     def __init__(self, phase: str) -> None:
         self.phase = phase
         msg = (
@@ -106,7 +107,7 @@ def _derive_effect_for_phase(
     if workspace_scope is None:
         prompt_file = "PROMPT.md"
     else:
-        prompt_file = str(resolve_effective_prompt_path(workspace_scope.root, os.environ))
+        prompt_file = str(resolve_effective_prompt_path(workspace_scope.root))
 
     return InvokeAgentEffect(
         agent_name=_current_agent_name(state, chain, recovery=recovery),

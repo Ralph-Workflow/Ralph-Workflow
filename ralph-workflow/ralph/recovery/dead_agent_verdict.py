@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, cast
+from typing import Final
 
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
@@ -11,10 +11,7 @@ from ralph.recovery.attempt_facts import (
 )
 from ralph.recovery.attribution import Attribution, AttributionVerdict
 from ralph.recovery.canary_probe import ProbeOutcome
-from ralph.recovery.typed_signal import (
-    TypedSignal,
-    runtime_issued_termination_is_not_agent_fault,
-)
+from ralph.recovery.typed_signal import TypedSignal, runtime_issued_termination_is_not_agent_fault
 
 __all__ = (
     "DeadAgentVerdict",
@@ -30,9 +27,7 @@ __all__ = (
     "verdict_counts_toward_agent_state",
     "verdict_record",
 )
-
 _VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
-
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "agent_dead",
     "healthy",
@@ -70,8 +65,7 @@ PersistedVerdict = _PersistedVerdict
 
 
 def task_or_environment_attribution_is_not_agent_fault(
-    attribution: AttributionVerdict,
-    probe_outcome: ProbeOutcome | None = None,
+    attribution: AttributionVerdict, probe_outcome: ProbeOutcome | None = None
 ) -> bool:
     if attribution.attribution is not Attribution.TASK_OR_ENVIRONMENT:
         return False
@@ -205,7 +199,7 @@ def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
         return migrated
     termination = migrated.get("termination")
     if isinstance(termination, dict):
-        migrated_termination = dict(cast("dict[str, object]", termination))
+        migrated_termination = dict(termination)
         issuer = migrated_termination.get("issuer")
         migrated_termination["log"] = (
             [{"issuer": issuer, "source": "v1"}] if isinstance(issuer, str) else []

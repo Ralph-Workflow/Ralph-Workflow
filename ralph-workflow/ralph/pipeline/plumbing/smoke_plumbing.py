@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
 import secrets
 import shlex
@@ -11,7 +10,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -34,6 +33,7 @@ from ralph.agents.invoke import (
 from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import SystemClock
+from ralph.config._env import getenv
 from ralph.config.enums import AgentTransport
 from ralph.display.capability_observation_recorder import infer_surface_for_preview
 from ralph.display.parallel_display import ParallelDisplay
@@ -99,7 +99,6 @@ if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.session_bridge import BridgeFactory
     from ralph.policy.models import PolicyBundle
@@ -132,7 +131,7 @@ def _run_smoke_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **execute_kwargs,
+        **dict(execute_kwargs),
     )
 
 
@@ -158,8 +157,8 @@ def _invoke_smoke_effect(
         config,
         pipeline_deps,
         workspace_scope,
-        *args,
-        **kwargs,
+        *tuple(args),
+        **dict(kwargs),
     )
     return result
 
@@ -484,7 +483,7 @@ def _evidence_to_json(evidence: Evidence) -> dict[str, object]:
 def _evidence_from_json(payload: object) -> Evidence | None:
     if not isinstance(payload, dict):
         return None
-    payload_dict = cast("dict[str, object]", payload)
+    payload_dict = {str(k): v for k, v in payload.items()}
     holds = payload_dict.get("holds")
     provenance_name = payload_dict.get("provenance")
     detail = payload_dict.get("detail")
@@ -511,17 +510,17 @@ def load_conformance_matrix(
     except (KeyError, OSError, UnicodeDecodeError):
         return {}
     try:
-        payload = cast("object", json.loads(raw))
+        payload: object = json.loads(raw)
     except json.JSONDecodeError:
         return {}
     if not isinstance(payload, dict):
         return {}
     matrix: ConformanceMatrix = {}
-    for transport, row in cast("dict[str, object]", payload).items():
+    for transport, row in payload.items():
         if not isinstance(transport, str) or not isinstance(row, dict):
             continue
         parsed_row: dict[str, Evidence] = {}
-        for fact, cell in cast("dict[str, object]", row).items():
+        for fact, cell in row.items():
             evidence = _evidence_from_json(cell)
             if evidence is not None:
                 parsed_row[fact] = evidence
@@ -895,7 +894,7 @@ def _parser_key_for_config(config: AgentConfig) -> str:
     return resolve_parser_key(
         config.cmd,
         config.json_parser,
-        cast("AgentTransport", config.transport),
+        config.transport,
     )
 
 
@@ -1057,27 +1056,26 @@ def _execute_smoke_turns(
 ) -> tuple[list[str], list[str], str | None, AgentInvocationError | None, Provenance]:
     all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-    final_exception: AgentInvocationError | None = None
+    final_exception_box: list[AgentInvocationError | None] = [None]
     workspace_scope = resolve_workspace_scope(params.workspace_root)
-    ceiling_reported = False
-    highest_latched_ceiling: Provenance = Provenance.ABSENT
+    ceiling_box: list[object] = [False, Provenance.ABSENT]
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
         rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-        observed_session_id: str | None = current_session_id
+        observed_session_box: list[str | None] = [current_session_id]
 
         def _capture_session_id(session_id: str) -> None:
-            nonlocal observed_session_id
-            observed_session_id = session_id
+            observed_session_box[0] = session_id
 
         def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
-            nonlocal ceiling_reported, highest_latched_ceiling
             cur_c = transport_evidence_ceiling(params.config, [line])
-            highest_latched_ceiling = max(highest_latched_ceiling, cur_c)
-            if ceiling_reported:
+            prior_ceiling = ceiling_box[1]
+            if isinstance(prior_ceiling, Provenance):
+                ceiling_box[1] = max(prior_ceiling, cur_c)
+            if ceiling_box[0] is True:
                 return
-            ceiling_reported = _report_evidence_ceiling_once(params.config, list(_turn_raw_lines))
+            ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(_turn_raw_lines))
 
         effect = InvokeAgentEffect(
             agent_name=params.agent_name,
@@ -1087,9 +1085,8 @@ def _execute_smoke_turns(
         )
 
         def _capture_invocation_error(exc: Exception) -> None:
-            nonlocal final_exception
             if isinstance(exc, AgentInvocationError):
-                final_exception = exc
+                final_exception_box[0] = exc
 
         pipeline_deps = params.pipeline_deps
         if pipeline_deps is None:
@@ -1124,7 +1121,7 @@ def _execute_smoke_turns(
                 deps=attempt_deps,
                 pipeline_deps=pipeline_deps,
                 workspace_scope=workspace_scope,
-                bridge=cast("RestartAwareMcpBridge", params.bridge),
+                bridge=params.bridge,
                 display_context=params.display_context,
                 display=params.display,
                 run_id=run_id,
@@ -1136,50 +1133,59 @@ def _execute_smoke_turns(
                 raise_resumable_exit=True,
                 agent_invocation_error_sink=_capture_invocation_error,
             )
-            highest_latched_ceiling = _update_smoke_turn_state(
+            prior_ceiling = ceiling_box[1]
+            if not isinstance(prior_ceiling, Provenance):
+                prior_ceiling = Provenance.ABSENT
+            ceiling_box[1] = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                highest_latched_ceiling,
+                prior_ceiling,
             )
-            if not ceiling_reported:
-                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
-            current_session_id = observed_session_id or extract_transport_session_id(
+            if ceiling_box[0] is not True:
+                ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(all_lines))
+            current_session_id = observed_session_box[0] or extract_transport_session_id(
                 tuple(raw_lines)
             )
             if attempt.event == PipelineEvent.AGENT_SUCCESS:
-                final_exception = None
+                final_exception_box[0] = None
             break
         except OpenCodeResumableExitError as exc:
-            highest_latched_ceiling = _update_smoke_turn_state(
+            prior_ceiling = ceiling_box[1]
+            if not isinstance(prior_ceiling, Provenance):
+                prior_ceiling = Provenance.ABSENT
+            ceiling_box[1] = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                highest_latched_ceiling,
+                prior_ceiling,
             )
-            if not ceiling_reported:
-                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
+            if ceiling_box[0] is not True:
+                ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = (
                 exc.resumable_session_id
-                or observed_session_id
+                or observed_session_box[0]
                 or extract_transport_session_id(tuple(raw_lines))
             )
-            final_exception = exc
+            final_exception_box[0] = exc
             if transport_evidence_ceiling(params.config, list(all_lines)) < Provenance.WIRE:
                 break
             continue
         except AgentInvocationError as exc:
-            highest_latched_ceiling = _update_smoke_turn_state(
+            prior_ceiling = ceiling_box[1]
+            if not isinstance(prior_ceiling, Provenance):
+                prior_ceiling = Provenance.ABSENT
+            ceiling_box[1] = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                highest_latched_ceiling,
+                prior_ceiling,
             )
             merged_output = list(raw_lines)
             for line in exc.parsed_output:
@@ -1187,15 +1193,18 @@ def _execute_smoke_turns(
                     merged_output.append(line)
             if merged_output:
                 exc.parsed_output = merged_output
-            final_exception = exc
+            final_exception_box[0] = exc
             break
 
+    final_ceiling = ceiling_box[1]
+    if not isinstance(final_ceiling, Provenance):
+        final_ceiling = Provenance.ABSENT
     return (
         list(all_lines),
         list(live_output_lines),
         current_session_id,
-        final_exception,
-        highest_latched_ceiling,
+        final_exception_box[0],
+        final_ceiling,
     )
 
 
@@ -1213,7 +1222,7 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
 def _mock_negative_selector(env_getter: EnvGetter | None = None) -> str | None:
     if not is_mock_agy_override():
         return None
-    getter = env_getter if env_getter is not None else os.getenv
+    getter = env_getter if env_getter is not None else getenv
     selector = getter("MOCK_AGY_BEHAVIOR") or "normal"
     if selector in {"missing_artifact", "missing_completion"}:
         return selector
@@ -1295,17 +1304,17 @@ def _meaningful_output_error(
 
 
 def _agy_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else os.environ.get
+    getter = env_getter if env_getter is not None else getenv
     return getter("RALPH_AGY_BINARY")
 
 
 def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else os.environ.get
+    getter = env_getter if env_getter is not None else getenv
     return getter("RALPH_CURSOR_BINARY")
 
 
 def _kimi_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else os.environ.get
+    getter = env_getter if env_getter is not None else getenv
     return getter("RALPH_KIMI_BINARY")
 
 
@@ -1336,7 +1345,7 @@ def _agy_upstream_diagnostic(
     if read_smoke_test_result_artifact(workspace_root) is not None:
         return None
     if is_mock_agy_override():
-        getter = env_getter if env_getter is not None else os.getenv
+        getter = env_getter if env_getter is not None else getenv
         behavior = getter("MOCK_AGY_BEHAVIOR") or "normal"
         if behavior in {"no_output", "malformed_stream"}:
             return (
@@ -1369,7 +1378,7 @@ def _failed_result_frame_error(lines: list[str]) -> str | None:
             continue
         if not isinstance(raw_frame, dict):
             continue
-        frame = cast("dict[str, object]", raw_frame)
+        frame = {str(k): v for k, v in raw_frame.items()}
         result = frame.get("result")
         if not isinstance(result, dict):
             continue
@@ -1629,7 +1638,7 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
         init_info = obj.get("init")
         if not isinstance(init_info, dict):
             return None
-        raw_tools = cast("dict[str, object]", init_info).get("tools")
+        raw_tools = init_info.get("tools")
     elif obj.get("type") == "system" and obj.get("subtype") == "init":
         raw_tools = obj.get("tools")
     else:
@@ -1638,13 +1647,16 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
     if not isinstance(raw_tools, list):
         return None
     names: list[str] = []
-    for entry in cast("list[object]", raw_tools):
-        if isinstance(entry, str):
-            names.append(entry)
-        elif isinstance(entry, dict):
-            name = cast("dict[str, object]", entry).get("name")
-            if isinstance(name, str):
-                names.append(name)
+    for entry in raw_tools:
+        match entry:
+            case str():
+                names.append(entry)
+            case dict():
+                name = entry.get("name")
+                if isinstance(name, str):
+                    names.append(name)
+            case _:
+                pass
     return names
 
 
@@ -1660,13 +1672,13 @@ def _opencode_tool_use_reaches_ralph(first_lines: list[str]) -> bool | None:
             continue
         if not isinstance(parsed, dict):
             continue
-        obj = cast("dict[str, object]", parsed)
+        obj = {str(k): v for k, v in parsed.items()}
         if obj.get("type") != "tool_use":
             continue
         part = obj.get("part")
         if not isinstance(part, dict):
             continue
-        raw_tool = cast("dict[str, object]", part).get("tool")
+        raw_tool = part.get("tool")
         if not isinstance(raw_tool, str) or not raw_tool:
             continue
         found_any = True
@@ -1687,7 +1699,7 @@ def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> P
             continue
         if not isinstance(parsed, dict):
             continue
-        names = _advertised_tool_names_from_init_frame(cast("dict[str, object]", parsed))
+        names = _advertised_tool_names_from_init_frame({str(k): v for k, v in parsed.items()})
         if names is None:
             continue
         if any(_tool_name_reaches_ralph(name) for name in names):

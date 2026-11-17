@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sys
+import logging
 import threading
 import time
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING
 
+from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol._startup_timeouts import _REGISTRY_BUILD_BUDGET_S
 from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.server._mcp_server_error import McpServerError
@@ -23,20 +23,23 @@ from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
 from ralph.mcp.tools.bridge._upstream_proxy_handler import UpstreamProxyHandler
 from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def _warn_over_budget(stage: str, elapsed_s: float, budget_s: float) -> None:
     remaining_s = max(0.0, budget_s - elapsed_s)
-    print(
-        f"WARNING: startup stage {stage!r} over budget: "
-        f"elapsed_s={elapsed_s:.3f}s budget_s={budget_s:.3f}s remaining_s={remaining_s:.3f}s",
-        file=sys.stderr,
+    _LOGGER.warning(
+        "startup stage %r over budget: elapsed_s=%.3fs budget_s=%.3fs remaining_s=%.3fs",
+        stage,
+        elapsed_s,
+        budget_s,
+        remaining_s,
     )
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.config.mcp_models import McpConfig
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
@@ -54,11 +57,6 @@ def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
 
 
 _clock = time.monotonic
-
-
-class _ReadableWorkspace(Protocol):
-    def read(self, path: str) -> str: ...
-
 
 _WORKER_READ_EXCEPTIONS = (
     ArithmeticError,
@@ -92,9 +90,9 @@ def _read_workspace_policy(
     t0: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> str:
-    if not hasattr(workspace, "read"):
+    read_method = getattr(workspace, "read", None)
+    if not callable(read_method):
         raise AttributeError("Workspace object has no 'read' method")
-    readable = cast("_ReadableWorkspace", workspace)
     effective_clock = clock_fn if clock_fn is not None else _clock
 
     result: list[str] = []
@@ -103,7 +101,7 @@ def _read_workspace_policy(
 
     def _worker() -> None:
         try:
-            result.append(readable.read(DESIGN_SYSTEM_POLICY_RELPATH))
+            result.append(read_method(DESIGN_SYSTEM_POLICY_RELPATH))
         except _WORKER_READ_EXCEPTIONS as exc:
             error.append(exc)
         finally:
@@ -174,8 +172,7 @@ def build_ralph_tool_registry(
     timeout_s: float | None = None,
     clock_fn: Callable[[], float] | None = None,
 ) -> ToolBridge:
-    mcp_config_cls = cast("type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig)
-    mcp_cfg = mcp_config or mcp_config_cls()
+    mcp_cfg = mcp_config or McpConfig()
     bridge = ToolBridge(session=session)
     effective_clock = clock_fn if clock_fn is not None else _clock
     capture_policy_is_resolved = _capture_policy_is_resolved(

@@ -281,6 +281,8 @@ _PROBE_RESULT_EXCEPTIONS = (
 
 
 class UpstreamRegistry:
+    __slots__ = ("_alias_map", "_clients", "_proxied_tools")
+
     def __init__(
         self,
         proxied_tools: list[ProxiedTool],
@@ -464,7 +466,7 @@ class UpstreamRegistry:
         session: HasMediaManifest | None,
         workspace: Workspace | None,
     ) -> object:
-        if isinstance(raw_result, (list, tuple)):
+        if any(isinstance(raw_result, _t) for _t in (list, tuple)):
             blocks: list[object] = list(raw_result)
             wrapper: JsonObject = {"content": blocks}
             normalize_upstream_content_blocks(

@@ -591,6 +591,41 @@ def test_config_env_module_may_read_environ(
     assert code == 0
 
 
+def test_bootstrap_conftest_may_reorder_import_path(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = (
+        "import os\n"
+        "import sys\n"
+        "_entries = os.environ.get('PYTHONPATH', '')\n"
+        "sys.path[:] = [p for p in sys.path if p]\n"
+        "sys.path.insert(0, '.')\n"
+    )
+    target = _write(tmp_path, "conftest.py", source)
+
+    code, _output, _error = _run([target], capsys)
+
+    assert code == 0
+
+
+def test_bootstrap_sitecustomize_shim_may_reorder_import_path(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = (
+        "import os\n"
+        "import sys\n"
+        "_entries = os.environ.get('PYTHONPATH', '')\n"
+        "sys.path[:] = [p for p in sys.path if p]\n"
+    )
+    target = _write(tmp_path, "_sitecustomize_shim.py", source)
+
+    code, _output, _error = _run([target], capsys)
+
+    assert code == 0
+
+
 def test_json_output_carries_machine_readable_finding_codes(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

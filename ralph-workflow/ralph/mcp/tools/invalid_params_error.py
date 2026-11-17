@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from .tool_error import ToolError
+from .tool_error import InvalidParamsError
 
-
-class InvalidParamsError(ToolError):
-    pass
+__all__ = ["InvalidParamsError"]

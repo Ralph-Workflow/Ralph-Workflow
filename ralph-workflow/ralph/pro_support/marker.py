@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import cast
+
+from ralph.checked_accessors import as_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +21,10 @@ def read_marker_file(workspace_root: Path | str) -> dict[str, object] | None:
         logger.debug("Pro marker not readable at %s: %s", marker_path, exc)
         return None
     try:
-        parsed = cast("object", json.loads(raw))
-    except json.JSONDecodeError as exc:
-        logger.debug("Pro marker at %s is not valid JSON: %s", marker_path, exc)
+        return dict(as_mapping(json.loads(raw)))
+    except (TypeError, json.JSONDecodeError) as exc:
+        logger.debug("Pro marker at %s is not a JSON object: %s", marker_path, exc)
         return None
-    if not isinstance(parsed, dict):
-        logger.debug("Pro marker at %s is not a JSON object", marker_path)
-        return None
-    return cast("dict[str, object]", parsed)
 
 
 def read_heartbeat_token(workspace_root: Path | str) -> str | None:

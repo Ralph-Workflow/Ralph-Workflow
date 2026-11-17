@@ -101,6 +101,8 @@ _DEFAULT_AUDIT_RECORD_CAP: int = 4096
 
 
 class RalphAuditSinkAdapter:
+    __slots__ = ('_lock', '_records')
+
     def __init__(self, cap: int = _DEFAULT_AUDIT_RECORD_CAP) -> None:
         if not isinstance(cap, int) or cap <= 0:
             raise ValueError(f"cap must be a positive int, got {cap!r}")

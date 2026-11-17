@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Final, Protocol, cast
+from typing import Final, Protocol
 
 from ralph.mcp.explore._bench_fixtures import (
     ALL_FIXTURES,
@@ -34,6 +34,7 @@ from ralph.mcp.explore._bench_types import (
     BenchmarkResult,
     ScriptedCall,
 )
+from ralph.mcp.explore._narrowing import is_list_or_tuple
 
 if __name__ == "__main__":
     raise SystemExit(main())
@@ -108,7 +109,9 @@ def derive_visible_catalog(
     if mcp_config is None:
         cfg: McpConfig = McpConfig()
     else:
-        cfg = cast("McpConfig", mcp_config)
+        if not isinstance(mcp_config, McpConfig):
+            raise TypeError("mcp_config must be McpConfig")
+        cfg = mcp_config
     try:
         specs = _bridge_tool_specs(cfg)
     except (RuntimeError, ValueError, TypeError, AttributeError, KeyError, OSError):
@@ -160,7 +163,7 @@ def _run_script(
         if result.get("is_stale") is True or result.get("index_used") is False:
             stale_fallback += 1
         returned_ids: object = result.get("evidence_ids", ())
-        if isinstance(returned_ids, (list, tuple)):
+        if is_list_or_tuple(returned_ids):
             for ev_id in returned_ids:
                 if isinstance(ev_id, str) and ev_id:
                     returned_evidence_ids.add(ev_id)

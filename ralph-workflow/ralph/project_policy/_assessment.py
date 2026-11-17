@@ -56,7 +56,11 @@ def _parse_single_line(line: str) -> CommandOutcome:
             f"RALPH-EVIDENCE payload exit_code {exit_code} is outside the 0..255 range"
         )
     duration = typed_payload["duration_seconds"]
-    if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+    if isinstance(duration, bool):
+        raise EvidenceParseError("RALPH-EVIDENCE payload requires numeric duration_seconds")
+    duration_is_int = isinstance(duration, int)
+    duration_is_float = isinstance(duration, float)
+    if not duration_is_int and not duration_is_float:
         raise EvidenceParseError("RALPH-EVIDENCE payload requires numeric duration_seconds")
     if duration < 0:
         raise EvidenceParseError("RALPH-EVIDENCE payload duration_seconds must be non-negative")

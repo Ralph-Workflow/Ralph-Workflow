@@ -3,10 +3,10 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ralph.policy.models._artifact_contract import ArtifactContract
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class ArtifactsPolicy(_FrozenPolicyModel):
+class ArtifactsPolicy(RalphBaseModel):
     artifacts: dict[str, ArtifactContract] = Field(
         default_factory=dict,
         description="All artifact contracts keyed by artifact name",

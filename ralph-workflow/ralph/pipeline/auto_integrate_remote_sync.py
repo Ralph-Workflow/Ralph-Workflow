@@ -138,6 +138,8 @@ _MAX_REMOTE_KEYS = 128
 
 
 class _RemotePullThrottle:
+    __slots__ = ("_last_pull", "_max_tracked_keys")
+
     def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
         self._last_pull: OrderedDict[tuple[str, str, str], float] = OrderedDict()
@@ -186,7 +188,7 @@ def _throttle_allows_pull(
 ) -> bool:
     general: object = getattr(config, "general", config)
     configured: object = getattr(general, "auto_integrate_remote_interval_seconds", 0.0)
-    interval = configured if isinstance(configured, (int, float)) else REMOTE_SYNC_INTERVAL_SECONDS
+    interval = configured if (any(isinstance(configured, _t) for _t in (int, float))) else REMOTE_SYNC_INTERVAL_SECONDS
     return _REMOTE_PULL_THROTTLE.should_pull(
         repo_root,
         remote,

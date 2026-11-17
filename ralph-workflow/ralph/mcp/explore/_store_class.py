@@ -5,8 +5,8 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import cast
 
+from ralph.mcp.explore._narrowing import as_sqlite_rows
 from ralph.mcp.explore._store_class_content_cache import _ContentCacheMethods
 from ralph.mcp.explore._store_class_file_rows import _FileRowMethods
 from ralph.mcp.explore._store_class_init import _InitializeMethods
@@ -64,12 +64,16 @@ _FTS_SEARCH_GREP_SQL = """
 """
 
 
-class ExploreStore(
-    _ContentCacheMethods,
-    _FileRowMethods,
-    _InitializeMethods,
-    _RetentionMethods,
-):
+class ExploreStore:
+    __slots__ = (
+        "_busy_timeout_ms",
+        "_conn",
+        "_db_inode",
+        "_db_path",
+        "_in_transaction",
+        "index_dir",
+    )
+
     def __init__(
         self,
         index_dir: Path,
@@ -285,10 +289,10 @@ class ExploreStore(
         cur = self._conn.execute(sql, params)
         try:
             if glob_filter is None:
-                return cast("list[sqlite3.Row]", cur.fetchall())
+                return as_sqlite_rows(cur.fetchall())
             selected: list[sqlite3.Row] = []
             while len(selected) < limit:
-                page = cast("list[sqlite3.Row]", cur.fetchmany(_FTS_GLOB_PAGE_ROWS))
+                page = as_sqlite_rows(cur.fetchmany(_FTS_GLOB_PAGE_ROWS))
                 if not page:
                     break
                 for row in page:
@@ -506,7 +510,7 @@ class ExploreStore(
                 "SELECT * FROM spans WHERE path = ? ORDER BY start_line, start_col",
                 (path,),
             )
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = as_sqlite_rows(cur.fetchall())
         for span_row in rows:
             yield _row_to_span(span_row)
 
@@ -540,7 +544,7 @@ class ExploreStore(
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, qualified_name, kind"
         cur = self._conn.execute(sql, tuple(params))
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = as_sqlite_rows(cur.fetchall())
         return [_row_to_symbol(row) for row in rows]
 
     def iter_symbols(self, path: str | None = None) -> Iterator[SymbolRow]:
@@ -551,7 +555,7 @@ class ExploreStore(
                 "SELECT * FROM symbols WHERE path = ? ORDER BY qualified_name",
                 (path,),
             )
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = as_sqlite_rows(cur.fetchall())
         for sym_row in rows:
             yield _row_to_symbol(sym_row)
 
@@ -574,7 +578,7 @@ class ExploreStore(
             sql += " WHERE " + " AND ".join(clauses)
         sql += " ORDER BY path, relation, source_id, target_id"
         cur = self._conn.execute(sql, params)
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = as_sqlite_rows(cur.fetchall())
         for edge_row in rows:
             yield _row_to_edge(edge_row)
 
@@ -620,7 +624,7 @@ class ExploreStore(
     def consume_dirty_paths(self) -> list[str]:
         with self._transaction() as cur:
             cur.execute("SELECT path FROM dirty_paths")
-            rows = cast("list[sqlite3.Row]", cur.fetchall())
+            rows = as_sqlite_rows(cur.fetchall())
             paths = [_row_str(row, "path") for row in rows]
             cur.execute("DELETE FROM dirty_paths")
             return paths
@@ -635,7 +639,7 @@ class ExploreStore(
 
     def peek_dirty_paths(self) -> list[str]:
         cur = self._conn.execute("SELECT path FROM dirty_paths")
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = as_sqlite_rows(cur.fetchall())
         return [_row_str(row, "path") for row in rows]
 
     def get_setting(self, key: str) -> str | None:
@@ -658,3 +662,31 @@ class ExploreStore(
                 """,
                 (key, value),
             )
+
+
+ExploreStore.lookup_content_cache = _ContentCacheMethods.lookup_content_cache
+ExploreStore.insert_content_cache = _ContentCacheMethods.insert_content_cache
+ExploreStore.delete_content_cache = _ContentCacheMethods.delete_content_cache
+ExploreStore.content_cache_size = _ContentCacheMethods.content_cache_size
+ExploreStore.iter_content_cache = _ContentCacheMethods.iter_content_cache
+ExploreStore.upsert_file = _FileRowMethods.upsert_file
+ExploreStore.get_file = _FileRowMethods.get_file
+ExploreStore.get_file_many = _FileRowMethods.get_file_many
+ExploreStore.bulk_size_mtime_for_paths = _FileRowMethods.bulk_size_mtime_for_paths
+ExploreStore.upsert_file_many = _FileRowMethods.upsert_file_many
+ExploreStore.upsert_manifest_many = _FileRowMethods.upsert_manifest_many
+ExploreStore.iter_files = _FileRowMethods.iter_files
+ExploreStore.count_files = _FileRowMethods.count_files
+ExploreStore.count_deleted_files = _FileRowMethods.count_deleted_files
+ExploreStore.has_deleted_files = _FileRowMethods.has_deleted_files
+ExploreStore.delete_file_rows = _FileRowMethods.delete_file_rows
+ExploreStore._initialize = _InitializeMethods._initialize
+ExploreStore._migrate_schema = _InitializeMethods._migrate_schema
+ExploreStore._schema_version_matches = _InitializeMethods._schema_version_matches
+ExploreStore._initialize_with_bounded_retry = _InitializeMethods._initialize_with_bounded_retry
+ExploreStore.record_job = _RetentionMethods.record_job
+ExploreStore.latest_job = _RetentionMethods.latest_job
+ExploreStore.record_tombstone = _RetentionMethods.record_tombstone
+ExploreStore.get_tombstone = _RetentionMethods.get_tombstone
+ExploreStore.index_storage_bytes = _RetentionMethods.index_storage_bytes
+

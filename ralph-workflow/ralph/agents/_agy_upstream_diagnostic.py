@@ -4,8 +4,6 @@ import os
 import re
 from pathlib import Path
 
-from ralph.recovery.failure_classifier import _is_subscription_limit_message
-
 
 def _default_agy_cli_log_path() -> Path:
     return Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
@@ -60,6 +58,8 @@ def agy_empty_output_reason(output: list[str], cli_log_path: Path | None = None)
             evidence = path.read_text(encoding="utf-8", errors="replace")[-_AGY_CLI_LOG_TAIL_BYTES:]
         except OSError:
             evidence = ""
+    from ralph.recovery.failure_classifier import _is_subscription_limit_message
+
     if _is_subscription_limit_message([evidence]):
         reset = _QUOTA_RESET_PATTERN.search(evidence)
         reset_hint = f" (resets in {reset.group(1)})" if reset else ""

@@ -4,10 +4,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 type EntryStrictness = Callable[[Mapping[str, object], int, int], tuple[int, int, int, int]]
-
 LEGACY_DEFAULT_AGENT = "claude"
 _LEGACY_MALFORMED_REASON = "legacy_guard_malformed"
-
 _DEFAULT_CONSECUTIVE_LIMIT = 3
 _DEFAULT_TOTAL_LIMIT = 9
 _DEFAULT_BASE_COOLDOWN_SECONDS = 60.0
@@ -68,7 +66,7 @@ def _readable_legacy_field(field: str, raw: object) -> bool:
     if field == "streak":
         return _readable_streak(raw) is not None
     if field == "max_identical":
-        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        if isinstance(raw, bool) or not isinstance(raw, int | float | str):
             return False
         return _counter_value(raw) > 0
     return raw is None or isinstance(raw, bool)
@@ -81,7 +79,7 @@ def _readable_legacy_payload(payload: object) -> Mapping[str, object] | None:
     if not any(field in payload for field in fields):
         return None
     for field in fields:
-        if field in payload and not _readable_legacy_field(field, payload[field]):
+        if field in payload and (not _readable_legacy_field(field, payload[field])):
             return None
     return payload
 
@@ -99,12 +97,7 @@ _KEY_TOTAL = "total_unproductive"
 
 
 def _failed_closed_entry(
-    phase: str,
-    agent: str,
-    *,
-    reason: str,
-    consecutive_limit: int,
-    total_limit: int,
+    phase: str, agent: str, *, reason: str, consecutive_limit: int, total_limit: int
 ) -> dict[str, object]:
     return {
         "phase": phase,
@@ -120,9 +113,7 @@ def _failed_closed_entry(
     }
 
 
-def _snapshot_limits(
-    snapshot: Mapping[str, object] | None,
-) -> tuple[int, int, float, float, float]:
+def _snapshot_limits(snapshot: Mapping[str, object] | None) -> tuple[int, int, float, float, float]:
     if snapshot is None:
         return (
             _DEFAULT_CONSECUTIVE_LIMIT,
@@ -150,7 +141,7 @@ def translate_legacy_entry(
     raw_streak = guard_data.get("streak", 0)
     streak = (
         int(raw_streak)
-        if isinstance(raw_streak, (int, float, str)) and not isinstance(raw_streak, bool)
+        if isinstance(raw_streak, int | float | str) and (not isinstance(raw_streak, bool))
         else 0
     )
     streak = max(0, streak)
@@ -173,12 +164,7 @@ def translate_legacy_entry(
 
 
 def _translate_legacy_source(
-    source: _LegacyGuardSource,
-    phase: str,
-    agent: str,
-    *,
-    consecutive_limit: int,
-    total_limit: int,
+    source: _LegacyGuardSource, phase: str, agent: str, *, consecutive_limit: int, total_limit: int
 ) -> dict[str, object]:
     if source.fail_closed_reason is not None:
         return _failed_closed_entry(
@@ -202,11 +188,7 @@ def _translate_legacy_source(
     if legacy_cap > 0:
         effective_limit = min(consecutive_limit, legacy_cap)
     return translate_legacy_entry(
-        payload,
-        phase,
-        agent,
-        consecutive_limit=effective_limit,
-        total_limit=total_limit,
+        payload, phase, agent, consecutive_limit=effective_limit, total_limit=total_limit
     )
 
 
@@ -229,11 +211,7 @@ def migrate_legacy_guard_history(
     for source in sources:
         for phase, agent in _legacy_identities(source):
             migrated = _translate_legacy_source(
-                source,
-                phase,
-                agent,
-                consecutive_limit=consecutive_limit,
-                total_limit=total_limit,
+                source, phase, agent, consecutive_limit=consecutive_limit, total_limit=total_limit
             )
             key = f"{phase}:{agent}"
             stored = entries.get(key)

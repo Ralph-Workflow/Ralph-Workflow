@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import contextlib
-import importlib
-import os
 import subprocess
-import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from ralph.git.git_call_policy import GitCallClass, effective_terminate_grace_seconds
 from ralph.git.git_run_result import GitRunResult
@@ -39,7 +36,6 @@ _UNREPORTED_RETURNCODE: int = -9
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
-    from typing import Protocol
 
     from ralph.process.unmanaged_terminate import TerminableProcessLike
 
@@ -54,13 +50,13 @@ if TYPE_CHECKING:
             call_class: GitCallClass | None = None,
         ) -> GitRunResult: ...
 
-    class _PopenExitProtocol:
-        def __exit__(
-            self,
-            exc_type: object,
-            exc: object,
-            tb: object,
-        ) -> object: ...
+
+class _PopenExit(Protocol):
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> object: ...
+
+
+def _has_popen_exit(value: object) -> TypeGuard[_PopenExit]:
+    return hasattr(value, "__exit__")
 
 
 _SCRUBBED_GIT_ENV_KEYS: frozenset[str] = frozenset(
@@ -72,7 +68,9 @@ def _build_spawn_env(
     caller_env: Mapping[str, str] | None,
 ) -> dict[str, str]:
     merged: dict[str, str] = {}
-    for source in (os.environ, _GIT_BATCH_MODE_ENV):
+    from ralph.config._env import environ
+
+    for source in (environ(), _GIT_BATCH_MODE_ENV):
         for key, value in source.items():
             if key in _SCRUBBED_GIT_ENV_KEYS:
                 continue
@@ -106,10 +104,7 @@ def run_git(
     options: GitRunOptions | None = None,
     call_class: GitCallClass | None = None,
 ) -> GitRunResult:
-    queued_mod = sys.modules.get("ralph.git.git_command_queue")
-    if queued_mod is None:
-        queued_mod = importlib.import_module("ralph.git.git_command_queue")
-    queued_run_git = cast("_QueuedRunGit", queued_mod.route_run_git)
+    from ralph.git.git_command_queue import route_run_git as queued_run_git
 
     return queued_run_git(
         args,
@@ -222,10 +217,9 @@ def _spawn_git(
                 continue
             with contextlib.suppress(Exception):
                 stream.close()
-        if hasattr(raw_proc_obj, "__exit__"):
-            raw_proc = cast("_PopenExitProtocol", raw_proc_obj)
+        if _has_popen_exit(raw_proc_obj):
             with contextlib.suppress(Exception):
-                raw_proc.__exit__(None, None, None)
+                raw_proc_obj.__exit__(None, None, None)
 
     def _str(v: bytes | str | None) -> str:
         if v is None:

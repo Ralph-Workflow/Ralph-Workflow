@@ -4,15 +4,14 @@ import asyncio
 import sys
 import uuid
 from dataclasses import dataclass
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.display import parallel_display as _parallel_display_mod
 from ralph.display.context import make_display_context
-from ralph.display.parallel_display import ParallelDisplay
 from ralph.executor.process import run_process_async
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -62,25 +61,38 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-if TYPE_CHECKING:
+class _PipelineSubscriberLike(Protocol):
+    def notify(self, state: PipelineState) -> None: ...
 
-    class _PipelineSubscriberLike(Protocol):
-        def notify(self, state: PipelineState) -> None: ...
 
-    class _InstallSignalHandlersFn(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> Callable[[], None] | None: ...
+class _InstallSignalHandlersFn(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> Callable[[], None] | None: ...
 
-    class _ExecutorFactory(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> AgentExecutor: ...
 
-    class _McpFactory(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> McpServerFactory: ...
+class _ExecutorFactory(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> AgentExecutor: ...
 
-    class _RunProcessAsyncFn(Protocol):
-        async def __call__(self, *args: object, **kwargs: object) -> ProcessResult: ...
 
-    class _ReducerReduceFn(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> tuple[PipelineState, object]: ...
+class _McpFactory(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> McpServerFactory: ...
+
+
+class _RunProcessAsyncFn(Protocol):
+    async def __call__(self, *args: object, **kwargs: object) -> ProcessResult: ...
+
+
+class _ReducerReduceFn(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> tuple[PipelineState, object]: ...
+
+
+class _HasConsole(Protocol):
+    @property
+    def console(self) -> Console | None: ...
+
+
+class _HasSubscriber(Protocol):
+    @property
+    def subscriber(self) -> _PipelineSubscriberLike: ...
 
 
 @dataclass(frozen=True)
@@ -103,6 +115,24 @@ class _FanOutCtx:
     reducer_reduce_fn: _ReducerReduceFn | None = None
     pipeline_deps: PipelineDeps | None = None
     on_successful_completion: Callable[[PipelineState], PipelineState] | None = None
+
+
+def _is_stop_cb(value: object) -> TypeGuard[Callable[[], None]]:
+    return callable(value)
+
+
+def _is_has_console(value: object) -> TypeGuard[_HasConsole]:
+    return hasattr(value, "console")
+
+
+def _is_has_subscriber(value: object) -> TypeGuard[_HasSubscriber]:
+    return hasattr(value, "subscriber")
+
+
+def _optional_stop_cb(value: object) -> Callable[[], None] | None:
+    if value is None:
+        return None
+    return value if _is_stop_cb(value) else None
 
 
 def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
@@ -269,8 +299,7 @@ def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = import_module("ralph.display.parallel_display")
-    return cast("type[ParallelDisplay]", module.ParallelDisplay)
+    return _parallel_display_mod.ParallelDisplay
 
 
 def _fan_out_display_and_subscriber(
@@ -281,15 +310,13 @@ def _fan_out_display_and_subscriber(
     parallel_display_cls = _parallel_display_cls()
     if isinstance(display, parallel_display_cls):
         parallel_display = display
+    elif _is_has_console(display):
+        parallel_display = parallel_display_cls(make_display_context(console=display.console))
     else:
-        console = cast("Console | None", getattr(display, "console", None))
-        parallel_display = parallel_display_cls(make_display_context(console=console))
+        parallel_display = parallel_display_cls(make_display_context())
     effective_subscriber = dashboard_subscriber or pipeline_subscriber
-    if effective_subscriber is None and hasattr(parallel_display, "subscriber"):
-        effective_subscriber = cast(
-            "_PipelineSubscriberLike | None",
-            getattr(parallel_display, "subscriber", None),
-        )
+    if effective_subscriber is None and _is_has_subscriber(parallel_display):
+        effective_subscriber = parallel_display.subscriber
     return parallel_display, effective_subscriber
 
 
@@ -301,12 +328,8 @@ def build_session_mcp_plan_for_phase(
 ) -> tuple[SessionMcpPlan, str]:
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
-    _effect_drain = cast("str | None", getattr(effect, "drain", None))
     drain: str = (
-        cast("str", _effect_drain)
-        or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
-        or effect.phase
-        or "development"
+        (phase_def.drain if phase_def is not None else None) or effect.phase or "development"
     )
 
     candidate_agents: list[str] = []
@@ -323,10 +346,10 @@ def build_session_mcp_plan_for_phase(
         registry = AgentRegistry.from_config(config)
         agent_config = registry.get(agent_name)
 
-    _transport_raw = cast("object", getattr(agent_config, "transport", None))
-    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
-    _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
-    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
+    transport: AgentTransport | None = (
+        agent_config.transport if agent_config is not None else None
+    )
+    model_flag: str | None = agent_config.model_flag if agent_config is not None else None
     chain_transport, chain_is_ambiguous = resolve_phase_session_transport(candidate_agents, config)
     transport, model_flag = phase_session_identity(
         transport, model_flag, chain_transport, chain_is_ambiguous=chain_is_ambiguous
@@ -353,21 +376,18 @@ def _fan_out_worker_context(
     executor_cls: _ExecutorFactory | None = None,
     mcp_factory_cls: _McpFactory | None = None,
 ) -> tuple[AgentExecutor, parallel_coordinator.WorkerContext]:
-    _executor_cls = (
-        executor_cls
-        if executor_cls is not None
-        else cast("_ExecutorFactory", SubprocessAgentExecutor)
-    )
-    _mcp_factory_cls = (
-        mcp_factory_cls
-        if mcp_factory_cls is not None
-        else cast("_McpFactory", DynamicBindingMcpServerFactory)
-    )
-    executor = _executor_cls(parallel_worker_command(), signal_bridge=bridge)
+    if executor_cls is not None:
+        executor = executor_cls(parallel_worker_command(), signal_bridge=bridge)
+    else:
+        executor = SubprocessAgentExecutor(parallel_worker_command(), signal_bridge=bridge)
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
+    if mcp_factory_cls is not None:
+        mcp_factory = mcp_factory_cls(workspace=workspace)
+    else:
+        mcp_factory = DynamicBindingMcpServerFactory(workspace=workspace)
     worker_namespace_root = repo_root / ".agent" / "workers"
     worker_namespace_root.mkdir(parents=True, exist_ok=True)
     return executor, coordinator.WorkerContext(
@@ -377,7 +397,7 @@ def _fan_out_worker_context(
         ),
         same_workspace=SameWorkspaceContext(
             repo_root=repo_root,
-            mcp_factory=_mcp_factory_cls(workspace=workspace),
+            mcp_factory=mcp_factory,
             executor_command=parallel_worker_command(),
             worker_commands=worker_commands,
             signal_bridge=bridge,
@@ -459,10 +479,8 @@ def _resume_fan_out_state(
     *,
     reducer_reduce_fn: _ReducerReduceFn | None = None,
 ) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
-    _reduce = (
-        reducer_reduce_fn
-        if reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+    _reduce: _ReducerReduceFn = (
+        reducer_reduce_fn if reducer_reduce_fn is not None else reducer_reduce
     )
     resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
@@ -493,10 +511,8 @@ async def _run_post_fanout_verification(
     run_process_async_fn: _RunProcessAsyncFn | None = None,
 ) -> str | None:
     logger.debug("Running post-fanout workspace-wide verification (serialized)")
-    _run = (
-        run_process_async_fn
-        if run_process_async_fn is not None
-        else cast("_RunProcessAsyncFn", run_process_async)
+    _run: _RunProcessAsyncFn = (
+        run_process_async_fn if run_process_async_fn is not None else run_process_async
     )
     verify_result = await _run(
         "make",
@@ -529,10 +545,8 @@ async def _run_verify_phase(
     else:
         v = VerificationResult(ran=True, passed=True, exit_code=0)
         verify_ev = PostFanoutVerificationEvent(success=True, exit_code=0)
-    _reduce = (
-        ctx.reducer_reduce_fn
-        if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+    _reduce: _ReducerReduceFn = (
+        ctx.reducer_reduce_fn if ctx.reducer_reduce_fn is not None else reducer_reduce
     )
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
@@ -545,21 +559,19 @@ async def _run_verify_phase(
 
 async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
     current = ctx.state
-    _reduce = (
-        ctx.reducer_reduce_fn
-        if ctx.reducer_reduce_fn is not None
-        else cast("_ReducerReduceFn", reducer_reduce)
+    _reduce: _ReducerReduceFn = (
+        ctx.reducer_reduce_fn if ctx.reducer_reduce_fn is not None else reducer_reduce
     )
-    _install = (
+    _install: _InstallSignalHandlersFn = (
         ctx.install_signal_handlers_fn
         if ctx.install_signal_handlers_fn is not None
-        else cast("_InstallSignalHandlersFn", install_signal_handlers)
+        else install_signal_handlers
     )
     loop = asyncio.get_running_loop()
     bridge = SignalBridge()
     if ctx.monitor_stop_cb is not None:
         bridge._connectivity_stop = ctx.monitor_stop_cb
-    root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
+    root_task = asyncio.current_task()
     if root_task is None:
         raise RuntimeError("root_task is None")
     teardown_fn: Callable[[], None] | None = None
@@ -698,24 +710,22 @@ def execute_fan_out_sync(
     state: PipelineState,
     display: ParallelDisplay,
     pipeline_deps: PipelineDeps | None = None,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+    pipeline_subscriber: _PipelineSubscriberLike | None = None,
+    dashboard_subscriber: _PipelineSubscriberLike | None = None,
+    config: UnifiedConfig | None = None,
+    config_path: Path | None = None,
+    cli_overrides: dict[str, object] | None = None,
+    _install_signal_handlers: _InstallSignalHandlersFn | None = None,
+    _executor_cls: _ExecutorFactory | None = None,
+    _mcp_factory_cls: _McpFactory | None = None,
+    _run_process_async: _RunProcessAsyncFn | None = None,
+    _reducer_reduce: _ReducerReduceFn | None = None,
+    _on_successful_completion: Callable[[PipelineState], PipelineState] | None = None,
     **opts: object,
 ) -> PipelineState:
-    policy_bundle = cast("PolicyBundle", opts["policy_bundle"])
-    workspace_scope = cast("WorkspaceScope", opts["workspace_scope"])
-    pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
-    dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
-    config = cast("UnifiedConfig | None", opts.get("config"))
-    config_path = cast("Path | None", opts.get("config_path"))
-    cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
-    monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
-    install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))
-    executor_cls = cast("_ExecutorFactory | None", opts.get("_executor_cls"))
-    mcp_factory_cls = cast("_McpFactory | None", opts.get("_mcp_factory_cls"))
-    run_process_fn = cast("_RunProcessAsyncFn | None", opts.get("_run_process_async"))
-    reducer_fn = cast("_ReducerReduceFn | None", opts.get("_reducer_reduce"))
-    on_successful_completion = cast(
-        "Callable[[PipelineState], PipelineState] | None", opts.get("_on_successful_completion")
-    )
+    monitor_stop_cb = _optional_stop_cb(opts.get("_monitor_stop_cb"))
 
     parallel_display, effective_subscriber = _fan_out_display_and_subscriber(
         display, pipeline_subscriber, dashboard_subscriber
@@ -732,13 +742,13 @@ def execute_fan_out_sync(
         config_path=config_path,
         cli_overrides=cli_overrides,
         monitor_stop_cb=monitor_stop_cb,
-        install_signal_handlers_fn=install_fn,
-        executor_cls=executor_cls,
-        mcp_factory_cls=mcp_factory_cls,
-        run_process_async_fn=run_process_fn,
-        reducer_reduce_fn=reducer_fn,
+        install_signal_handlers_fn=_install_signal_handlers,
+        executor_cls=_executor_cls,
+        mcp_factory_cls=_mcp_factory_cls,
+        run_process_async_fn=_run_process_async,
+        reducer_reduce_fn=_reducer_reduce,
         pipeline_deps=pipeline_deps,
-        on_successful_completion=on_successful_completion,
+        on_successful_completion=_on_successful_completion,
     )
     return asyncio.run(_run_fan_out_async(ctx))
 

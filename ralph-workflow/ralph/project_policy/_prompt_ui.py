@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from importlib import import_module
-from typing import Protocol, cast
+from typing import Protocol, TypeGuard
 
+import questionary
 from loguru import logger
 
 
@@ -18,7 +18,7 @@ class PromptChoice:
 SelectFn = Callable[[str, Sequence[PromptChoice], str], str]
 
 
-class _Question:
+class _Question(Protocol):
     def ask(self) -> object: ...
 
 
@@ -35,26 +35,36 @@ class _Questionary(Protocol):
         *,
         choices: Sequence[object],
         default: str,
-        **kwargs: object,
+        show_description: bool = False,
+        instruction: str = "",
     ) -> _Question: ...
 
 
+def _is_questionary(value: object) -> TypeGuard[_Questionary]:
+    choice = getattr(value, "Choice", None)
+    select_fn = getattr(value, "select", None)
+    return callable(choice) and callable(select_fn)
+
+
 def _load_questionary() -> _Questionary:
-    return cast("_Questionary", import_module("questionary"))
+    if not _is_questionary(questionary):
+        msg = "questionary module must expose Choice and select"
+        raise RuntimeError(msg)
+    return questionary
 
 
 def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:
     try:
-        questionary = _load_questionary()
+        questionary_api = _load_questionary()
         items = [
-            questionary.Choice(
+            questionary_api.Choice(
                 title=choice.title,
                 value=choice.key,
                 description=choice.description,
             )
             for choice in choices
         ]
-        answer: object = questionary.select(
+        answer: object = questionary_api.select(
             question,
             choices=items,
             default=default,

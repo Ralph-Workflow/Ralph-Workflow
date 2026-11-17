@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog._sanitize import as_status_diagnostic
 from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
 from ralph.agents.idle_watchdog.watchdog_verdict import WatchdogVerdict
@@ -165,7 +166,7 @@ def _heartbeat_only_verdict(
         current_run_seconds=round(self.invocation_elapsed_seconds, 1),
         idle_elapsed=idle_elapsed,
         ceiling_seconds=ceiling,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._log.warning(
         "idle watchdog: FIRE reason={} effective_ceiling=heartbeat_only"
@@ -207,7 +208,7 @@ def _no_progress_quiet_fire_verdict(
         current_run_seconds=round(self.invocation_elapsed_seconds, 1),
         idle_elapsed=idle_elapsed,
         ceiling_seconds=quiet_seconds,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._log.warning(
         "idle watchdog: FIRE reason={} idle_elapsed={}s invocation_elapsed={}s",
@@ -282,7 +283,7 @@ def _strictly_stuck_fire_verdict(
         current_run_seconds=round(strictly_stuck_run_seconds, 1),
         idle_elapsed=idle_elapsed,
         ceiling_seconds=ceiling,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._log.warning(
         "idle watchdog: FIRE reason={} idle_elapsed={}s strictly_stuck_run_seconds={}s alive_by={}",
@@ -364,7 +365,7 @@ def _no_output_at_start_fire_verdict(
         current_run_seconds=round(self.invocation_elapsed_seconds, 1),
         idle_elapsed=idle_elapsed,
         ceiling_seconds=self._config.no_output_at_start_seconds,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._emit_fire_log(
         WatchdogFireReason.NO_OUTPUT_AT_START,

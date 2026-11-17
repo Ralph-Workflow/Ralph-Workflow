@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+
+from ralph.config._env import getenv
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,7 +18,7 @@ class OpenCodeChildPartSource(Protocol):
 
 
 def default_opencode_db_path(
-    env_getter: Callable[[str], str | None] = os.environ.get,
+    env_getter: Callable[[str], str | None] = getenv,
 ) -> Path | None:
     xdg_data_home = env_getter("XDG_DATA_HOME")
     home = env_getter("HOME")

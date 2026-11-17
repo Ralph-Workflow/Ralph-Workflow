@@ -15,7 +15,7 @@ import urllib.request
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
+from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol
 
 import psutil
 from loguru import logger
@@ -343,12 +343,43 @@ if not _PROBE_SUCCESS_HYSTERESIS_COUNT > 0:
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
+
+def _optional_poll(obj: object) -> object | None:
+    attr: object = getattr(obj, "poll", None)
+    if attr is None or not callable(attr):
+        return None
+    return attr
+
+
+def _optional_wait(obj: object) -> object | None:
+    attr: object = getattr(obj, "wait", None)
+    if attr is None or not callable(attr):
+        return None
+    return attr
+
+
+def _as_finite_float(value: object, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return float(value)
+    if isinstance(value, float):
+        return value
+    return default
+
+
+def _process_environ_map() -> dict[str, str]:
+    from ralph.config import _env as _config_env
+
+    return dict(_config_env.os.environ)
+
+
 def _process_is_dead(target: StandaloneMcpProcess) -> bool:
     proc: object = getattr(target, "process", None)
     if proc is None:
         return True
-    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
-    if poll_fn is None or not callable(poll_fn):
+    poll_fn = _optional_poll(proc)
+    if poll_fn is None:
         return True
     try:
         return poll_fn() is not None
@@ -369,8 +400,8 @@ def _is_alive_pid(pid: int | None) -> bool:
 
 
 def is_alive_process(proc: object) -> bool:
-    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
-    if poll_fn is None or not callable(poll_fn):
+    poll_fn = _optional_poll(proc)
+    if poll_fn is None:
         return False
     try:
         return poll_fn() is None
@@ -426,7 +457,7 @@ def _optional_attr_float(exc: BaseException) -> float | None:
     if not _has_stage(exc):
         return None
     raw = _read_supervisor_field(exc, "elapsed_s")
-    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+    if isinstance(raw, bool) or not (any(isinstance(raw, _t) for _t in (int, float))):
         return None
     return float(raw)
 
@@ -470,6 +501,57 @@ class _RestartFnProtocol(Protocol):
 
 
 class RestartAwareMcpBridge:
+    __slots__ = (
+        "__dict__",
+        "_activity_relay",
+        "_baseline_capture_failed",
+        "_bridge_generation",
+        "_broker_fingerprint",
+        "_candidate_in_flight",
+        "_clock_fn",
+        "_consecutive_probe_failures",
+        "_consecutive_probe_failures_deferred",
+        "_consecutive_probe_successes",
+        "_contention_signal_producer",
+        "_current_candidate",
+        "_dead_child_replace_lock",
+        "_drain_threads",
+        "_draining_inners",
+        "_durable_sink_path",
+        "_effective_config_fingerprint",
+        "_expected_tool_entries",
+        "_expected_tool_hash",
+        "_first_probe_deferred_at",
+        "_handover_ack_timeout_s",
+        "_handover_drain_s",
+        "_handover_kill_wait_s",
+        "_healthy_period_started_at",
+        "_host_contention_window_seconds",
+        "_inner",
+        "_is_shutting_down",
+        "_last_healthy_at",
+        "_last_probe_error",
+        "_listening_socket",
+        "_lock",
+        "_preflight_timeout_fn",
+        "_probe_fn",
+        "_probe_timeout_fn",
+        "_restart_count",
+        "_restart_fn",
+        "_restart_policy",
+        "_restart_timestamps",
+        "_run_id",
+        "_session_id",
+        "_sleep_fn",
+        "_tool_entries_fn",
+        "_tool_registry_resets",
+        "_unkillable_reap_backoff_s",
+        "_unkillable_reap_retry_s",
+        "_unkillable_reap_threads",
+        "_unkillable_reapers",
+        "_workspace_root",
+    )
+
     def __init__(
         self,
         inner: StandaloneMcpProcess,
@@ -562,11 +644,7 @@ class RestartAwareMcpBridge:
         self._consecutive_probe_failures_deferred: int = 0
         self._contention_signal_producer: Callable[[], bool] | None = contention_signal_producer
         window_attr: object = getattr(restart_policy, "host_contention_window_seconds", 10.0)
-        self._host_contention_window_seconds: float = (
-            float(window_attr)
-            if isinstance(window_attr, (int, float)) and not isinstance(window_attr, bool)
-            else 10.0
-        )
+        self._host_contention_window_seconds: float = _as_finite_float(window_attr, 10.0)
         self._first_probe_deferred_at: float | None = None
         self._draining_inners: collections.deque[StandaloneMcpProcess] = collections.deque(
             maxlen=16
@@ -677,8 +755,8 @@ class RestartAwareMcpBridge:
             proc, _ = entry
             with contextlib.suppress(Exception):
                 _kill_process_for_handover(proc)
-            wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
-            if callable(wait_fn):
+            wait_fn = _optional_wait(proc)
+            if wait_fn is not None:
                 with contextlib.suppress(Exception):
                     wait_fn(2.0)
         for t in unkillable_threads:
@@ -694,9 +772,9 @@ class RestartAwareMcpBridge:
 
     def _cooldown_after_failure(self) -> None:
         seconds = self._restart_policy.cooldown_seconds
-        if not isinstance(seconds, (int, float)) or not seconds > 0:
+        if isinstance(seconds, bool) or not (any(isinstance(seconds, _t) for _t in (int, float))) or not seconds > 0:
             return
-        sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
+        sleep_fn = self._sleep_fn
         if sleep_fn is None:
             sleep_fn = time.sleep
         sleep_fn(seconds)
@@ -841,9 +919,7 @@ class RestartAwareMcpBridge:
             clock_fn = _bridge_clock(self)
             now = clock_fn()
             raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
-            healthy_reset_s: float = (
-                float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
-            )
+            healthy_reset_s: float = _as_finite_float(raw_healthy, 300.0)
             if (
                 self._healthy_period_started_at is not None
                 and now - self._healthy_period_started_at >= healthy_reset_s
@@ -854,9 +930,7 @@ class RestartAwareMcpBridge:
             self._last_healthy_at = now
 
             raw_window: object = getattr(self._restart_policy, "rolling_window_s", 600.0)
-            rolling_window_s: float = (
-                float(raw_window) if isinstance(raw_window, (int, float)) else 600.0
-            )
+            rolling_window_s: float = _as_finite_float(raw_window, 600.0)
             decision = next_budget_decision(
                 self._restart_policy,
                 self._restart_count,
@@ -953,11 +1027,16 @@ class RestartAwareMcpBridge:
         self._first_probe_deferred_at = None
 
     def _spawn_candidate(self) -> StandaloneMcpProcess:
-        fn = cast("_RestartFnProtocol", self._restart_fn)
+        restart_fn: object = self._restart_fn
+        if not callable(restart_fn):
+            raise TypeError("restart_fn is not callable")
         try:
-            return fn(make_before_break=True)
+            result: object = restart_fn(make_before_break=True)
         except TypeError:
-            return self._restart_fn()
+            result = restart_fn()
+        if not isinstance(result, StandaloneMcpProcess):
+            raise TypeError("restart_fn did not return StandaloneMcpProcess")
+        return result
 
     def capture_tool_hash_baseline(self) -> None:
         endpoint = self._inner.endpoint
@@ -1190,9 +1269,9 @@ class RestartAwareMcpBridge:
                     )
                     with contextlib.suppress(Exception):
                         _kill_process_for_handover(proc)
-                    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+                    poll_fn = _optional_poll(proc)
                     old_exited = False
-                    if poll_fn is not None and callable(poll_fn):
+                    if poll_fn is not None:
                         deadline = time.monotonic() + self._handover_kill_wait_s
                         while time.monotonic() < deadline:
                             poll_res: object = poll_fn()
@@ -1223,7 +1302,7 @@ class RestartAwareMcpBridge:
 
     def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
         drain_s = self._handover_drain_s
-        sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
+        sleep_fn = self._sleep_fn
         proc: object = getattr(old_inner, "process", None)
         if sleep_fn is None and (self._workspace_root is None or not is_alive_process(proc)):
             with contextlib.suppress(Exception):
@@ -1291,17 +1370,17 @@ class RestartAwareMcpBridge:
                 with contextlib.suppress(Exception):
                     _terminate_process_for_handover(proc, grace_period_s=None)
                 deadline = time.monotonic() + self._unkillable_reap_retry_s
-                poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+                poll_fn = _optional_poll(proc)
                 while time.monotonic() < deadline:
-                    if poll_fn is not None and callable(poll_fn):
+                    if poll_fn is not None:
                         with contextlib.suppress(Exception):
                             if poll_fn() is not None:
                                 return
                     sleep_fn(0.05)
                 with contextlib.suppress(Exception):
                     _kill_process_for_handover(proc)
-                wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
-                if callable(wait_fn):
+                wait_fn = _optional_wait(proc)
+                if wait_fn is not None:
                     with contextlib.suppress(Exception):
                         wait_fn(2.0)
             finally:
@@ -1621,9 +1700,7 @@ class RestartAwareMcpBridge:
                 if self._healthy_period_started_at is None:
                     self._healthy_period_started_at = now
                 raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
-                healthy_reset_s: float = (
-                    float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
-                )
+                healthy_reset_s: float = _as_finite_float(raw_healthy, 300.0)
                 if now - self._healthy_period_started_at >= healthy_reset_s:
                     self._restart_timestamps.clear()
                     self._restart_count = 0
@@ -1860,9 +1937,8 @@ class RestartAwareMcpBridge:
                 method="POST",
             )
             try:
-                response = cast(
-                    "IO[bytes]",
-                    urllib.request.urlopen(request, timeout=_RESET_WRAPUP_TIMEOUT_S),
+                response: IO[bytes] = urllib.request.urlopen(
+                    request, timeout=_RESET_WRAPUP_TIMEOUT_S
                 )
                 try:
                     response_data = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES)
@@ -2390,7 +2466,7 @@ def _visible_mcp_tool_names_owned(
 def _workspace_root(workspace: WorkspaceLike) -> Path:
     if isinstance(workspace, FsWorkspace):
         return workspace.root
-    root_value = cast("Path | str | None", getattr(workspace, "root", None))
+    root_value: object = getattr(workspace, "root", None)
     if isinstance(root_value, Path):
         return root_value.resolve()
     if isinstance(root_value, str):
@@ -2400,7 +2476,7 @@ def _workspace_root(workspace: WorkspaceLike) -> Path:
 
 
 def _subprocess_env(session_file: Path) -> dict[str, str]:
-    env = dict(os.environ)
+    env = _process_environ_map()
     env[SESSION_FILE_ENV] = str(session_file)
     env[MCP_OWNER_PID_ENV] = str(os.getpid())
     env["PYTHONUNBUFFERED"] = "1"
@@ -2541,6 +2617,7 @@ def session_payload_json(session: SessionLike) -> str:
             "transport": payload_transport(raw_identity.transport),
         }
     raw_profile: object = getattr(session, "capability_profile", None)
+    profile_written = False
     if isinstance(raw_profile, ResolvedCapabilityProfile):
         identity_for_profile = (
             raw_identity
@@ -2550,8 +2627,11 @@ def session_payload_json(session: SessionLike) -> str:
         session_payload["capability_profile"] = profile_for_caller(
             raw_profile, identity_for_profile
         ).to_payload()
-    elif isinstance(raw_identity, MultimodalModelIdentity) and identity_is_serialisable(
-        raw_identity
+        profile_written = True
+    if (
+        not profile_written
+        and isinstance(raw_identity, MultimodalModelIdentity)
+        and identity_is_serialisable(raw_identity)
     ):
         session_payload["capability_profile"] = resolve_capability_profile(
             raw_identity

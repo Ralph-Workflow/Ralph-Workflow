@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, assert_never, cast
+from typing import TYPE_CHECKING, Protocol, assert_never
 
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.resolution_outcome import (
@@ -43,11 +43,8 @@ def reset_driver_events_state() -> None:
 def _emit(display: ParallelDisplay | None, line: str) -> None:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    fn = cast(
-        "Callable[[ParallelDisplay | None, str], None] | None",
-        getattr(driver_mod, "emit_conflict_phase_line", None),
-    )
-    if fn is not None:
+    fn: object = getattr(driver_mod, "emit_conflict_phase_line", None)
+    if callable(fn):
         fn(display, line)
         return
     emit_conflict_phase_line(display, line)
@@ -103,13 +100,12 @@ def emit_success(
 def _session_progress(status_session: ResolutionSession) -> str:
     from ralph.pipeline.conflict_resolution import driver as driver_mod
 
-    build_fn = cast(
-        "_SessionStatusBuilder | None",
-        getattr(driver_mod, "build_session_integration_status", None),
-    )
-    if build_fn is None:
+    build_fn: object = getattr(driver_mod, "build_session_integration_status", None)
+    if not callable(build_fn):
         return "(unknown)"
-    return build_fn(status_session, cause="PROGRESS").progress
+    status = build_fn(status_session, cause="PROGRESS")
+    progress: object = getattr(status, "progress", "(unknown)")
+    return progress if isinstance(progress, str) else "(unknown)"
 
 
 def emit_attempt_outcome(

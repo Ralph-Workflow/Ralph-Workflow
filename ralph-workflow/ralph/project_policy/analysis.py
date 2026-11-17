@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from ralph.mcp.tools.names import (
     DECLARE_COMPLETE_TOOL,
@@ -58,11 +58,14 @@ def _noop_emit(message: str) -> None:
     pass
 
 
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
 def _string_list(value: object) -> list[str]:
-    if not isinstance(value, list):
+    if not _is_object_list(value):
         return []
-    items = cast("list[object]", value)
-    return [text for item in items if (text := str(item).strip())]
+    return [text for item in value if (text := str(item).strip())]
 
 
 def _transport_tool_names(tool_name: RalphToolName) -> str:

@@ -243,6 +243,8 @@ def test_fresh_cli_init_seeds_v6_policy_pack(
     assert markers.AGENTS_BLOCK_BEGIN in agents_text
     assert markers.AGENTS_BLOCK_END in agents_text
     assert "execution-kernel.md first" in agents_text
+    assert markers.CANONICAL_DIR in agents_text
+    agents_bytes_before_reinit = agents_file.read_bytes()
 
     custom_text = "# Custom Kernel\n\nCustom user changes here.\n"
     kernel_path = policy_dir / "execution-kernel.md"
@@ -252,6 +254,7 @@ def test_fresh_cli_init_seeds_v6_policy_pack(
 
     assert kernel_path.read_text(encoding="utf-8") == custom_text
     assert agents_file.read_text(encoding="utf-8").count(markers.AGENTS_BLOCK_BEGIN) == 1
+    assert agents_file.read_bytes() == agents_bytes_before_reinit
 
 
 def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None:

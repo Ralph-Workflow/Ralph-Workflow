@@ -50,7 +50,7 @@ def resolution_terminal_marker(record: IntegrationRecord) -> ResolutionTerminalM
     raw = values.get(RESOLUTION_TERMINAL_MARKER_FIELD)
     if isinstance(raw, ResolutionTerminalMarker):
         return raw
-    if not isinstance(raw, (tuple, list)) or len(raw) != _MARKER_PARTS:
+    if not (any(isinstance(raw, _t) for _t in (tuple, list))) or len(raw) != _MARKER_PARTS:
         return None
     attempt_key, state, resume_command = raw
     if not isinstance(state, str) or not isinstance(resume_command, str):
@@ -64,12 +64,12 @@ def resolution_terminal_marker(record: IntegrationRecord) -> ResolutionTerminalM
 def _resolution_attempt_key(raw: object) -> ResolutionAttemptKey | None:
     if raw is None:
         return None
-    if not isinstance(raw, (tuple, list)) or len(raw) != _MARKER_PARTS:
+    if not (any(isinstance(raw, _t) for _t in (tuple, list))) or len(raw) != _MARKER_PARTS:
         return None
     stop, agents, config = raw
     valid = (
         (stop is None or isinstance(stop, str))
-        and isinstance(agents, (tuple, list))
+        and (any(isinstance(agents, _t) for _t in (tuple, list)))
         and all(isinstance(agent, str) for agent in agents)
         and (config is None or isinstance(config, str))
     )

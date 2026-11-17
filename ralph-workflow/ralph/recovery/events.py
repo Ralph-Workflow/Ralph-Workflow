@@ -9,13 +9,13 @@ from ralph.recovery.failure_event import FailureEvent
 from ralph.recovery.fallover_event import FalloverEvent
 
 __all__ = ["FailureEvent", "FailureEventBus", "FalloverEvent", "UnsubscribeFn"]
-
 UnsubscribeFn = Callable[[], None]
-
 _AnyListener = Callable[[FailureEvent | FalloverEvent], None]
 
 
 class FailureEventBus:
+    __slots__ = ("_listeners",)
+
     def __init__(self) -> None:
         self._listeners: list[_AnyListener] = []
 

@@ -82,7 +82,7 @@ def busy_refusal_outcome(
     *,
     clock: object = None,
 ) -> IntegrationAction | RecordFactOutcome:
-    if not isinstance(retry_deadline, (int, float)) or isinstance(retry_deadline, bool):
+    if not (any(isinstance(retry_deadline, _t) for _t in (int, float))) or isinstance(retry_deadline, bool):
         return RecordFactOutcome.STALE_INTENT
     now = _current_time(clock)
     if now is None:
@@ -96,13 +96,13 @@ def _current_time(clock: object) -> float | None:
     if callable(clock):
         try:
             value: object = clock()
-            if isinstance(value, (int, float)):
+            if (any(isinstance(value, _t) for _t in (int, float))):
                 return float(value)
             if isinstance(value, str):
                 return float(value)
             return None
         except (OSError, RuntimeError, ValueError, KeyError):
             return None
-    if isinstance(clock, (int, float)):
+    if (any(isinstance(clock, _t) for _t in (int, float))):
         return float(clock)
     return None

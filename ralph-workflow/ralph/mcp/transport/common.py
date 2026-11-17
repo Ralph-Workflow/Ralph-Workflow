@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -35,9 +35,7 @@ def _parse_json_config_file(path: Path) -> dict[str, object]:
         raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(raw_payload, dict):
-        return {}
-    return cast("dict[str, object]", raw_payload)
+    return as_object_dict(raw_payload) or {}
 
 
 def _load_mcpservers_from_paths(
@@ -49,10 +47,9 @@ def _load_mcpservers_from_paths(
         config_obj = _parse_json_config_file(path)
         if not config_obj:
             continue
-        value = config_obj.get("mcpServers")
-        if not isinstance(value, dict):
+        server_entries = as_object_dict(config_obj.get("mcpServers"))
+        if server_entries is None:
             continue
-        server_entries = cast("dict[str, object]", value)
         if entry_normalizer is None:
             merged.update(server_entries)
             continue
@@ -105,10 +102,7 @@ def set_upstream_mcp_config(
 def _load_opencode_mcp_servers_from_current_config(
     current_config: dict[str, object],
 ) -> dict[str, object]:
-    mcp_entry = current_config.get("mcp")
-    if not isinstance(mcp_entry, dict):
-        return {}
-    return cast("dict[str, object]", mcp_entry)
+    return as_object_dict(current_config.get("mcp")) or {}
 
 
 def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> dict[str, object]:
@@ -127,7 +121,7 @@ def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> 
 
 
 def _merge_opencode(current_config: dict[str, object], *, unsafe_mode: bool) -> dict[str, object]:
-    ralph_opencode_mcp = cast("dict[str, object]", current_config.get("mcp", dict[str, object]()))
+    ralph_opencode_mcp = as_object_dict(current_config.get("mcp")) or {}
     ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
     if not unsafe_mode:
         if ralph_opencode is not None:
@@ -147,9 +141,7 @@ def _merge_default(
     unsafe_mode: bool,
     workspace_path: object = None,
 ) -> dict[str, object]:
-    ralph_mcp_servers = cast(
-        "dict[str, object]", current_config.get("mcpServers", dict[str, object]())
-    )
+    ralph_mcp_servers = as_object_dict(current_config.get("mcpServers")) or {}
     ralph_entry = ralph_mcp_servers.get(RALPH_MCP_SERVER_NAME)
     if not unsafe_mode:
         if ralph_entry is not None:
@@ -189,58 +181,41 @@ def _load_upstreams_for_agent(
     current_config: dict[str, object],
     workspace_path: object = None,
 ) -> tuple[UpstreamMcpServer, ...]:
+    from ralph.mcp.transport import agy as agy_transport
+    from ralph.mcp.transport import claude as claude_transport
+    from ralph.mcp.transport import cursor as cursor_transport
+    from ralph.mcp.transport import kimi as kimi_transport
+    from ralph.mcp.transport import nanocoder as nanocoder_transport
+
     _workspace_path = (
         workspace_path if workspace_path is not None else current_config.get("workspace_path")
     )
-    existing_mcp_servers = current_config.get("mcpServers")
+    workspace = _workspace_path if isinstance(_workspace_path, Path) else None
+    existing_mcp_servers = as_object_dict(current_config.get("mcpServers"))
     if agent_name in ("claude", "agy", "nanocoder", "cursor", "kimi"):
         servers: dict[str, object] = {}
-        if isinstance(existing_mcp_servers, dict) and len(existing_mcp_servers) > 1:
-            servers = cast("dict[str, object]", existing_mcp_servers)
+        if existing_mcp_servers is not None and len(existing_mcp_servers) > 1:
+            servers = existing_mcp_servers
         elif agent_name == "claude":
-            mod = importlib.import_module("ralph.mcp.transport.claude")
-            claude_loader = cast(
-                "Callable[[Path | None], tuple[UpstreamMcpServer, ...]]",
-                mod.load_existing_claude_upstream_servers,
-            )
-            return claude_loader(_workspace_path if isinstance(_workspace_path, Path) else None)
+            return claude_transport.load_existing_claude_upstream_servers(workspace)
         elif agent_name == "agy":
-            mod = importlib.import_module("ralph.mcp.transport.agy")
-            paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path))
-            normalizer = cast(
-                "Callable[[str, object], tuple[str, object] | None]",
-                mod._normalize_agy_server_entry,
-            )
-            servers = cast(
-                "dict[str, object]",
-                mod._load_mcpservers_from_paths(paths, normalizer),
+            paths = agy_transport._agy_mcp_config_paths(workspace)
+            servers = _load_mcpservers_from_paths(
+                paths, agy_transport._normalize_agy_server_entry
             )
         elif agent_name == "cursor":
-            mod = importlib.import_module("ralph.mcp.transport.cursor")
-            paths = cast("tuple[Path, ...]", mod._cursor_paths_to_consider(_workspace_path))
-            normalizer = cast(
-                "Callable[[str, object], tuple[str, object] | None]",
-                mod._normalize_cursor_server_entry,
-            )
-            servers = cast(
-                "dict[str, object]",
-                mod._load_mcpservers_from_paths(paths, normalizer),
+            paths = cursor_transport._cursor_paths_to_consider(workspace)
+            servers = _load_mcpservers_from_paths(
+                paths, cursor_transport._normalize_cursor_server_entry
             )
         elif agent_name == "kimi":
-            mod = importlib.import_module("ralph.mcp.transport.kimi")
-            paths = cast("tuple[Path, ...]", mod._kimi_paths_to_consider(_workspace_path))
-            normalizer = cast(
-                "Callable[[str, object], tuple[str, object] | None]",
-                mod._normalize_kimi_server_entry,
-            )
-            servers = cast(
-                "dict[str, object]",
-                mod._load_mcpservers_from_paths(paths, normalizer),
+            paths = kimi_transport._kimi_paths_to_consider(workspace)
+            servers = _load_mcpservers_from_paths(
+                paths, kimi_transport._normalize_kimi_server_entry
             )
         else:
-            mod = importlib.import_module("ralph.mcp.transport.nanocoder")
-            paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path))
-            servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
+            paths = nanocoder_transport._nanocoder_mcp_config_paths(workspace)
+            servers = _load_mcpservers_from_paths(paths)
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)
     return ()

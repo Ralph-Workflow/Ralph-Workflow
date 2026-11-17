@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import threading
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING
 
-from ralph.pipeline.agent_retry_intent import AgentRetryIntent, cleared_agent_retry_intent
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
-
-
-class _EffectExecutorModule(Protocol):
-    def pop_last_captured_retry_intent(self) -> AgentRetryIntent: ...
 
 
 class _SessionCapture(threading.local):
@@ -32,8 +27,7 @@ def pop_last_captured_session_id() -> str | None:
 
 
 def apply_session_capture(state: PipelineState) -> PipelineState:
-    effect_executor = cast("_EffectExecutorModule", import_module("ralph.pipeline.effect_executor"))
-    pop_last_captured_retry_intent = effect_executor.pop_last_captured_retry_intent
+    from ralph.pipeline.effect_executor import pop_last_captured_retry_intent
 
     captured_session_id = pop_last_captured_session_id()
     captured_retry_intent = pop_last_captured_retry_intent()

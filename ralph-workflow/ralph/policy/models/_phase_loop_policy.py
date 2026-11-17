@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class PhaseLoopPolicy(_FrozenPolicyModel):
+class PhaseLoopPolicy(RalphBaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     iteration_state_field: str = Field(...)

@@ -642,7 +642,7 @@ def _recover_pending_merge(
             force_retry=force_retry,
             stop_identity=stop_identity,
         )
-    if isinstance(resumed, (str, RetryLaterOutcome)):
+    if (any(isinstance(resumed, _t) for _t in (str, RetryLaterOutcome))):
         latest_record = read_record_outcome(root).record or record
         raw_reason: object = (
             resumed.terminal_reason

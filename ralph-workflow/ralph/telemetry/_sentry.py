@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import sys
 import time
 import tomllib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, get_args, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, get_args, runtime_checkable
 
 import sentry_sdk
 import sentry_sdk.metrics as sentry_metrics
@@ -16,6 +15,7 @@ from sentry_sdk.integrations.dedupe import DedupeIntegration
 from sentry_sdk.integrations.excepthook import ExcepthookIntegration
 
 from ralph import __version__ as ralph_version
+from ralph.config import _env as config_env
 from ralph.config.agent_transport import AgentTransport
 from ralph.platform.detection import current_platform
 from ralph.policy.models._types import PhaseRole
@@ -39,7 +39,7 @@ _WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
 
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
-_PHASE_ROLES: frozenset[str] = frozenset(cast("tuple[str, ...]", get_args(PhaseRole)))
+_PHASE_ROLES: frozenset[str] = frozenset(str(arg) for arg in get_args(PhaseRole))
 _PHASE_OUTCOMES: frozenset[str] = frozenset({"success", "failure", "skipped", "crashed"})
 _POLICY_SCHEMA_STATES: frozenset[str] = frozenset({"current", "outdated", "absent", "unknown"})
 _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
@@ -158,8 +158,26 @@ def _is_sentry_set_user(value: object) -> TypeGuard[_SentrySetUser]:
     return callable(value)
 
 
+def _is_breadcrumb_recorder(value: object) -> TypeGuard[_BreadcrumbRecorder]:
+    return callable(value)
+
+
+def _is_metric_counter(value: object) -> TypeGuard[_MetricCounter]:
+    return callable(value)
+
+
+def _is_metric_distribution(value: object) -> TypeGuard[_MetricDistribution]:
+    return callable(value)
+
+
+def _as_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {str(key): item for key, item in value.items()}
+
+
 def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
-    mapping = env if env is not None else os.environ
+    mapping = env if env is not None else config_env.os.environ
     raw = mapping.get("RALPH_DISABLE_TELEMETRY")
     if raw is None:
         return False
@@ -167,7 +185,7 @@ def is_telemetry_disabled(env: Mapping[str, str] | None = None) -> bool:
 
 
 def is_telemetry_disabled_by_config(env: Mapping[str, str] | None = None) -> bool:
-    mapping = env if env is not None else os.environ
+    mapping = env if env is not None else config_env.os.environ
     xdg_config_home = mapping.get("XDG_CONFIG_HOME")
     global_config_path = (
         Path(xdg_config_home) / "ralph-workflow.toml"
@@ -208,13 +226,14 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
         if not config_path.exists():
             return False
         with config_path.open("rb") as fh:
-            data = cast("dict[str, object]", tomllib.load(fh))
+            data = _as_object_dict(tomllib.load(fh))
     except (OSError, ValueError):
         return True
-    raw_general = data.get("general")
-    if not isinstance(raw_general, dict):
+    if data is None:
         return False
-    general = cast("dict[str, object]", raw_general)
+    general = _as_object_dict(data.get("general"))
+    if general is None:
+        return False
     return general.get("telemetry_enabled") is False
 
 
@@ -243,9 +262,11 @@ def _sentry_environment() -> str:
 
 def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
     with contextlib.suppress(Exception):
-        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
+        recorder: object = sentry_sdk.add_breadcrumb
+        if not _is_breadcrumb_recorder(recorder):
+            return
         payload: dict[str, object] = dict(data)
-        add_breadcrumb(
+        recorder(
             category=category,
             message=message,
             level="info",
@@ -260,7 +281,9 @@ def _metric_count(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        count = cast("_MetricCounter", sentry_metrics.count)
+        count: object = sentry_metrics.count
+        if not _is_metric_counter(count):
+            return
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -273,7 +296,9 @@ def _metric_distribution(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
+        distribution: object = sentry_metrics.distribution
+        if not _is_metric_distribution(distribution):
+            return
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
@@ -290,18 +315,17 @@ def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
 
 def scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
     if isinstance(obj, dict):
-        d = cast("dict[str, object]", obj)
-        for key in list(d.keys()):
-            val = d[key]
+        for key in list(obj):
+            val = obj[key]
             if isinstance(val, str):
-                d[key] = _scrub_string(val, policy)
+                obj[key] = _scrub_string(val, policy)
             else:
                 scrub_obj(val, policy)
-    elif isinstance(obj, list):
-        lst = cast("list[object]", obj)
-        for i, item in enumerate(lst):
+        return
+    if isinstance(obj, list):
+        for i, item in enumerate(obj):
             if isinstance(item, str):
-                lst[i] = _scrub_string(item, policy)
+                obj[i] = _scrub_string(item, policy)
             else:
                 scrub_obj(item, policy)
 
@@ -321,7 +345,7 @@ def _is_absolute_filename(value: object) -> bool:
     return value.startswith("\\\\")
 
 
-def _is_path_like_filename(value: object) -> bool:
+def _is_path_like_filename(value: object) -> TypeGuard[str]:
     if not isinstance(value, str) or not value:
         return False
     return "/" in value or "\\" in value
@@ -339,12 +363,11 @@ def _scrub_frames(frames: object) -> None:
     for frame in frames:
         if not isinstance(frame, dict):
             continue
-        d_frame = cast("dict[str, object]", frame)
-        d_frame.pop("abs_path", None)
-        filename = d_frame.get("filename")
+        frame.pop("abs_path", None)
+        filename = frame.get("filename")
         if not _is_path_like_filename(filename):
             continue
-        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
+        frame["filename"] = _basename_of_path_like(filename)
 
 
 def scrub_event(
@@ -353,18 +376,17 @@ def scrub_event(
     policy: ScrubPolicy | None = None,
 ) -> object:
     if isinstance(event, dict):
-        d = cast("dict[str, object]", event)
-        d.pop("server_name", None)
-        exception = d.get("exception")
+        event.pop("server_name", None)
+        exception = event.get("exception")
         if isinstance(exception, dict):
-            values = cast("dict[str, object]", exception).get("values")
+            values = exception.get("values")
             if isinstance(values, list):
                 for value in values:
                     if not isinstance(value, dict):
                         continue
-                    stacktrace = cast("dict[str, object]", value).get("stacktrace")
+                    stacktrace = value.get("stacktrace")
                     if isinstance(stacktrace, dict):
-                        _scrub_frames(cast("dict[str, object]", stacktrace).get("frames"))
+                        _scrub_frames(stacktrace.get("frames"))
     scrub_obj(event, policy)
     return event
 

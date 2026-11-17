@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._agent_launch_error import AgentLaunchError
 from ralph.agents.invoke._completion_termination import AttemptEnded, attempt_facts_for_failure
@@ -108,7 +108,7 @@ def quota_termination_observed(exc: BaseException) -> bool:
 
 
 def _primary_recovery_error_text(exc: Exception) -> str:
-    stderr = cast("object", getattr(exc, "stderr", ""))
+    stderr: object = getattr(exc, "stderr", "")
     if isinstance(stderr, str) and stderr.strip():
         return stderr
     parts = failure_message_parts(exc)

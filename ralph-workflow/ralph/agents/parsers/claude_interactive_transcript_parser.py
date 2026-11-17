@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from typing import cast
 
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, BoundedTextBuffer
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -14,6 +13,7 @@ from ._assistant_envelope import (
     AssistantEnvelopeDecision,
     classify_assistant_record,
 )
+from ._object_dict import as_object_dict
 from .interactive_transcript_event import InteractiveTranscriptEvent
 
 _SESSION_ID_PATTERNS = (
@@ -196,6 +196,12 @@ _IDLE_TUI_GLYPH_MAX_LEN = 20
 
 
 class ClaudeInteractiveTranscriptParser:
+    __slots__ = (
+        '_buffer',
+        '_current_content_mode',
+        '_last_emitted_signature',
+        'session_id',
+    )
     def __init__(self, *, max_buffer_chars: int = DEFAULT_MAX_BUFFER_CHARS) -> None:
         self.session_id: str | None = None
         self._last_emitted_signature: tuple[str, str, object] | None = None
@@ -262,7 +268,7 @@ class ClaudeInteractiveTranscriptParser:
                 metadata["tool_use_id"] = tool_use_id
             tool_input = item.get("input")
             if isinstance(tool_input, dict):
-                metadata["input"] = dict(cast("dict[str, object]", tool_input))
+                metadata["input"] = dict(as_object_dict(tool_input))
             result.append(
                 InteractiveTranscriptEvent(
                     kind="tool_use",
@@ -317,7 +323,7 @@ class ClaudeInteractiveTranscriptParser:
         for item in content:
             if not isinstance(item, dict):
                 continue
-            item_dict = cast("dict[str, object]", item)
+            item_dict = as_object_dict(item)
             if item_dict.get("type") != "tool_result":
                 continue
             event = _tool_result_event(item_dict)
@@ -327,12 +333,12 @@ class ClaudeInteractiveTranscriptParser:
 
     def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent] | None:
         try:
-            parsed = cast("object", json.loads(raw_text))
+            parsed = json.loads(raw_text)
         except json.JSONDecodeError:
             return None
         if not isinstance(parsed, dict):
             return None
-        obj = cast("dict[str, object]", parsed)
+        obj = as_object_dict(parsed)
         event_type = str(obj.get("type", ""))
         events: list[InteractiveTranscriptEvent] = []
         session_id = obj.get("sessionId") or obj.get("session_id")

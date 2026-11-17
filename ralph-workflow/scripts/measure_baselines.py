@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
 
 
 class _FakeClock:
+    __slots__ = ("_t",)
+
     def __init__(self, initial: float = 0.0) -> None:
         self._t = initial
 
@@ -20,6 +24,28 @@ class _FakeClock:
 
     def advance(self, delta: float) -> None:
         self._t += delta
+
+
+class _FireCounter:
+    __slots__ = ("count",)
+
+    def __init__(self) -> None:
+        self.count = 0
+
+    def __call__(self) -> None:
+        self.count += 1
+
+
+class _MarkCounter:
+    __slots__ = ("_lock", "count")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.count = 0
+
+    def bump(self) -> None:
+        with self._lock:
+            self.count += 1
 
 
 def _seed_workspace(root: Path, count: int) -> Path:
@@ -91,7 +117,7 @@ def _scenario_interrupted(root: Path) -> None:
     workspace = _seed_workspace(root, 3)
     store = ExploreStore(root / ".agent" / "ralph-explore")
     try:
-        first = reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
+        reindex(store, workspace, options=ReindexOptions(timeout_ms=5000))
         committed_generation = int(store.get_setting("current_generation") or 0)
         cancelled = reindex(
             store,
@@ -109,78 +135,26 @@ def _scenario_interrupted(root: Path) -> None:
         store.close()
 
 
-def _scenario_concurrent(root: Path) -> None:
-    from ralph.mcp.explore import dirty_paths
-
+def _scenario_concurrent(_root: Path) -> None:
     clock = _FakeClock()
+    fires = _FireCounter()
+    marks = _MarkCounter()
+    scheduler = BurstDebounceScheduler(
+        clock=clock,
+        on_fire=fires,
+        debounce_window=1.0,
+    )
 
-    class _Spy:
-        def __init__(self) -> None:
-            self.mark_count = 0
-            self.fire_count = 0
-            self._last_mark_at: float | None = None
+    def _mark_one() -> None:
+        scheduler.mark(lambda: None)
+        marks.bump()
 
-        def mark(self, closure: object) -> None:
-            del closure
-            self.mark_count += 1
-            self._last_mark_at = clock()
-            self.fire_if_due()
-
-        def fire_if_due(self) -> bool:
-            if self._last_mark_at is None:
-                return False
-            if clock() - self._last_mark_at < 1.0:
-                return False
-            self._last_mark_at = None
-            self.fire_count += 1
-            return True
-
-        def on_workflow_complete(self) -> None:
-            pass
-
-        def on_workflow_cancel(self) -> None:
-            pass
-
-        def on_workflow_fail(self) -> None:
-            pass
-
-        def on_workflow_restart(self) -> None:
-            pass
-
-    spy = _Spy()
-    original = dirty_paths._dirty_scheduler
-    dirty_paths._dirty_scheduler = spy
-    dirty_paths._PENDING_MARKS.clear()
-    try:
-
-        class _Handle:
-            def __init__(self) -> None:
-                self.calls = 0
-
-            def mark_dirty(self, paths, *, source_tool, reason="mutated"):
-                self.calls += 1
-
-            @property
-            def store(self):
-                return None
-
-            @property
-            def reindex_in_progress(self):
-                return False
-
-        handle = _Handle()
-
-        def _mark_one() -> None:
-            dirty_paths.mark_path(handle, path="a.py", source_tool="write_file")
-
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            list(executor.map(lambda _: _mark_one(), range(50)))
-        clock.advance(1.0)
-        spy.fire_if_due()
-        print(f"concurrent mark_count {spy.mark_count}")
-        print(f"concurrent fire_count {spy.fire_count}")
-    finally:
-        dirty_paths._dirty_scheduler = original
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(lambda _: _mark_one(), range(50)))
+    clock.advance(1.0)
+    scheduler.fire_if_due()
+    print(f"concurrent mark_count {marks.count}")
+    print(f"concurrent fire_count {fires.count}")
 
 
 def main() -> int:

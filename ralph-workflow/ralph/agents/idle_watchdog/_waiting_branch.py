@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.idle_watchdog._sanitize import _sanitize_subagent_description
+from ralph.agents.idle_watchdog._sanitize import (
+    _sanitize_subagent_description,
+    as_status_diagnostic,
+)
 from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
 from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
@@ -204,7 +207,7 @@ def _handle_stuck_job_ceiling(
         idle_elapsed=idle_elapsed,
         ceiling_seconds=self._config.stuck_job_sub_ceiling_seconds,
         suspect_threshold_seconds=effective_suspect,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._log.warning(
         "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s"
@@ -251,7 +254,7 @@ def _handle_effective_ceiling(
         idle_elapsed=idle_elapsed,
         ceiling_seconds=effective_ceiling,
         suspect_threshold_seconds=effective_suspect,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        diagnostic=as_status_diagnostic(diag),
     )
     self._log.warning(
         "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
@@ -301,7 +304,7 @@ def _announce_suspicion(
         idle_elapsed=idle_elapsed,
         ceiling_seconds=effective_ceiling,
         suspect_threshold_seconds=effective_suspect,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag),
+        diagnostic=as_status_diagnostic(corr_diag),
     )
 
 
@@ -338,7 +341,7 @@ def _emit_progress_status(
         current_run_seconds=current_run_elapsed,
         idle_elapsed=idle_elapsed,
         ceiling_seconds=effective_ceiling,
-        diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag),
+        diagnostic=as_status_diagnostic(corr_diag),
     )
 
 
@@ -376,10 +379,7 @@ def _emit_subagent_progress(
         current_run_seconds=current_run_elapsed,
         idle_elapsed=idle_elapsed,
         ceiling_seconds=effective_ceiling,
-        diagnostic=cast(
-            "dict[str, str | int | float | bool | list[object]]",
-            subagent_diag,
-        ),
+        diagnostic=as_status_diagnostic(subagent_diag),
     )
 
 

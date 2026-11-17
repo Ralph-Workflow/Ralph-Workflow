@@ -25,14 +25,7 @@ def _render() -> list[str]:
 def _phase1_structural() -> str:
     baseline = _render()
     baseline_footer = _footer(baseline)
-    from ralph.workspace import awareness
-
-    original = awareness._MAX_DIRTY_PATHS
-    awareness._MAX_DIRTY_PATHS = 999
-    try:
-        patched_lines = _render_with_patch()
-    finally:
-        awareness._MAX_DIRTY_PATHS = original
+    patched_lines = _render_with_patch()
     patched_footer = _footer(patched_lines)
     assert baseline_footer != patched_footer, (
         "structural proof failed: footer unchanged after monkey-patch "

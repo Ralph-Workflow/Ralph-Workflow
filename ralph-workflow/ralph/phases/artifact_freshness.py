@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
@@ -33,8 +33,11 @@ def is_stale_since_invocation(workspace: Workspace, phase: str, artifact_path: s
         baseline_file = _baseline_path(phase)
         if not workspace.exists(baseline_file):
             return False
-        recorded = cast("dict[str, object]", json.loads(workspace.read(baseline_file)))
-        before = recorded["fingerprint"] if recorded["path"] == artifact_path else None
+        loaded: object = json.loads(workspace.read(baseline_file))
+        if not isinstance(loaded, dict):
+            return False
+        recorded_path = loaded.get("path")
+        before = loaded.get("fingerprint") if recorded_path == artifact_path else None
         current = artifact_fingerprint(Path(workspace.absolute_path(artifact_path)))
         return before is not None and before == current
     except (OSError, RuntimeError, ValueError, KeyError):

@@ -106,14 +106,14 @@ def _current_time(clock: object) -> float | None:
     if callable(clock):
         try:
             val: object = clock()
-            if isinstance(val, (int, float)):
+            if (any(isinstance(val, _t) for _t in (int, float))):
                 return float(val)
             if isinstance(val, str):
                 return float(val)
             return None
         except (OSError, RuntimeError, ValueError, KeyError):
             return None
-    if isinstance(clock, (int, float)):
+    if (any(isinstance(clock, _t) for _t in (int, float))):
         return float(clock)
     return None
 
@@ -127,7 +127,7 @@ def _conflict_action(
     if not (last_outcome == RebaseOutcomeKind.CONFLICT or recovery_retained is True):
         return None
     deadline = _safe_attr(record, "retry_deadline")
-    if not isinstance(deadline, (int, float)) or isinstance(deadline, bool):
+    if not (any(isinstance(deadline, _t) for _t in (int, float))) or isinstance(deadline, bool):
         return IntegrationAction.REQUIRE_INTERVENTION
     try:
         deadline_val = float(deadline)

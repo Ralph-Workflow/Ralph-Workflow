@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class AgentDrainConfig(_FrozenPolicyModel):
+class AgentDrainConfig(RalphBaseModel):
     chain: str = Field(..., description="Agent chain name to bind to this drain")
     drain_class: str | None = Field(
         default=None,

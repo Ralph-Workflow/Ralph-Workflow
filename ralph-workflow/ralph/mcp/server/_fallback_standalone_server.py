@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import socket as _socket_mod
 import threading
 import time
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
+from ralph.config._env import getenv
 from ralph.mcp.artifacts._path_file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
@@ -48,14 +48,43 @@ if TYPE_CHECKING:
 _PRE_SERVE_GATE_TIMEOUT_S: float = 60.0
 
 
+def _env_get(name: str, default: str | None = None) -> str | None:
+    value = getenv(name)
+    return default if value is None else value
+
+
+def _pause(seconds: float) -> None:
+    threading.Event().wait(seconds)
+
+
+def _bound_address(server_address: object) -> tuple[str, int]:
+    if (
+        isinstance(server_address, tuple)
+        and len(server_address) == 2
+        and isinstance(server_address[0], str)
+        and isinstance(server_address[1], int)
+    ):
+        return server_address[0], server_address[1]
+    raise TypeError("httpd.server_address must be a (host, port) tuple")
+
+
 class _FallbackStandaloneServer:
+    __slots__ = (
+        "_env_getter",
+        "_host",
+        "_httpd",
+        "_mcp_server",
+        "_parent_socket",
+        "_port",
+    )
+
     def __init__(
         self,
         host: str,
         port: int,
         mcp_server: McpServer,
         *,
-        env_getter: EnvGetter = os.environ.get,
+        env_getter: EnvGetter = _env_get,
         parent_socket: socket | None = None,
     ) -> None:
         self._host = host
@@ -69,7 +98,7 @@ class _FallbackStandaloneServer:
     def bound_address(self) -> tuple[str, int]:
         if self._httpd is None:
             raise RuntimeError("Server has not been started yet")
-        return cast("tuple[str, int]", self._httpd.server_address)
+        return _bound_address(self._httpd.server_address)
 
     def prepare_httpd(self) -> _FallbackHttpServer:
         if self._httpd is not None:
@@ -141,7 +170,7 @@ class _FallbackStandaloneServer:
                     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
                         logger.opt(exception=True).warning("Handover pause acknowledgement failed")
                     break
-                time.sleep(0.005)
+                _pause(0.005)
 
         threading.Thread(target=_pause_watcher, daemon=True, name="mcp-pause-watcher").start()
 
@@ -203,7 +232,7 @@ class _FallbackStandaloneServer:
                         elapsed_s=_PRE_SERVE_GATE_TIMEOUT_S,
                         restart_count=0,
                     )
-                time.sleep(0.005)
+                _pause(0.005)
         auth_token_set = bool(self._env_getter("MCP_AUTH_TOKEN", None))
         logger.info(
             "ralph-mcp startup: transport={transport} "
@@ -233,9 +262,11 @@ class _FallbackStandaloneServer:
             on_ready()
         if ready_event is not None:
             ready_event.set()
-        print(
-            f"Ralph MCP server listening on http://{self._host}:{self._port}{DEFAULT_MOUNT_PATH}",
-            flush=True,
+        logger.info(
+            "Ralph MCP server listening on http://{host}:{port}{mount}",
+            host=self._host,
+            port=self._port,
+            mount=DEFAULT_MOUNT_PATH,
         )
         try:
             httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)

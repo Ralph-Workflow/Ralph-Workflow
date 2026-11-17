@@ -69,7 +69,11 @@ def collect_workspace_health(workspace_root: Path) -> dict[str, object]:
     for row in inventory:
         category = str(row["category"])
         row_paths = row["paths"]
-        paths = [str(path) for path in row_paths] if isinstance(row_paths, (list, tuple)) else []
+        paths = (
+            [str(path) for path in row_paths]
+            if any(isinstance(row_paths, _t) for _t in (list, tuple))
+            else []
+        )
         storage_rows.append(
             {
                 "category": category,

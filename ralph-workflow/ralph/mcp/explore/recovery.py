@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
+from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore._recovery_types import HealthState, _RecoveryState
+from ralph.mcp.explore._thread_state import EventBox, LockBox
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +56,9 @@ def _read_state_file(workspace_root: Path) -> _RecoveryState | None:
         health=health,
         last_failure_code=str(code) if code else None,
         last_failure_message=str(message) if message else None,
-        recovery_attempts=int(attempts) if isinstance(attempts, (int, float)) else 0,
-        next_recovery_at=float(next_at) if isinstance(next_at, (int, float)) else None,
-        cooldown_remaining=float(cooldown) if isinstance(cooldown, (int, float)) else 0.0,
+        recovery_attempts=int(attempts) if is_int_or_float(attempts) else 0,
+        next_recovery_at=float(next_at) if is_int_or_float(next_at) else None,
+        cooldown_remaining=float(cooldown) if is_int_or_float(cooldown) else 0.0,
     )
     return state
 
@@ -83,7 +85,7 @@ def _write_state_file(workspace_root: Path, state: _RecoveryState) -> None:
         return
 
 
-@dataclass
+@dataclass(slots=True)
 class RecoveryScheduler:
     workspace_root: Path
     initial_attempts: int = 0
@@ -96,10 +98,17 @@ class RecoveryScheduler:
     _load_persisted: bool = True
 
     def __post_init__(self) -> None:
-        if self._load_persisted:
-            persisted = _read_state_file(self.workspace_root)
-            if persisted is not None:
-                self._state = persisted
+        if not self._load_persisted:
+            return
+        persisted = _read_state_file(self.workspace_root)
+        if persisted is None:
+            return
+        self._state.health = persisted.health
+        self._state.last_failure_code = persisted.last_failure_code
+        self._state.last_failure_message = persisted.last_failure_message
+        self._state.recovery_attempts = persisted.recovery_attempts
+        self._state.next_recovery_at = persisted.next_recovery_at
+        self._state.cooldown_remaining = persisted.cooldown_remaining
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
@@ -390,7 +399,8 @@ def run_recovery_action(
 
 _PENDING_RECOVERY_CAP: int = 64
 _PENDING_RECOVERY: BoundedKeyValueStore[str, str] = BoundedKeyValueStore()
-_PENDING_LOCK = threading.Lock()
+_PENDING_LOCK_BOX = LockBox()
+_PENDING_LOCK = _PENDING_LOCK_BOX.lock
 
 _RECOVERABLE_QUERY_CODES: frozenset[str] = frozenset(
     {
@@ -473,9 +483,12 @@ def enqueue_recovery(
     _ensure_drain_thread()
 
 
-_DRAIN_WAKEUP = threading.Event()
+_DRAIN_WAKEUP_BOX = EventBox()
+_DRAIN_WAKEUP = _DRAIN_WAKEUP_BOX.event
 _DRAIN_THREAD: deque[threading.Thread | None] = deque([None], maxlen=1)
 _DRAIN_TIMEOUT_MS = 15_000
+_DRAIN_LOCK_BOX = LockBox()
+_DRAIN_LOCK = _DRAIN_LOCK_BOX.lock
 
 
 def _drain_pending_recoveries_once() -> int:
@@ -521,9 +534,6 @@ def _ensure_drain_thread() -> None:
         )
         _DRAIN_THREAD[0] = thread
         thread.start()
-
-
-_DRAIN_LOCK = threading.Lock()
 
 
 def run_pending_recovery(

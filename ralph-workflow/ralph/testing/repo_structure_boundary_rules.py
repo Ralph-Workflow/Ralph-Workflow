@@ -927,8 +927,8 @@ def _b7_violations(relative_path: str, tree: ast.Module, nodes: list[ast.AST]) -
                     _violation(relative_path, node, "B7", "environment read in decision layer")
                 )
     for node in tree.body:
-        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
-        mutable = isinstance(value, (ast.Dict, ast.List, ast.Set)) or (
+        value = node.value if (any(isinstance(node, _t) for _t in (ast.Assign, ast.AnnAssign))) else None
+        mutable = (any(isinstance(value, _t) for _t in (ast.Dict, ast.List, ast.Set))) or (
             isinstance(value, ast.Call)
             and isinstance(value.func, ast.Name)
             and value.func.id in _MUTABLE_CONSTRUCTORS

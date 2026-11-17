@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from rich.cells import cell_len
@@ -23,22 +22,24 @@ _SENTENCE_END = re.compile(r"[.!?\n]")
 AiSummaryHook = Callable[[str], "str | None"]
 
 
-@dataclass
 class _AiHookState:
-    hook: AiSummaryHook | None = None
+    __slots__ = ("hook", "lock")
+
+    def __init__(self) -> None:
+        self.hook: AiSummaryHook | None = None
+        self.lock = threading.Lock()
 
 
 _AI_HOOK_STATE = _AiHookState()
-_ai_hook_lock = threading.Lock()
 
 
 def set_ai_summary_hook(hook: AiSummaryHook | None) -> None:
-    with _ai_hook_lock:
+    with _AI_HOOK_STATE.lock:
         _AI_HOOK_STATE.hook = hook
 
 
 def get_ai_summary_hook() -> AiSummaryHook | None:
-    with _ai_hook_lock:
+    with _AI_HOOK_STATE.lock:
         return _AI_HOOK_STATE.hook
 
 

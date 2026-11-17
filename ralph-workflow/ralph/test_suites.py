@@ -14,6 +14,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ralph.config import _env as config_env
 from ralph.executor.process import TIMEOUT_EXIT_CODE
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import (
@@ -34,6 +35,18 @@ from ralph.verify_timeout import (
 )
 
 __all__ = ["REQUIRED_AUTO_INTEGRATE_E2E_FILES"]
+
+def _write_stdout(message: str, *, end: str = "\n", flush: bool = False) -> None:
+    sys.stdout.write(message if message.endswith(end) or end == "" else message + end)
+    if flush:
+        sys.stdout.flush()
+
+
+def _write_stderr(message: str, *, end: str = "\n", flush: bool = False) -> None:
+    sys.stderr.write(message if message.endswith(end) or end == "" else message + end)
+    if flush:
+        sys.stderr.flush()
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -560,7 +573,9 @@ def validate_exact_file_assignment(
 
 
 def _pytest_workers() -> str:
-    raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
+    raw = config_env.getenv("PYTEST_WORKERS")
+    if raw is None:
+        raw = _DEFAULT_PYTEST_WORKERS
     available_cores = os.cpu_count() or 2
     worker_cap = (
         _PERFORMANCE_CORE_PYTEST_WORKER_CAP
@@ -579,7 +594,9 @@ def _pytest_workers() -> str:
 
 
 def _xdist_workers_per_shard() -> str:
-    raw = os.getenv("PYTEST_XDIST_WORKERS_PER_SHARD", _DEFAULT_XDIST_WORKERS_PER_SHARD)
+    raw = config_env.getenv("PYTEST_XDIST_WORKERS_PER_SHARD")
+    if raw is None:
+        raw = _DEFAULT_XDIST_WORKERS_PER_SHARD
     if raw != "auto":
         return raw
     available_cores = os.cpu_count() or 2
@@ -657,7 +674,7 @@ def _pytest_mark_names(expression: ast.expr) -> frozenset[str]:
 
 
 def _marker_names_from_value(expression: ast.expr) -> frozenset[str]:
-    if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+    if any(isinstance(expression, _t) for _t in (ast.List, ast.Tuple, ast.Set)):
         names: set[str] = set()
         for element in expression.elts:
             names |= _pytest_mark_names(element)
@@ -669,29 +686,19 @@ def _module_level_marker_names(tree: ast.Module) -> frozenset[str] | None:
     names: frozenset[str] = frozenset()
     undeterminable = False
     for statement in tree.body:
-        if isinstance(statement, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "pytestmark"
-            for target in statement.targets
-        ):
-            names = _marker_names_from_value(statement.value)
-            undeterminable = False
-        elif (
-            isinstance(statement, ast.AnnAssign)
-            and isinstance(statement.target, ast.Name)
-            and statement.target.id == "pytestmark"
-        ):
-            names = (
-                frozenset()
-                if statement.value is None
-                else _marker_names_from_value(statement.value)
-            )
-            undeterminable = False
-        elif (
-            isinstance(statement, ast.AugAssign)
-            and isinstance(statement.target, ast.Name)
-            and statement.target.id == "pytestmark"
-        ):
-            undeterminable = True
+        match statement:
+            case ast.Assign(targets=targets, value=value) if any(
+                isinstance(target, ast.Name) and target.id == "pytestmark" for target in targets
+            ):
+                names = _marker_names_from_value(value)
+                undeterminable = False
+            case ast.AnnAssign(target=ast.Name(id="pytestmark"), value=value):
+                names = frozenset() if value is None else _marker_names_from_value(value)
+                undeterminable = False
+            case ast.AugAssign(target=ast.Name(id="pytestmark")):
+                undeterminable = True
+            case _:
+                pass
     return None if undeterminable else names
 
 
@@ -716,7 +723,7 @@ def _collect_test_marker_sets(
 ) -> list[frozenset[str]] | None:
     collected: list[frozenset[str]] = []
     for statement in tree.body:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if any(isinstance(statement, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef)):
             if statement.name.startswith("test"):
                 collected.append(module_markers | _decorator_marker_names(statement.decorator_list))
             continue
@@ -727,15 +734,16 @@ def _collect_test_marker_sets(
         class_markers: frozenset[str] | None = None
         class_tests: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
         for child in statement.body:
-            if isinstance(child, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "pytestmark"
-                for target in child.targets
-            ):
-                class_markers = _marker_names_from_value(child.value)
-            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
-                child.name.startswith("test")
-            ):
-                class_tests.append(child)
+            match child:
+                case ast.Assign(targets=targets, value=value) if any(
+                    isinstance(target, ast.Name) and target.id == "pytestmark"
+                    for target in targets
+                ):
+                    class_markers = _marker_names_from_value(value)
+                case (ast.FunctionDef() | ast.AsyncFunctionDef()) as fn if fn.name.startswith(
+                    "test"
+                ):
+                    class_tests.append(fn)
         effective_class_markers = module_markers | (class_markers or frozenset())
         collected.extend(
             effective_class_markers | _decorator_marker_names(child.decorator_list)
@@ -1061,9 +1069,8 @@ def _terminate_and_reap(
                         issuer=ProcessTerminationIssuer.TEST_RUNNER,
                     )
             except (OSError, RuntimeError, ValueError) as exc:
-                print(
+                _write_stderr(
                     f"warning: shard terminate raised {type(exc).__name__}: {exc}",
-                    file=sys.stderr,
                 )
     outputs = []
     for process in processes:
@@ -1078,9 +1085,9 @@ def _terminate_and_reap(
 def _print_shard_outputs(outputs: Sequence[tuple[str, str]]) -> None:
     for stdout, stderr in outputs:
         if stdout:
-            print(stdout, end="" if stdout.endswith("\n") else "\n")
+            _write_stdout(stdout, end="" if stdout.endswith("\n") else "\n")
         if stderr:
-            print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
+            _write_stderr(stderr, end="" if stderr.endswith("\n") else "\n")
 
 
 def _print_timeout_diagnostics(
@@ -1093,10 +1100,9 @@ def _print_timeout_diagnostics(
     elapsed_seconds = monotonic() - started_at
     for index, (shard, process) in enumerate(zip(shards[: len(processes)], processes, strict=True)):
         if process.poll() is None:
-            print(
+            _write_stderr(
                 f"pytest shard {index} timed out after {elapsed_seconds:.2f}s; "
                 f"files: {', '.join(shard)}",
-                file=sys.stderr,
             )
 
 
@@ -1148,7 +1154,7 @@ def _run_shards(
                 "".join(f"{path}\n" for path in shard),
                 encoding="utf-8",
             )
-            print(
+            _write_stdout(
                 f"pytest shard {shard_index}: {len(shard)} files, "
                 f"xdist={xdist_workers}, started at {monotonic() - started_at:.2f}s",
                 flush=True,
@@ -1172,7 +1178,7 @@ def _run_shards(
     except OSError as exc:
         outputs = _terminate_and_reap(processes, deadline=deadline, monotonic=monotonic)
         _print_shard_outputs(outputs)
-        print(f"failed to start pytest shard: {exc}", file=sys.stderr)
+        _write_stderr(f"failed to start pytest shard: {exc}")
         return 2
 
     completed: dict[int, tuple[str, str]] = {}
@@ -1208,7 +1214,7 @@ def _run_shards(
                     process,
                     timeout_seconds=_remaining_seconds(deadline, monotonic),
                 )
-            print(
+            _write_stdout(
                 f"pytest shard {index}: exit={returncode}, elapsed={monotonic() - started_at:.2f}s",
                 flush=True,
             )
@@ -1354,7 +1360,7 @@ def run_test_suites(
 ) -> int:
     started_at = monotonic()
     deadline = started_at + suite_timeout_seconds
-    inherited_env = dict(os.environ)
+    inherited_env = dict(config_env.os.environ)
     pythonpath = inherited_env.get("PYTHONPATH")
     if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
         inherited_env.pop("PYTHONPATH", None)
@@ -1401,7 +1407,7 @@ def run_test_suites(
         )
     else:
         validate_exact_file_assignment(selected_files, shards)
-    print(
+    _write_stdout(
         f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
         f"{len(shards) + len(required_e2e_shards)} shards in {monotonic() - started_at:.2f}s",
         flush=True,
@@ -1468,7 +1474,7 @@ def run_test_suites(
 
 
 def _run_durations_profile(cwd: Path) -> int:
-    inherited_env = dict(os.environ)
+    inherited_env = dict(config_env.os.environ)
     pythonpath = inherited_env.get("PYTHONPATH")
     if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
         inherited_env.pop("PYTHONPATH", None)
@@ -1504,7 +1510,7 @@ def _run_durations_profile(cwd: Path) -> int:
             file_started_at = time.monotonic()
             process = _default_spawner(command, cwd=cwd, env=env)
             _reap_process(process, timeout_seconds=_DURATIONS_PER_FILE_TIMEOUT_SECONDS)
-            print(f"{relative_path}: {time.monotonic() - file_started_at}", flush=True)
+            _write_stdout(f"{relative_path}: {time.monotonic() - file_started_at}", flush=True)
     return 0
 
 

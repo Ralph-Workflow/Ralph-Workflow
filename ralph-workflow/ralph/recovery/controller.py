@@ -3,9 +3,8 @@ from __future__ import annotations
 import ast
 import contextlib
 from dataclasses import replace
-from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -14,20 +13,15 @@ from ralph.agents.invoke._completion_termination import attempt_facts_for_failur
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
 from ralph.pipeline import progress
 from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
-from ralph.pipeline.agent_retry_intent import (
-    cleared_agent_retry_intent,
-    resume_agent_retry_intent,
-)
+from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent, resume_agent_retry_intent
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
-from ralph.policy.validation import (
-    CheckpointPolicyMismatchError,
-    PolicyValidationError,
-)
+from ralph.policy.validation import CheckpointPolicyMismatchError, PolicyValidationError
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     AgentStatus,
@@ -60,7 +54,15 @@ from ralph.recovery.classifier import (
 )
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
-from ralph.recovery.dead_agent_verdict import TypedSignal
+from ralph.recovery.dead_agent_verdict import (
+    PersistedVerdict,
+    TypedSignal,
+    decide_dead_agent_verdict,
+    runtime_issued_termination_is_not_agent_fault,
+    verdict_benches_agent,
+    verdict_counts_toward_agent_state,
+    verdict_record,
+)
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import (
@@ -85,10 +87,7 @@ __all__ = [
     "is_configuration_failure",
     "record_ledger_only_demotion",
 ]
-
-
 ENGINE_ORIGIN_REASONS: frozenset[str] = frozenset({str(FailureCategory.USER_CONFIG)})
-
 _ENGINE_ORIGIN_MESSAGE_MARKERS: tuple[str, ...] = (
     "Contract mismatch",
     "is not bound",
@@ -96,21 +95,14 @@ _ENGINE_ORIGIN_MESSAGE_MARKERS: tuple[str, ...] = (
     "Checkpoint was saved at phase",
     "no longer exists in pipeline.toml",
 )
-
 _TYPED_NO_ACTIVITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
-    {
-        UnavailabilityReason.NO_OUTPUT_AT_START,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
-    }
+    {UnavailabilityReason.NO_OUTPUT_AT_START, UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY}
 )
 
 
-def is_configuration_failure(
-    exc: BaseException | None = None,
-    reason: str | None = None,
-) -> bool:
+def is_configuration_failure(exc: BaseException | None = None, reason: str | None = None) -> bool:
     if exc is not None:
-        if isinstance(exc, (PolicyValidationError, CheckpointPolicyMismatchError)):
+        if isinstance(exc, PolicyValidationError | CheckpointPolicyMismatchError):
             return True
         name = type(exc).__name__
         if name in {
@@ -129,11 +121,7 @@ def is_configuration_failure(
 
 
 def record_ledger_only_demotion(
-    ledger: AgentFailureLedger,
-    *,
-    phase: str,
-    agent: str,
-    workspace_changed: bool | None,
+    ledger: AgentFailureLedger, *, phase: str, agent: str, workspace_changed: bool | None
 ) -> tuple[bool, str | None]:
     owner = ledger.recovery_controller
     if not isinstance(owner, RecoveryController):
@@ -146,33 +134,24 @@ def record_ledger_only_demotion(
             ),
         )
     owner.record_attempt_fact(
-        phase,
-        agent,
-        artifact_valid=False,
-        workspace_changed=workspace_changed,
+        phase, agent, artifact_valid=False, workspace_changed=workspace_changed
     )
     status = ledger.status(phase, agent)
     demoted = not status.is_eligible
-    demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
-    return demoted, demotion_reason
+    demotion_reason = status.reason if isinstance(status, Cooldown | Spent) else None
+    return (demoted, demotion_reason)
 
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
     {"_mark_agent_unavailable", "_apply_chain_retry"}
 )
-
 _SPENT_RETRY_EXHAUSTED_REASON = "retry_exhausted"
-
 _STORE_BENCHED_REASON = "unavailable"
-
-
 _CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
 
 
 def _controller_source_tree(
-    *,
-    parse_fn: Callable[[str], ast.Module],
-    read_fn: Callable[[], str],
+    *, parse_fn: Callable[[str], ast.Module], read_fn: Callable[[], str]
 ) -> tuple[str, ast.Module]:
     if _CONTROLLER_SOURCE_TREE_CACHE:
         return next(iter(_CONTROLLER_SOURCE_TREE_CACHE.values()))
@@ -180,15 +159,10 @@ def _controller_source_tree(
     try:
         tree = parse_fn(source)
     except SyntaxError as exc:
-        msg = (
-            "recovery/controller.py failed to parse during the two-state"
-            " invariant check. The controller source is broken; the two-state"
-            " recovery invariant cannot be verified."
-            f" Parser error: {exc}"
-        )
+        msg = f"recovery/controller.py failed to parse during the two-state invariant check. The controller source is broken; the two-state recovery invariant cannot be verified. Parser error: {exc}"
         raise RuntimeError(msg) from exc
     _CONTROLLER_SOURCE_TREE_CACHE["source"] = (source, tree)
-    return source, tree
+    return (source, tree)
 
 
 def _parse_source(source: str) -> ast.Module:
@@ -201,8 +175,7 @@ def _reset_controller_source_tree_cache() -> None:
 
 def _assert_two_state_invariant() -> None:
     _source, tree = _controller_source_tree(
-        parse_fn=_parse_source,
-        read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
+        parse_fn=_parse_source, read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8")
     )
     class_node: ast.ClassDef | None = None
     for node in tree.body:
@@ -210,27 +183,13 @@ def _assert_two_state_invariant() -> None:
             class_node = node
             break
     if class_node is None:
-        msg = (
-            "Two-state invariant violated: RecoveryController class not found"
-            " in ralph.recovery.controller. The two-state recovery invariant"
-            " requires a single RecoveryController class to own the two"
-            " recovery paths. Restore the class definition or update the"
-            " import-time invariant in ralph.recovery.controller."
-        )
+        msg = "Two-state invariant violated: RecoveryController class not found in ralph.recovery.controller. The two-state recovery invariant requires a single RecoveryController class to own the two recovery paths. Restore the class definition or update the import-time invariant in ralph.recovery.controller."
         raise RuntimeError(msg)
     method_names = {m.name for m in class_node.body if isinstance(m, ast.FunctionDef)}
     missing = _REQUIRED_TWO_STATE_METHODS - method_names
     if missing:
         missing_list = ", ".join(sorted(missing))
-        msg = (
-            "Two-state recovery invariant violated: RecoveryController is missing"
-            f" required method(s): {missing_list}. The two MAIN RULES require"
-            " exactly two recovery paths: (1) exponential backoff to the next"
-            " agent via _mark_agent_unavailable, and (2) same-agent retry via"
-            " _apply_chain_retry. Restore the missing method(s) or update the"
-            " import-time invariant in ralph.recovery.controller and the test"
-            " in tests/recovery/test_two_state_invariant.py in the same commit."
-        )
+        msg = f"Two-state recovery invariant violated: RecoveryController is missing required method(s): {missing_list}. The two MAIN RULES require exactly two recovery paths: (1) exponential backoff to the next agent via _mark_agent_unavailable, and (2) same-agent retry via _apply_chain_retry. Restore the missing method(s) or update the import-time invariant in ralph.recovery.controller and the test in tests/recovery/test_two_state_invariant.py in the same commit."
         raise RuntimeError(msg)
 
 
@@ -244,7 +203,7 @@ def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
         test_src: str | None = None
         with contextlib.suppress(ValueError, TypeError, RecursionError):
             test_src = ast.unparse(stmt.test)
-        if test_src is not None and "self._is_agent_available" in test_src and "all(" in test_src:
+        if test_src is not None and "self._is_agent_available" in test_src and ("all(" in test_src):
             return stmt
     return None
 
@@ -263,8 +222,7 @@ def _find_enter_phase_failed_call(func_body: list[ast.stmt]) -> ast.stmt | None:
 
 def _assert_never_exit_invariant() -> None:
     _source, tree = _controller_source_tree(
-        parse_fn=_parse_source,
-        read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
+        parse_fn=_parse_source, read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8")
     )
     class_node: ast.ClassDef | None = None
     for node in tree.body:
@@ -272,13 +230,7 @@ def _assert_never_exit_invariant() -> None:
             class_node = node
             break
     if class_node is None:
-        msg = (
-            "Never-exit invariant violated: RecoveryController class not found"
-            " in ralph.recovery.controller. The never-exit invariant requires"
-            " a single RecoveryController class to own the never-exit"
-            " recovery branch. Restore the class definition or update the"
-            " import-time invariant in ralph.recovery.controller."
-        )
+        msg = "Never-exit invariant violated: RecoveryController class not found in ralph.recovery.controller. The never-exit invariant requires a single RecoveryController class to own the never-exit recovery branch. Restore the class definition or update the import-time invariant in ralph.recovery.controller."
         raise RuntimeError(msg)
     handle_retry_node: ast.FunctionDef | None = None
     for m in class_node.body:
@@ -286,86 +238,29 @@ def _assert_never_exit_invariant() -> None:
             handle_retry_node = m
             break
     if handle_retry_node is None:
-        msg = (
-            "Never-exit invariant violated: RecoveryController is missing"
-            " the _handle_retry_progression method. The never-exit"
-            " invariant requires the all-agents-unavailable branch in"
-            " _handle_retry_progression to return before"
-            " _enter_phase_failed is reachable. Restore the method or"
-            " update the import-time invariant in ralph.recovery.controller."
-        )
+        msg = "Never-exit invariant violated: RecoveryController is missing the _handle_retry_progression method. The never-exit invariant requires the all-agents-unavailable branch in _handle_retry_progression to return before _enter_phase_failed is reachable. Restore the method or update the import-time invariant in ralph.recovery.controller."
         raise RuntimeError(msg)
-
     func_body: list[ast.stmt] = list(handle_retry_node.body)
     all_agents_unavailable_if = _find_all_agents_unavailable_if(func_body)
     if all_agents_unavailable_if is None:
-        msg = (
-            "Never-exit invariant violated: RecoveryController."
-            "_handle_retry_progression is missing the all-agents-unavailable"
-            " ``if all(not self._is_agent_available(phase, agent) for"
-            " agent in chain.agents):`` branch. The never-exit invariant"
-            " requires this branch to return BEFORE _enter_phase_failed"
-            " is reachable. Restore the branch in _handle_retry_progression"
-            " or update the import-time invariant in"
-            " ralph.recovery.controller."
-        )
+        msg = "Never-exit invariant violated: RecoveryController._handle_retry_progression is missing the all-agents-unavailable ``if all(not self._is_agent_available(phase, agent) for agent in chain.agents):`` branch. The never-exit invariant requires this branch to return BEFORE _enter_phase_failed is reachable. Restore the branch in _handle_retry_progression or update the import-time invariant in ralph.recovery.controller."
         raise RuntimeError(msg)
-
     enter_phase_failed_call = _find_enter_phase_failed_call(func_body)
     if enter_phase_failed_call is None:
-        msg = (
-            "Never-exit invariant violated: RecoveryController."
-            "_handle_retry_progression is missing the"
-            " _enter_phase_failed call. The never-exit invariant requires"
-            " the all-agents-unavailable branch to return BEFORE"
-            " _enter_phase_failed is reachable. Restore the call in"
-            " _handle_retry_progression or update the import-time"
-            " invariant in ralph.recovery.controller."
-        )
+        msg = "Never-exit invariant violated: RecoveryController._handle_retry_progression is missing the _enter_phase_failed call. The never-exit invariant requires the all-agents-unavailable branch to return BEFORE _enter_phase_failed is reachable. Restore the call in _handle_retry_progression or update the import-time invariant in ralph.recovery.controller."
         raise RuntimeError(msg)
-
     all_agents_unavailable_index = func_body.index(all_agents_unavailable_if)
     enter_phase_failed_index = func_body.index(enter_phase_failed_call)
     if all_agents_unavailable_index >= enter_phase_failed_index:
-        msg = (
-            "Never-exit invariant violated: the all-agents-unavailable"
-            " ``if`` statement in RecoveryController._handle_retry_progression"
-            " appears at body index"
-            f" {all_agents_unavailable_index} which is NOT before the"
-            f" _enter_phase_failed call at body index"
-            f" {enter_phase_failed_index}. The never-exit invariant"
-            " requires the all-agents-unavailable branch to be at a LOWER"
-            " body index (i.e. earlier in the function body) than"
-            " _enter_phase_failed so the branch's return statement"
-            " short-circuits before the failure call. Reorder the"
-            " branches in _handle_retry_progression or update the"
-            " import-time invariant in ralph.recovery.controller and the"
-            " test in tests/recovery/test_two_state_invariant.py in the"
-            " same commit."
-        )
+        msg = f"Never-exit invariant violated: the all-agents-unavailable ``if`` statement in RecoveryController._handle_retry_progression appears at body index {all_agents_unavailable_index} which is NOT before the _enter_phase_failed call at body index {enter_phase_failed_index}. The never-exit invariant requires the all-agents-unavailable branch to be at a LOWER body index (i.e. earlier in the function body) than _enter_phase_failed so the branch's return statement short-circuits before the failure call. Reorder the branches in _handle_retry_progression or update the import-time invariant in ralph.recovery.controller and the test in tests/recovery/test_two_state_invariant.py in the same commit."
         raise RuntimeError(msg)
-
     has_return = any(isinstance(node, ast.Return) for node in ast.walk(all_agents_unavailable_if))
     if not has_return:
-        msg = (
-            "Never-exit invariant violated: the all-agents-unavailable"
-            " ``if`` statement in RecoveryController._handle_retry_progression"
-            " does not contain a ``return`` statement. The never-exit"
-            " invariant requires the branch to return"
-            " ``state.copy_with(is_waiting_state=True,"
-            " last_retry_delay_ms=...)`` and an empty effects list so the"
-            " run loop sleeps on ``last_retry_delay_ms`` and re-enters"
-            " the same phase. Add a return statement to the branch or"
-            " update the import-time invariant in"
-            " ralph.recovery.controller and the test in"
-            " tests/recovery/test_two_state_invariant.py in the same"
-            " commit."
-        )
+        msg = "Never-exit invariant violated: the all-agents-unavailable ``if`` statement in RecoveryController._handle_retry_progression does not contain a ``return`` statement. The never-exit invariant requires the branch to return ``state.copy_with(is_waiting_state=True, last_retry_delay_ms=...)`` and an empty effects list so the run loop sleeps on ``last_retry_delay_ms`` and re-enters the same phase. Add a return statement to the branch or update the import-time invariant in ralph.recovery.controller and the test in tests/recovery/test_two_state_invariant.py in the same commit."
         raise RuntimeError(msg)
 
 
 _assert_never_exit_invariant()
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
@@ -391,17 +286,10 @@ def _build_exit_failure_effect(*, reason: str) -> Effect:
 
 
 def _build_fallover_record(
-    *,
-    phase: str,
-    from_agent: str,
-    to_agent: str,
-    timestamp_iso: str,
+    *, phase: str, from_agent: str, to_agent: str, timestamp_iso: str
 ) -> FalloverRecord:
     return FalloverRecord(
-        phase=phase,
-        from_agent=from_agent,
-        to_agent=to_agent,
-        timestamp_iso=timestamp_iso,
+        phase=phase, from_agent=from_agent, to_agent=to_agent, timestamp_iso=timestamp_iso
     )
 
 
@@ -410,49 +298,26 @@ class _RetryHintPath(Protocol):
 
 
 def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], _RetryHintPath]:
-    module = import_module("ralph.phases.required_artifacts")
-    namespace = cast("dict[str, object]", module.__dict__)
-    build_retry_hint = cast("Callable[[str, str], str]", namespace["build_retry_hint"])
-    retry_hint_path = cast("_RetryHintPath", namespace["retry_hint_path"])
-    return build_retry_hint, retry_hint_path
+
+    return (build_retry_hint, retry_hint_path)
 
 
-def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
+def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30000) -> int:
     exponent_factor: int = 2**attempt
     delay: int = base_ms * exponent_factor
     return min(delay, max_ms)
 
 
-def _dead_agent_verdict_namespace() -> dict[str, object]:
-    module = import_module("ralph.recovery.dead_agent_verdict")
-    return cast("dict[str, object]", module.__dict__)
-
-
-def _typed_signal_type(namespace: dict[str, object]) -> type[TypedSignal]:
-    candidate = namespace["TypedSignal"]
-    if candidate is not TypedSignal:
-        raise TypeError("ralph.recovery.dead_agent_verdict.TypedSignal must be a TypedSignal type")
-    return TypedSignal
-
-
 def build_typed_agent_signal(
-    signal_name: str | None,
-    *,
-    signal_provider_originated: bool,
-    facts: AttemptFacts | None,
+    signal_name: str | None, *, signal_provider_originated: bool, facts: AttemptFacts | None
 ) -> TypedSignal | None:
+
     if signal_name is None:
         return None
-    namespace = _dead_agent_verdict_namespace()
-    typed_signal_type = _typed_signal_type(namespace)
-    runtime_issued = cast(
-        "_RuntimeIssuedPredicate",
-        namespace["runtime_issued_termination_is_not_agent_fault"],
-    )
     agent_initiated = True
     if facts is not None:
-        agent_initiated = not runtime_issued(facts)
-    return typed_signal_type(
+        agent_initiated = not runtime_issued_termination_is_not_agent_fault(facts)
+    return TypedSignal(
         name=signal_name,
         provider_originated=signal_provider_originated,
         agent_initiated=agent_initiated,
@@ -466,11 +331,7 @@ def build_dead_agent_verdict(
     probe_outcome: ProbeOutcome | None = None,
     typed_signal: TypedSignal | None = None,
 ) -> PersistedVerdict:
-    namespace = _dead_agent_verdict_namespace()
-    decide = cast(
-        "_DecideDeadAgentVerdict",
-        namespace["decide_dead_agent_verdict"],
-    )
+
     effective_attribution = attribution
     if effective_attribution is None:
         effective_attribution = attribute_attempt(
@@ -480,30 +341,21 @@ def build_dead_agent_verdict(
                 typed_signal is not None and typed_signal.provider_originated
             ),
         )
-    return decide(facts, effective_attribution, probe_outcome, typed_signal)
+    return decide_dead_agent_verdict(facts, effective_attribution, probe_outcome, typed_signal)
 
 
 _HEALTHY_VERDICT_VALUE = "healthy"
-
 _MIN_PEER_CHAIN_AGENTS = 2
 
 
 def _verdict_benches_agent(verdict: PersistedVerdict) -> bool:
-    namespace = _dead_agent_verdict_namespace()
-    predicate = cast(
-        "_DeadAgentVerdictPredicate",
-        namespace["verdict_benches_agent"],
-    )
-    return predicate(verdict.verdict)
+
+    return verdict_benches_agent(verdict.verdict)
 
 
 def _verdict_counts_toward_agent_state(verdict: PersistedVerdict) -> bool:
-    namespace = _dead_agent_verdict_namespace()
-    predicate = cast(
-        "_DeadAgentVerdictPredicate",
-        namespace["verdict_counts_toward_agent_state"],
-    )
-    return predicate(verdict.verdict)
+
+    return verdict_counts_toward_agent_state(verdict.verdict)
 
 
 def _attempt_observation_present(facts: AttemptFacts) -> bool:
@@ -537,8 +389,7 @@ def _without_unavailability_reason(failure: ClassifiedFailure) -> ClassifiedFail
 
 
 def _failure_for_attempt_outcome(
-    failure: ClassifiedFailure,
-    verdict: PersistedVerdict,
+    failure: ClassifiedFailure, verdict: PersistedVerdict
 ) -> ClassifiedFailure:
     if str(verdict.verdict) == _HEALTHY_VERDICT_VALUE:
         return _without_unavailability_reason(failure)
@@ -559,10 +410,45 @@ def _attempt_cooldown_reasons(
         cooldown_reason = watchdog_cooldown
     if cooldown_reason is None and isinstance(exc, SupervisionInfrastructureError):
         cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
-    return cooldown_reason, watchdog_cooldown
+    return (cooldown_reason, watchdog_cooldown)
 
 
 class RecoveryController:
+    __slots__ = (
+        "_attempt_counts",
+        "_attempt_ordinals",
+        "_attempt_outcome_keys",
+        "_attempt_outcome_memo",
+        "_backoff_attempts",
+        "_bus",
+        "_cap",
+        "_claimed_attempt_outcome_keys",
+        "_classifier",
+        "_clock",
+        "_consecutive_unproductive_limit",
+        "_dead_agent_probe_runner",
+        "_dead_agent_verdict_runner",
+        "_false_bench_feedback",
+        "_last_attempt_charged_ledger",
+        "_last_attempt_cooldown_reason",
+        "_last_attempt_outcome",
+        "_last_demoted_reason",
+        "_last_resolved_verdict",
+        "_last_selection_state",
+        "_last_verdict_record",
+        "_ledger",
+        "_peer_failure_signatures",
+        "_phase_chains",
+        "_phase_cursor",
+        "_phase_launch_gates",
+        "_policy_bundle",
+        "_reset_hint_backend",
+        "_spent_agents",
+        "_total_unproductive_limit",
+        "_unavailability_tracker",
+        "_workspace_probe",
+    )
+
     def __init__(
         self,
         *,
@@ -734,7 +620,7 @@ class RecoveryController:
                 self._phase_cursor[phase] = chain.agents[chain.current_index]
         current_agent = agent or (
             chain.agents[chain.current_index]
-            if chain is not None and chain.agents and chain.current_index < len(chain.agents)
+            if chain is not None and chain.agents and (chain.current_index < len(chain.agents))
             else None
         )
         attempt_facts = replace(
@@ -748,24 +634,22 @@ class RecoveryController:
             facts=attempt_facts,
             attempt_failed=True,
             exc=raw_failure if isinstance(raw_failure, BaseException) else None,
-            retryable_reason=(
-                str(failure.category)
-                if failure.category == FailureCategory.USER_CONFIG
-                else (raw_failure if isinstance(raw_failure, str) else None)
-            ),
+            retryable_reason=str(failure.category)
+            if failure.category == FailureCategory.USER_CONFIG
+            else raw_failure
+            if isinstance(raw_failure, str)
+            else None,
             charge_ledger=failure.must_charge_ledger or not failure.is_unavailable,
             failure=failure,
         )
         if (
             failure.must_charge_ledger
             and current_agent is not None
-            and not artifact_valid
-            and not self._last_attempt_charged_ledger
+            and (not artifact_valid)
+            and (not self._last_attempt_charged_ledger)
         ):
             self._charge_failure_the_clean_finalize_left_uncharged(
-                phase,
-                current_agent,
-                workspace_changed=workspace_changed,
+                phase, current_agent, workspace_changed=workspace_changed
             )
         bench_applied = outcome.benches_agent
         cooldown_reason = self._last_attempt_cooldown_reason
@@ -789,23 +673,20 @@ class RecoveryController:
         if (
             isinstance(raw_failure, ConnectionError)
             and current_agent is not None
-            and chain is not None
-            and len(chain.agents) > 1
-            and not failure.is_unavailable
-            and failure.unavailability_reason is None
+            and (chain is not None)
+            and (len(chain.agents) > 1)
+            and (not failure.is_unavailable)
+            and (failure.unavailability_reason is None)
             and self.agent_eligibility(phase, current_agent).is_eligible
         ):
             self.record_confirmed_unavailability(
-                phase,
-                current_agent,
-                UnavailabilityReason.PROVIDER_UNAVAILABLE,
+                phase, current_agent, UnavailabilityReason.PROVIDER_UNAVAILABLE
             )
             failure = replace(
                 failure,
                 is_unavailable=True,
                 unavailability_reason=UnavailabilityReason.PROVIDER_UNAVAILABLE,
             )
-
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
         return self._handle_classified_failure(
@@ -817,17 +698,10 @@ class RecoveryController:
         )
 
     def _charge_failure_the_clean_finalize_left_uncharged(
-        self,
-        phase: str,
-        agent: str,
-        *,
-        workspace_changed: bool,
+        self, phase: str, agent: str, *, workspace_changed: bool
     ) -> None:
         self._last_demoted_reason = self.record_attempt_fact(
-            phase,
-            agent,
-            artifact_valid=False,
-            workspace_changed=workspace_changed,
+            phase, agent, artifact_valid=False, workspace_changed=workspace_changed
         )
 
     def next_attempt_ordinal(self, phase: str, agent: str | None) -> int:
@@ -871,9 +745,8 @@ class RecoveryController:
             claimed = self._claim_memoized_attempt(phase, agent)
             if claimed is not None:
                 return self._restore_memoized_attempt(claimed)
-
-        effective_charge_ledger = charge_ledger and not is_configuration_failure(
-            exc, retryable_reason
+        effective_charge_ledger = charge_ledger and (
+            not is_configuration_failure(exc, retryable_reason)
         )
         outcome, demoted_reason, resolved_verdict = self._finalize_attempt_now(
             phase,
@@ -917,9 +790,7 @@ class RecoveryController:
         return outcome
 
     def _claim_memoized_attempt(
-        self,
-        phase: str,
-        agent: str | None,
+        self, phase: str, agent: str | None
     ) -> (
         tuple[AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None]
         | None
@@ -996,21 +867,14 @@ class RecoveryController:
         demoted_reason: str | None = None
         self._last_attempt_cooldown_reason = None
         cooldown_reason, watchdog_cooldown = _attempt_cooldown_reasons(
-            effective_signal,
-            exc,
-            failure,
+            effective_signal, exc, failure
         )
         preserved_reason = (
             cooldown_reason if cooldown_reason in _TYPED_NO_ACTIVITY_REASONS else None
         )
-        if outcome.benches_agent and not probe_mode and agent is not None:
+        if outcome.benches_agent and (not probe_mode) and (agent is not None):
             bench_reason = preserved_reason or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
-            self.record_confirmed_unavailability(
-                phase,
-                agent,
-                bench_reason,
-                outcome.verdict,
-            )
+            self.record_confirmed_unavailability(phase, agent, bench_reason, outcome.verdict)
             self._false_bench_feedback.note_bench(
                 phase,
                 agent,
@@ -1022,17 +886,20 @@ class RecoveryController:
             if preserved_reason is not None:
                 self._last_attempt_cooldown_reason = preserved_reason
         elif (
-            attempt_failed and cooldown_reason is not None and not probe_mode and agent is not None
+            attempt_failed
+            and cooldown_reason is not None
+            and (not probe_mode)
+            and (agent is not None)
         ):
             self._mark_agent_unavailable(phase, agent, reason=cooldown_reason)
             self._last_attempt_cooldown_reason = cooldown_reason
         self._last_attempt_charged_ledger = False
         if (
             _charges_agent_ledger(outcome, peer_failures_identical=peer_failures_identical)
-            and not probe_mode
+            and (not probe_mode)
             and charge_ledger
-            and agent is not None
-            and watchdog_cooldown is None
+            and (agent is not None)
+            and (watchdog_cooldown is None)
         ):
             self._last_attempt_charged_ledger = True
             demoted_reason = self.record_attempt_fact(
@@ -1045,16 +912,14 @@ class RecoveryController:
             self.reset_backoff(phase, agent)
             if agent is not None:
                 self._false_bench_feedback.note_success(
-                    phase,
-                    agent,
-                    config_fingerprint=fingerprint or "",
+                    phase, agent, config_fingerprint=fingerprint or ""
                 )
             self._peer_failure_signatures.pop(phase, None)
         elif agent is not None and _attempt_observation_present(attempt_facts):
             self._peer_failure_signatures.setdefault(phase, {})[agent] = self._failure_signature(
                 attempt_facts
             )
-        return outcome, demoted_reason, resolved_verdict
+        return (outcome, demoted_reason, resolved_verdict)
 
     def _failure_signature(self, facts: AttemptFacts) -> tuple[object, ...]:
         termination = facts.termination
@@ -1066,12 +931,7 @@ class RecoveryController:
             tuple(facts.event_kinds),
         )
 
-    def _peer_failures_identical(
-        self,
-        phase: str,
-        agent: str | None,
-        facts: AttemptFacts,
-    ) -> bool:
+    def _peer_failures_identical(self, phase: str, agent: str | None, facts: AttemptFacts) -> bool:
         if not _attempt_observation_present(facts):
             return False
         chain = self._get_chain_agents(phase)
@@ -1082,22 +942,15 @@ class RecoveryController:
         return all(remembered.get(other) == signature for other in chain if other != agent)
 
     def _remember_verdict(self, phase: str, agent: str | None, verdict: PersistedVerdict) -> None:
-        namespace = _dead_agent_verdict_namespace()
-        record = cast(
-            "Callable[[str, str, PersistedVerdict], dict[str, object]]", namespace["verdict_record"]
-        )
-        self._last_verdict_record = record(phase, agent or "", verdict)
+
+        self._last_verdict_record = verdict_record(phase, agent or "", verdict)
 
     @property
     def last_verdict_record(self) -> dict[str, object] | None:
         return self._last_verdict_record
 
     def _is_dead_agent_candidate(
-        self,
-        signal_name: str | None,
-        facts: AttemptFacts | None,
-        *,
-        attempt_ended: bool,
+        self, signal_name: str | None, facts: AttemptFacts | None, *, attempt_ended: bool
     ) -> bool:
         if signal_name is not None:
             return True
@@ -1118,7 +971,7 @@ class RecoveryController:
     ) -> PersistedVerdict | None:
         if signal_name is None:
             signal = facts.typed_signal if facts is not None else None
-            if signal is None and failure is not None and failure.facts is not None:
+            if signal is None and failure is not None and (failure.facts is not None):
                 signal = failure.facts.typed_signal
             if signal is None and exc is not None:
                 signal = attempt_facts_for_failure(exc).typed_signal
@@ -1128,7 +981,7 @@ class RecoveryController:
         has_runner = (
             self._dead_agent_probe_runner is not None or self._dead_agent_verdict_runner is not None
         )
-        if not has_runner and not (signal_name is not None and signal_provider_originated):
+        if not has_runner and (not (signal_name is not None and signal_provider_originated)):
             return None
         effective_facts = facts
         if effective_facts is None and failure is not None:
@@ -1139,9 +992,7 @@ class RecoveryController:
             or (effective_facts is not None and effective_facts.termination is not None)
         )
         if not self._is_dead_agent_candidate(
-            signal_name,
-            effective_facts,
-            attempt_ended=attempt_ended,
+            signal_name, effective_facts, attempt_ended=attempt_ended
         ):
             return None
         if effective_facts is None and self._dead_agent_verdict_runner is None:
@@ -1270,13 +1121,13 @@ class RecoveryController:
             free_retry_category=free_retry_category,
         )
         outcome = self._ledger.record(fact)
-
         if outcome.demoted:
             if isinstance(outcome.status, Cooldown):
                 now_ms = self._now_ms()
                 demotion_reason = self._last_attempt_cooldown_reason
-                if not isinstance(demotion_reason, UnavailabilityReason) or (
-                    demotion_reason not in _TYPED_NO_ACTIVITY_REASONS
+                if (
+                    not isinstance(demotion_reason, UnavailabilityReason)
+                    or demotion_reason not in _TYPED_NO_ACTIVITY_REASONS
                 ):
                     demotion_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
                 self._log_cooldown_decision(
@@ -1303,11 +1154,8 @@ class RecoveryController:
             if outcome.status.is_spent:
                 self.note_retry_exhaustion(phase, agent)
             chain_agents = self._get_chain_agents(phase)
-            if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
-                sole_msg = (
-                    f"Sole agent '{agent}' demoted in phase '{phase}': "
-                    f"unproductive attempt limit reached ({outcome.reason})"
-                )
+            if chain_agents is not None and len(chain_agents) == 1 and (chain_agents[0] == agent):
+                sole_msg = f"Sole agent '{agent}' demoted in phase '{phase}': unproductive attempt limit reached ({outcome.reason})"
                 logger.warning(sole_msg)
                 return sole_msg
         return None
@@ -1321,20 +1169,17 @@ class RecoveryController:
         bench_applied: bool = False,
         sole_demoted_reason: str | None = None,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
-        phase, agent = context.phase, context.agent
+        phase, agent = (context.phase, context.agent)
         retry_in_session = context.retry_in_session
         chain = state.chain_for_phase(phase)
         chain_capacity = 0
         retry_delay_ms = 0
         is_agent_unavailable = (failure.is_unavailable or bench_applied) and agent is not None
-
         if chain is not None:
             chain_capacity = max(0, len(chain.agents) - chain.current_index - 1)
             self._phase_chains[phase] = tuple(chain.agents)
-
-            if agent is not None and failure.counts_against_budget and not is_agent_unavailable:
+            if agent is not None and failure.counts_against_budget and (not is_agent_unavailable):
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
-
         failure_evt = FailureEvent(
             timestamp=self._clock.now_utc(),
             phase=phase,
@@ -1346,17 +1191,14 @@ class RecoveryController:
             recovery_cycle=state.recovery_cycle_count,
             retry_delay_ms=retry_delay_ms,
             watchdog_reason=failure.watchdog_reason,
-            unavailability_reason=(
-                str(failure.unavailability_reason) if failure.unavailability_reason else None
-            ),
+            unavailability_reason=str(failure.unavailability_reason)
+            if failure.unavailability_reason
+            else None,
         )
         self._bus.publish(failure_evt)
-
         new_state = state.copy_with(
-            last_failure_category=str(failure.category),
-            last_retry_delay_ms=retry_delay_ms,
+            last_failure_category=str(failure.category), last_retry_delay_ms=retry_delay_ms
         ).clear_waiting()
-
         if sole_demoted_reason is not None:
             logger.warning(sole_demoted_reason)
             new_state = new_state.copy_with(recovery_cycle_count=new_state.recovery_cycle_count + 1)
@@ -1365,9 +1207,7 @@ class RecoveryController:
             )
             if self._cap.is_exceeded(failed_state.recovery_cycle_count):
                 exit_reason = self._cap.exit_reason(
-                    failed_state.recovery_cycle_count,
-                    str(failure.category),
-                    failure.reason[:200],
+                    failed_state.recovery_cycle_count, str(failure.category), failure.reason[:200]
                 )
                 logger.error("Recovery cycle cap exceeded: {}", exit_reason)
                 return (
@@ -1375,12 +1215,7 @@ class RecoveryController:
                     [_build_exit_failure_effect(reason=exit_reason)],
                     failure_evt,
                 )
-            return (
-                failed_state,
-                [],
-                failure_evt,
-            )
-
+            return (failed_state, [], failure_evt)
         if failure.category in (
             FailureCategory.ENVIRONMENTAL,
             FailureCategory.ARTIFACT_VALIDATION,
@@ -1396,18 +1231,15 @@ class RecoveryController:
                 retry_in_session=retry_in_session,
                 failure_evt=failure_evt,
             )
-            return new_state, effects, failure_evt
-
+            return (new_state, effects, failure_evt)
         if failure.category == FailureCategory.USER_CONFIG:
             if failure.is_unavailable and agent is not None:
                 if not bench_applied:
                     self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
                 new_state = new_state.copy_with(
-                    last_unavailability_reason=(
-                        str(failure.unavailability_reason)
-                        if failure.unavailability_reason is not None
-                        else None
-                    )
+                    last_unavailability_reason=str(failure.unavailability_reason)
+                    if failure.unavailability_reason is not None
+                    else None
                 )
             logger.error(
                 "User/config failure reached runtime controller in phase={} (bug): {}",
@@ -1419,15 +1251,13 @@ class RecoveryController:
                 [],
                 failure_evt,
             )
-
-        if failure.is_unavailable and agent is not None and not bench_applied:
+        if failure.is_unavailable and agent is not None and (not bench_applied):
             self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
             new_state = new_state.copy_with(
-                last_unavailability_reason=(
-                    str(failure.unavailability_reason) if failure.unavailability_reason else None
-                )
+                last_unavailability_reason=str(failure.unavailability_reason)
+                if failure.unavailability_reason
+                else None
             )
-
         if failure.reset_session:
             logger.warning(
                 "Stale session detected in phase={} (session id invalid): {}",
@@ -1435,19 +1265,14 @@ class RecoveryController:
                 failure.reason[:200],
             )
             new_state = new_state.copy_with(
-                last_agent_session_id=None,
-                agent_retry_intent=cleared_agent_retry_intent(),
+                last_agent_session_id=None, agent_retry_intent=cleared_agent_retry_intent()
             )
             self._write_session_reset_hint(phase, failure)
         elif retry_in_session and failure.resumable_session_id:
-            new_state = new_state.copy_with(
-                last_agent_session_id=failure.resumable_session_id,
-            )
-
-        if agent is not None and not is_agent_unavailable and failure.counts_against_budget:
+            new_state = new_state.copy_with(last_agent_session_id=failure.resumable_session_id)
+        if agent is not None and (not is_agent_unavailable) and failure.counts_against_budget:
             key = f"{phase}:{agent}"
             self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
-
         new_state, effects, failure_evt = self._handle_retry_progression(
             new_state,
             failure,
@@ -1456,12 +1281,9 @@ class RecoveryController:
             retry_in_session=retry_in_session,
             failure_evt=failure_evt,
         )
-
         if self._cap.is_exceeded(new_state.recovery_cycle_count):
             exit_reason = self._cap.exit_reason(
-                new_state.recovery_cycle_count,
-                str(failure.category),
-                failure.reason[:200],
+                new_state.recovery_cycle_count, str(failure.category), failure.reason[:200]
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
             return (
@@ -1469,8 +1291,7 @@ class RecoveryController:
                 [_build_exit_failure_effect(reason=exit_reason)],
                 failure_evt,
             )
-
-        return new_state, effects, failure_evt
+        return (new_state, effects, failure_evt)
 
     def _log_technical_failure(self, phase: str, failure: ClassifiedFailure) -> None:
         if failure.category == FailureCategory.ENVIRONMENTAL:
@@ -1535,14 +1356,9 @@ class RecoveryController:
         prefix = "Confirmed agent unavailability " if verdict is not None else ""
         demotion_text = ""
         if demotion is not None:
-            demotion_text = (
-                f" Agent '{agent}' demoted in phase '{phase}' "
-                f"(consecutive={demotion[0]}, total={demotion[1]}, reason={demotion[2]})"
-            )
+            demotion_text = f" Agent '{agent}' demoted in phase '{phase}' (consecutive={demotion[0]}, total={demotion[1]}, reason={demotion[2]})"
         logger.warning(
-            "{}cooldown_decision phase={} agent={} reason={} duration_ms={} expiry_ms={} "
-            "verdict={} facts={} attribution={} probe_outcome={} termination={} "
-            "return_code_discrepancy={}{}",
+            "{}cooldown_decision phase={} agent={} reason={} duration_ms={} expiry_ms={} verdict={} facts={} attribution={} probe_outcome={} termination={} return_code_discrepancy={}{}",
             prefix,
             phase,
             agent,
@@ -1573,7 +1389,11 @@ class RecoveryController:
         reasons = snap.get("unavailability_reasons", {})
         windows: dict[str, tuple[int, str]] = {}
         for agent, until in timeouts.items():
-            if not isinstance(agent, str) or isinstance(until, bool) or not isinstance(until, int):
+            if (
+                not isinstance(agent, str)
+                or isinstance(until, bool)
+                or (not isinstance(until, int))
+            ):
                 continue
             if until <= now_ms:
                 continue
@@ -1599,11 +1419,9 @@ class RecoveryController:
             agent,
             cooldown=window,
             spent_reason=None,
-            unavailable_reason=(
-                None
-                if self._unavailability_tracker.is_available(phase, agent)
-                else _STORE_BENCHED_REASON
-            ),
+            unavailable_reason=None
+            if self._unavailability_tracker.is_available(phase, agent)
+            else _STORE_BENCHED_REASON,
         )
         if not status.is_eligible:
             return status
@@ -1612,18 +1430,13 @@ class RecoveryController:
         return status
 
     def chain_eligibility(
-        self,
-        phase: str,
-        agents: Sequence[str],
+        self, phase: str, agents: Sequence[str]
     ) -> tuple[tuple[str, AgentStatus], ...]:
         now_ms = self._now_ms()
         windows = self._tracker_windows(now_ms=now_ms)
         spent = self._spent_agents.get(phase, set())
         return tuple(
-            (
-                agent,
-                self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms),
-            )
+            (agent, self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms))
             for agent in agents
         )
 
@@ -1666,19 +1479,12 @@ class RecoveryController:
         return state.with_phase_chain(phase, chain.with_retry_increment())
 
     def _apply_chain_retry(
-        self,
-        state: PipelineState,
-        phase: str,
-        chain: AgentChainState,
-        *,
-        retry_in_session: bool,
+        self, state: PipelineState, phase: str, chain: AgentChainState, *, retry_in_session: bool
     ) -> PipelineState:
         retried_state = state.with_phase_chain(phase, chain.with_retry_increment())
         if retry_in_session and state.last_agent_session_id:
             return retried_state.copy_with(
-                agent_retry_intent=resume_agent_retry_intent(
-                    state.last_agent_session_id,
-                ),
+                agent_retry_intent=resume_agent_retry_intent(state.last_agent_session_id)
             )
         return retried_state.copy_with(agent_retry_intent=cleared_agent_retry_intent())
 
@@ -1693,10 +1499,7 @@ class RecoveryController:
         return self._policy_bundle.agents.agent_chains.get(drain_config.chain)
 
     def _handle_integration_continuation(
-        self,
-        state: PipelineState,
-        failure: ClassifiedFailure,
-        phase: str,
+        self, state: PipelineState, failure: ClassifiedFailure, phase: str
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         delay = self._integration_retry_delay(state, phase)
         attempt = state.rebase.integration_retry_attempt
@@ -1737,18 +1540,12 @@ class RecoveryController:
             delay = increased
         return delay
 
-    def _compute_retry_delay(
-        self,
-        phase: str,
-        agent: str | None,
-    ) -> int:
+    def _compute_retry_delay(self, phase: str, agent: str | None) -> int:
         chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 0
-
         key = f"{phase}:{agent}" if agent else phase
         attempt = self._backoff_attempts.get(key, 0)
-
         return compute_backoff_ms(chain_config.retry_delay_ms, attempt)
 
     def reset_backoff(self, phase: str, agent: str | None) -> None:
@@ -1780,7 +1577,7 @@ class RecoveryController:
         chain = self._phase_chains.get(phase)
         if not chain:
             return True
-        return any(status.is_eligible for _agent, status in self.chain_eligibility(phase, chain))
+        return any((status.is_eligible for _agent, status in self.chain_eligibility(phase, chain)))
 
     def preferred_agent_index(
         self,
@@ -1795,7 +1592,6 @@ class RecoveryController:
         now_ms = self._now_ms()
         windows = self._tracker_windows(now_ms=now_ms)
         spent_set = self._spent_agents.get(phase, set())
-
         rows: list[tuple[str, bool, int, bool, str | None]] = []
         for idx, agent in enumerate(agents):
             status = self._resolve_eligibility(phase, agent, windows, spent_set, now_ms=now_ms)
@@ -1804,36 +1600,27 @@ class RecoveryController:
             if isinstance(status, Cooldown):
                 cooldown_ms = max(0, status.until_ms - now_ms)
                 cooldown_reason = status.reason
-
             avail = (
                 status.is_eligible
-                and not (exclude_current and idx == current_index)
-                and agent not in exclude
+                and (not (exclude_current and idx == current_index))
+                and (agent not in exclude)
             )
             is_spent = status.is_spent
-
-            rows.append(
-                agent_availability(
-                    agent,
-                    avail,
-                    cooldown_ms,
-                    is_spent,
-                    cooldown_reason,
-                )
-            )
-
+            rows.append(agent_availability(agent, avail, cooldown_ms, is_spent, cooldown_reason))
         selection = select_preferred_agent(rows)
         candidate_state = (
             selection.agent,
             tuple(
                 (
-                    agent,
-                    avail,
-                    cooldown_ms > 0,
-                    is_spent,
-                    cooldown_reason if cooldown_ms > 0 else None,
+                    (
+                        agent,
+                        avail,
+                        cooldown_ms > 0,
+                        is_spent,
+                        cooldown_reason if cooldown_ms > 0 else None,
+                    )
+                    for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
                 )
-                for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
             ),
         )
         if not self._phase_launch_gates.get(phase, True):
@@ -1845,19 +1632,11 @@ class RecoveryController:
         return selection
 
     def _write_session_reset_hint(
-        self,
-        phase: str,
-        failure: ClassifiedFailure,
-        *,
-        backend: FileBackend | None = None,
+        self, phase: str, failure: ClassifiedFailure, *, backend: FileBackend | None = None
     ) -> None:
         file_backend = backend or self._reset_hint_backend
         build_retry_hint, retry_hint_path = _get_required_artifact_helpers()
-
-        detail = (
-            "Previous session id was invalid; restart with fresh session."
-            f" Original failure: {failure.raw_message}"
-        )
+        detail = f"Previous session id was invalid; restart with fresh session. Original failure: {failure.raw_message}"
         hint_content = build_retry_hint(phase, detail)
         hint_file = Path(
             retry_hint_path(
@@ -1885,26 +1664,21 @@ class RecoveryController:
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         chain = state.chain_for_phase(phase)
         if chain is None:
-            return state, [], failure_evt
-
+            return (state, [], failure_evt)
         current_agent = agent or (
             chain.agents[chain.current_index]
             if chain.agents and chain.current_index < len(chain.agents)
             else None
         )
         selection = self.preferred_agent_index(
-            phase,
-            chain.agents,
-            current_index=chain.current_index,
+            phase, chain.agents, current_index=chain.current_index
         )
-
         if selection.index == chain.current_index:
             return (
                 self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
                 failure_evt,
             )
-
         if selection.index is not None:
             next_available_index = selection.index
             next_agent = chain.agents[next_available_index]
@@ -1922,16 +1696,13 @@ class RecoveryController:
                 to_agent=next_agent,
                 reason=failure.reason,
                 watchdog_reason=failure.watchdog_reason,
-                unavailability_reason=(
-                    str(failure.unavailability_reason) if failure.unavailability_reason else None
-                ),
+                unavailability_reason=str(failure.unavailability_reason)
+                if failure.unavailability_reason
+                else None,
             )
             self._bus.publish(fallover_evt)
-
             new_chain = AgentChainState(
-                agents=chain.agents,
-                current_index=next_available_index,
-                retries=0,
+                agents=chain.agents, current_index=next_available_index, retries=0
             )
             preserve_session_id = failure.watchdog_reason == "no_output_at_start" and bool(
                 failure.resumable_session_id
@@ -1940,15 +1711,14 @@ class RecoveryController:
                 state.with_phase_chain(phase, new_chain)
                 .copy_with(
                     last_retry_delay_ms=0,
-                    last_agent_session_id=(
-                        failure.resumable_session_id if preserve_session_id else None
-                    ),
+                    last_agent_session_id=failure.resumable_session_id
+                    if preserve_session_id
+                    else None,
                     agent_retry_intent=cleared_agent_retry_intent(),
                 )
                 .with_fallover_record(fallover_record)
             )
-            return new_state, [], failure_evt
-
+            return (new_state, [], failure_evt)
         if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             chain_wait = self.eligibility_wait(phase, chain.agents)
             if chain_wait.kind is WaitKind.COOLING_DOWN:
@@ -1965,33 +1735,26 @@ class RecoveryController:
                     [],
                     updated_evt,
                 )
-
-        if len(chain.agents) == 1 and not self._is_agent_available(phase, chain.agents[0]):
+        if len(chain.agents) == 1 and (not self._is_agent_available(phase, chain.agents[0])):
             sole_agent = chain.agents[0]
             st = self.agent_eligibility(phase, sole_agent)
             demote_reason = (
                 st.reason
-                if isinstance(st, (Cooldown, Spent, Unavailable)) and st.reason
+                if isinstance(st, Cooldown | Spent | Unavailable) and st.reason
                 else failure.reason
             )
-            exhaustion_reason = (
-                f"Sole agent '{sole_agent}' demoted in phase '{phase}': "
-                f"unproductive attempt limit reached ({demote_reason})"
-            )
+            exhaustion_reason = f"Sole agent '{sole_agent}' demoted in phase '{phase}': unproductive attempt limit reached ({demote_reason})"
         elif all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             exhaustion_reason = (
                 f"All agents in phase '{phase}' demoted or exhausted: {failure.reason}"
             )
         else:
             exhaustion_reason = failure.reason
-
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, exhaustion_reason, failure.category)
         if self._cap.is_exceeded(failed_state.recovery_cycle_count):
             exit_reason = self._cap.exit_reason(
-                failed_state.recovery_cycle_count,
-                str(failure.category),
-                failure.reason[:200],
+                failed_state.recovery_cycle_count, str(failure.category), failure.reason[:200]
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
             return (
@@ -1999,7 +1762,7 @@ class RecoveryController:
                 [_build_exit_failure_effect(reason=exit_reason)],
                 failure_evt,
             )
-        return failed_state, [], failure_evt
+        return (failed_state, [], failure_evt)
 
     def apply_all_agents_unavailable_wait(
         self,
@@ -2009,15 +1772,16 @@ class RecoveryController:
         wait_ms: int,
         unavailability_reason: UnavailabilityReason | str | None = None,
     ) -> PipelineState:
-        if isinstance(unavailability_reason, UnavailabilityReason):
-            unavail_reason = unavailability_reason.value
-            logged_reason: object = unavailability_reason
-        elif isinstance(unavailability_reason, str) and unavailability_reason:
-            unavail_reason = unavailability_reason
-            logged_reason = unavailability_reason
-        else:
-            unavail_reason = "unknown"
-            logged_reason = None
+        match unavailability_reason:
+            case UnavailabilityReason() as reason:
+                unavail_reason = reason.value
+                logged_reason: object = reason
+            case str() as text if text:
+                unavail_reason = text
+                logged_reason = text
+            case _:
+                unavail_reason = "unknown"
+                logged_reason = None
         reason = (
             f"all agents unavailable (last reason: {unavail_reason}); waiting for cooldown expiry"
             if logged_reason is not None
@@ -2030,10 +1794,9 @@ class RecoveryController:
             wait_ms,
             logged_reason,
         )
-        return state.copy_with(
-            last_error=reason,
-            last_retry_delay_ms=wait_ms,
-        ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None)
+        return state.copy_with(last_error=reason, last_retry_delay_ms=wait_ms).set_waiting(
+            WaitReason.ALL_AGENTS_UNAVAILABLE, None
+        )
 
     def earliest_eligible_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         if not agents:
@@ -2052,12 +1815,20 @@ class RecoveryController:
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
         if not agents:
             return False
-        return all(status.is_spent for _agent, status in self.chain_eligibility(phase, agents))
+        return all((status.is_spent for _agent, status in self.chain_eligibility(phase, agents)))
 
     def snapshot(self) -> dict[str, object]:
         tracker_snapshot = self._unavailability_tracker.snapshot()
         merged_attempts = dict(self._backoff_attempts)
-        merged_attempts.update(cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {})))
+        raw_attempts = tracker_snapshot.get("backoff_attempts", {})
+        if isinstance(raw_attempts, dict):
+            merged_attempts.update(
+                {
+                    key: value
+                    for key, value in raw_attempts.items()
+                    if isinstance(key, str) and isinstance(value, int)
+                }
+            )
         return {
             "cycle_cap": self._cap.cap,
             "backoff_attempts": merged_attempts,
@@ -2113,20 +1884,13 @@ class RecoveryController:
         ]
 
     def _enter_phase_failed(
-        self,
-        state: PipelineState,
-        reason: str,
-        category: object,
+        self, state: PipelineState, reason: str, category: object
     ) -> PipelineState:
         self._spent_agents.pop(state.phase, None)
         if self._policy_bundle is not None:
             failed_route = self._policy_bundle.pipeline.recovery.failed_route
             return (
-                progress.advance_phase(
-                    state,
-                    failed_route,
-                    policy=self._policy_bundle.pipeline,
-                )
+                progress.advance_phase(state, failed_route, policy=self._policy_bundle.pipeline)
                 .copy_with(
                     last_error=reason,
                     recovery_epoch=state.recovery_epoch + 1,

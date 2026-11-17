@@ -29,6 +29,25 @@ _ACTIVITY_RELAY_CREDENTIAL_ENV = "RALPH_MCP_ACTIVITY_RELAY_CREDENTIAL"
 
 
 class ActivityRelay:
+    __slots__ = (
+        "_active",
+        "_credential",
+        "_delivered_events",
+        "_endpoint",
+        "_ignored_events",
+        "_listener",
+        "_lock",
+        "_next_sequence",
+        "_pending_tools",
+        "_receiver_error",
+        "_recent_tools",
+        "_registered_once",
+        "_sender_error",
+        "_sink",
+        "_stop",
+        "_thread",
+    )
+
     def __init__(self) -> None:
         self._credential = secrets.token_urlsafe(32)
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

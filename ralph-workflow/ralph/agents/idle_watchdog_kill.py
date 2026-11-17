@@ -7,6 +7,17 @@ if TYPE_CHECKING:
 
 
 class IdleWatchdogKilledError(Exception):
+    __slots__ = (
+        "child_alive",
+        "evidence_summary",
+        "failure_origin",
+        "issuer",
+        "reason",
+        "resumable_session_id",
+        "runtime_event",
+        "signal",
+    )
+
     def __init__(
         self,
         reason: str,

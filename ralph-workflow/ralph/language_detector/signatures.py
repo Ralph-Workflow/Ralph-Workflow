@@ -11,6 +11,8 @@ if TYPE_CHECKING:
 
 
 class DetectionResults:
+    __slots__ = ("frameworks", "package_managers", "test_frameworks")
+
     def __init__(self) -> None:
         self.frameworks: list[str] = []
         self.test_frameworks: list[str] = []

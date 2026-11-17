@@ -49,6 +49,22 @@ def _tool_args_preview(tool_args: object) -> str:
 
 
 class RepetitionTracker:
+    __slots__ = (
+        "_clock",
+        "_consecutive",
+        "_consecutive_threshold",
+        "_event_maxlen",
+        "_events",
+        "_last_fingerprint",
+        "_last_tool_args_preview",
+        "_last_tool_fingerprint",
+        "_last_tool_name",
+        "_tool_consecutive",
+        "_tool_events",
+        "_window_count",
+        "_window_seconds",
+    )
+
     def __init__(
         self,
         clock: Clock,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import agents_md, markers, validators
@@ -572,3 +573,53 @@ def test_bootstrap_preserves_user_authored_v1_block() -> None:
     ws.write(markers.AGENTS_MD, user_block)
     assert agents_md.bootstrap(ws) == []
     assert ws.read(markers.AGENTS_MD) == user_block
+
+
+def test_both_agents_templates_interpolate_canonical_dir() -> None:
+    placeholder = agents_md._AGENTS_PLACEHOLDER_TEMPLATE.format(
+        begin=markers.AGENTS_BLOCK_BEGIN,
+        end=markers.AGENTS_BLOCK_END,
+        canonical_dir=markers.CANONICAL_DIR,
+    )
+    ready = agents_md._AGENTS_READY_TEMPLATE.format(
+        begin=markers.AGENTS_BLOCK_BEGIN,
+        end=markers.AGENTS_BLOCK_END,
+        canonical_dir=markers.CANONICAL_DIR,
+    )
+    assert "{canonical_dir}" in agents_md._AGENTS_PLACEHOLDER_TEMPLATE
+    assert "{canonical_dir}" in agents_md._AGENTS_READY_TEMPLATE
+    assert markers.CANONICAL_DIR in placeholder
+    assert markers.CANONICAL_DIR in ready
+    assert placeholder.count(markers.CANONICAL_DIR) >= 1
+    assert ready.count(markers.CANONICAL_DIR) >= 1
+
+
+def test_agents_md_renderer_double_render_into_tmp_is_byte_identical() -> None:
+    from ralph.workspace.fs import FsWorkspace
+
+    package_root = Path(__file__).resolve().parents[2]
+    target = package_root / "tmp" / "r1a-agents-double-render"
+    target.mkdir(parents=True, exist_ok=True)
+    agents_path = target / "AGENTS.md"
+    if agents_path.exists():
+        agents_path.unlink()
+
+    ws = FsWorkspace(target)
+    changed = agents_md.bootstrap(ws)
+    assert markers.AGENTS_MD in changed
+    first = agents_path.read_bytes()
+    assert markers.CANONICAL_DIR.encode("utf-8") in first
+    assert markers.AGENTS_BLOCK_BEGIN.encode("utf-8") in first
+    assert b"{canonical_dir}" not in first
+    assert b"_AGENTS_PLACEHOLDER_TEMPLATE" not in first
+
+    assert agents_md.bootstrap(ws) == []
+    assert agents_path.read_bytes() == first
+
+    ready_changed = agents_md.condense_placeholder_block(ws)
+    assert markers.AGENTS_MD in ready_changed
+    ready_first = agents_path.read_bytes()
+    assert markers.CANONICAL_DIR.encode("utf-8") in ready_first
+    assert b"{canonical_dir}" not in ready_first
+    assert agents_md.condense_placeholder_block(ws) == []
+    assert agents_path.read_bytes() == ready_first

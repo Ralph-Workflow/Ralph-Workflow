@@ -133,7 +133,7 @@ def _owner_is_stale(path: Path, now: float) -> bool:
     if payload is None or payload.get("released") is True:
         return False
     recorded_at = payload.get("recorded_at")
-    age = now - float(recorded_at) if isinstance(recorded_at, (int, float)) else 0.0
+    age = now - float(recorded_at) if (any(isinstance(recorded_at, _t) for _t in (int, float))) else 0.0
     hostname = payload.get("hostname")
     pid = payload.get("pid")
     if hostname == socket.gethostname() and isinstance(pid, int) and not isinstance(pid, bool):

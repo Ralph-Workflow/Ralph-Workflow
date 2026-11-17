@@ -18,17 +18,17 @@ class McpServerError(Exception):
         startup_diagnostic: str = "",
         failure_kind: str = "transient",
     ) -> None:
-        self.restart_count = restart_count
-        self.last_stage: str | None = last_stage
-        self.elapsed_s: float | None = elapsed_s
-        self.restart_reason: str | None = restart_reason
-        self.handover_step: str | None = handover_step
-        self.probe_duration_s: float | None = probe_duration_s
-        self.probe_timeout_s: float | None = probe_timeout_s
-        self.child_pid: int | None = child_pid
-        self.psutil_status: str | None = psutil_status
-        self.startup_diagnostic: str = startup_diagnostic
-        self.failure_kind: str = failure_kind
+        object.__setattr__(self, "restart_count", restart_count)
+        object.__setattr__(self, "last_stage", last_stage)
+        object.__setattr__(self, "elapsed_s", elapsed_s)
+        object.__setattr__(self, "restart_reason", restart_reason)
+        object.__setattr__(self, "handover_step", handover_step)
+        object.__setattr__(self, "probe_duration_s", probe_duration_s)
+        object.__setattr__(self, "probe_timeout_s", probe_timeout_s)
+        object.__setattr__(self, "child_pid", child_pid)
+        object.__setattr__(self, "psutil_status", psutil_status)
+        object.__setattr__(self, "startup_diagnostic", startup_diagnostic)
+        object.__setattr__(self, "failure_kind", failure_kind)
         super().__init__(message)
 
     def __str__(self) -> str:
@@ -56,4 +56,40 @@ class McpServerError(Exception):
         return "; ".join(parts)
 
 
-__all__ = ["McpServerError"]
+class McpOutcomeUnknownError(McpServerError, OSError):
+    __slots__ = ("tool_name",)
+
+    def __init__(
+        self,
+        message: str = "In-flight non-idempotent MCP tool call severed; outcome unknown",
+        *,
+        restart_count: int = 0,
+        tool_name: str | None = None,
+        last_stage: str | None = None,
+        elapsed_s: float | None = None,
+        restart_reason: str | None = None,
+        handover_step: str | None = None,
+        probe_duration_s: float | None = None,
+        probe_timeout_s: float | None = None,
+        child_pid: int | None = None,
+        psutil_status: str | None = None,
+        startup_diagnostic: str = "",
+    ) -> None:
+        self.tool_name = tool_name
+        super().__init__(
+            message,
+            restart_count=restart_count,
+            last_stage=last_stage,
+            elapsed_s=elapsed_s,
+            restart_reason=restart_reason,
+            handover_step=handover_step,
+            probe_duration_s=probe_duration_s,
+            probe_timeout_s=probe_timeout_s,
+            child_pid=child_pid,
+            psutil_status=psutil_status,
+            startup_diagnostic=startup_diagnostic,
+            failure_kind="outcome_unknown",
+        )
+
+
+__all__ = ["McpOutcomeUnknownError", "McpServerError"]

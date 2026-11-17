@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.config._env import getenv
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
 if TYPE_CHECKING:
@@ -20,7 +21,7 @@ type EnvGetter = Callable[[str], str | None]
 _STAGE_FILE_NAME_COMPONENT: str = ".agent/.ralph_mcp_start_stage"
 
 
-def _initial_spawn_id(env_getter: EnvGetter = os.environ.get) -> str:
+def _initial_spawn_id(env_getter: EnvGetter = getenv) -> str:
     stage_id = env_getter(MCP_STAGE_ID_ENV)
     return stage_id if stage_id else str(uuid.uuid4())
 

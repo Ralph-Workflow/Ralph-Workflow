@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -44,16 +44,11 @@ def ownership_fingerprint(record: IntegrationRecord) -> str:
     return identity_fingerprint(record)
 
 
-_IDENTITY_FINGERPRINT_FIELDS: tuple[str, ...] = (
-    "target",
-    "operation_kind",
-    "owning_worktree",
-)
-
-
 def identity_fingerprint(record: IntegrationRecord) -> str:
     payload: dict[str, object] = {
-        field: cast("object", getattr(record, field)) for field in _IDENTITY_FINGERPRINT_FIELDS
+        "target": record.target,
+        "operation_kind": record.operation_kind,
+        "owning_worktree": record.owning_worktree,
     }
     return hashlib.sha256(
         json.dumps(
@@ -111,6 +106,8 @@ def _should_capture_repair_facts(
 
 
 class SubprocessOperationEvidenceCollector:
+    __slots__ = ("_backend",)
+
     def __init__(self, backend: FileBackend = DEFAULT_FILE_BACKEND) -> None:
         self._backend = backend
 

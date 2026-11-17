@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
 
@@ -14,18 +14,20 @@ if TYPE_CHECKING:
         def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
 
 
-_ddgs_module: object | None
-try:
-    import ddgs as _loaded_ddgs_module
-except ImportError:
-    _ddgs_module = None
-else:
-    _ddgs_module = _loaded_ddgs_module
+def _load_ddgs_factory() -> Callable[[], _DdgsTextClient] | None:
+    try:
+        from ddgs import DDGS as ddgs_factory
+    except ImportError:
+        return None
+    return ddgs_factory
 
-DDGS = cast("Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None))
+
+DDGS = _load_ddgs_factory()
 
 
 class DdgsBackend:
+    __slots__ = ("_timeout_seconds",)
+
     def __init__(self, *, timeout_seconds: float | None = None) -> None:
         self._timeout_seconds = timeout_seconds
 

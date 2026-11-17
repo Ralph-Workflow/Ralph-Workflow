@@ -47,6 +47,7 @@ _ALL_MUTATORS = frozenset(
 )
 _TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore(?:\s*\[[^]]*\])?", re.IGNORECASE)
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:|\s|$)", re.IGNORECASE)
+_BOOTSTRAP_PATH_BASENAMES = frozenset({"conftest.py", "_sitecustomize_shim.py"})
 _ATTRIBUTE_ARGUMENT_COUNT = 2
 _SETATTR_ARGUMENT_COUNT = 3
 _TYPE_FACTORY_ARGUMENT_COUNT = 3
@@ -109,6 +110,10 @@ def _is_production(label: str) -> bool:
 
 def _is_config_env_module(module: str) -> bool:
     return module == CONFIG_ENV_MODULE
+
+
+def _is_bootstrap_path_unit(label: str) -> bool:
+    return Path(label).name in _BOOTSTRAP_PATH_BASENAMES
 
 
 def _resolve_relative_module(unit: _SourceUnit, node: ast.ImportFrom) -> str:
@@ -445,7 +450,9 @@ class _SourceAuditor(ast.NodeVisitor):
             self.add(target, "__all__ mutation", "ALL-MUTATION")
         if isinstance(target, ast.Name) and target.id == "__metaclass__":
             self.add(target, "__metaclass__ assignment", "METACLASS")
-        if self._is_sys_path_expression(target):
+        if self._is_sys_path_expression(target) and not _is_bootstrap_path_unit(
+            self.unit.label
+        ):
             self.add(target, "sys.path edit", "SYS-PATH")
         if self._is_dunder_dict_expression(target):
             self.add(target, "dynamic __dict__ attribute mutation", "DYNAMIC-INSTANCE-ATTRIBUTE")
@@ -512,6 +519,7 @@ class _SourceAuditor(ast.NodeVisitor):
         if (
             qualified in {"os.environ", "os.getenv"}
             and not _is_config_env_module(self.unit.module)
+            and not _is_bootstrap_path_unit(self.unit.label)
             and not _is_write_access(node, self.parents)
         ):
             self.add(node, "os.environ read", "OS-ENVIRON")
@@ -525,6 +533,7 @@ class _SourceAuditor(ast.NodeVisitor):
             qualified in {"os.environ", "os.getenv"}
             and isinstance(node.ctx, ast.Load)
             and not _is_config_env_module(self.unit.module)
+            and not _is_bootstrap_path_unit(self.unit.label)
             and not _is_write_access(node, self.parents)
         ):
             self.add(node, "os.environ read", "OS-ENVIRON")
@@ -540,7 +549,7 @@ class _SourceAuditor(ast.NodeVisitor):
             keyword.arg == "shell" and _constant_true(keyword.value) for keyword in node.keywords
         ):
             self.add(node, "subprocess shell=True", "SHELL-TRUE", "S602")
-        if self._is_sys_path_mutation(node):
+        if self._is_sys_path_mutation(node) and not _is_bootstrap_path_unit(self.unit.label):
             self.add(node, "sys.path edit", "SYS-PATH")
         if self._is_all_mutation(node):
             self.add(node, "__all__ mutation", "ALL-MUTATION")

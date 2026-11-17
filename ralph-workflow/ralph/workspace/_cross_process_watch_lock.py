@@ -22,15 +22,26 @@ _WATCHDOG_LOCK_RELPATH = ".agent/.watchdog.lock"
 
 
 class CrossProcessWatchLock:
+    __slots__ = ()
     _holds: ClassVar[dict[str, tuple[TextIO, str]]] = {}
     _last_released: ClassVar[dict[str, str]] = {}
-    _counter_lock: ClassVar[threading.Lock] = threading.Lock()
+    _counter_lock: ClassVar[threading.Lock | None] = None
     _counter: ClassVar[int] = 0
+
+    @classmethod
+    def _lock(cls) -> threading.Lock:
+        existing = cls._counter_lock
+        if existing is not None:
+            return existing
+        created = threading.Lock()
+        cls._counter_lock = created
+        return created
+
 
     @classmethod
     def try_acquire(cls, workspace_root: Path) -> str | None:
         key = str(workspace_root.absolute())
-        with cls._counter_lock:
+        with cls._lock():
             if key in cls._holds:
                 return None
 
@@ -57,14 +68,14 @@ class CrossProcessWatchLock:
             with suppress(OSError):
                 handle.close()
             raise WatchLockIOError(str(exc)) from exc
-        with cls._counter_lock:
+        with cls._lock():
             cls._holds[key] = (handle, owner_id)
         return None
 
     @classmethod
     def release(cls, workspace_root: Path, owner_id: str) -> None:
         key = str(workspace_root.absolute())
-        with cls._counter_lock:
+        with cls._lock():
             entry = cls._holds.get(key)
             if entry is None:
                 return
@@ -80,7 +91,7 @@ class CrossProcessWatchLock:
     @classmethod
     def claimed_owner_id(cls, workspace_root: Path) -> str | None:
         key = str(workspace_root.absolute())
-        with cls._counter_lock:
+        with cls._lock():
             entry = cls._holds.get(key)
         if entry is None:
             return None
@@ -89,7 +100,7 @@ class CrossProcessWatchLock:
     @classmethod
     def last_released_holder(cls, workspace_root: Path) -> str | None:
         key = str(workspace_root.absolute())
-        with cls._counter_lock:
+        with cls._lock():
             return cls._last_released.get(key)
 
     @classmethod
@@ -119,7 +130,7 @@ class CrossProcessWatchLock:
 
     @classmethod
     def _mint_owner_id(cls) -> str:
-        with cls._counter_lock:
+        with cls._lock():
             cls._counter += 1
             counter = cls._counter
         return f"{os.getpid()}:{counter}"

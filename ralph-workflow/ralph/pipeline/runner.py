@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sys
 import time
 import uuid
 from inspect import signature
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -14,6 +15,7 @@ from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.agents.system_clock import SystemClock
+from ralph.config import _env
 from ralph.config.enums import Verbosity
 from ralph.display.auto_integrate_message import (
     OperationDisplayState,
@@ -98,7 +100,7 @@ from ralph.pipeline.attempt_runner import (
     run_agent_attempt,
     seamed_dead_agent_probe_runner,
 )
-from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptInvoke, AttemptRunnerDeps
+from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
     auto_integrate_on_phase_transition,
@@ -306,8 +308,8 @@ def __getattr__(name: str) -> object:
     if name == "run":
         from ralph.pipeline.run_loop import run as _run_loop_entry
 
-        module_globals: dict[str, object] = globals()
-        module_globals["run"] = _run_loop_entry
+        module_ns: dict[str, object] = sys.modules[__name__].__dict__
+        module_ns["run"] = _run_loop_entry
         return _run_loop_entry
     raise AttributeError(f"module 'ralph.pipeline.runner' has no attribute {name!r}")
 
@@ -323,15 +325,6 @@ if TYPE_CHECKING:
     class _AgentRegistryFactory(Protocol):
         @classmethod
         def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
-
-    class _ExecuteEffectKwargsFn(Protocol):
-        def __call__(
-            self,
-            effect: Effect,
-            config: UnifiedConfig,
-            workspace_scope: WorkspaceScope,
-            **kwargs: object,
-        ) -> Event | CommitReviewEvent: ...
 
     class _ConnectivityMonitorLike(Protocol):
         @property
@@ -366,6 +359,18 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
 validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
+def _is_event(value: object) -> TypeGuard[Event]:
+    return isinstance(value, Event)
+
+
+def _is_execute_effect_result(value: object) -> TypeGuard[Event | CommitReviewEvent]:
+    return isinstance(value, Event | CommitReviewEvent)
+
+
+def _is_closeable(value: object) -> TypeGuard[Callable[[], object]]:
+    return callable(value)
+
+
 def _execute_commit_effect_from_deps(
     effect: CommitEffect,
     pipeline_deps: PipelineDeps,
@@ -375,7 +380,12 @@ def _execute_commit_effect_from_deps(
     config: UnifiedConfig | None = None,
 ) -> Event:
     if pipeline_deps.commit_effect_executor is not None:
-        return cast("Event", pipeline_deps.commit_effect_executor(effect, workspace_scope.root))
+        executed = pipeline_deps.commit_effect_executor(effect, workspace_scope.root)
+        if _is_event(executed):
+            return executed
+        raise TypeError(
+            f"commit_effect_executor returned {type(executed)!r}, expected Event"
+        )
     target: str | None = config.general.auto_integrate_target if config is not None else None
     return execute_commit_effect(
         effect,
@@ -434,6 +444,7 @@ def _run_main_phase_loop_attempt(
     state: object | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult:
+    forwarded = dict(execute_kwargs)
     return run_agent_attempt(
         AgentEntryPoint.MAIN_PHASE_LOOP,
         effect=effect,
@@ -442,7 +453,7 @@ def _run_main_phase_loop_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **execute_kwargs,
+        **forwarded,
     )
 
 
@@ -451,20 +462,6 @@ if AgentEntryPoint.MAIN_PHASE_LOOP not in registered_entry_points():
         AgentEntryPoint.MAIN_PHASE_LOOP,
         _run_main_phase_loop_attempt,
     )
-
-
-def _keyword_effect_invoker(execute: AttemptInvoke) -> AttemptInvoke:
-    def invoke(
-        target: InvokeAgentEffect | AgentConfig,
-        *_args: object,
-        **kwargs: object,
-    ) -> object:
-        config = kwargs.pop("config")
-        pipeline_deps = kwargs.pop("pipeline_deps")
-        workspace_scope = kwargs.pop("workspace_scope")
-        return execute(target, config, pipeline_deps, workspace_scope, **kwargs)
-
-    return invoke
 
 
 def _execute_effect(
@@ -489,7 +486,7 @@ def _execute_effect(
         with process_agent_phases().agent_phase(workspace_scope.root):
             deps = AttemptRunnerDeps(
                 clock=SystemClock(),
-                invoke=_keyword_effect_invoker(execute_agent_effect),
+                invoke=execute_agent_effect,
                 probe_runner=_deps_seamed_probe_runner(pipeline_deps, config),
                 workspace_probe=DefaultWorkspaceChangeProbe(),
                 connectivity=None,
@@ -514,12 +511,16 @@ def _execute_effect(
                 policy_bundle=policy_bundle,
                 run_id=run_id,
             )
-            return cast("Event", result.event)
+            if _is_execute_effect_result(result.event):
+                return result.event
+            raise TypeError(
+                f"main-phase attempt returned {type(result.event)!r}, expected Event"
+            )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect_from_deps(
             effect, pipeline_deps, workspace_scope, display, verbosity, config=config
         )
-    if isinstance(effect, (CommitReviewRejectEffect, EmptyCommitEffect)):
+    if isinstance(effect, CommitReviewRejectEffect | EmptyCommitEffect):
         return _execute_commit_auxiliary_effect(effect, workspace_scope)
     if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
         if state is not None and policy_bundle is not None:
@@ -586,7 +587,7 @@ def _execute_effect_with_optional_display(
     pipeline_deps: PipelineDeps | None = None,
     run_id: str | None = None,
 ) -> Event | CommitReviewEvent:
-    fn = execute_effect
+    fn: Callable[..., Event | CommitReviewEvent] = execute_effect
     params = signature(fn).parameters
     accepts_kwargs = any(p.kind == p.VAR_KEYWORD for p in params.values())
     all_opts: dict[str, object] = {
@@ -599,7 +600,7 @@ def _execute_effect_with_optional_display(
         "run_id": run_id,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
-    return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
+    return fn(effect, config, workspace_scope, **supported)
 
 
 def execute_effect_with_optional_display(
@@ -687,7 +688,7 @@ def _run_policy_declared_visual_capture(
     run_id: str | None,
     cycle_id: str,
     invoke_agent: Callable[[], Event | CommitReviewEvent],
-    env_getter: EnvGetter = os.environ.get,
+    env_getter: EnvGetter = _env.getenv,
 ) -> Event | CommitReviewEvent:
     if run_id is None:
         logger.warning("visual-review blocked: development invocation has no run id")
@@ -734,12 +735,17 @@ def _run_policy_declared_visual_capture(
             run_id=capture_run_id,
         )
 
-    agent_result: Event | CommitReviewEvent | None = None
+    class _AgentResultBox:
+        __slots__ = ("value",)
+
+        def __init__(self) -> None:
+            self.value: Event | CommitReviewEvent | None = None
+
+    held = _AgentResultBox()
 
     def invoke_and_remember() -> Event | CommitReviewEvent:
-        nonlocal agent_result
-        agent_result = invoke_agent()
-        return agent_result
+        held.value = invoke_agent()
+        return held.value
 
     try:
         result, _before, _after = run_visual_capture_lifecycle(
@@ -752,8 +758,8 @@ def _run_policy_declared_visual_capture(
         )
     except (MediaCaptureError, ValueError) as exc:
         logger.warning("visual-review blocked: {}", exc)
-        if agent_result is not None:
-            return agent_result
+        if held.value is not None:
+            return held.value
         return invoke_agent()
     return result
 
@@ -1057,8 +1063,6 @@ def _reconcile_rebase_if_live_resolved(
     workspace_scope: WorkspaceScope,
     rebase: RebaseState,
 ) -> RebaseState:
-    if not isinstance(cast("object", rebase), RebaseState):
-        return rebase
     if not (
         rebase.integration_unresolved
         or rebase.resolution_exhausted
@@ -1137,7 +1141,7 @@ def _maybe_auto_integrate(
     if recovery_controller is None and pipeline_deps is not None:
         recovery_controller = pipeline_deps.recovery_controller
     if not (
-        isinstance(effect, (CommitEffect, EmptyCommitEffect))
+        isinstance(effect, CommitEffect | EmptyCommitEffect)
         and commit_phase_def is not None
         and commit_phase_def.role == "commit"
         and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
@@ -1263,7 +1267,7 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
 
 
 def _is_phase_transition_integration_event(event: object) -> bool:
-    return isinstance(event, (CommitResidualEvent, AgentFailureEvent)) or (
+    return isinstance(event, CommitResidualEvent | AgentFailureEvent) or (
         isinstance(event, PipelineEvent) and event in _PHASE_TRANSITION_INTEGRATION_EVENTS
     )
 
@@ -2527,7 +2531,7 @@ def _handle_inline_effect(
     if isinstance(effect, ExitSuccessEffect):
         record = read_record(workspace_scope.root)
         return (
-            _emit_success_exit(display, os.getenv)
+            _emit_success_exit(display, _env.getenv)
             if is_terminal_success_eligible(state, record, state.rebase)
             and (record is not None or retained_integration_reason(workspace_scope.root) is None)
             else 1
@@ -2632,17 +2636,18 @@ def execute_fan_out_sync(
     pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
-    opts.setdefault("_install_signal_handlers", install_signal_handlers)
-    opts.setdefault("_executor_cls", SubprocessAgentExecutor)
-    opts.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
-    opts.setdefault("_run_process_async", run_process_async)
-    opts.setdefault("_reducer_reduce", reducer_reduce)
+    forwarded = dict(opts)
+    forwarded.setdefault("_install_signal_handlers", install_signal_handlers)
+    forwarded.setdefault("_executor_cls", SubprocessAgentExecutor)
+    forwarded.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
+    forwarded.setdefault("_run_process_async", run_process_async)
+    forwarded.setdefault("_reducer_reduce", reducer_reduce)
     return _fan_out_execute_fan_out_sync(
         effect=effect,
         state=state,
         display=display,
         pipeline_deps=pipeline_deps,
-        **opts,
+        **forwarded,
     )
 
 
@@ -2687,15 +2692,16 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> Event:
-    opts.setdefault("has_commit_work_fn", repo_has_commit_work)
-    opts.setdefault("has_residual_work_fn", repo_has_commit_work)
+    forwarded = dict(opts)
+    forwarded.setdefault("has_commit_work_fn", repo_has_commit_work)
+    forwarded.setdefault("has_residual_work_fn", repo_has_commit_work)
     return _ee_execute_commit_effect(
         effect,
         repo_root,
         display,
         create_commit_fn=create_commit_fn,
         stage_all_fn=stage_all_fn,
-        **opts,
+        **forwarded,
     )
 
 
@@ -2727,9 +2733,9 @@ def write_start_commit_if_absent(workspace_root: Path) -> None:
     except (InvalidGitRepositoryError, OSError, ValueError):
         return
     finally:
-        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
-        if callable(close):
-            close()
+        close_attr = getattr(repo, "close", None) if repo is not None else None
+        if _is_closeable(close_attr):
+            close_attr()
 
 
 execute_effect = _execute_effect

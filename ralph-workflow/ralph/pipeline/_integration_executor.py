@@ -69,17 +69,7 @@ class _LiveRebaseContinuationExecutor:
             return WaitingOutcome(outcome.reason, "resolution attempt key changes")
         if isinstance(outcome, RebaseResolutionResult):
             outcome = outcome.outcome
-        if not isinstance(
-            outcome,
-            (
-                ResolvedOutcome,
-                WaitingOutcome,
-                RetryLaterOutcome,
-                NextStrategyOutcome,
-                ConfigFailureOutcome,
-                UnknownOutcome,
-            ),
-        ):
+        if not (any(isinstance(outcome, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
             return WaitingOutcome(
                 "rebase stop resolution returned an invalid result",
                 "resolution implementation is repaired",

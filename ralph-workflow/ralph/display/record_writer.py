@@ -109,8 +109,25 @@ def _extract_field(entry: object, name: str) -> object:
     if isinstance(entry, dict):
         value: object = entry.get(name)
         return value
-    raw: object = getattr(entry, name, None)
-    return raw
+    if name == "timestamp":
+        return getattr(entry, "timestamp", None)
+    if name == "phase":
+        return getattr(entry, "phase", None)
+    if name == "cycle":
+        return getattr(entry, "cycle", None)
+    if name == "iter":
+        return getattr(entry, "iter", None)
+    if name == "agent":
+        return getattr(entry, "agent", None)
+    if name == "severity":
+        return getattr(entry, "severity", None)
+    if name == "body":
+        return getattr(entry, "body", None)
+    if name == "grouping_role":
+        return getattr(entry, "grouping_role", None)
+    if name == "indent_level":
+        return getattr(entry, "indent_level", None)
+    return None
 
 
 def _extract_indent_level(entry: object) -> int:

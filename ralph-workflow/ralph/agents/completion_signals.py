@@ -7,12 +7,13 @@ import json
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.md_draft_io import unsubmitted_draft_divergence
 from ralph.mcp.artifacts.state_db import CLEARED_SENTINEL_HMAC, MISSING, RunStateDB
+from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
 from ralph.pipeline.plumbing.smoke_evidence import (
     Evidence,
     Provenance,
@@ -21,6 +22,8 @@ from ralph.pipeline.plumbing.smoke_evidence import (
     grade_completion_sentinel_evidence,
     grade_verdict,
 )
+
+_COMPLETION_SENTINEL_RELPATHFMT = COMPLETION_SENTINEL_RELPATHFMT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -113,12 +116,12 @@ def extract_explicit_completion(raw_output: list[str]) -> bool:
 
 def _sentinel_hmac_matches(content: str, sentinel_secret: str, run_id: str) -> bool:
     try:
-        parsed = cast("object", json.loads(content))
+        parsed: object = json.loads(content)
     except (json.JSONDecodeError, ValueError):
         return False
     if not isinstance(parsed, dict):
         return False
-    stored = cast("dict[str, object]", parsed).get("hmac")
+    stored = parsed.get("hmac")
     if not isinstance(stored, str):
         return False
     expected = hmac.new(
@@ -358,22 +361,8 @@ def graded_phase_verdict(
     return label, weakest, ""
 
 
-_COORDINATION_EXPORTS = frozenset({"COMPLETION_SENTINEL_RELPATHFMT"})
-
-
-def __getattr__(name: str) -> object:
-    if name in _COORDINATION_EXPORTS:
-        from ralph.mcp.tools import coordination
-
-        return cast("object", getattr(coordination, name))
-    if name == "_COMPLETION_SENTINEL_RELPATHFMT":
-        from ralph.mcp.tools import coordination
-
-        return cast("object", coordination.COMPLETION_SENTINEL_RELPATHFMT)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__ = [
+    "COMPLETION_SENTINEL_RELPATHFMT",
     "CompletionSignals",
     "completion_signals_terminal",
     "evaluate_completion",

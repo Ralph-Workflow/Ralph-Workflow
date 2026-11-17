@@ -25,6 +25,8 @@ _DEFAULT_READER: Callable[[Path], str] = _default_reader
 
 
 class _PackagedTemplateCache:
+    __slots__ = ("_cache", "_partials", "_partials_loader", "_reader")
+
     def __init__(
         self,
         *,
@@ -62,6 +64,8 @@ _packaged_template_cache = _PackagedTemplateCache()
 
 
 class TemplateRegistry:
+    __slots__ = ("_read_text", "_template_dirs", "_templates")
+
     def __init__(
         self,
         *,

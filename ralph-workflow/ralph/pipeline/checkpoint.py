@@ -36,6 +36,19 @@ def _staging_path(path: Path) -> Path:
     return path.with_suffix(".tmp")
 
 
+def _pipeline_state_from_checkpoint_payload(parsed: object, data: str) -> PipelineState:
+    if not isinstance(parsed, dict):
+        state = PipelineState.model_validate_json(data)
+        validate_no_retired_phases(state)
+        return state
+    nested = parsed.get("state")
+    if isinstance(nested, dict):
+        validate_no_retired_phases(nested)
+        return PipelineState.model_validate(nested)
+    validate_no_retired_phases(parsed)
+    return PipelineState.model_validate(parsed)
+
+
 def _cleanup_stray_tmp(
     path: Path,
     *,
@@ -55,6 +68,8 @@ def _cleanup_stray_tmp(
 
 
 class Checkpoint:
+    __slots__ = ("_backend", "_path")
+
     def __init__(
         self,
         path: Path = CHECKPOINT_PATH,
@@ -154,15 +169,7 @@ def load(
     try:
         data = backend.read_text(path, encoding="utf-8")
         parsed: object = json.loads(data)
-        if isinstance(parsed, dict) and "state" in parsed and isinstance(parsed["state"], dict):
-            validate_no_retired_phases(parsed["state"])
-            state = PipelineState.model_validate(parsed["state"])
-        elif isinstance(parsed, dict):
-            validate_no_retired_phases(parsed)
-            state = PipelineState.model_validate(parsed)
-        else:
-            state = PipelineState.model_validate_json(data)
-            validate_no_retired_phases(state)
+        state = _pipeline_state_from_checkpoint_payload(parsed, data)
         state = _normalize_recovery_state(state)
         state = _sanitize_last_error(state)
         logger.debug("Checkpoint loaded from {}", path)

@@ -60,6 +60,7 @@ def _make_pty_line_reader_with_session_id(
     reader._clock = clock
     reader._lines_queue = []
     reader._lines_lock = MagicMock()
+    reader._lines_event = threading.Event()
     reader._last_hard_stop = [None]
     reader._last_activity_kind = "output_line"
     reader._awaiting_post_tool_result_progress = False
@@ -69,6 +70,12 @@ def _make_pty_line_reader_with_session_id(
     reader._captured_session_id = session_id
     reader._transcript_session_ids = deque([session_id], maxlen=64)
     reader._transcript_session_ids_lock = threading.Lock()
+    reader._relay_health_error = None
+    reader._supervisor = None
+    reader._process_teardown = None
+    reader._watchdog = None
+    reader._strategy = MagicMock()
+    reader._strategy._registry = None
     watchdog = IdleWatchdog(policy, clock)
     return reader, watchdog, clock
 

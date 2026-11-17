@@ -104,7 +104,7 @@ class _SymbolSpan:
 def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
     spans: list[_SymbolSpan] = []
     for node in tree.body:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if (any(isinstance(node, _t) for _t in (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))):
             spans.append(
                 _SymbolSpan(
                     qualified_name=node.name,
@@ -120,7 +120,7 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
                         end_line=child.end_lineno or child.lineno,
                     )
                     for child in node.body
-                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    if (any(isinstance(child, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
                 )
     return spans
 

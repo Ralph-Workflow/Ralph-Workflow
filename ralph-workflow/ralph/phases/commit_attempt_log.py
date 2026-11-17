@@ -1,20 +1,42 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 
 
-@dataclass
 class CommitAttemptLog:
-    attempt_number: int
-    agent: str
-    strategy: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    prompt_size_bytes: int = 0
-    diff_size_bytes: int = 0
-    diff_was_truncated: bool = False
-    raw_output: str | None = None
-    outcome: str | None = None
+    __slots__ = (
+        "agent",
+        "attempt_number",
+        "diff_size_bytes",
+        "diff_was_truncated",
+        "outcome",
+        "prompt_size_bytes",
+        "raw_output",
+        "strategy",
+        "timestamp",
+    )
+
+    def __init__(
+        self,
+        attempt_number: int,
+        agent: str,
+        strategy: str,
+        timestamp: datetime | None = None,
+        prompt_size_bytes: int = 0,
+        diff_size_bytes: int = 0,
+        diff_was_truncated: bool = False,
+        raw_output: str | None = None,
+        outcome: str | None = None,
+    ) -> None:
+        self.attempt_number = attempt_number
+        self.agent = agent
+        self.strategy = strategy
+        self.timestamp = datetime.now() if timestamp is None else timestamp
+        self.prompt_size_bytes = prompt_size_bytes
+        self.diff_size_bytes = diff_size_bytes
+        self.diff_was_truncated = diff_was_truncated
+        self.raw_output = raw_output
+        self.outcome = outcome
 
     def with_prompt_size(self, size: int) -> CommitAttemptLog:
         self.prompt_size_bytes = size

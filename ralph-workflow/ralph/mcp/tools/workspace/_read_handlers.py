@@ -6,7 +6,7 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.dirty_paths import (
     ExploreIndexLike,
@@ -44,6 +44,15 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import EvidenceRow, ExploreStore, SpanRow, SymbolRow
     from ralph.workspace import Workspace
+
+
+
+def _as_stale_flag(value: object) -> bool:
+    if isinstance(value, list):
+        return bool(value)
+    if isinstance(value, bool):
+        return value
+    return bool(value)
 
 
 def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
@@ -123,8 +132,8 @@ def _workspace_snapshot(
             snapshot: object = snapshot_fn(path, max_bytes=max_bytes)
         except TypeError:
             snapshot = snapshot_fn(path)
-        stat = cast("object", getattr(snapshot, "stat", None))
-        content = cast("object", getattr(snapshot, "content", None))
+        stat = getattr(snapshot, "stat", None)
+        content = getattr(snapshot, "content", None)
         if isinstance(stat, dict) and (content is None or isinstance(content, str)):
             return stat, content
     try:
@@ -329,7 +338,7 @@ def handle_read_file(
                 if not isinstance(raw_payload, dict):
                     return result
                 freshness = _freshness_for_read(session)
-                payload_dict: dict[str, object] = cast("dict[str, object]", raw_payload)
+                payload_dict: dict[str, object] = raw_payload
                 payload_dict.update(freshness)
                 return ToolResult(
                     content=[ToolContent.text_content(_tool_json(payload_dict))],
@@ -410,8 +419,8 @@ def _read_via_evidence(
     path = info["path"]
     start_line_raw: object = info.get("start_line") or 0
     end_line_raw: object = info.get("end_line") or 0
-    start_line = int(start_line_raw) if isinstance(start_line_raw, (int, str, float)) else 0
-    end_line = int(end_line_raw) if isinstance(end_line_raw, (int, str, float)) else 0
+    start_line = int(start_line_raw) if (any(isinstance(start_line_raw, _t) for _t in (int, str, float))) else 0
+    end_line = int(end_line_raw) if (any(isinstance(end_line_raw, _t) for _t in (int, str, float))) else 0
     expected_content_hash = expected_hash or info.get("content_hash")
     normalized = normalize_relative_path(str(path))
     actual_hash = _hash_file(workspace, normalized)
@@ -552,7 +561,7 @@ def _read_via_span(
             ],
             is_error=True,
         )
-    span_row: SpanRow = cast("SpanRow", span_obj)
+    span_row: SpanRow = span_obj
     path = span_row.path
     start_line = int(span_row.start_line)
     end_line = int(span_row.end_line)
@@ -687,7 +696,7 @@ def _read_via_symbol(
             ],
             is_error=True,
         )
-    sym_row: SymbolRow = cast("SymbolRow", sym_obj)
+    sym_row: SymbolRow = sym_obj
     path = sym_row.path
     span_id = sym_row.span_id
     if span_id:
@@ -723,7 +732,7 @@ def _decode_payload(result: ToolResult) -> dict[str, object]:
     except (ValueError, TypeError):
         return {"raw": first_content.text}
     if isinstance(payload, dict):
-        return cast("dict[str, object]", payload)
+        return payload
     return {"raw": first_content.text}
 
 
@@ -848,7 +857,7 @@ def _read_multiple_item(
                 "is_error": single_result.is_error,
                 "content": "",
             }
-        payload_dict: dict[str, object] = cast("dict[str, object]", payload)
+        payload_dict: dict[str, object] = payload
         payload_dict["is_error"] = single_result.is_error
         raw_content = payload_dict.get("content")
         if per_item_max_bytes and isinstance(raw_content, str):
@@ -995,7 +1004,7 @@ def handle_list_directory(
     handle_obj2: object | None = (
         handle_obj if handle_obj is not None and hasattr(handle_obj, "store") else None
     )
-    handle: ExploreIndexLike | None = cast("ExploreIndexLike | None", handle_obj2)
+    handle: ExploreIndexLike | None = handle_obj2
     raw_handle_store: object | None
     if handle is None:
         raw_handle_store = None
@@ -1131,12 +1140,7 @@ def handle_list_directory(
     is_stale: bool = False
     if raw_store is not None:
         dirty_again_obj: object = getattr(raw_store, "peek_dirty_paths", lambda: [])()
-        if isinstance(dirty_again_obj, list):
-            is_stale = bool(dirty_again_obj)
-        elif isinstance(dirty_again_obj, bool):
-            is_stale = dirty_again_obj
-        else:
-            is_stale = bool(dirty_again_obj)
+        is_stale = _as_stale_flag(dirty_again_obj)
     payload: dict[str, object] = {
         "entries": entries_list,
         "view": view,
@@ -1254,12 +1258,12 @@ def handle_directory_tree(
     handle_obj_check: object = resolve_explore_index(session)
     handle2: ExploreIndexLike | None
     if handle_obj_check is not None and hasattr(handle_obj_check, "store"):
-        handle2 = cast("ExploreIndexLike | None", handle_obj_check)
+        handle2 = handle_obj_check
     else:
         handle2 = None
     handle = handle2
     handle_check_store: object | None = (
-        None if handle is None else cast("object", getattr(handle, "store", None))
+        None if handle is None else getattr(handle, "store", None)
     )
     if handle is None or handle_check_store is None:
         if use_index == "always":
@@ -1431,12 +1435,7 @@ def handle_directory_tree(
     is_stale: bool = False
     if raw_tree_store is not None:
         tree_dirty_obj: object = getattr(raw_tree_store, "peek_dirty_paths", lambda: [])()
-        if isinstance(tree_dirty_obj, list):
-            is_stale = bool(tree_dirty_obj)
-        elif isinstance(tree_dirty_obj, bool):
-            is_stale = tree_dirty_obj
-        else:
-            is_stale = bool(tree_dirty_obj)
+        is_stale = _as_stale_flag(tree_dirty_obj)
     payload: dict[str, object] = {
         "tree": decorated,
         "view": view,
@@ -1493,9 +1492,8 @@ def handle_search_files(
 
     _search_handle = resolve_explore_index(session)
     if _search_handle is not None:
-        _search_store: ExploreStore | None = cast(
-            "ExploreStore | None", getattr(_search_handle, "store", None)
-        )
+        _search_store: ExploreStore | None = getattr(_search_handle, "store", None)
+
     else:
         _search_store = None
 

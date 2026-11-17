@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import contextlib
-import ctypes
+import importlib.util
 import os
 import signal
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, Final, NoReturn
+
+from ralph.checked_accessors import as_int
+from ralph.config._env import pop_environ
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from types import FrameType
+    from types import FrameType, ModuleType
 
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SIGTERM: Final[int] = 15
@@ -22,26 +25,36 @@ _MALLOC_DEBUG_NOISE_VARS: Final[tuple[str, ...]] = (
     "MallocStackLoggingNoCompact",
 )
 
+_sleep = time.sleep
+
 
 def sanitize_process_environment() -> tuple[str, ...]:
     return tuple(
-        name for name in _MALLOC_DEBUG_NOISE_VARS if os.environ.pop(name, None) is not None
+        name for name in _MALLOC_DEBUG_NOISE_VARS if pop_environ(name) is not None
     )
 
 
-class _Prctl(Protocol):
-    def __call__(self, option: int, value: int) -> int: ...
+def _ctypes_module() -> ModuleType:
+    existing = sys.modules.get("ctypes")
+    if existing is not None:
+        return existing
+    spec = importlib.util.find_spec("ctypes")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("ctypes is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["ctypes"] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-_libc = ctypes.CDLL(None, use_errno=True)
+_libc = _ctypes_module().CDLL(None, use_errno=True)
 _prctl_raw: object = getattr(_libc, "prctl", None)
-if callable(_prctl_raw):
-    _prctl: _Prctl = cast("_Prctl", _prctl_raw)
-else:
 
-    def _prctl(option: int, value: int) -> int:
-        del option, value
+
+def _prctl(option: int, value: int) -> int:
+    if not callable(_prctl_raw):
         return -1
+    return as_int(_prctl_raw(option, value), field="prctl")
 
 
 def _set_pdeathsig(signal_number: int) -> bool:
@@ -76,7 +89,7 @@ def _kill_tree_and_exit() -> NoReturn:
         os.killpg(pgid, _SIGTERM)
         deadline = time.monotonic() + _GROUP_TERM_GRACE_S
         while time.monotonic() < deadline and _other_group_members_alive(pgid):
-            time.sleep(0.05)
+            _sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         os.killpg(pgid, _SIGKILL)
     os._exit(0)

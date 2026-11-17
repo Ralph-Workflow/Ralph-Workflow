@@ -259,38 +259,44 @@ def _record_resolver_outcome_on_session(
     if not is_stop_resolution_outcome(outcome):
         return
     active_session.last_resolution_outcome = outcome
-    if isinstance(outcome, RetryLaterOutcome):
-        if (
-            outcome.failure_cause is not None
-            and outcome.failure_cause != ResolutionFailureCause.NONE
-        ):
-            active_session.last_failure_cause = outcome.failure_cause
-        raw_reason: object = (
-            outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason
-        )
-        if raw_reason is not None:
-            if isinstance(raw_reason, ResolutionTerminationReason):
-                active_session.terminal_reason = raw_reason
-            elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
-                active_session.exhaustion_reason = raw_reason
-        if outcome.on_change:
-            active_session.exhaustion_reason = outcome.on_change
-    elif isinstance(outcome, NextStrategyOutcome):
-        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-        active_session.exhaustion_reason = outcome.strategy
-    elif isinstance(outcome, ConfigFailureOutcome):
-        active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-        active_session.exhaustion_reason = (
-            str(outcome.parse_error) if outcome.parse_error is not None else None
-        )
-    elif isinstance(outcome, UnknownOutcome):
-        active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        active_session.exhaustion_reason = str(outcome.error)
-        if outcome.terminal_reason is not None and isinstance(
-            outcome.terminal_reason, ResolutionTerminationReason
-        ):
-            active_session.terminal_reason = outcome.terminal_reason
+    match outcome:
+        case RetryLaterOutcome():
+            if (
+                outcome.failure_cause is not None
+                and outcome.failure_cause != ResolutionFailureCause.NONE
+            ):
+                active_session.last_failure_cause = outcome.failure_cause
+            raw_reason: object = (
+                outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason
+            )
+            if raw_reason is not None:
+                match raw_reason:
+                    case ResolutionTerminationReason():
+                        active_session.terminal_reason = raw_reason
+                    case str() if not active_session.exhaustion_reason:
+                        active_session.exhaustion_reason = raw_reason
+                    case _:
+                        pass
+            if outcome.on_change:
+                active_session.exhaustion_reason = outcome.on_change
+        case NextStrategyOutcome():
+            active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+            active_session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+            active_session.exhaustion_reason = outcome.strategy
+        case ConfigFailureOutcome():
+            active_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+            active_session.exhaustion_reason = (
+                str(outcome.parse_error) if outcome.parse_error is not None else None
+            )
+        case UnknownOutcome():
+            active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+            active_session.exhaustion_reason = str(outcome.error)
+            if outcome.terminal_reason is not None and isinstance(
+                outcome.terminal_reason, ResolutionTerminationReason
+            ):
+                active_session.terminal_reason = outcome.terminal_reason
+        case _:
+            pass
 
 
 def _resolve_one_stop(

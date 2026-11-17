@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from importlib import import_module
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts._normalization_types import Confidence, NormalizationTransformation
@@ -97,7 +96,8 @@ def normalize_commit_message_draft(
 
 
 def _is_valid_safe_artifact(content: str) -> bool:
-    import_module("ralph.mcp.artifacts.markdown.specs")
+    from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+    _ = _markdown_specs
     parsed, diagnostics = parse_and_validate(content, get_spec("commit_message"))
     if any(item.severity == "error" for item in diagnostics):
         return False

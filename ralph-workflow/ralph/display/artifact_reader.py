@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.display.plan_summary import PlanSummary
 from ralph.mcp.artifacts.markdown import parse_and_validate
@@ -40,14 +40,14 @@ def _coerce_str_tuple(value: object, *, max_items: int = 64) -> tuple[str, ...]:
             text = entry.strip()
             if text:
                 items.append(text)
-        elif isinstance(entry, dict):
+        if isinstance(entry, dict):
             text_obj = entry.get("text")
             if isinstance(text_obj, str) and text_obj.strip():
                 items.append(text_obj.strip())
-                continue
-            risk_obj = entry.get("risk")
-            if isinstance(risk_obj, str) and risk_obj.strip():
-                items.append(risk_obj.strip())
+            else:
+                risk_obj = entry.get("risk")
+                if isinstance(risk_obj, str) and risk_obj.strip():
+                    items.append(risk_obj.strip())
         if len(items) >= max_items:
             break
     return tuple(items)
@@ -74,7 +74,9 @@ def read_plan_artifact(
     summary_text: str | None = None
     scope_items: tuple[str, ...] = ()
     if isinstance(summary_obj, dict):
-        summary_dict = cast("dict[str, object]", summary_obj)
+        summary_dict = {
+            key: value for key, value in summary_obj.items() if isinstance(key, str)
+        }
         ctx = summary_dict.get("context")
         if isinstance(ctx, str) and ctx.strip():
             summary_text = ctx.strip()

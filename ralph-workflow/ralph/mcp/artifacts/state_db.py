@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.artifacts._schema_version_type_error import SchemaVersionTypeError
 
@@ -58,6 +58,8 @@ def _coerce_hmac(row: object) -> str | None:
 
 
 class RunStateDB:
+    __slots__ = ('_closed', '_conn')
+
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,9 +77,8 @@ class RunStateDB:
         if version_value < _INITIAL_SCHEMA_VERSION:
             self._conn.executescript(_SCHEMA)
         if version_value < _SCHEMA_VERSION:
-            rows = cast(
-                "list[object]", self._conn.execute("PRAGMA table_info(receipts)").fetchall()
-            )
+            rows = self._conn.execute("PRAGMA table_info(receipts)").fetchall()
+
             columns = {
                 row[1]
                 for row in rows

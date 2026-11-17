@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from ralph.agents.invoke._fire_reason_issuer import (
     fire_reason_from_value,
@@ -14,7 +13,7 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, Termin
 from ralph.recovery.termination_log_entry import TerminationLogEntry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
 __all__ = (
     "TerminationRecorder",
@@ -78,19 +77,19 @@ def termination_issuer_for_teardown_issuer(issuer: str | None) -> TerminationIss
 
 
 def _exception_issuer_label(exc: BaseException) -> str | None:
-    label = cast("object", getattr(exc, "issuer", None))
+    label: object = getattr(exc, "issuer", None)
     return label if isinstance(label, str) and label else None
 
 
 def _exception_fire_reason(exc: BaseException) -> WatchdogFireReason | str | None:
-    reason = cast("object", getattr(exc, "reason", None))
+    reason: object = getattr(exc, "reason", None)
     if isinstance(reason, WatchdogFireReason):
         return reason
     return reason if isinstance(reason, str) and reason else None
 
 
 def _exception_returncode(exc: BaseException) -> int | None:
-    returncode = cast("object", getattr(exc, "returncode", None))
+    returncode: object = getattr(exc, "returncode", None)
     if isinstance(returncode, bool) or not isinstance(returncode, int):
         return None
     return returncode
@@ -115,12 +114,16 @@ def termination_issuer_for_exception(exc: BaseException) -> TerminationIssuer:
     return TerminationIssuer.AGENT_EXIT
 
 
+@runtime_checkable
+class _PollHandle(Protocol):
+    def poll(self) -> int | None: ...
+
+
 def observed_returncode(handle: object) -> int | None:
-    poll = cast("Callable[[], int | None] | None", getattr(handle, "poll", None))
-    if poll is None:
+    if not isinstance(handle, _PollHandle):
         return None
     try:
-        returncode = poll()
+        returncode = handle.poll()
     except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
         return None
     if isinstance(returncode, bool) or not isinstance(returncode, int):
@@ -128,18 +131,31 @@ def observed_returncode(handle: object) -> int | None:
     return returncode
 
 
-@dataclass
 class TerminationRecorder:
-    _observed_returncode: int | None = None
-    _reported_returncode: int | None = None
-    _liveness_observed: bool | None = None
-    _subagent_activity_observed: bool | None = None
-    _elapsed_to_terminal_ms: int | None = None
-    _exit_status: str | None = None
-    _event_kinds: list[str] = field(default_factory=list)
-    _tool_calls: list[str] = field(default_factory=list)
-    _pending_tool: str | None = None
-    _termination_log: list[TerminationLogEntry] = field(default_factory=list)
+    __slots__ = (
+        "_elapsed_to_terminal_ms",
+        "_event_kinds",
+        "_exit_status",
+        "_liveness_observed",
+        "_observed_returncode",
+        "_pending_tool",
+        "_reported_returncode",
+        "_subagent_activity_observed",
+        "_termination_log",
+        "_tool_calls",
+    )
+
+    def __init__(self) -> None:
+        self._observed_returncode: int | None = None
+        self._reported_returncode: int | None = None
+        self._liveness_observed: bool | None = None
+        self._subagent_activity_observed: bool | None = None
+        self._elapsed_to_terminal_ms: int | None = None
+        self._exit_status: str | None = None
+        self._event_kinds: list[str] = []
+        self._tool_calls: list[str] = []
+        self._pending_tool: str | None = None
+        self._termination_log: list[TerminationLogEntry] = []
 
     def observe_event(self, kind: str, tool_name: str | None = None) -> None:
         if self._pending_tool is not None:

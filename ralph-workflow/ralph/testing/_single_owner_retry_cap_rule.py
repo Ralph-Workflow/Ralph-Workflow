@@ -162,7 +162,7 @@ def _branch_performs_agent_fate_action(node: ast.If | ast.While | ast.IfExp) -> 
         for child in ast.walk(branch):
             if isinstance(child, ast.Call) and _is_agent_fate_action_call(child):
                 return True
-            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and (
+            if (any(isinstance(child, _t) for _t in (ast.Assign, ast.AnnAssign, ast.AugAssign))) and (
                 _is_agent_fate_action_assignment(child)
             ):
                 return True

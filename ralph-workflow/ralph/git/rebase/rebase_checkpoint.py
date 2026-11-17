@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -104,16 +103,38 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
             return default
 
 
-@dataclass
 class RebaseCheckpoint:
-    phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
-    upstream_branch: str = ""
-    conflicted_files: list[str] = field(default_factory=list)
-    resolved_files: list[str] = field(default_factory=list)
-    error_count: int = 0
-    last_error: str | None = None
-    timestamp: str = field(default_factory=_current_timestamp)
-    phase_error_count: int = 0
+    __slots__ = (
+        "conflicted_files",
+        "error_count",
+        "last_error",
+        "phase",
+        "phase_error_count",
+        "resolved_files",
+        "timestamp",
+        "upstream_branch",
+    )
+
+    def __init__(
+        self,
+        *,
+        phase: RebasePhase | None = None,
+        upstream_branch: str = "",
+        conflicted_files: list[str] | None = None,
+        resolved_files: list[str] | None = None,
+        error_count: int = 0,
+        last_error: str | None = None,
+        timestamp: str | None = None,
+        phase_error_count: int = 0,
+    ) -> None:
+        self.phase = RebasePhase.NotStarted if phase is None else phase
+        self.upstream_branch = upstream_branch
+        self.conflicted_files = [] if conflicted_files is None else conflicted_files
+        self.resolved_files = [] if resolved_files is None else resolved_files
+        self.error_count = error_count
+        self.last_error = last_error
+        self.timestamp = _current_timestamp() if timestamp is None else timestamp
+        self.phase_error_count = phase_error_count
 
     @classmethod
     def new(cls, upstream_branch: str) -> RebaseCheckpoint:

@@ -10,6 +10,14 @@ type MonotonicClock = Callable[[], float]
 
 
 class IntegrationOutcomeLog:
+    __slots__ = (
+        "_clock",
+        "_lock",
+        "_max_entries",
+        "_records",
+        "_repeat_log_interval_seconds",
+    )
+
     def __init__(
         self,
         *,

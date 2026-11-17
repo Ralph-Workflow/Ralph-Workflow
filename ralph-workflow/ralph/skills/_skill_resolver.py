@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import contextlib
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.config._env import getenv
 from ralph.skills._agent_paths import (
     agent_skill_roots,
     project_sibling_skill_roots,
@@ -21,7 +21,7 @@ FROZEN_UNIVERSAL_SKILLS: tuple[str, ...] = UNIVERSAL_SKILL_NAMES
 
 
 def get_inline_skill_content() -> str:
-    raw_dir = os.environ.get(_ENV_VAR)
+    raw_dir = getenv(_ENV_VAR)
     if not raw_dir:
         return ""
 

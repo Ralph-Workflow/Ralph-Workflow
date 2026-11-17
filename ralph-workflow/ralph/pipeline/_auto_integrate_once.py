@@ -221,11 +221,10 @@ def _integrate_once_owned(
     from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
     reclaim_target_worktree = reclaim_target_worktree_enabled(config)
-    reclamation: ReclaimResult | None = None
+    reclamation_box: list[ReclaimResult | None] = [None]
 
     def remember_reclamation(result: ReclaimResult) -> None:
-        nonlocal reclamation
-        reclamation = result
+        reclamation_box[0] = result
 
     raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
         root,
@@ -252,11 +251,13 @@ def _integrate_once_owned(
         update={
             "last_refresh": refresh_outcome,
             "reclaimed_worktree_path": (
-                reclamation.worktree_path if reclamation is not None else None
+                reclamation_box[0].worktree_path if reclamation_box[0] is not None else None
             ),
-            "reclaim_snapshot_ref": reclamation.snapshot_ref if reclamation is not None else None,
+            "reclaim_snapshot_ref": (
+                reclamation_box[0].snapshot_ref if reclamation_box[0] is not None else None
+            ),
             "reclaim_discarded_path_count": (
-                reclamation.discarded_path_count if reclamation is not None else 0
+                reclamation_box[0].discarded_path_count if reclamation_box[0] is not None else 0
             ),
         }
     )

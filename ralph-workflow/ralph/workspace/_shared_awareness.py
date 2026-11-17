@@ -4,6 +4,7 @@ import json
 import threading
 from contextlib import suppress
 from pathlib import Path
+from typing import ClassVar
 
 from ralph.workspace._shared_awareness_error import SharedAwarenessError
 from ralph.workspace._shared_awareness_state import SharedAwarenessState
@@ -55,6 +56,17 @@ def _document_bool(document: dict[str, object], key: str, *, default: bool = Fal
 
 
 class SharedAwarenessSidecar:
+    __slots__ = (
+        '_epoch',
+        '_last_claimed_epoch',
+        '_lock',
+        '_overflowed',
+        '_owner_id',
+        '_path',
+        '_paths',
+        '_polled_epoch',
+        '_workspace_root',
+    )
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._path = self._workspace_root / SIDECAR_RELPATH
@@ -192,7 +204,20 @@ class SharedAwarenessSidecar:
 
 
 _sidecars: dict[str, SharedAwarenessSidecar] = {}
-_sidecars_lock = threading.Lock()
+class _SidecarRegistry:
+    __slots__ = ()
+    _lock: ClassVar[threading.Lock | None] = None
+
+    @classmethod
+    def lock(cls) -> threading.Lock:
+        existing = cls._lock
+        if existing is not None:
+            return existing
+        created = threading.Lock()
+        cls._lock = created
+        return created
+
+
 
 
 def is_sidecar_path(workspace_root: Path | str, path: str) -> bool:
@@ -203,7 +228,7 @@ def is_sidecar_path(workspace_root: Path | str, path: str) -> bool:
 
 def shared_awareness_for_workspace(workspace_root: Path) -> SharedAwarenessSidecar:
     key = str(workspace_root.absolute())
-    with _sidecars_lock:
+    with _SidecarRegistry.lock():
         sidecar = _sidecars.get(key)
         if sidecar is None:
             sidecar = SharedAwarenessSidecar(workspace_root)
@@ -212,7 +237,7 @@ def shared_awareness_for_workspace(workspace_root: Path) -> SharedAwarenessSidec
 
 
 def release_shared_awareness(workspace_root: Path) -> None:
-    with _sidecars_lock:
+    with _SidecarRegistry.lock():
         sidecar = _sidecars.pop(str(workspace_root.absolute()), None)
     if sidecar is not None:
         sidecar.end_ownership()

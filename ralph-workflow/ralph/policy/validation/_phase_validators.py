@@ -97,7 +97,7 @@ COMMIT_REVIEW_REJECTION_COUNTER = "commit_review_rejections"
 
 
 def _resets_rejection_counter(loop_resets: object) -> bool:
-    if not isinstance(loop_resets, (list, tuple)):
+    if not (any(isinstance(loop_resets, _t) for _t in (list, tuple))):
         return False
     return COMMIT_REVIEW_REJECTION_COUNTER in loop_resets
 

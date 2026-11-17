@@ -27,6 +27,8 @@ _SPLIT_ACTION: Final[str] = "Split the work into smaller commands"
 
 
 class ExecutionError(ToolError):
+    __slots__ = ('cap_bytes', 'ceiling_ms', 'current_bytes', 'deadline_timeout_ms', 'diagnostics', 'elapsed_ms', 'job_id', 'max_workspace_bytes', 'partial_output', 'remaining_bytes', 'removed_bytes', 'removed_paths', 'suggested_timeout_ms', 'timed_out', 'timeout_cause', 'timeout_ms', 'workspace_bytes')
+
     def __init__(
         self,
         message: str = "",

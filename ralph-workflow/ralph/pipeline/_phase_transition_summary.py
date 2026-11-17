@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -11,35 +10,15 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
+from ralph.display.snapshot import snapshot_from_state
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.display.context import DisplayContext
-    from ralph.display.snapshot import PipelineSnapshot, SnapshotContext
+    from ralph.display.snapshot import PipelineSnapshot
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.state import PipelineState
-
-
-if TYPE_CHECKING:
-
-    class _ParallelDisplayModule(Protocol):
-        ParallelDisplay: type[ParallelDisplay]
-
-    class _SnapshotFromStateFn(Protocol):
-        def __call__(
-            self,
-            state: PipelineState,
-            context: SnapshotContext = ...,
-        ) -> PipelineSnapshot: ...
-
-    class _SnapshotModule(Protocol):
-        snapshot_from_state: _SnapshotFromStateFn
-
-
-def _snapshot_from_state_func() -> _SnapshotFromStateFn:
-    module = cast("_SnapshotModule", import_module("ralph.display.snapshot"))
-    return module.snapshot_from_state
 
 
 def emit_final_summary(
@@ -51,8 +30,6 @@ def emit_final_summary(
     display_context: DisplayContext,
 ) -> None:
     try:
-        snapshot_from_state = _snapshot_from_state_func()
-
         dropped_count = 0
         snapshot: PipelineSnapshot | None = None
         if subscriber is not None:

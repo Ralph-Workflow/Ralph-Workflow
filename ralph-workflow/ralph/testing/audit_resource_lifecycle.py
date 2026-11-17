@@ -447,7 +447,7 @@ def _canonical_name(
 def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
     result: set[ast.Call] = set()
     for parent in ast.walk(tree):
-        if isinstance(parent, (ast.With, ast.AsyncWith)):
+        if (any(isinstance(parent, _t) for _t in (ast.With, ast.AsyncWith))):
             for item in parent.items:
                 ctx = item.context_expr
                 if isinstance(ctx, ast.Call):
@@ -456,7 +456,7 @@ def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
 
 
 def _is_static_dict_key(node: ast.expr) -> bool:
-    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript)) or (
+    return (any(isinstance(node, _t) for _t in (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))) or (
         isinstance(node, ast.Tuple) and all(_is_static_dict_key(element) for element in node.elts)
     )
 

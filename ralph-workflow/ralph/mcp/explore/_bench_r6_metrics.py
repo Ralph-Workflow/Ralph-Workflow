@@ -9,11 +9,11 @@ import time
 from collections.abc import Mapping, Sequence, Sized
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, cast
+from typing import Final
 
 from ralph.mcp.explore._bench_fixtures import REQUIRED_FIXTURES
 from ralph.mcp.explore._bench_product_baseline import _BaselineSession
-from ralph.mcp.explore._bench_r6_query_sampler import _QueryCallable, sample_query_latencies
+from ralph.mcp.explore._bench_r6_query_sampler import sample_query_latencies
 from ralph.mcp.explore._bench_r6_subprocess import run_build_subprocess
 from ralph.mcp.explore._bench_r6_validation import (
     _R6_2_METRICS,
@@ -23,9 +23,12 @@ from ralph.mcp.explore._bench_r6_validation import (
     validate_baseline,
     validate_report,
 )
+from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore.store import ExploreStore
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
+
+_PAUSE = time.sleep
 
 __all__ = (
     "_R6_3_WORKLOADS",
@@ -51,7 +54,7 @@ def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
         values = [
             float(sample[metric])
             for sample in samples
-            if metric in sample and isinstance(sample[metric], (int, float))
+            if metric in sample and is_int_or_float(sample[metric])
         ]
         if not values:
             out[metric] = 0.0
@@ -234,7 +237,7 @@ def _measure_query_latency(
             raw_samples.append(time.perf_counter() - start)
         raw_p50 = sorted(raw_samples)[len(raw_samples) // 2]
         return sample_query_latencies(
-            grep_handler=cast("_QueryCallable", handle_grep_files),
+            grep_handler=handle_grep_files,
             session=session,
             workspace=ws,
             perf_counter=time.perf_counter,
@@ -363,7 +366,7 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
         store.close()
     peak_fd, peak_watches = _count_proc_fds()
     idle_start = time.process_time()
-    time.sleep(0.02)
+    _PAUSE(0.02)
     idle_cpu = time.process_time() - idle_start
     db = index_dir / "index.sqlite"
     for suffix in ("", "-wal", "-shm"):
@@ -507,7 +510,7 @@ def capture_baseline(
     raw_c = existing.get("file_counts")
     if isinstance(raw_c, dict):
         for k, v in raw_c.items():
-            if isinstance(v, (int, float)):
+            if is_int_or_float(v):
                 existing_counts[str(k)] = float(v)
 
     def _capture_with_repeat(
@@ -651,7 +654,7 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
 
 
 def _ralph_workflow_source() -> Path:
-    from os import getenv
+    from ralph.config._env import getenv
 
     candidates: list[Path] = []
     override = getenv("RALPH_WORKFLOW_BENCH_SOURCE")

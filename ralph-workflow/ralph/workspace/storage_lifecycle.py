@@ -173,7 +173,7 @@ def plan_cleanup(
             )
         elif category == "operational_records" and path.is_dir():
             max_age_seconds = entry.get("max_age_seconds")
-            if isinstance(max_age_seconds, (int, float)):
+            if any(isinstance(max_age_seconds, _t) for _t in (int, float)):
                 cutoff = current - float(max_age_seconds)
                 for child in sorted(path.iterdir()):
                     if not child.is_file() or child in retained_paths:

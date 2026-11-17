@@ -22,6 +22,8 @@ def same_checkout(first: Path | str, second: Path | str) -> bool:
 
 
 class AgentPhaseActivity:
+    __slots__ = ("_active", "_mutations", "_state")
+
     def __init__(self) -> None:
         self._state = threading.Lock()
         self._mutations = threading.RLock()

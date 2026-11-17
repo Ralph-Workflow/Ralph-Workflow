@@ -3,9 +3,8 @@ from __future__ import annotations
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
-from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING
 
 from ralph.workspace.errors import WorkspaceContextError
 
@@ -18,39 +17,26 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
-_AGENT_REGISTRY_MODULE: Final = "ralph.agents.registry"
-_SESSION_PLAN_MODULE: Final = "ralph.mcp.session_plan"
-
-
-@runtime_checkable
-class _AgentRegistryFactory(Protocol):
-    @staticmethod
-    def from_config(config: UnifiedConfig) -> AgentRegistry: ...
-
-
-@runtime_checkable
-class _SessionPlanResolver(Protocol):
-    def __call__(self, root: Path) -> EffectiveSessionMcpPlan: ...
-
-
-def _module_namespace(module_name: str) -> dict[str, object]:
-    return cast("dict[str, object]", import_module(module_name).__dict__)
-
-
 def _build_agent_registry(config: UnifiedConfig) -> AgentRegistry:
-    registry_factory = _module_namespace(_AGENT_REGISTRY_MODULE).get("AgentRegistry")
-    if not isinstance(registry_factory, _AgentRegistryFactory):
-        msg = f"{_AGENT_REGISTRY_MODULE}.AgentRegistry is unavailable"
-        raise TypeError(msg)
-    return registry_factory.from_config(config)
+    from ralph.agents.registry import AgentRegistry
+
+    return AgentRegistry.from_config(config)
 
 
 def _resolve_effective_session_mcp_plan(root: Path) -> EffectiveSessionMcpPlan:
-    resolver = _module_namespace(_SESSION_PLAN_MODULE).get("resolve_effective_session_mcp_plan")
-    if not isinstance(resolver, _SessionPlanResolver):
-        msg = f"{_SESSION_PLAN_MODULE}.resolve_effective_session_mcp_plan is unavailable"
-        raise TypeError(msg)
-    return resolver(root)
+    from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
+
+    return resolve_effective_session_mcp_plan(root)
+
+
+def _path_from_exc_file(exc_file: object) -> Path | None:
+    if isinstance(exc_file, Path):
+        return exc_file
+    if not isinstance(exc_file, str):
+        return None
+    if not exc_file or exc_file == "<unknown>":
+        return None
+    return Path(exc_file)
 
 
 @dataclass(frozen=True)
@@ -105,12 +91,8 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
     except (ConfigTomlError, OSError) as exc:
         msg = str(exc)
         exc_file: object = getattr(exc, "file", None)
-        file_path: Path
-        if isinstance(exc_file, Path):
-            file_path = exc_file
-        elif isinstance(exc_file, str) and exc_file and exc_file != "<unknown>":
-            file_path = Path(exc_file)
-        else:
+        file_path = _path_from_exc_file(exc_file)
+        if file_path is None:
             m = re.search(r"Ralph could not read (.*?):", msg)
             matched_path: str = ""
             if m is not None:

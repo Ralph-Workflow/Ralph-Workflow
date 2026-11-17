@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import importlib
 import json
 import typing
 import uuid
@@ -10,12 +9,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from rich.text import Text
 
-import inspect
 
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -30,6 +28,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     summarize_retry_failure_evidence,
 )
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
+from ralph.cli.commands import commit as _commit_cli
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
@@ -119,7 +118,7 @@ if TYPE_CHECKING:
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
+    from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.recovery.canary_probe import ProbeOutcome
@@ -127,7 +126,7 @@ if TYPE_CHECKING:
 
 
 def _commit_cli_module() -> types.ModuleType:
-    return importlib.import_module("ralph.cli.commands.commit")
+    return _commit_cli
 
 
 def _commit_invoke_agent(module: types.ModuleType) -> InvokeAgentFn:
@@ -190,7 +189,7 @@ def _run_commit_generation_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **execute_kwargs,
+        **dict(execute_kwargs),
     )
 
 
@@ -234,10 +233,10 @@ def _attempt_deps(
                 config,
                 effective_pipeline_deps,
                 workspace_scope,
-                *args,
-                **kwargs,
+                *tuple(args),
+                **dict(kwargs),
             )
-        return checked_dispatch(target, *args, **kwargs)
+        return checked_dispatch(target, *tuple(args), **dict(kwargs))
 
     clock = pipeline_deps.recovery_clock
     if not isinstance(clock, Clock):
@@ -395,7 +394,7 @@ def _resolve_effective_commit_deps(
             "display_context is required when pipeline_deps and pipeline_core are not provided"
         )
     effective_pipeline_deps = _commit_pipeline_deps(
-        cast("UnifiedConfig", chain_config.general_config),
+        chain_config.general_config,
         display_context,
         materializer=None,
         registry=chain_config.registry,
@@ -864,24 +863,20 @@ def _run_commit_agent_attempt_with_recovery(
     recovery_controller: RecoveryController | None = None,
     recovery_deps: AttemptRunnerDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
-    last_session_id: str | None = prior_session_id
-    last_error: Exception | None = None
+    last_session_box: list[str | None] = [prior_session_id]
+    last_error_box: list[Exception | None] = [None]
     commit_module = _commit_cli_module()
 
     def _capture_session_id(sid: str) -> None:
-        nonlocal last_session_id
-        last_session_id = sid
+        last_session_box[0] = sid
 
     def _capture_error(exc: Exception) -> None:
-        nonlocal last_error
-        last_error = exc
+        last_error_box[0] = exc
 
     raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
     rendered_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
 
-    delete_artifacts = _get_patched(
-        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
-    )
+    delete_artifacts = _patched_delete_commit_message_artifacts(commit_module)
     delete_artifacts(attempt_context.repo_root)
     _clear_session_completion_sentinel(attempt_context.repo_root, _COMMIT_RUN_ID)
 
@@ -916,7 +911,7 @@ def _run_commit_agent_attempt_with_recovery(
             deps=recovery_deps,
             pipeline_deps=effective_pipeline_deps,
             workspace_scope=workspace_scope,
-            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
+            bridge=attempt_context.bridge,
             display_context=display_context,
             run_id=_COMMIT_RUN_ID,
             required_artifact=_commit_required_artifact(),
@@ -933,7 +928,7 @@ def _run_commit_agent_attempt_with_recovery(
             parser_type=resolve_parser_key(
                 agent.cmd,
                 agent.json_parser,
-                cast("AgentTransport", agent.transport),
+                agent.transport,
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -942,9 +937,7 @@ def _run_commit_agent_attempt_with_recovery(
         )
         if output_collector is not None:
             output_collector.extend(raw_lines)
-        read_artifact = _get_patched(
-            commit_module, "read_commit_message_artifact", read_commit_message_artifact
-        )
+        read_artifact = _patched_read_commit_message_artifact(commit_module)
         artifact_message = read_artifact(attempt_context.repo_root)
         if getattr(attempt.event, "value", attempt.event) == "agent_success" or artifact_message:
             if artifact_message:
@@ -955,8 +948,8 @@ def _run_commit_agent_attempt_with_recovery(
                             parsed_output=parsed_output,
                             raw_output=raw_lines,
                         ),
-                        last_session_id,
-                        last_error,
+                        last_session_box[0],
+                        last_error_box[0],
                     )
                 return (
                     CommitAgentAttempt(
@@ -964,8 +957,8 @@ def _run_commit_agent_attempt_with_recovery(
                         parsed_output=parsed_output,
                         raw_output=raw_lines,
                     ),
-                    last_session_id,
-                    last_error,
+                    last_session_box[0],
+                    last_error_box[0],
                 )
             recovery_controller.record_attempt_fact(
                 "commit",
@@ -983,11 +976,12 @@ def _run_commit_agent_attempt_with_recovery(
                     ),
                     parsed_output=parsed_output,
                     raw_output=raw_lines,
-                    resume_session_id=resume_session_id or last_session_id,
+                    resume_session_id=resume_session_id or last_session_box[0],
                 ),
-                last_session_id,
-                last_error,
+                last_session_box[0],
+                last_error_box[0],
             )
+        last_error = last_error_box[0]
         if isinstance(last_error, AgentInvocationError):
             failure_detail = _format_agent_invocation_failure(
                 agent.cmd,
@@ -1007,19 +1001,19 @@ def _run_commit_agent_attempt_with_recovery(
                 failure_detail=failure_detail,
                 parsed_output=parsed_output,
                 raw_output=raw_lines,
-                resume_session_id=resume_session_id or last_session_id,
+                resume_session_id=resume_session_id or last_session_box[0],
             ),
-            last_session_id,
+            last_session_box[0],
             last_error,
         )
     except AgentInvocationError as exc:
-        last_error = exc
+        last_error_box[0] = exc
         parsed_output = _parsed_output_from_invocation_error(exc)
         if output_collector is not None:
             output_collector.extend(parsed_output)
         captured = extract_transport_session_id(tuple(parsed_output))
         if captured is not None:
-            last_session_id = captured
+            last_session_box[0] = captured
         return (
             CommitAgentAttempt(
                 failure_detail=_format_agent_invocation_failure(
@@ -1031,8 +1025,8 @@ def _run_commit_agent_attempt_with_recovery(
                 parsed_output=parsed_output,
                 resume_session_id=captured,
             ),
-            last_session_id,
-            last_error,
+            last_session_box[0],
+            last_error_box[0],
         )
 
 
@@ -1051,18 +1045,13 @@ def invoke_commit_agent_attempt(
     materializer: MaterializeMasterPromptFn | None = None,
 ) -> CommitAgentAttempt:
     commit_module = _commit_cli_module()
-    materialize = _get_patched(
+    materialize = _patched_materialize_master_prompt(
         commit_module,
-        "materialize_master_prompt",
         materializer if materializer is not None else materialize_master_prompt,
     )
     invoke = _commit_invoke_agent(commit_module)
-    delete_artifacts = _get_patched(
-        commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
-    )
-    read_artifact = _get_patched(
-        commit_module, "read_commit_message_artifact", read_commit_message_artifact
-    )
+    delete_artifacts = _patched_delete_commit_message_artifacts(commit_module)
+    read_artifact = _patched_read_commit_message_artifact(commit_module)
 
     delete_artifacts(attempt_context.repo_root)
     master_prompt = materialize(
@@ -1147,7 +1136,7 @@ def invoke_commit_agent_attempt(
             parser_type=resolve_parser_key(
                 agent.cmd,
                 agent.json_parser,
-                cast("AgentTransport", agent.transport),
+                agent.transport,
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -1285,7 +1274,7 @@ def collect_commit_agent_output(
     parser = _resolve_commit_parser(parser_type)
     parsed_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
     raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
-    resume_session_id: str | None = None
+    resume_session_box: list[str | None] = [None]
     try:
 
         def _raw_lines() -> Iterator[str]:
@@ -1293,9 +1282,8 @@ def collect_commit_agent_output(
                 raw_line = str(line)
                 raw_output.append(raw_line)
                 session_id = extract_transport_session_id((raw_line,))
-                nonlocal resume_session_id
                 if session_id is not None:
-                    resume_session_id = session_id
+                    resume_session_box[0] = session_id
                     if session_id_sink is not None:
                         session_id_sink(session_id)
                 yield raw_line
@@ -1314,7 +1302,7 @@ def collect_commit_agent_output(
             list(parsed_output),
             raw_output=list(raw_output),
         ) from exc
-    return list(parsed_output), list(raw_output), resume_session_id
+    return list(parsed_output), list(raw_output), resume_session_box[0]
 
 
 def _resolve_commit_parser(parser_type: str) -> AgentParser:
@@ -1490,22 +1478,19 @@ def _default_commit_bridge_factory(
     return bridge_fn(workspace_root, **_supported_kwargs(bridge_fn, optional_kwargs))
 
 
+_COMMIT_BRIDGE_OPTIONAL_KEYS = frozenset({"agents_policy", "model_identity", "transport"})
+
+
 def _supported_kwargs(
     func: _CommitStartBridgeProto,
     candidates: dict[str, object],
 ) -> dict[str, object]:
-    try:
-        parameters = inspect.signature(func).parameters
-    except (TypeError, ValueError):
-        return dict(candidates)
-    accepted: set[str] = set()
-    for name, parameter in parameters.items():
-        kind_name = parameter.kind.name
-        if kind_name == "VAR_KEYWORD":
-            return dict(candidates)
-        if kind_name in {"POSITIONAL_OR_KEYWORD", "KEYWORD_ONLY"}:
-            accepted.add(name)
-    return {name: value for name, value in candidates.items() if name in accepted}
+    del func
+    return {
+        name: value
+        for name, value in candidates.items()
+        if name in _COMMIT_BRIDGE_OPTIONAL_KEYS
+    }
 
 
 def commit_chain_transport(chain_config: CommitChainConfig) -> AgentTransport | None:
@@ -1567,7 +1552,14 @@ start_commit_bridge = _start_commit_bridge
 
 
 class _CommitStartBridgeProto(typing.Protocol):
-    def __call__(self, repo_root: Path, **kwargs: object) -> SessionBridgeLike: ...
+    def __call__(
+        self,
+        repo_root: Path,
+        *,
+        agents_policy: AgentsPolicy | None = None,
+        model_identity: MultimodalModelIdentity | None = None,
+        transport: AgentTransport | None = None,
+    ) -> SessionBridgeLike: ...
 
 
 class _CommitWritePromptFileProto(typing.Protocol):
@@ -1575,17 +1567,44 @@ class _CommitWritePromptFileProto(typing.Protocol):
 
 
 def _resolve_commit_start_commit_bridge() -> _CommitStartBridgeProto:
-    return typing.cast(
-        "_CommitStartBridgeProto",
-        _commit_cli_module().start_commit_bridge,
-    )
+    patched: object = getattr(_commit_cli, "start_commit_bridge", _start_commit_bridge)
+    if patched is None:
+        patched = _start_commit_bridge
+
+    def _call(
+        repo_root: Path,
+        *,
+        agents_policy: AgentsPolicy | None = None,
+        model_identity: MultimodalModelIdentity | None = None,
+        transport: AgentTransport | None = None,
+    ) -> SessionBridgeLike:
+        if not callable(patched):
+            raise TypeError("start_commit_bridge must be callable")
+        result: object = patched(
+            repo_root,
+            agents_policy=agents_policy,
+            model_identity=model_identity,
+            transport=transport,
+        )
+        return result
+
+    return _call
 
 
 def _resolve_commit_write_prompt_file() -> _CommitWritePromptFileProto:
-    return typing.cast(
-        "_CommitWritePromptFileProto",
-        _commit_cli_module().write_commit_prompt_file,
-    )
+    patched: object = getattr(_commit_cli, "write_commit_prompt_file", _write_commit_prompt_file)
+    if patched is None:
+        patched = _write_commit_prompt_file
+
+    def _call(repo_root: Path, prompt: str) -> str:
+        if not callable(patched):
+            raise TypeError("write_commit_prompt_file must be callable")
+        result: object = patched(repo_root, prompt)
+        if not isinstance(result, str):
+            raise TypeError("write_commit_prompt_file must return str")
+        return result
+
+    return _call
 
 
 def _stringify_extra_env(extra_env: object) -> dict[str, str] | None:
@@ -1600,15 +1619,18 @@ write_commit_prompt_file = _write_commit_prompt_file
 render_commit_agent_activity_line = _render_commit_agent_activity_line
 
 
-def _get_patched[T](
-    module: types.ModuleType,
-    name: str,
-    fallback: T,
-) -> T:
-    value: T = getattr(module, name, fallback)
-    if value is None:
-        return fallback
-    return value
+def _patched_delete_commit_message_artifacts(module: types.ModuleType) -> object:
+    value: object = getattr(module, "delete_commit_message_artifacts", delete_commit_message_artifacts)
+    return delete_commit_message_artifacts if value is None else value
 
 
-_ = _get_patched
+def _patched_read_commit_message_artifact(module: types.ModuleType) -> object:
+    value: object = getattr(module, "read_commit_message_artifact", read_commit_message_artifact)
+    return read_commit_message_artifact if value is None else value
+
+
+def _patched_materialize_master_prompt(
+    module: types.ModuleType, fallback: object
+) -> object:
+    value: object = getattr(module, "materialize_master_prompt", fallback)
+    return fallback if value is None else value

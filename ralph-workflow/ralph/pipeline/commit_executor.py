@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from git import GitError
 from loguru import logger
@@ -11,6 +11,7 @@ from loguru import logger
 from ralph.checked_accessors import as_mapping
 from ralph.config import _env
 from ralph.config.enums import Verbosity
+from ralph.display.context import DisplayContext
 from ralph.display.parallel_display import (
     ParallelDisplay,
     get_display_context,
@@ -82,10 +83,6 @@ def _is_legacy_create_commit_fn(
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from typing import TypeGuard
-
-    from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy
     from ralph.workspace import FsWorkspace
 
@@ -197,33 +194,36 @@ def _prune_proposals(repo_root: Path, opts: dict[str, object]) -> None:
             prune(repo_root, run_id=run_id, keep_refs=keep_refs, max_retained=max_retained)
 
 
+def _parallel_display_from(value: object) -> ParallelDisplay | None:
+    if isinstance(value, ParallelDisplay):
+        return value
+    if not isinstance(value, DisplayContext):
+        return None
+    try:
+        return resolve_active_display(None, value)
+    except (TypeError, OSError, RuntimeError, ValueError, KeyError):
+        return None
+
+
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
-    display: object | None = None
-    if isinstance(display_context, ParallelDisplay):
-        display = display_context
-    elif display_context is not None:
-        try:
-            display = resolve_active_display(None, cast("DisplayContext", display_context))
-        except (TypeError, OSError, RuntimeError, ValueError, KeyError):
-            display = None
+    display = _parallel_display_from(display_context)
     if display is None:
         return
     with suppress(Exception):
-        cast("ParallelDisplay", display).emit_commit_message(repo_root)
+        display.emit_commit_message(repo_root)
 
 
-def _record_display_outcome(display: object | None, outcome: str, **opts: object) -> None:
-    target: object | None = display
-    if target is None:
-        ctx = opts.get("display_context")
-        if isinstance(ctx, ParallelDisplay):
-            target = ctx
-        elif ctx is not None:
-            with suppress(Exception):
-                target = resolve_active_display(None, cast("DisplayContext", ctx))
-    if target is not None and hasattr(target, "record_artifact_outcome"):
+def _record_display_outcome(
+    display: object | None,
+    outcome: str,
+    opts: Mapping[str, object] | None = None,
+) -> None:
+    target = _parallel_display_from(display)
+    if target is None and opts is not None:
+        target = _parallel_display_from(opts.get("display_context"))
+    if target is not None:
         with suppress(Exception):
-            cast("ParallelDisplay", target).record_artifact_outcome(outcome)
+            target.record_artifact_outcome(outcome)
 
 
 def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
@@ -231,6 +231,26 @@ def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
 
 
 def _is_create_commit_with_hooks_fn(value: object) -> TypeGuard[_CreateCommitWithHooksFn]:
+    return callable(value)
+
+
+def _is_create_commit_fn(value: object) -> TypeGuard[_CreateCommitFn]:
+    return callable(value)
+
+
+def _is_stage_all_fn(value: object) -> TypeGuard[_StageAllFn]:
+    return callable(value)
+
+
+def _is_has_commit_work_fn(value: object) -> TypeGuard[_HasCommitWorkFn]:
+    return callable(value)
+
+
+def _is_verbosity(value: object) -> TypeGuard[Verbosity]:
+    return isinstance(value, Verbosity)
+
+
+def _is_render_commit_message_fn(value: object) -> TypeGuard[_RenderCommitMessageFn]:
     return callable(value)
 
 
@@ -280,7 +300,8 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
     if not _is_git_worktree(repo_root):
         return False
     repaired = False
-    if _is_head_detached(repo_root) and _reattach_head_if_detached(repo_root, **opts):
+    forwarded = dict(opts)
+    if _is_head_detached(repo_root) and _reattach_head_if_detached(repo_root, **forwarded):
         repaired = True
 
     git_dir = rebase_bookkeeping_dir(repo_root) or (repo_root / ".git")
@@ -297,6 +318,8 @@ COMMIT_APPROVAL_MISSING_CODE = "COMMIT_APPROVAL_MISSING"
 
 
 class CommitApprovalError(RuntimeError):
+    __slots__ = ("code",)
+
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
@@ -408,17 +431,17 @@ def _handle_post_commit_actions(
     _prune_proposals(repo_root, opts)
 
     with suppress(Exception):
-        _render_commit_fn = cast(
-            "_RenderCommitMessageFn",
-            opts.get("render_commit_message_fn")
-            if callable(opts.get("render_commit_message_fn"))
-            else _render_commit_message_via_display,
+        raw_render = opts.get("render_commit_message_fn")
+        _render_commit_fn: _RenderCommitMessageFn = (
+            raw_render
+            if _is_render_commit_message_fn(raw_render)
+            else _render_commit_message_via_display
         )
         render_target: object = display if display is not None else get_display_context(display)
         _render_commit_fn(repo_root, render_target)
 
     if verbosity != Verbosity.QUIET:
-        _record_display_outcome(display, f"sha={sha[:8]}", **opts)
+        _record_display_outcome(display, f"sha={sha[:8]}", opts)
     with suppress(Exception):
         cleanup_commit_message_artifacts(repo_root)
 
@@ -442,27 +465,27 @@ def execute_commit_effect(
     display: ParallelDisplay | None = None,
     **opts: object,
 ) -> Event:
-    verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
+    raw_verbosity = opts.get("verbosity", Verbosity.VERBOSE)
+    verbosity = raw_verbosity if _is_verbosity(raw_verbosity) else Verbosity.VERBOSE
     _raw_create = opts.get("create_commit_fn")
-    _create_commit_fn: _CreateCommitFn = cast(
-        "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit
+    _create_commit_fn: _CreateCommitFn = (
+        _raw_create if _is_create_commit_fn(_raw_create) else create_commit
     )
     _raw_stage = opts.get("stage_all_fn")
-    _stage_all_fn: _StageAllFn = cast(
-        "_StageAllFn", _raw_stage if callable(_raw_stage) else stage_all
-    )
+    _stage_all_fn: _StageAllFn = _raw_stage if _is_stage_all_fn(_raw_stage) else stage_all
     _raw_has_work = opts.get("has_commit_work_fn")
-    _has_commit_work_fn: _HasCommitWorkFn = cast(
-        "_HasCommitWorkFn", _raw_has_work if callable(_raw_has_work) else _repo_has_commit_work
+    _has_commit_work_fn: _HasCommitWorkFn = (
+        _raw_has_work if _is_has_commit_work_fn(_raw_has_work) else _repo_has_commit_work
     )
     _raw_residual_work = opts.get("has_residual_work_fn")
-    _has_residual_work_fn: _HasCommitWorkFn | None = cast(
-        "_HasCommitWorkFn | None", _raw_residual_work if callable(_raw_residual_work) else None
+    _has_residual_work_fn: _HasCommitWorkFn | None = (
+        _raw_residual_work if _is_has_commit_work_fn(_raw_residual_work) else None
     )
     _raw_write_tree = opts.get("write_tree_fn")
     _write_tree_fn: Callable[[Path | str], str] | None = (
         _raw_write_tree if _is_write_tree_fn(_raw_write_tree) else None
     )
+    forwarded = dict(opts)
     try:
         raw_payload = read_commit_message_payload_from_path(Path(effect.message_file))
         message = read_commit_message_from_path(Path(effect.message_file)) or ""
@@ -472,7 +495,7 @@ def execute_commit_effect(
             cleanup_commit_message_artifacts(repo_root)
             set_last_commit_error(None)
             return PipelineEvent.COMMIT_SKIPPED
-        _reattach_head_if_detached(repo_root, **opts)
+        _reattach_head_if_detached(repo_root, **forwarded)
         if not _has_commit_work_fn(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             cleanup_commit_message_artifacts(repo_root)
@@ -489,7 +512,7 @@ def execute_commit_effect(
             payload,
             _create_commit_fn,
             _stage_all_fn,
-            opts,
+            forwarded,
             expected_tree_sha=effect.expected_tree_sha,
             require_approved_tree=effect.require_approved_tree,
             write_tree_fn=_write_tree_fn,
@@ -500,10 +523,10 @@ def execute_commit_effect(
         err_msg = f"{type(exc).__name__}: {exc}"
         _commit_failure_pending.record_failure(err_msg, effect.expected_tree_sha)
         logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
-        _record_display_outcome(display, "failed", **opts)
+        _record_display_outcome(display, "failed", forwarded)
         return PipelineEvent.COMMIT_FAILURE
 
-    _handle_post_commit_actions(repo_root, sha, display, verbosity, opts)
+    _handle_post_commit_actions(repo_root, sha, display, verbosity, forwarded)
     if _has_residual_work_fn is not None:
         try:
             if _has_residual_work_fn(repo_root):
@@ -584,9 +607,16 @@ def commit_effect(workspace_root: Path, expected_tree_sha: str | None = None) ->
 def clear_phase_output_artifacts(
     workspace: FsWorkspace,
     phase: str,
-    **opts: object,
+    *,
+    drain: str | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> None:
-    _commit_executor_artifacts.clear_phase_output_artifacts(workspace, phase, **opts)
+    _commit_executor_artifacts.clear_phase_output_artifacts(
+        workspace,
+        phase,
+        drain=drain,
+        policy_bundle=policy_bundle,
+    )
 
 
 repo_has_commit_work = _repo_has_commit_work

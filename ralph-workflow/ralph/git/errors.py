@@ -4,6 +4,11 @@ from git.exc import GitCommandError
 
 
 class GitOperationError(GitCommandError):
+    __slots__ = (
+        "message",
+        "operation",
+    )
+
     def __init__(self, operation: str, message: str) -> None:
         self.operation = operation
         self.message = message
@@ -13,4 +18,11 @@ class GitOperationError(GitCommandError):
         return f"Git {self.operation} failed: {self.message}"
 
 
-__all__ = ["GitOperationError"]
+class CommitTreeMismatchError(GitOperationError):
+    __slots__ = ()
+
+    def __init__(self, message: str) -> None:
+        super().__init__("create_commit", message)
+
+
+__all__ = ["CommitTreeMismatchError", "GitOperationError"]

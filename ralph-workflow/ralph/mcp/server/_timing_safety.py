@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import os
-
+from ralph.config._env import getenv
 from ralph.mcp.protocol.env import MCP_REQUEST_TIMEOUT_MS_ENV
 from ralph.mcp.transport import claude as _claude_transport
 from ralph.mcp.transport import codex as _codex_transport
@@ -21,7 +20,7 @@ from ralph.timeout_defaults import (
 DEFAULT_CLIENT_REQUEST_TIMEOUT_MS: int = 330_000
 
 CLIENT_REQUEST_TIMEOUT_MS: int = int(
-    os.environ.get(MCP_REQUEST_TIMEOUT_MS_ENV, str(DEFAULT_CLIENT_REQUEST_TIMEOUT_MS))
+    getenv(MCP_REQUEST_TIMEOUT_MS_ENV) or str(DEFAULT_CLIENT_REQUEST_TIMEOUT_MS)
 )
 
 DISPATCH_CAP_MS: int = EXEC_MAX_TIMEOUT_MS

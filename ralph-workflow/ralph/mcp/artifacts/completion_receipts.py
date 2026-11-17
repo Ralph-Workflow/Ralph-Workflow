@@ -6,7 +6,7 @@ import hmac
 import json
 import sqlite3
 from pathlib import Path
-from typing import TypeGuard, cast
+from typing import TypeGuard
 
 from ralph.checked_accessors import as_str, optional_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -64,12 +64,12 @@ def _legacy_file_receipt_present(
         return True
     try:
         raw = backend.read_text(path, encoding="utf-8")
-        parsed = cast("object", json.loads(raw))
+        parsed = json.loads(raw)
     except (OSError, json.JSONDecodeError):
         return False
     if not isinstance(parsed, dict):
         return False
-    stored = cast("dict[str, object]", parsed).get("hmac")
+    stored = parsed.get("hmac")
     if not isinstance(stored, str):
         return False
     expected = _receipt_hmac(receipt_secret, run_id, artifact_type)
@@ -211,7 +211,7 @@ def _snapshot_from_payload(
 ) -> ArtifactSubmissionSnapshot | None:
     if not isinstance(payload, dict):
         return None
-    values = cast("dict[str, object]", payload)
+    values = payload
     path = values.get("submission_snapshot_path")
     digest = values.get("submission_snapshot_digest")
     stored_hmac = values.get("submission_snapshot_hmac")
@@ -269,7 +269,7 @@ def read_artifact_submission_snapshot(
     if not backend.exists(receipt_path):
         return None
     try:
-        payload = cast("object", json.loads(backend.read_text(receipt_path, encoding="utf-8")))
+        payload = json.loads(backend.read_text(receipt_path, encoding="utf-8"))
         return _snapshot_from_payload(payload, run_id, artifact_type, receipt_secret)
     except (OSError, json.JSONDecodeError):
         return None
@@ -392,9 +392,9 @@ def commit_receipt_matches_changed_files(
         if not backend.exists(path):
             return False
         try:
-            payload = cast("object", json.loads(backend.read_text(path, encoding="utf-8")))
+            payload = json.loads(backend.read_text(path, encoding="utf-8"))
             audit = (
-                cast("dict[str, object]", payload).get("normalization_audit")
+                payload.get("normalization_audit")
                 if isinstance(payload, dict)
                 else None
             )
@@ -404,7 +404,7 @@ def commit_receipt_matches_changed_files(
         audit = None
     else:
         try:
-            audit = cast("object", json.loads(as_str(audit_json, field="normalization_audit")))
+            audit = json.loads(as_str(audit_json, field="normalization_audit"))
         except (json.JSONDecodeError, TypeError, ValueError):
             return False
     if not isinstance(audit, dict):
@@ -476,7 +476,7 @@ def get_recorded_receipt_artifact_types(
             if isinstance(raw_rows, list):
                 result = [
                     row[0]
-                    for row in cast("list[object]", raw_rows)
+                    for row in raw_rows
                     if isinstance(row, tuple) and len(row) > 0 and isinstance(row[0], str)
                 ]
                 if result:
@@ -494,7 +494,7 @@ def get_recorded_receipt_artifact_types(
         try:
             parsed: object = json.loads(backend.read_text(path, encoding="utf-8"))
             if isinstance(parsed, dict):
-                payload = cast("dict[str, object]", parsed)
+                payload = parsed
                 val = payload.get("artifact_type")
                 if isinstance(val, str):
                     types.append(val)

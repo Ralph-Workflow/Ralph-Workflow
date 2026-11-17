@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import Field, dataclass
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ralph.agents.support import AgentSupport
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -71,10 +71,7 @@ class BuiltinAgentSpec:
     empty_output_diagnostic_prefix: tuple[str, ...] = ()
 
     def to_support(self, name: str) -> AgentSupport:
-        spec_fields = frozenset(
-            spec_field.name
-            for spec_field in cast("tuple[Field[str], ...]", dataclasses.fields(self))
-        )
+        spec_fields = frozenset(spec_field.name for spec_field in dataclasses.fields(self))
         forwarded = spec_fields - _BUILTIN_SPEC_POSITIONAL_FIELDS
         if forwarded != _BUILTIN_SPEC_FORWARDED_FIELDS:
             msg = (

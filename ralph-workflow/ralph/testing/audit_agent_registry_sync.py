@@ -67,7 +67,7 @@ def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
             kw_val: object = kw.value.value
             if kw.arg == "name" and isinstance(kw_val, str):
                 name_val = kw_val
-            elif kw.arg == "cmd" and isinstance(kw_val, str):
+            if kw.arg == "cmd" and isinstance(kw_val, str):
                 cmd_val = kw_val
 
     return name_val, cmd_val, True

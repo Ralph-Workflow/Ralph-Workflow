@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import cast
 
 
 @dataclass(frozen=True)
@@ -17,12 +16,12 @@ class OpenCodeChildPart:
 
 def part_kind_from_data(data: str) -> str:
     try:
-        decoded = cast("object", json.loads(data))
+        decoded: object = json.loads(data)
     except (TypeError, ValueError):
         return "part"
     if not isinstance(decoded, dict):
         return "part"
-    payload = cast("dict[str, object]", decoded)
+    payload = {str(key): value for key, value in decoded.items()}
     part_type = payload.get("type")
     if not isinstance(part_type, str) or not part_type:
         return "part"

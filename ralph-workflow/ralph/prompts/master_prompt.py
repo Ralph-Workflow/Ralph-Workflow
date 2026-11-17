@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.config._env import environ
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -82,7 +82,7 @@ def _sync_product_criteria_file(
         if worker_namespace is not None
         else workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     )
-    source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
+    source_prompt_path = resolve_effective_prompt_path(workspace_root, environ())
     if source_prompt_path.exists():
 
         def _stat(path: Path) -> tuple[int, int] | None:

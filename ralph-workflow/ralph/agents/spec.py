@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.config.agent_config import AgentConfig
@@ -39,9 +39,13 @@ class AgentSpec:
         completion_required: bool = False,
         no_default_session_flag: bool = False,
     ) -> AgentSpec:
+        transport = config.transport
+        if transport is None:
+            msg = f"AgentConfig for {config.cmd!r} has no transport"
+            raise ValueError(msg)
         return cls(
             name=config.cmd,
-            transport=cast("AgentTransport", config.transport),
+            transport=transport,
             interactive=interactive,
             requires_pty=interactive,
             session_resume_template=config.session_flag,
