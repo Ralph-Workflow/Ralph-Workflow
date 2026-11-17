@@ -107,7 +107,6 @@ class ExploreStore(
     get_tombstone = _RetentionMethods.get_tombstone
     index_storage_bytes = _RetentionMethods.index_storage_bytes
 
-
     def __init__(
         self,
         index_dir: Path,
