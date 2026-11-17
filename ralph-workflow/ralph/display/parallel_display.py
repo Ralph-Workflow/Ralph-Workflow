@@ -14,7 +14,7 @@ import zlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -137,10 +137,33 @@ _SECONDS_PER_MINUTE: int = 60
 _PREVIEW_MAX_LINES: int = 40
 
 _MIN_COALESCE_REPEAT = 2
+_CONDENSE_SUMMARY_RESULT_LEN = 4
 _MIN_TOOL_RESULT_COLLAPSE_COUNT = 3
 _TOOL_RESULT_CHANNEL_RE = re.compile(r"\[tool-result\]\s*")
 _TOOL_RESULT_RUNNING_RE = re.compile(r"\s*\(running\.\.\.\)")
 _TOOL_RESULT_REPEATED_SEVERITY_AND_IDENTITY_RE = re.compile(r"\b(severity=\S+)\s+\1\s+(\S+)\s+\2\b")
+
+
+def _str_keyed_dict(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {key: item for key, item in value.items() if isinstance(key, str)}
+
+
+def _condense_pair(
+    text: str, *, options: CondenseOptions
+) -> tuple[str, bool]:
+    result = condense_content(text, options=options)
+    return result[0], result[1]
+
+
+def _condense_with_summaries(
+    text: str, *, options: CondenseOptions
+) -> tuple[str, bool, str | None, str | None]:
+    result = condense_content(text, options=options)
+    if len(result) == _CONDENSE_SUMMARY_RESULT_LEN:
+        return result
+    return result[0], result[1], None, None
 
 
 def _clean_tool_result_content(content: str, unit_id: str) -> str:
@@ -874,7 +897,7 @@ class ParallelDisplay:
             tool_name, tool_path = opts.tool_signature
             metadata = opts.activity_metadata or {}
             input_obj = metadata.get("input", metadata.get("args"))
-            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            input_dict = _str_keyed_dict(input_obj)
             pattern = input_dict.get("pattern", metadata.get("pattern", ""))
             line_start = input_dict.get("line_start")
             self._last_emitted_tool_signature[unit_id] = (
@@ -892,7 +915,8 @@ class ParallelDisplay:
             chrome_prefix = f"{timestamp} "
             display_tag = {"content": "output", "think": "reasoning"}.get(base_tag, base_tag)
             badge_prefix = f"[{display_tag}][{rendered_unit_id}] "
-            indent_level: int = max(0, int(cast("int", getattr(opts, "indent_level", 0))))
+            raw_indent: object = getattr(opts, "indent_level", 0)
+            indent_level = max(0, int(raw_indent)) if isinstance(raw_indent, int) else 0
             grouping_role: str = str(opts.grouping_role) if opts.grouping_role else "agent_text"
             del grouping_role
             level_indent = " " * (_INDENT_WIDTH * indent_level)
@@ -1139,15 +1163,12 @@ class ParallelDisplay:
             from ralph.display.presented_entry import _strip_markdown_emphasis
 
             sanitized_joined = _strip_markdown_emphasis(sanitized_joined)
-        visible, condensed_flag = cast(
-            "tuple[str, bool]",
-            condense_content(
-                sanitized_joined,
-                options=CondenseOptions(
-                    soft_limit=self._ctx.condenser_soft_limit,
-                    hard_limit=self._ctx.condenser_hard_limit,
-                    overflow_ref=overflow_ref,
-                ),
+        visible, condensed_flag = _condense_pair(
+            sanitized_joined,
+            options=CondenseOptions(
+                soft_limit=self._ctx.condenser_soft_limit,
+                hard_limit=self._ctx.condenser_hard_limit,
+                overflow_ref=overflow_ref,
             ),
         )
         if condensed_flag:
@@ -1619,7 +1640,7 @@ class ParallelDisplay:
         result_content: object = content
         if tool_name == "read_file":
             with contextlib.suppress(ValueError):
-                envelope = cast("object", json.loads(content))
+                envelope: object = json.loads(content)
                 if isinstance(envelope, dict):
                     envelope_path = envelope.get("path")
                     if isinstance(envelope_path, str) and envelope_path:
@@ -1809,15 +1830,12 @@ class ParallelDisplay:
                     iter_ = cached_iter
 
         overflow = self._get_condensed_log(unit_id)
-        visible_body, condensed = cast(
-            "tuple[str, bool]",
-            condense_content(
-                body,
-                options=CondenseOptions(
-                    soft_limit=self._ctx.condenser_soft_limit,
-                    hard_limit=self._ctx.condenser_hard_limit,
-                    overflow_ref=overflow.relative_reference(self._workspace_root),
-                ),
+        visible_body, condensed = _condense_pair(
+            body,
+            options=CondenseOptions(
+                soft_limit=self._ctx.condenser_soft_limit,
+                hard_limit=self._ctx.condenser_hard_limit,
+                overflow_ref=overflow.relative_reference(self._workspace_root),
             ),
         )
         del condensed
@@ -1965,7 +1983,7 @@ class ParallelDisplay:
 
         if kind is ActivityEventKind.TOOL_USE:
             input_obj = metadata.get("input", metadata.get("args"))
-            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            input_dict = _str_keyed_dict(input_obj)
             original_name = text_content
             tool_path = strip_terminal_control(str(input_dict.get("path", "") or ""))
             tool_workdir = strip_terminal_control(str(input_dict.get("workdir", "") or ""))
@@ -2013,16 +2031,13 @@ class ParallelDisplay:
         overflow = self._get_condensed_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
-        visible, condensed_flag, summary_line, ai_summary_line = cast(
-            "tuple[str, bool, str | None, str | None]",
-            condense_content(
-                text,
-                options=CondenseOptions(
-                    soft_limit=self._ctx.condenser_soft_limit,
-                    hard_limit=self._ctx.condenser_hard_limit,
-                    summary=True,
-                    overflow_ref=overflow_ref,
-                ),
+        visible, condensed_flag, summary_line, ai_summary_line = _condense_with_summaries(
+            text,
+            options=CondenseOptions(
+                soft_limit=self._ctx.condenser_soft_limit,
+                hard_limit=self._ctx.condenser_hard_limit,
+                summary=True,
+                overflow_ref=overflow_ref,
             ),
         )
 
@@ -2364,7 +2379,7 @@ class ParallelDisplay:
         emitted_content = content
         if kind is ActivityEventKind.TOOL_USE and not call_id:
             input_obj = record_metadata.get("input", record_metadata.get("args"))
-            input_dict = cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            input_dict = _str_keyed_dict(input_obj)
             if not any(input_dict.get(key) for key in ("path", "command", "pattern")):
                 target = f"call {self._run_counters.tool_calls + 1}"
                 record_metadata["target"] = target

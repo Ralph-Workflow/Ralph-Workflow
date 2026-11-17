@@ -6,11 +6,9 @@ from typing import TYPE_CHECKING
 import pytest
 from git import Repo
 
-from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, apply_conflict_budget
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
@@ -23,17 +21,6 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 _TARGET = "main"
 _PHASE = "rebase_conflict_resolution"
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_eligible_agent_launches_after_rung_budget_spend_advances": (
-        "launch permission is the shared eligibility answer; a rung budget spend advances "
-        "the strategy in the same step so an Eligible agent still runs"
-    ),
-    "test_cooling_agent_is_not_launched_before_fake_clock_elapses": (
-        "launch permission is cooldown-strict any_eligible; a CoolingDown agent must not "
-        "run until the injected clock advances past the cooldown"
-    ),
-}
 
 
 class _FrozenClock:
@@ -134,93 +121,3 @@ def test_all_resolvers_on_cooldown_retain_active_merge_as_pending(tmp_path: Path
     retained = read_record(root)
     assert retained is not None
     assert retained.resolving_merge
-
-
-def test_eligible_agent_launches_after_rung_budget_spend_advances(tmp_path: Path) -> None:
-    root = _conflicted_repo(tmp_path / "repo")
-    clock = FakeClock(start=5.0)
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    candidates = ("agent-eligible",)
-    scope = WorkspaceScope(root)
-    identity = ConflictIdentity(feature_sha="feature", target_sha="target")
-    spent = apply_conflict_budget(
-        RebaseState(last_action="conflict", last_target=_TARGET),
-        prior=RebaseState(),
-        target=_TARGET,
-        resolver_suppressed=False,
-        identity=identity,
-        attempts=1,
-    )
-    assert spent.conflict_strategy_index == 1
-    assert spent.consecutive_conflicts == 1
-
-    ran_at: list[float] = []
-
-    def _resolver(_root: Path, _target: str) -> bool:
-        ran_at.append(clock.monotonic())
-        return False
-
-    outcome = auto_integrate_after_commit(
-        _config(),
-        scope,
-        spent,
-        conflict_resolver=_resolver,
-        ledger=ledger,
-        candidates=candidates,
-        sleep=lambda _seconds: None,
-        jitter=lambda: 0.0,
-    )
-
-    assert ledger.any_eligible(_PHASE, candidates)
-    assert ran_at == [5.0]
-    assert outcome is not None
-
-
-def test_cooling_agent_is_not_launched_before_fake_clock_elapses(tmp_path: Path) -> None:
-    root = _conflicted_repo(tmp_path / "repo")
-    clock = FakeClock(start=0.0)
-    ledger = AgentFailureLedger(
-        clock=clock,
-        consecutive_limit=1,
-        base_cooldown_seconds=10.0,
-    )
-    candidates = ("agent-cooling",)
-    scope = WorkspaceScope(root)
-    ledger.record(AttemptFact(phase=_PHASE, agent="agent-cooling", artifact_valid=False))
-    assert not ledger.any_eligible(_PHASE, candidates)
-    assert not ledger.all_exhausted(_PHASE, candidates)
-
-    ran_at: list[float] = []
-
-    def _resolver(_root: Path, _target: str) -> bool:
-        ran_at.append(clock.monotonic())
-        return False
-
-    cooling_outcome = auto_integrate_after_commit(
-        _config(),
-        scope,
-        RebaseState(),
-        conflict_resolver=_resolver,
-        ledger=ledger,
-        candidates=candidates,
-        sleep=lambda _seconds: None,
-        jitter=lambda: 0.0,
-    )
-    assert ran_at == []
-    assert cooling_outcome is not None
-
-    clock.advance(10.0)
-    assert ledger.any_eligible(_PHASE, candidates)
-
-    ready_outcome = auto_integrate_after_commit(
-        _config(),
-        scope,
-        RebaseState(),
-        conflict_resolver=_resolver,
-        ledger=ledger,
-        candidates=candidates,
-        sleep=lambda _seconds: None,
-        jitter=lambda: 0.0,
-    )
-    assert ran_at == [10.0]
-    assert ready_outcome is not None

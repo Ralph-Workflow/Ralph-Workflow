@@ -279,14 +279,70 @@ def is_recognized_secret_path(path: str) -> bool:
     return any(fnmatchcase(norm.name, pat) for pat in RECOGNIZED_SECRET_PATTERNS)
 
 
-def _get_entry_attr(entry: object, attr: str, default: object = None) -> object:
+def _entry_mapping(entry: object) -> dict[object, object] | None:
     if isinstance(entry, dict):
-        return entry.get(attr, default)
-    return getattr(entry, attr, default)
+        return entry
+    return None
+
+
+def _entry_path(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("path", "")
+    return getattr(entry, "path", "")
+
+
+def _entry_status(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("status", "")
+    return getattr(entry, "status", "")
+
+
+def _entry_size(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("size", 0)
+    return getattr(entry, "size", 0)
+
+
+def _entry_old_mode(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("old_mode", None)
+    return getattr(entry, "old_mode", None)
+
+
+def _entry_new_mode(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("new_mode", None)
+    return getattr(entry, "new_mode", None)
+
+
+def _entry_content(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("content", None)
+    return getattr(entry, "content", None)
+
+
+def _entry_is_binary(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("is_binary", None)
+    return getattr(entry, "is_binary", None)
+
+
+def _entry_base_tree_paths(entry: object) -> object:
+    mapping = _entry_mapping(entry)
+    if mapping is not None:
+        return mapping.get("base_tree_paths", None)
+    return getattr(entry, "base_tree_paths", None)
 
 
 def _is_binary_entry(entry: object, norm: PurePosixPath) -> bool:
-    is_bin = _get_entry_attr(entry, "is_binary", None)
+    is_bin = _entry_is_binary(entry)
     if is_bin is True:
         return True
     if is_bin is False:
@@ -382,8 +438,8 @@ def _is_path_collection(
 
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:
     for entry in entries:
-        paths = _get_entry_attr(entry, "base_tree_paths", None)
-        if isinstance(paths, (set, frozenset, list, tuple)):
+        paths = _entry_base_tree_paths(entry)
+        if isinstance(paths, set | frozenset | list | tuple):
             return frozenset(str(path) for path in paths)
     return None
 
@@ -394,7 +450,7 @@ def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
     if membership is not None:
         return len(membership)
     proposes_deletions = any(
-        _is_deleted(str(_get_entry_attr(entry, "status", ""))) for entry in materialized
+        _is_deleted(str(_entry_status(entry))) for entry in materialized
     )
     if proposes_deletions:
         return None
@@ -404,10 +460,10 @@ def resolve_immutable_tracked_count(entries: Iterable[object]) -> int | None:
 def _collect_deleted_paths(entries: list[object]) -> set[str]:
     deleted: set[str] = set()
     for entry in entries:
-        status = str(_get_entry_attr(entry, "status", ""))
+        status = str(_entry_status(entry))
         if not _is_deleted(status):
             continue
-        deleted.add(_normalized_repo_path(str(_get_entry_attr(entry, "path", ""))))
+        deleted.add(_normalized_repo_path(str(_entry_path(entry))))
     return deleted
 
 
@@ -571,7 +627,7 @@ def _evaluate_soft_entry(
 
     is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
     is_bin = _is_binary_entry(entry, norm)
-    new_mode = _get_entry_attr(entry, "new_mode", None)
+    new_mode = _entry_new_mode(entry)
     if (
         not deleted
         and is_manifest
@@ -649,13 +705,12 @@ def evaluate_tripwires(
     soft_findings: list[Finding] = []
 
     for entry in entries:
-        raw_path = str(_get_entry_attr(entry, "path", ""))
-        status = str(_get_entry_attr(entry, "status", ""))
-        size = int(str(_get_entry_attr(entry, "size", 0) or 0))
-        old_mode = _get_entry_attr(entry, "old_mode", None)
-        new_mode = _get_entry_attr(entry, "new_mode", None)
-        content = _get_entry_attr(entry, "content", None)
-        is_binary = bool(_get_entry_attr(entry, "is_binary", default=False))
+        raw_path = str(_entry_path(entry))
+        status = str(_entry_status(entry))
+        size = int(str(_entry_size(entry) or 0))
+        old_mode = _entry_old_mode(entry)
+        new_mode = _entry_new_mode(entry)
+        content = _entry_content(entry)
 
         norm = PurePosixPath(raw_path.replace("\\", "/"))
         norm_str = norm.as_posix()

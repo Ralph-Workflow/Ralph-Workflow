@@ -11,6 +11,8 @@ if TYPE_CHECKING:
 
 
 class CapabilitySet:
+    __slots__ = ("_values",)
+
     def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
         self._values = frozenset(values or ())
 

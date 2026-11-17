@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -108,6 +107,40 @@ if TYPE_CHECKING:
     from .watchdog_verdict import WatchdogVerdict
 
 
+class _ClassifyStuckProvider(Protocol):
+    def __call__(
+        self,
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
+    ) -> StuckKind: ...
+
+
+def _as_workspace_change_kind(value: object) -> WorkspaceChangeKind | None:
+    if isinstance(value, WorkspaceChangeKind):
+        return value
+    return None
+
+
+def _as_workspace_kind_str(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _coerce_workspace_change_kind(kind: WorkspaceChangeKind | str | None) -> WorkspaceChangeKind:
+    if kind is None:
+        return WorkspaceChangeKind.OTHER
+    as_enum = _as_workspace_change_kind(kind)
+    if as_enum is not None:
+        return as_enum
+    as_str = _as_workspace_kind_str(kind)
+    if as_str is not None:
+        return WorkspaceChangeKind(as_str)
+    return WorkspaceChangeKind.OTHER
+
+
 EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
@@ -140,71 +173,67 @@ if _actual != EXPECTED_FIRE_REASONS:
     )
 
 
-class _ClassifyStuckProvider(Protocol):
-    def __call__(
-        self,
-        *,
-        now: float,
-        idle_elapsed: float,
-        corroboration: CorroborationSnapshot | None,
-    ) -> StuckKind: ...
-
-
-@dataclass
 class IdleWatchdog:
-    _config: TimeoutPolicy
-    _clock: Clock
-    _last_activity: float = field(init=False)
-    _session_started_at: float = field(init=False)
-    _last_meaningful_output_at: float | None = field(default=None, init=False)
-    _has_meaningful_output: bool = field(default=False, init=False)
-    _any_output_count: int = field(default=0, init=False)
-    _observed_output_bytes: int = field(default=0, init=False)
-    _captured_session_id: str | None = field(default=None, init=False)
-    _process_alive: bool = field(default=True, init=False)
-    _process_exit_observed_at: float | None = field(default=None, init=False)
-    _invocation_started_at: float | None = field(default=None, init=False)
-    _waiting_on_child_started_at: float | None = field(default=None, init=False)
-    _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
-    _strictly_stuck_run_started_at: float | None = field(default=None, init=False)
-    _in_drain_window: bool = field(default=False, init=False)
-    _drain_started_at: float | None = field(default=None, init=False)
-    _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
-    _last_deferred_kind: StuckKind | None = field(default=None, init=False)
-    _last_deferred_log_at: dict[tuple[str, str], float] = field(default_factory=dict, init=False)
-    _last_any_deferred_log_at: dict[str, float] = field(default_factory=dict, init=False)
-    _last_evidence_deferral_log_at: dict[str, float] = field(default_factory=dict, init=False)
-    _last_alive_by: AliveBy | None = field(default=None, init=False)
-    _last_waiting_status_at: float | None = field(default=None, init=False)
-    _suspicion_announced_for_run: bool = field(default=False, init=False)
-    _last_tool_result_at: float | None = field(default=None, init=False)
-    _awaiting_post_tool_result_progression: bool = field(default=False, init=False)
-    _mcp_tool_call_count: int = field(default=0, init=False)
-    _last_mcp_tool_call_at: float | None = field(default=None, init=False)
-    _subagent_progress_count: int = field(default=0, init=False)
-    _last_subagent_progress_at: float | None = field(default=None, init=False)
-    _last_subagent_progress_emit_at: float | None = field(default=None, init=False)
-    _subagent_output_count: int = field(default=0, init=False)
-    _last_subagent_output_at: float | None = field(default=None, init=False)
-    _workspace_event_count_internal: int = field(default=0, init=False)
-    _last_workspace_event_at: float | None = field(default=None, init=False)
-    _last_workspace_event_weight: float = field(default=0.0, init=False)
-    _subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = field(
-        default_factory=OrderedDict, init=False
+    __slots__ = (
+        "_any_output_count",
+        "_awaiting_post_tool_result_progression",
+        "_captured_session_id",
+        "_classify_quiet_provider",
+        "_classify_stuck_provider",
+        "_clock",
+        "_config",
+        "_connectivity_state_provider",
+        "_corroborator",
+        "_cumulative_waiting_on_child_seconds",
+        "_default_subagent_activity_listener",
+        "_drain_started_at",
+        "_entry_corroboration",
+        "_evaluate_tick_active",
+        "_evicted_worker_tombstones",
+        "_has_meaningful_output",
+        "_in_drain_window",
+        "_invocation_started_at",
+        "_is_waiting_state",
+        "_last_activity",
+        "_last_activity_only_status_at",
+        "_last_alive_by",
+        "_last_any_deferred_log_at",
+        "_last_deferred_kind",
+        "_last_deferred_log_at",
+        "_last_evidence_deferral_log_at",
+        "_last_fire_reason",
+        "_last_mcp_tool_call_at",
+        "_last_meaningful_output_at",
+        "_last_progress_fingerprint",
+        "_last_subagent_output_at",
+        "_last_subagent_progress_at",
+        "_last_subagent_progress_description",
+        "_last_subagent_progress_emit_at",
+        "_last_tool_result_at",
+        "_last_verdict",
+        "_last_waiting_status_at",
+        "_last_workspace_event_at",
+        "_last_workspace_event_weight",
+        "_listener",
+        "_log",
+        "_mcp_tool_call_count",
+        "_observed_output_bytes",
+        "_process_alive",
+        "_process_exit_observed_at",
+        "_process_monitor",
+        "_repetition_tracker",
+        "_session_started_at",
+        "_stall_active",
+        "_strictly_stuck_run_started_at",
+        "_subagent_output_captures",
+        "_subagent_output_count",
+        "_subagent_progress_count",
+        "_suspicion_announced_for_run",
+        "_tick_corroboration",
+        "_waiting_on_child_started_at",
+        "_workspace_event_count_internal",
+        "_workspace_kind_counts",
     )
-    _evicted_worker_tombstones: OrderedDict[str, None] = field(
-        default_factory=OrderedDict, init=False
-    )
-    _workspace_kind_counts: dict[str, int] = field(default_factory=dict, init=False)
-    _is_waiting_state: bool = field(default=False, init=False)
-    _connectivity_state_provider: Callable[[], str | None] | None = field(default=None, init=False)
-    _classify_quiet_provider: Callable[[], AgentExecutionState] | None = field(
-        default=None, init=False
-    )
-    _classify_stuck_provider: _ClassifyStuckProvider | None = field(default=None, init=False)
-    _tick_corroboration: CorroborationSnapshot | None = field(default=None, init=False)
-    _evaluate_tick_active: bool = field(default=False, init=False)
-    _stall_active: bool = field(default=False, init=False)
 
     def __init__(
         self,
@@ -225,42 +254,42 @@ class IdleWatchdog:
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
-        self._invocation_started_at = None
-        self._last_meaningful_output_at = None
+        self._invocation_started_at: float | None = None
+        self._last_meaningful_output_at: float | None = None
         self._has_meaningful_output = False
         self._any_output_count = 0
         self._observed_output_bytes = 0
-        self._captured_session_id = None
+        self._captured_session_id: str | None = None
         self._process_alive = True
-        self._process_exit_observed_at = None
-        self._waiting_on_child_started_at = None
+        self._process_exit_observed_at: float | None = None
+        self._waiting_on_child_started_at: float | None = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
-        self._drain_started_at = None
-        self._last_fire_reason = None
+        self._drain_started_at: float | None = None
+        self._last_fire_reason: WatchdogFireReason | None = None
         self._last_activity_only_status_at: float | None = None
-        self._last_deferred_kind = None
-        self._last_deferred_log_at = {}
-        self._last_any_deferred_log_at = {}
-        self._last_evidence_deferral_log_at = {}
-        self._last_waiting_status_at = None
+        self._last_deferred_kind: StuckKind | None = None
+        self._last_deferred_log_at: dict[tuple[str, str], float] = {}
+        self._last_any_deferred_log_at: dict[str, float] = {}
+        self._last_evidence_deferral_log_at: dict[str, float] = {}
+        self._last_waiting_status_at: float | None = None
         self._suspicion_announced_for_run = False
-        self._last_tool_result_at = None
+        self._last_tool_result_at: float | None = None
         self._awaiting_post_tool_result_progression = False
         self._mcp_tool_call_count = 0
-        self._last_mcp_tool_call_at = None
+        self._last_mcp_tool_call_at: float | None = None
         self._subagent_progress_count = 0
-        self._last_subagent_progress_at = None
+        self._last_subagent_progress_at: float | None = None
         self._last_subagent_progress_description: str | None = None
         self._default_subagent_activity_listener: WaitingStatusListener | None = None
         self._subagent_output_count = 0
-        self._last_subagent_output_at = None
+        self._last_subagent_output_at: float | None = None
         self._subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = OrderedDict()
         self._evicted_worker_tombstones: OrderedDict[str, None] = OrderedDict()
         self._workspace_event_count_internal = 0
-        self._last_workspace_event_at = None
+        self._last_workspace_event_at: float | None = None
         self._last_workspace_event_weight = 0.0
-        self._workspace_kind_counts = {}
+        self._workspace_kind_counts: dict[str, int] = {}
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
             clock,
@@ -270,10 +299,15 @@ class IdleWatchdog:
         )
         self._last_progress_fingerprint: str | None = None
         self._is_waiting_state = False
-        self._classify_quiet_provider = None
-        self._classify_stuck_provider = None
+        self._classify_quiet_provider: Callable[[], AgentExecutionState] | None = None
+        self._classify_stuck_provider: _ClassifyStuckProvider | None = None
         self._stall_active = False
         self._last_verdict: WatchdogVerdict | None = None
+        self._last_alive_by: AliveBy | None = None
+        self._evaluate_tick_active = False
+        self._tick_corroboration: CorroborationSnapshot | None = None
+        self._strictly_stuck_run_started_at: float | None = None
+        self._last_subagent_progress_emit_at: float | None = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -691,11 +725,7 @@ class IdleWatchdog:
         weight: float = 1.0,
     ) -> None:
         del path
-        workspace_kind = WorkspaceChangeKind.OTHER
-        if isinstance(kind, WorkspaceChangeKind):
-            workspace_kind = kind
-        elif isinstance(kind, str):
-            workspace_kind = WorkspaceChangeKind(kind)
+        workspace_kind = _coerce_workspace_change_kind(kind)
         activity_record_workspace_event(self, now, kind=workspace_kind, weight=weight)
 
     @property
@@ -715,7 +745,8 @@ class IdleWatchdog:
             self._last_subagent_progress_at,
             self._last_subagent_output_at,
         ]
-        last_at = max((t for t in candidates if t is not None), default=None)
+        present = [t for t in candidates if t is not None]
+        last_at: float | None = max(present) if present else None
         counter = self._subagent_progress_count + self._subagent_output_count
         return self._channel_summary(
             ChannelName.SUBAGENT_OUTPUT,
@@ -745,13 +776,10 @@ class IdleWatchdog:
         monitor: ProcessMonitor | None = self._process_monitor
         if monitor is None:
             return 0
-        for getter_name in ("spawned_subagent_count", "live_subagent_count"):
-            getter: Callable[[], int] | None = getattr(monitor, getter_name, None)
-            if getter is None:
-                continue
-            with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
-                result: int = getter()
-                return int(result)
+        with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
+            return int(monitor.spawned_subagent_count())
+        with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
+            return int(monitor.live_subagent_count())
         return 0
 
     @staticmethod
@@ -814,7 +842,7 @@ class IdleWatchdog:
         if self._corroborator is None:
             return CorroborationSnapshot()
         try:
-            snapshot = cast("object", self._corroborator())
+            snapshot: object = self._corroborator()
         except (OSError, RuntimeError, ValueError, AttributeError):
             self._log.debug("idle watchdog: corroborator raised (suppressed)")
             return CorroborationSnapshot()

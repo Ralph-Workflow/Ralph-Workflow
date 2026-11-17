@@ -305,7 +305,9 @@ def _start_saved_target_action(
     retained = record.with_transition(MARK_RESOLVING_REBASE, resolving_rebase=True)
     write_record(root, retained)
     result = rebase_onto(record.pre_target_sha, repo_root=owner)
-    if isinstance(result, (RebaseSuccess, RebaseNoOp)) and not rebase_in_progress_at(owner):
+    if (
+        any(isinstance(result, _t) for _t in (RebaseSuccess, RebaseNoOp))
+    ) and not rebase_in_progress_at(owner):
         head = get_head_sha(owner)
         if head is not None and ancestry_state(owner, record.pre_target_sha, head) is True:
             completion = complete_commit(

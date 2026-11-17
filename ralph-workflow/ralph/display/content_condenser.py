@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -9,6 +8,7 @@ if TYPE_CHECKING:
 
 from rich.cells import cell_len
 
+from ralph.config import _env as config_env
 from ralph.display.long_content_summary import (
     build_ai_summary,
     build_headline_or_placeholder,
@@ -45,7 +45,7 @@ class CondenseOptions:
 
 
 def _build_summaries(text: str, env: Mapping[str, str] | None) -> tuple[str | None, str | None]:
-    _env = env if env is not None else os.environ
+    _env = env if env is not None else config_env.environ()
     if should_summarize(text, _env):
         return (
             build_headline_or_placeholder(text, max_chars=200),

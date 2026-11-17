@@ -2,6 +2,8 @@ from __future__ import annotations
 
 
 class CycleCap:
+    __slots__ = ("_cap",)
+
     def __init__(self, cap: int) -> None:
         if cap < 1:
             raise ValueError(f"CycleCap must be >= 1, got {cap}")
@@ -15,7 +17,4 @@ class CycleCap:
         return count >= self._cap
 
     def exit_reason(self, count: int, last_category: str, last_reason: str) -> str:
-        return (
-            f"recovery cycle cap {self._cap} exceeded after {count} recoveries; "
-            f"last failure category={last_category}: {last_reason}"
-        )
+        return f"recovery cycle cap {self._cap} exceeded after {count} recoveries; last failure category={last_category}: {last_reason}"

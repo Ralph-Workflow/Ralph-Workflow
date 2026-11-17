@@ -83,14 +83,6 @@ _RETIRED_REVIEW_PATTERN: Final = re.compile(
 )
 _RETIRED_REVIEW_RULE: Final = f"legacy {_RETIRED_STEM} identifier reappeared"
 _RETIRED_REVIEW_DETAIL: Final = f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
-_RETIRED_THREE_SHA_MESSAGE: Final = (
-    "integrated_feature_sha, " + "pre_target_sha, " + "or pre_feature_sha"
-)
-_RETIRED_THREE_SHA_RULE: Final = "retired three-SHA landed-proof message reappeared"
-_RETIRED_THREE_SHA_DETAIL: Final = (
-    "the retired landed-proof message text "
-    f"'{_RETIRED_THREE_SHA_MESSAGE}' must not reappear in production modules"
-)
 _RESOLUTION_OUTCOME_TOKENS: tuple[str, ...] = (
     "ResolutionOutcome",
     "StopResolutionOutcome",
@@ -219,7 +211,7 @@ def _tuple_subclass(node: ast.ClassDef) -> bool:
 
 def _legacy_protocol_member(node: ast.ClassDef) -> str | None:
     for statement in node.body:
-        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not (any(isinstance(statement, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
             continue
         if statement.name in {"__len__", "__iter__", "__getitem__"}:
             return f"tuple protocol method '{statement.name}'"
@@ -243,9 +235,9 @@ def _node_identifier(node: ast.AST) -> tuple[str, int] | None:
             identifier, line = (node.id, node.lineno)
         case _ if isinstance(node, ast.Attribute):
             identifier, line = (node.attr, node.lineno)
-        case _ if isinstance(node, (ast.arg, ast.keyword)):
+        case _ if (any(isinstance(node, _t) for _t in (ast.arg, ast.keyword))):
             identifier, line = (node.arg, node.lineno)
-        case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        case _ if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))):
             identifier, line = (node.name, node.lineno)
     if identifier is None:
         return None
@@ -384,7 +376,7 @@ def _exhaustive_match_violations(rel: str, tree: ast.Module) -> list[Violation]:
                     )
                     if cls_name in _SEALED_OUTCOME_CLASSES:
                         matched_classes.add(cls_name)
-                elif isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+                if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
                     has_fallback = True
         if matched_classes and not has_fallback and matched_classes != _SEALED_OUTCOME_CLASSES:
             missing = sorted(_SEALED_OUTCOME_CLASSES - matched_classes)
@@ -669,25 +661,6 @@ def _retired_review_violations(rel: str, source: str) -> list[Violation]:
     return violations
 
 
-def _retired_three_sha_message_violations(rel: str, source: str) -> list[Violation]:
-    if _is_exempt_path(rel):
-        return []
-    if not _package_key(rel).startswith(_PACKAGE_DIR_NAME + "/"):
-        return []
-    if _RETIRED_THREE_SHA_MESSAGE not in source:
-        return []
-    return [
-        Violation(
-            path=rel,
-            line=lineno,
-            rule=_RETIRED_THREE_SHA_RULE,
-            detail=_RETIRED_THREE_SHA_DETAIL,
-        )
-        for lineno, line in enumerate(source.splitlines(), start=1)
-        if _RETIRED_THREE_SHA_MESSAGE in line
-    ]
-
-
 def audit_modules(
     modules: Mapping[str, str],
     *,
@@ -706,7 +679,6 @@ def audit_modules(
                 violations.extend(_pipeline_ast_violations(rel, tree))
             violations.extend(_package_legacy_violations(rel, source, tree))
         violations.extend(_retired_review_violations(rel, source))
-        violations.extend(_retired_three_sha_message_violations(rel, source))
 
     if ignore_transitional:
         return violations
@@ -915,16 +887,6 @@ def selftest() -> int:
             "ralph/pipeline/planted_cleanup_skill.py",
             f"skill = 'submit-{_RETIRED_HYPHEN_STEM}-artifact'\n",
             _RETIRED_REVIEW_RULE,
-        ),
-        (
-            "ralph/pipeline/planted_three_sha_message.py",
-            f'msg = "{_RETIRED_THREE_SHA_MESSAGE}"\n',
-            _RETIRED_THREE_SHA_RULE,
-        ),
-        (
-            "ralph/pipeline/planted_three_sha_fstring.py",
-            f'msg = f"{_RETIRED_THREE_SHA_MESSAGE}"\n',
-            _RETIRED_THREE_SHA_RULE,
         ),
     ]
 

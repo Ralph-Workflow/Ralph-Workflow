@@ -4,8 +4,9 @@ import contextlib
 import sqlite3
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
+from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore.handlers import ExploreIndex
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     if latest is not None:
         try:
             fin_obj: object = latest["finished_at"]
-            if isinstance(fin_obj, (int, float)):
+            if is_int_or_float(fin_obj):
                 finished_at = float(fin_obj)
                 if finished_at > 0:
                     last_refresh_age = max(0.0, time.time() - finished_at)
@@ -99,10 +100,11 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
     ):
         cached = None
     else:
-        cached = cast(
-            "tuple[tuple[int, int, float | None, int], dict[str, object]]",
-            raw_cached,
-        )
+        signature_obj, block_obj = raw_cached
+        if not isinstance(signature_obj, tuple) or not isinstance(block_obj, dict):
+            cached = None
+        else:
+            cached = (signature_obj, dict(block_obj))
     signature = (
         stale_paths_count,
         int(finished_at) if finished_at is not None else 0,

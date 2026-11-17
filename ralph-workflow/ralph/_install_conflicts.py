@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import shlex
 from enum import StrEnum
-from os import environ as process_environ
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph._existing_install import ExistingInstall
+from ralph.config import _env as config_env
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.update_check._install_kind import InstallKind
 from ralph.update_check.environment import detect_install
@@ -148,4 +148,4 @@ def prompt_for_conflict(
 
 
 def real_environment() -> Mapping[str, str]:
-    return process_environ
+    return config_env.environ()

@@ -318,7 +318,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "waiting_notification_key": "gate:stop1:primary:sha",
         "resolution_terminal_marker": (
             ("stop1", ("primary",), "sha"),
-            "complete_in_place",
+            "NeedsOperator",
             "ralph --resume",
         ),
     }

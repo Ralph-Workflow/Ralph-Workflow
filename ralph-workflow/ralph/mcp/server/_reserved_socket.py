@@ -4,7 +4,7 @@ import os
 import socket
 import stat
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -19,9 +19,14 @@ def _reserve_listening_socket() -> tuple[str, int, socket.socket]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     sock.listen(128)
-    host = cast("str", sock.getsockname()[0])
-    port = cast("int", sock.getsockname()[1])
-    return host, port, sock
+    sockname = sock.getsockname()
+    host_raw: object = sockname[0]
+    port_raw: object = sockname[1]
+    if not isinstance(host_raw, str):
+        raise TypeError(f"expected socket host str, got {type(host_raw).__name__}")
+    if not isinstance(port_raw, int) or isinstance(port_raw, bool):
+        raise TypeError(f"expected socket port int, got {type(port_raw).__name__}")
+    return host_raw, port_raw, sock
 
 
 def _validate_inherited_fd(fd_int: int, env_name: str = MCP_INHERITED_FD_ENV) -> bool:

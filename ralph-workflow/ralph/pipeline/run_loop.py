@@ -10,7 +10,7 @@ import uuid
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeGuard, runtime_checkable
 
 from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
@@ -30,6 +30,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.git.proposal_seal import seal_baseline
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -116,13 +117,11 @@ from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangePr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Protocol
 
     from ralph.agents.clock import Clock
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline._config_failure_fingerprint import ConfigFileFingerprintWatcher
     from ralph.pipeline._integration_executor import RebaseContinuationExecutor
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
@@ -133,10 +132,9 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.integration_decision import CleanupLadderRung
-    from ralph.pipeline.integration_resolution_types import (
+    from ralph.pipeline.integration_resolution import (
         IntegrationResolutionVerdict,
     )
-    from ralph.pipeline.ladder_step_result import LadderStepResult
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -148,56 +146,85 @@ if TYPE_CHECKING:
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.workspace.scope import WorkspaceScope
 
-    class _PipelineSubscriberProtocol(Protocol):
-        def notify(self, state: PipelineState) -> None: ...
 
-    class _RegistryLike(Protocol):
-        def get(self, name: str) -> AgentConfig | None: ...
+@runtime_checkable
+class _PipelineSubscriberProtocol(Protocol):
+    def notify(self, state: PipelineState) -> None: ...
 
-    class _RunPipelineStepFn(Protocol):
-        def __call__(
-            self,
-            *,
-            state: PipelineState,
-            policy_bundle: PolicyBundle,
-            workspace_scope: WorkspaceScope,
-            config: UnifiedConfig,
-            display: ParallelDisplay,
-            display_context: DisplayContext,
-            verbosity: Verbosity,
-            registry: _RegistryLike,
-            pipeline_subscriber: _PipelineSubscriberProtocol | None,
-            recovery_controller: RecoveryController,
-            config_path: Path | None,
-            cli_overrides: dict[str, object],
-            _monitor_stop_cb: Callable[[], None] | None,
-            pipeline_deps: PipelineDeps | None = None,
-            _cycle_sample_box: list[float | None] | None = None,
-            _development_sample_box: list[float | None] | None = None,
-        ) -> PipelineState | int: ...
 
-    class _ConnectivityMonitorLike(Protocol):
-        @property
-        def current_state(self) -> ConnectivityState: ...
+@runtime_checkable
+class _RegistryLike(Protocol):
+    def get(self, name: str) -> AgentConfig | None: ...
 
-        def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
-    class _DisplayContextOwner(Protocol):
-        _ctx: DisplayContext
+class _ConnectivityMonitorLike(Protocol):
+    @property
+    def current_state(self) -> ConnectivityState: ...
 
-    class _PhaseAwareDisplay(Protocol):
-        def begin_phase(self, phase: str) -> None: ...
+    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
-    class _RunEndDisplay(Protocol):
-        def emit_run_end(
-            self,
-            *,
-            phase: str,
-            total_agent_calls: int,
-            pr_url: str | None = None,
-            exit_trigger: str | None = None,
-            outer_dev_iteration: int | None = None,
-        ) -> None: ...
+
+@runtime_checkable
+class _DisplayContextOwner(Protocol):
+    _ctx: DisplayContext
+
+
+@runtime_checkable
+class _PhaseAwareDisplay(Protocol):
+    def begin_phase(self, phase: str) -> None: ...
+
+
+@runtime_checkable
+class _RunEndDisplay(Protocol):
+    def emit_run_end(
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int,
+        pr_url: str | None = None,
+        exit_trigger: str | None = None,
+        outer_dev_iteration: int | None = None,
+    ) -> None: ...
+
+
+def _is_text(value: object) -> TypeGuard[str]:
+    return isinstance(value, str)
+
+
+def _is_plain_int(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_positive_interval(value: object) -> TypeGuard[int | float]:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and float(value) > 0.0
+    )
+
+
+def _is_registry_like(value: object) -> TypeGuard[_RegistryLike]:
+    return isinstance(value, _RegistryLike)
+
+
+def _is_display_context_owner(value: object) -> TypeGuard[_DisplayContextOwner]:
+    return isinstance(value, _DisplayContextOwner)
+
+
+def _is_phase_aware_display(value: object) -> TypeGuard[_PhaseAwareDisplay]:
+    return isinstance(value, _PhaseAwareDisplay)
+
+
+def _is_run_end_display(value: object) -> TypeGuard[_RunEndDisplay]:
+    return isinstance(value, _RunEndDisplay)
+
+
+def _is_pipeline_subscriber(value: object) -> TypeGuard[PipelineSubscriber]:
+    return isinstance(value, PipelineSubscriber)
+
+
+def _is_exact_rebase_state(value: object) -> TypeGuard[RebaseState]:
+    return isinstance(value, RebaseState) and value.__class__ is RebaseState
 
 
 @dataclass
@@ -423,12 +450,10 @@ def _setup_connectivity_monitor(
             mon_loop.run_until_complete(real_monitor.start())
             mon_loop.run_forever()
         finally:
-            pending_tasks = cast("set[asyncio.Task[object]]", asyncio.all_tasks(mon_loop))
-            for task in pending_tasks:
-                task.cancel()
-            if pending_tasks:
-                mon_loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
-            mon_loop.close()
+            with suppress(Exception):
+                mon_loop.run_until_complete(real_monitor.stop())
+            with suppress(Exception):
+                mon_loop.close()
 
     mon_thread = threading.Thread(target=_run_mon_thread, daemon=True, name="connectivity-probe")
     mon_thread.start()
@@ -496,14 +521,12 @@ def _setup_active_display(
         pass
 
     ctx_holder: list[DisplayContext] | None = None
-    if hasattr(active, "_ctx"):
+    if _is_display_context_owner(active):
         ctx_holder = [active._ctx]
+        owned_display = active
         _stop = _runner_module.install_width_refresher(
             ctx_holder,
-            on_refresh=lambda ctx: _sync_live_display_context(
-                cast("_DisplayContextOwner", active),
-                ctx,
-            ),
+            on_refresh=lambda ctx: _sync_live_display_context(owned_display, ctx),
         )
 
     _stop = compose_display_stop(_stop, active)
@@ -520,7 +543,7 @@ def _emit_run_start(
         return
     with suppress(Exception):
         _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
-        _prompt_path: str | None = cast("str | None", _prompt_path_raw)
+        _prompt_path: str | None = _prompt_path_raw if _is_text(_prompt_path_raw) else None
         _dev_para = next(
             (
                 p.parallelization
@@ -543,8 +566,8 @@ def _emit_run_start(
         target_worktree_path = _target_worktree_path(ctx)
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
-            developer_agent=cast("str | None", _dev_agent_raw),
-            developer_model=cast("str | None", _dev_model_raw),
+            developer_agent=_dev_agent_raw if _is_text(_dev_agent_raw) else None,
+            developer_model=_dev_model_raw if _is_text(_dev_model_raw) else None,
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -577,9 +600,8 @@ def log_waiting_state(
     ctx.last_waiting_state_phase = phase_str
     chain = state.chain_for_phase(state.phase)
     agent_cooldowns: list[tuple[str, int, int]] = []
-    controller: RecoveryController | None = getattr(ctx, "controller", None)
-    if chain is not None and controller is not None:
-        agent_cooldowns = controller.waiting_state_payload(phase_str, chain.agents)
+    if chain is not None:
+        agent_cooldowns = ctx.controller.waiting_state_payload(phase_str, chain.agents)
 
     logger.bind(recovery=True).info(
         "Phase '{phase}' enters WAITING state: all agents unavailable. "
@@ -613,9 +635,8 @@ def _log_resumed_state(
     ctx.last_waiting_state_phase = None
     chain = state.chain_for_phase(state.phase)
     agents_now_available: list[str] = []
-    controller: RecoveryController | None = getattr(ctx, "controller", None)
-    if chain is not None and controller is not None:
-        agents_now_available = controller.agents_now_available(phase_str, chain.agents)
+    if chain is not None:
+        agents_now_available = ctx.controller.agents_now_available(phase_str, chain.agents)
     logger.bind(recovery=True).info(
         "Phase '{phase}' RESUMED: cooldown expired. "
         "Agents now available: {agents}. "
@@ -890,7 +911,7 @@ def _run_startup_integration(
                 else ()
             ),
         )
-        prior_rebase = state if state is not None and type(state) is RebaseState else RebaseState()
+        prior_rebase = state if state is not None and _is_exact_rebase_state(state) else RebaseState()
         from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 
         outcome = integrate_before_planning(
@@ -1054,12 +1075,20 @@ def _resolve_registry(
     registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
 ) -> _RegistryLike:
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+        registry = pipeline_deps.registry_factory(config)
+        if _is_registry_like(registry):
+            return registry
     if pro_hooks is not None and pro_hooks.registry_factory is not None:
-        return cast("_RegistryLike", pro_hooks.registry_factory(config))
+        registry = pro_hooks.registry_factory(config)
+        if _is_registry_like(registry):
+            return registry
     if registry_factory is not None:
         return registry_factory(config)
-    return _runner_module.AgentRegistry.from_config(config)
+    from_config = _runner_module.AgentRegistry.from_config(config)
+    if _is_registry_like(from_config):
+        return from_config
+    msg = "agent registry factory did not produce a registry with get()"
+    raise TypeError(msg)
 
 
 def _with_counter_overrides(
@@ -1380,12 +1409,14 @@ def _apply_legacy_heartbeat_override(
         return default_client
     if _module_legacy_obj is _start_pro_marker_watcher or not callable(_module_legacy_obj):
         return default_client
-    _module_legacy = cast(
-        "Callable[[Path], ProHeartbeatClient | None]",
-        _module_legacy_obj,
-    )
-    patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_root)
-    return patched_heartbeat if patched_heartbeat is not None else default_client
+    patched_heartbeat_raw: object = _module_legacy_obj(workspace_root)
+    if patched_heartbeat_raw is None:
+        return default_client
+    from ralph.pro_support.heartbeat import ProHeartbeatClient as _RuntimeHeartbeatClient
+
+    if isinstance(patched_heartbeat_raw, _RuntimeHeartbeatClient):
+        return patched_heartbeat_raw
+    return default_client
 
 
 def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
@@ -1394,7 +1425,7 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
         "agent_waiting_status_interval_seconds",
         WAITING_STATUS_INTERVAL_SECONDS,
     )
-    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) > 0.0:
+    if _is_positive_interval(raw):
         return float(raw)
     return WAITING_STATUS_INTERVAL_SECONDS
 
@@ -1415,15 +1446,12 @@ def _apply_startup_rebase_outcomes(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.state import PipelineState as RuntimePipelineState
 
     try:
         candidate_deps = ctx.pipeline_deps
     except AttributeError:
         candidate_deps = None
     pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
-    if candidate_deps is not None and not isinstance(cast("object", state), RuntimePipelineState):
-        return state
     if pipeline_deps is not None and pipeline_deps.startup_rebase_resolver is not None:
         injected_rebase = pipeline_deps.startup_rebase_resolver(ctx.config, ctx.workspace_scope)
         if injected_rebase is None or injected_rebase == state.rebase:
@@ -1625,12 +1653,14 @@ def _cold_capped_escalation_due(
     ledger: AgentFailureLedger | None = None,
     candidates: tuple[str, ...] = (),
 ) -> bool:
-    del rebase, identity
-    if ledger is None or not candidates:
-        return False
-    if ledger.any_eligible("rebase_conflict_resolution", candidates):
-        return False
-    if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
+    if ledger is not None and candidates:
+        if ledger.any_eligible("rebase_conflict_resolution", candidates):
+            return False
+        if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
+            return False
+    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1690,6 +1720,8 @@ def _run_owned_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
     target = _integration_target_or_none(ctx)
     if not target:
         return False
@@ -1718,13 +1750,19 @@ def _run_owned_integration_conflict_resolution(
         return _run_cold_capped_escalation(ctx, target, rebase)
     all_exhausted = (
         ledger is not None
-        and bool(installed)
+        and installed
         and ledger.all_exhausted("rebase_conflict_resolution", installed)
     )
     allowed = (
-        ledger is None
-        or not installed
-        or ledger.any_eligible("rebase_conflict_resolution", installed)
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
     )
     if rebase is not None and (all_exhausted or not allowed):
         logger.warning(
@@ -2247,41 +2285,12 @@ def _resume_planning_after_commit(
     return state
 
 
-def _continue_pipeline_with_planning_handoff(
-    state: PipelineState,
-    ctx: LoopContext,
-    root: Path,
-) -> PipelineState:
-    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
-    from ralph.pipeline.planning_handoff_continuation import continue_with_planning_handoff
-
-    try:
-        continuation = continue_with_planning_handoff(
-            root,
-            ledger=AttemptLedger(root),
-            state=state,
-            pipeline_policy=ctx.policy_bundle.pipeline,
-        )
-    except (OSError, RuntimeError, ValueError, KeyError) as handoff_exc:
-        logger.warning("planning handoff continuation failed: {}", handoff_exc)
-        return state
-    if continuation is None or continuation.state is None:
-        return state
-    with suppress(Exception):
-        emit_integration_warn_line(
-            ctx.active_display,
-            f"last-resort planning hand-over: continuing into {continuation.next_phase}",
-        )
-    _save_recovered_rebase_checkpoint(continuation.state, ctx)
-    return continuation.state
-
-
 def _execute_owner_ladder_rung(
     ctx: LoopContext,
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> LadderStepResult | None:
+) -> None:
     from ralph.git.merge import observe_branch_sha
     from ralph.pipeline._integration_owner_seam import execute_planning_ladder_rung
     from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -2301,9 +2310,9 @@ def _execute_owner_ladder_rung(
         )
     except (OSError, RuntimeError, ValueError, KeyError) as rung_exc:
         logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)
-        return None
+        return
     if result is None:
-        return None
+        return
     message = f"cleanup-ladder rung {result.rung.name.lower()} {result.outcome}: {result.reason}"
     if result.outcome in ("failed", "terminal"):
         logger.warning("{}", message)
@@ -2311,7 +2320,6 @@ def _execute_owner_ladder_rung(
         logger.info("{}", message)
     with suppress(Exception):
         emit_integration_warn_line(ctx.active_display, message)
-    return result
 
 
 def execute_owner_ladder_rung(
@@ -2319,10 +2327,11 @@ def execute_owner_ladder_rung(
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> LadderStepResult | None:
+) -> None:
     if _execute_owner_ladder_rung is not _execute_owner_ladder_rung_dispatch:
-        return _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
-    return _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+        _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+        return
+    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
 
 
 def _execute_owner_ladder_rung_dispatch(
@@ -2330,10 +2339,11 @@ def _execute_owner_ladder_rung_dispatch(
     root: Path,
     sync_verdict: PlanningSyncVerdict,
     target: str | None,
-) -> LadderStepResult | None:
+) -> None:
     if execute_owner_ladder_rung is not _public_execute_owner_ladder_rung_dispatch:
-        return execute_owner_ladder_rung(ctx, root, sync_verdict, target)
-    return _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+        execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+        return
+    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
 
 
 _execute_owner_ladder_rung_impl = _execute_owner_ladder_rung
@@ -2355,9 +2365,7 @@ def _dispatch_owner_ladder_rung(
         return executed_rung, previous_action, "fall"
     if sync_verdict.ladder_rung is executed_rung:
         return executed_rung, previous_action, "break"
-    result = _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
-    if result is not None and result.reason.startswith("autonomous-transition:planning"):
-        return sync_verdict.ladder_rung, sync_verdict.action, "break"
+    _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
     return sync_verdict.ladder_rung, sync_verdict.action, "continue"
 
 
@@ -2474,13 +2482,6 @@ def _ensure_planning_in_sync(
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
         )
-        state = _continue_pipeline_with_planning_handoff(state, ctx, root)
-        if (
-            _is_planning_entry(state, ctx)
-            and isinstance(state.last_error, str)
-            and "last-resort planning handoff:" in state.last_error
-        ):
-            return state, None
         if rung_step == "break":
             break
         if rung_step == "continue":
@@ -2541,7 +2542,7 @@ _public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 
     if rebase is None:
         return True
@@ -2557,13 +2558,6 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
-    if rebase.last_target != target or not identity.matches(rebase):
-        logger.info(
-            "integration resolution: the recorded exhaustion does not bind the conflict "
-            "now on disk for '{}'; giving the resolver another attempt",
-            target,
-        )
-        return False
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
     installed = tuple(
@@ -2577,11 +2571,23 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    if (
-        installed
-        and ledger is not None
-        and ledger.any_eligible("rebase_conflict_resolution", installed)
-    ):
+    allowed = (
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
+    )
+    can_resolve = allowed and (
+        ledger is None
+        or not installed
+        or not ledger.all_exhausted("rebase_conflict_resolution", installed)
+    )
+    if can_resolve:
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",
@@ -2671,10 +2677,7 @@ def _handoff_retained_failure(
         ):
             _repair_pending_merge_commit(ctx, failure)
         else:
-            config = cast(
-                "UnifiedConfig | None",
-                getattr(ctx, "config", None),
-            )
+            config = ctx.config
             resolved = _resolve_retained_conflict(ctx)
             recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config)
             if (
@@ -2699,10 +2702,7 @@ def _handoff_retained_failure(
         RecordReadOutcomeDisposition.ABSENT,
         RecordReadOutcomeDisposition.UNREADABLE,
     ):
-        config_absent = cast(
-            "UnifiedConfig | None",
-            getattr(ctx, "config", None),
-        )
+        config_absent = ctx.config
         resolved = _resolve_retained_conflict(ctx)
         recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config_absent)
         if (
@@ -2812,7 +2812,7 @@ def _block_unresolved_integration(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
-    from ralph.pipeline.integration_resolution_types import (
+    from ralph.pipeline.integration_resolution import (
         IntegrationResolutionVerdict,
     )
 
@@ -2873,24 +2873,13 @@ def _block_unresolved_integration(
         ctx, state.rebase
     )
     if exhausted_still_binds:
-        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
         _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
-        return None
+        return state, prev_phase, 1
 
     post = _post_recovery_verdict(ctx, state, prev_phase, verdict)
     if not isinstance(post, IntegrationResolutionVerdict):
         return post
-
-    if post.status is EXHAUSTED and state.rebase.resolution_exhausted:
-        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        _announce_blocked_dispatch(ctx, post)
-        _announce_deferred_startup_integration(ctx, state.rebase)
-        return None
 
     _announce_blocked_dispatch(ctx, post)
     _announce_deferred_startup_integration(ctx, state.rebase)
@@ -2942,7 +2931,6 @@ def _boundary_ladder_recovery(
         executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
             ctx, root, target, sync_verdict, executed_rung, previous_action
         )
-        state = _continue_pipeline_with_planning_handoff(state, ctx, root)
         if rung_step != "continue":
             break
         recovered = _run_startup_integration(ctx, state.rebase)
@@ -3270,6 +3258,22 @@ def _handle_intervention_required_retry(
     return state.clear_waiting()
 
 
+_MAX_COOLDOWN_SLEEP_SECONDS = 30.0
+
+
+def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
+    from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
+    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+    installed = tuple(
+        agent
+        for agent in resolution_chain_agents(ctx.policy_bundle)
+        if ctx.registry.get(agent) is not None
+    )
+    choice = choose_resolver(ctx.controller, installed)
+    return choice.wait_ms if choice.agent is None else 0
+
+
 def _config_failure_watch_paths(
     ctx: LoopContext,
     watcher: ConfigFileFingerprintWatcher,
@@ -3308,30 +3312,14 @@ def handle_pending_retry(
     detail: str,
     backend: FileBackend,
 ) -> PipelineState:
-    if rebase.integration_unresolved:
-        from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-        from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
-        from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
-
-        installed = tuple(
-            agent
-            for agent in resolution_chain_agents(ctx.policy_bundle)
-            if ctx.registry.get(agent) is not None
-        )
-        choice = choose_resolver(ctx.controller, installed)
-        if choice.agent is None and choice.wait_ms > 0:
-            waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
-            state = ctx.controller.apply_all_agents_unavailable_wait(
-                state.copy_with(rebase=waiting),
-                PHASE_RESOLUTION,
-                wait_ms=choice.wait_ms,
-            )
-            _save_recovered_rebase_checkpoint(state, ctx)
-            ctx.latest_state[:] = [state]
-            state = _handle_cooldown_delay(state, ctx)
-            if state.is_waiting_state:
-                state = state.clear_waiting()
-            return state
+    cooldown_ms = _resolver_cooldown_wait_ms(ctx) if rebase.integration_unresolved else 0
+    if cooldown_ms > 0:
+        waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+        state = state.copy_with(rebase=waiting).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        ctx.sleep(min(cooldown_ms / 1000.0, _MAX_COOLDOWN_SLEEP_SECONDS))
+        return state.clear_waiting()
     recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if recovered is not None and not recovered.integration_unresolved:
         from ralph.pipeline._publication_state_machine import (
@@ -3446,14 +3434,10 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
 
         ctx.sleep(delay_ms / 1000.0)
 
-        scope: object = getattr(ctx, "workspace_scope", None)
-        if is_all_unavailable and scope is not None:
+        if is_all_unavailable:
             state = _resume_after_cooldown_wait(
                 state, ctx, current_phase_str, unavail_reason, delay_ms
             )
-        elif is_all_unavailable:
-            state = state.copy_with(last_retry_delay_ms=0).clear_waiting()
-            _log_resumed_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
         return state
     except BaseException as e:
         if isinstance(e, KeyboardInterrupt):
@@ -3557,7 +3541,6 @@ def _run_inner_loop_after_startup(
             state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
             continue
         state = _reconcile_dispatch_state(state)
-        state = _continue_pipeline_with_planning_handoff(state, ctx, Path(ctx.workspace_scope.root))
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
             state = _wait_for_integration_retry(state, ctx, backend=backend)
@@ -3586,9 +3569,8 @@ def _run_inner_loop_after_startup(
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]
         iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
-        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
         planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
-        step_result = runner_step(
+        step_result = _runner_module.run_pipeline_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
             workspace_scope=ctx.workspace_scope,
@@ -3631,9 +3613,9 @@ def _run_inner_loop_after_startup(
             verbosity=ctx.effective_verbosity,
             pipeline_policy=ctx.policy_bundle.pipeline,
         )
-        if hasattr(ctx.active_display, "begin_phase"):
+        if _is_phase_aware_display(ctx.active_display):
             with suppress(Exception):
-                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
+                ctx.active_display.begin_phase(state.phase)
     return state, prev_phase, None
 
 
@@ -3644,9 +3626,10 @@ def _emit_post_loop_result(
     exit_code: int,
     policy_bundle: PolicyBundle,
 ) -> None:
-    if not is_quiet and hasattr(active_display, "emit_run_end"):
+    if not is_quiet and _is_run_end_display(active_display):
         with suppress(Exception):
-            total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
+            total_agent_calls_raw: object = getattr(state.metrics, "total_agent_calls", 0)
+            total_agent_calls = total_agent_calls_raw if _is_plain_int(total_agent_calls_raw) else 0
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -3656,7 +3639,7 @@ def _emit_post_loop_result(
                 ),
                 None,
             )
-            cast("_RunEndDisplay", active_display).emit_run_end(
+            active_display.emit_run_end(
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -3764,57 +3747,106 @@ def build_recovery_controller(
     )
 
 
+def _log_failure_recovery_event(evt: _FailureEvent) -> None:
+    log = logger.bind(recovery=True)
+    message = (
+        "VALIDATION FAILURE phase={} agent={} category={} counted={}"
+        " chain_cap={} cycle={} delay_ms={}"
+        " unavailability_reason={}"
+        if evt.category == "artifact_validation"
+        else "FAILURE phase={} agent={} category={} counted={}"
+        " chain_cap={} cycle={} delay_ms={}"
+        " unavailability_reason={}"
+    )
+    if evt.category == "artifact_validation":
+        log.error(
+            message,
+            evt.phase,
+            evt.agent,
+            evt.category,
+            evt.counted_against_budget,
+            evt.chain_capacity_remaining,
+            evt.recovery_cycle,
+            evt.retry_delay_ms,
+            evt.unavailability_reason,
+        )
+        return
+    log.info(
+        message,
+        evt.phase,
+        evt.agent,
+        evt.category,
+        evt.counted_against_budget,
+        evt.chain_capacity_remaining,
+        evt.recovery_cycle,
+        evt.retry_delay_ms,
+        evt.unavailability_reason,
+    )
+
+
+def _log_fallover_recovery_event(evt: _FalloverEvent) -> None:
+    logger.bind(recovery=True).info(
+        "FALLOVER phase={} from={} to={} reason={}"
+        " watchdog_reason={} unavailability_reason={}",
+        evt.phase,
+        evt.from_agent,
+        evt.to_agent,
+        evt.reason,
+        evt.watchdog_reason,
+        evt.unavailability_reason,
+    )
+
+
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
-            log = logger.bind(recovery=True)
-            message = (
-                "VALIDATION FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={}"
-                " unavailability_reason={}"
-                if evt.category == "artifact_validation"
-                else "FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={}"
-                " unavailability_reason={}"
-            )
-            if evt.category == "artifact_validation":
-                log.error(
-                    message,
-                    evt.phase,
-                    evt.agent,
-                    evt.category,
-                    evt.counted_against_budget,
-                    evt.chain_capacity_remaining,
-                    evt.recovery_cycle,
-                    evt.retry_delay_ms,
-                    evt.unavailability_reason,
-                )
-            else:
-                log.info(
-                    message,
-                    evt.phase,
-                    evt.agent,
-                    evt.category,
-                    evt.counted_against_budget,
-                    evt.chain_capacity_remaining,
-                    evt.recovery_cycle,
-                    evt.retry_delay_ms,
-                    evt.unavailability_reason,
-                )
-        elif isinstance(evt, _FalloverEvent):
-            logger.bind(recovery=True).info(
-                "FALLOVER phase={} from={} to={} reason={}"
-                " watchdog_reason={} unavailability_reason={}",
-                evt.phase,
-                evt.from_agent,
-                evt.to_agent,
-                evt.reason,
-                evt.watchdog_reason,
-                evt.unavailability_reason,
-            )
+            _log_failure_recovery_event(evt)
+            return
+        if isinstance(evt, _FalloverEvent):
+            _log_fallover_recovery_event(evt)
 
     return controller.event_bus.subscribe(_log_recovery_event)
+
+
+def _failure_display_payload(
+    evt: _FailureEvent,
+) -> tuple[str, str, str, str] | None:
+    if evt.chain_capacity_remaining <= 0:
+        if evt.watchdog_reason is not None:
+            value = (
+                f"agent stalled: {evt.watchdog_reason}; "
+                f"chain exhausted ({evt.category}: "
+                f"{evt.reason or 'no detail'})"
+            )
+        else:
+            value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
+        return "terminal", "STOPPING", value, "red"
+    if evt.category == "artifact_validation":
+        return (
+            "validation_recoverable",
+            "VALIDATION FAILURE",
+            f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}",
+            "red",
+        )
+    if evt.watchdog_reason is not None:
+        return (
+            "watchdog_recoverable",
+            "RECOVERING",
+            f"agent stalled: {evt.watchdog_reason}; resuming",
+            "yellow",
+        )
+    if evt.unavailability_reason is not None:
+        return (
+            "unavailable_recoverable",
+            "RECOVERING",
+            (
+                f"agent unavailable: {evt.unavailability_reason}; "
+                f"cooldown {evt.retry_delay_ms}ms; selecting fallback"
+            ),
+            "yellow",
+        )
+    return None
 
 
 def _subscribe_recovery_display(
@@ -3832,57 +3864,36 @@ def _subscribe_recovery_display(
         cadence_map[tag] = now_ts
         emit_activity_line(display, None, build())
 
+    def _display_fallover_event(evt: _FalloverEvent, now_ts: float) -> None:
+        _maybe_emit(
+            "fallover",
+            now_ts,
+            build=lambda: status_text(
+                "RECOVERING",
+                f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
+                "yellow",
+            ),
+        )
+
+    def _display_failure_event(evt: _FailureEvent, now_ts: float) -> None:
+        payload = _failure_display_payload(evt)
+        if payload is None:
+            return
+        tag, label, value, style = payload
+        _maybe_emit(
+            tag,
+            now_ts,
+            build=lambda: status_text(label, value, style),
+        )
+
     def _display_recovery_event(evt: object) -> None:
         try:
             now_ts = now()
             if isinstance(evt, _FalloverEvent):
-                _maybe_emit(
-                    "fallover",
-                    now_ts,
-                    build=lambda: status_text(
-                        "RECOVERING",
-                        f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
-                        "yellow",
-                    ),
-                )
-            elif isinstance(evt, _FailureEvent):
-                if evt.chain_capacity_remaining <= 0:
-                    label = "STOPPING"
-                    if evt.watchdog_reason is not None:
-                        value = (
-                            f"agent stalled: {evt.watchdog_reason}; "
-                            f"chain exhausted ({evt.category}: "
-                            f"{evt.reason or 'no detail'})"
-                        )
-                    else:
-                        value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
-                    style = "red"
-                    tag = "terminal"
-                elif evt.category == "artifact_validation":
-                    label = "VALIDATION FAILURE"
-                    value = f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}"
-                    style = "red"
-                    tag = "validation_recoverable"
-                elif evt.watchdog_reason is not None:
-                    label = "RECOVERING"
-                    value = f"agent stalled: {evt.watchdog_reason}; resuming"
-                    style = "yellow"
-                    tag = "watchdog_recoverable"
-                elif evt.unavailability_reason is not None:
-                    label = "RECOVERING"
-                    value = (
-                        f"agent unavailable: {evt.unavailability_reason}; "
-                        f"cooldown {evt.retry_delay_ms}ms; selecting fallback"
-                    )
-                    style = "yellow"
-                    tag = "unavailable_recoverable"
-                else:
-                    return
-                _maybe_emit(
-                    tag,
-                    now_ts,
-                    build=lambda: status_text(label, value, style),
-                )
+                _display_fallover_event(evt, now_ts)
+                return
+            if isinstance(evt, _FailureEvent):
+                _display_failure_event(evt, now_ts)
         except (OSError, RuntimeError, ValueError, KeyError):
             logger.bind(recovery=True).debug(
                 "Recovery display subscriber raised; swallowing",
@@ -3898,11 +3909,8 @@ def _resolve_effective_subscriber(
     active_display: ParallelDisplay,
 ) -> _PipelineSubscriberProtocol | None:
     effective = dashboard_subscriber or pipeline_subscriber
-    if effective is None and hasattr(active_display, "subscriber"):
-        effective = cast(
-            "_PipelineSubscriberProtocol | None",
-            getattr(active_display, "subscriber", None),
-        )
+    if effective is None:
+        return active_display.subscriber
     return effective
 
 
@@ -3969,10 +3977,13 @@ def _cleanup_pipeline(
         _run_cleanup_step("catchup_worker", "stop", loop_ctx.catchup_worker.stop)
 
     def _emit_summary() -> None:
+        subscriber_raw: object = loop_ctx.effective_pipeline_subscriber
         emit_final_summary(
             state,
             loop_ctx.workspace_scope.root,
-            subscriber=cast("PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber),
+            subscriber=(
+                subscriber_raw if _is_pipeline_subscriber(subscriber_raw) else None
+            ),
             display=loop_ctx.active_display,
             display_context=loop_ctx.display_context,
         )
@@ -4037,9 +4048,9 @@ def _execute_with_cleanup(
         )
         with display_scope:
             _emit_run_start(loop_ctx, state)
-            if hasattr(loop_ctx.active_display, "begin_phase"):
+            if _is_phase_aware_display(loop_ctx.active_display):
                 with suppress(Exception):
-                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
+                    loop_ctx.active_display.begin_phase(state.phase)
             _push_status_bar_if_changed(
                 loop_ctx.active_display,
                 state,

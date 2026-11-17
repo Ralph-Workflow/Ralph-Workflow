@@ -261,8 +261,8 @@ def _verdicts(
     entries_val: object = decision.get("criterion_verdicts")
     identifiers_val: object = decision.get("criterion_verdict_ids")
     if (
-        isinstance(entries_val, (list, tuple))
-        and isinstance(identifiers_val, (list, tuple))
+        (any(isinstance(entries_val, _t) for _t in (list, tuple)))
+        and (any(isinstance(identifiers_val, _t) for _t in (list, tuple)))
         and entries_val
     ):
         raw_id_items: tuple[object, ...] = tuple(identifiers_val)

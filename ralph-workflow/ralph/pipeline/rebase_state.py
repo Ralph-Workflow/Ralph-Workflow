@@ -285,7 +285,9 @@ class RebaseState(RalphBaseModel):
 
     def set_retry_deadline(self, value: float | None) -> Self:
         if value is not None:
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not (
+                any(isinstance(value, _t) for _t in (int, float))
+            ):
                 raise ValueError(f"invalid retry_deadline: {value!r}")
             import math
 
@@ -355,18 +357,6 @@ class RebaseState(RalphBaseModel):
     def set_ladder_escalation(self, reason: str) -> Self:
         return self.model_copy(
             update={"last_outcome": RebaseOutcomeKind.LADDER_ESCALATION, "last_reason": reason}
-        )
-
-    def with_complete_in_place_decision(self, reason: str | None = None) -> Self:
-        from ralph.pipeline._integration_strategy import IntegrationStrategy
-
-        return self.model_copy(
-            update={
-                "last_decision": IntegrationStrategy.COMPLETE_IN_PLACE.value,
-                "last_reason": reason
-                or self.last_reason
-                or "conflict resolution strategies exhausted; completing in place",
-            }
         )
 
     def is_terminal_action(self) -> bool:

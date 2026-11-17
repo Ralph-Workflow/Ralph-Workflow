@@ -2,6 +2,81 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from typing import TypeIs
+
+
+def _is_assign_or_ann(node: ast.AST) -> TypeIs[ast.Assign | ast.AnnAssign]:
+    return isinstance(node, ast.Assign | ast.AnnAssign)
+
+
+def _is_assignment(node: ast.AST) -> TypeIs[ast.Assign | ast.AnnAssign | ast.AugAssign]:
+    match node:
+        case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
+            return True
+        case _:
+            return False
+
+
+def _is_function_def(node: ast.AST) -> TypeIs[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+
+
+def _is_loop(node: ast.AST) -> TypeIs[ast.For | ast.AsyncFor | ast.While]:
+    match node:
+        case ast.For() | ast.AsyncFor() | ast.While():
+            return True
+        case _:
+            return False
+
+
+def _is_for_loop(node: ast.AST) -> TypeIs[ast.For | ast.AsyncFor]:
+    return isinstance(node, ast.For | ast.AsyncFor)
+
+
+def _is_with_block(node: ast.AST) -> TypeIs[ast.With | ast.AsyncWith]:
+    return isinstance(node, ast.With | ast.AsyncWith)
+
+
+def _is_sequence_display(node: ast.AST) -> TypeIs[ast.Tuple | ast.List | ast.Set]:
+    match node:
+        case ast.Tuple() | ast.List() | ast.Set():
+            return True
+        case _:
+            return False
+
+
+def _is_flow_exit(node: ast.AST) -> TypeIs[ast.Return | ast.Break | ast.Continue]:
+    match node:
+        case ast.Return() | ast.Break() | ast.Continue():
+            return True
+        case _:
+            return False
+
+
+def _is_name_or_attr(node: ast.AST) -> TypeIs[ast.Name | ast.Attribute]:
+    return isinstance(node, ast.Name | ast.Attribute)
+
+
+def _is_identity_cmp(node: ast.AST) -> TypeIs[ast.Is | ast.IsNot]:
+    return isinstance(node, ast.Is | ast.IsNot)
+
+
+def _is_greater_cmp(node: ast.AST) -> TypeIs[ast.GtE | ast.Gt]:
+    return isinstance(node, ast.GtE | ast.Gt)
+
+
+def _is_number(value: object) -> TypeIs[int | float]:
+    return isinstance(value, int | float)
+
+
+def _is_dict_or_call(node: ast.AST) -> TypeIs[ast.Dict | ast.Call]:
+    return isinstance(node, ast.Dict | ast.Call)
+
+
+def _assignment_targets(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> list[ast.expr]:
+    if isinstance(node, ast.Assign):
+        return list(node.targets)
+    return [node.target]
 
 
 @dataclass(frozen=True)
@@ -63,8 +138,6 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {}
 
 _CONFLICT_RESOLUTION_PATH_PREFIX = "ralph/pipeline/conflict_resolution/"
 
-_AUTO_INTEGRATE_PATH_PREFIX = "ralph/pipeline/"
-
 _CONFLICT_RESOLUTION_CLASSIFICATION_RULE = (
     "production_conflict_resolution_classification_construction"
 )
@@ -79,51 +152,6 @@ _CONFLICT_RESOLUTION_BUDGET_BINDING_RULE = "production_conflict_resolution_budge
 _CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE = (
     "Conflict-resolution code binds counts_against_budget to a statically falsy value; "
     "budget classification belongs to the shared FailureClassifier recovery path."
-)
-
-_COOLDOWN_STATE_CONSTRUCTION_SYMBOLS: frozenset[str] = frozenset(
-    {
-        "RecoveryController",
-        "AgentFailureLedger",
-        "AgentUnavailabilityTracker",
-    }
-)
-
-_COOLDOWN_STATE_CONSTRUCTION_RULE = "production_cooldown_state_construction_outside_owner"
-
-_COOLDOWN_STATE_CONSTRUCTION_MESSAGE = (
-    "Conflict-resolution and auto-integrate modules must not construct RecoveryController, "
-    "AgentFailureLedger, or AgentUnavailabilityTracker; adopt the run's shared controller "
-    "through the shared accessor instead."
-)
-
-_AGENT_FAILURE_CLASSIFY_SYMBOLS: frozenset[str] = frozenset(
-    {
-        "FailureClassifier",
-        "classify_failure",
-        "ClassifiedFailure",
-    }
-)
-
-_AGENT_FAILURE_CLASSIFY_RULE = "production_agent_failure_classify_outside_owner"
-
-_AGENT_FAILURE_CLASSIFY_MESSAGE = (
-    "Conflict-resolution and auto-integrate modules must not classify agent failures; "
-    "hand typed AttemptFacts to RecoveryController.finalize_attempt."
-)
-
-_AGENT_RETRY_DELAY_SYMBOLS: frozenset[str] = frozenset(
-    {
-        "compute_retry_delay",
-        "wait_before_retry",
-    }
-)
-
-_AGENT_RETRY_DELAY_RULE = "production_agent_retry_delay_outside_owner"
-
-_AGENT_RETRY_DELAY_MESSAGE = (
-    "Conflict-resolution and auto-integrate modules must not compute agent retry delays; "
-    "use RecoveryController preferred_agent_index / earliest_available_wait_ms."
 )
 
 
@@ -306,13 +334,13 @@ def _check_production_function(
 def _check_production_assignment(
     node: ast.Assign | ast.AnnAssign | ast.AugAssign, rel_path: str
 ) -> list[SingleOwnerViolation]:
-    targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+    targets: list[ast.expr] = _assignment_targets(node)
     violations: list[SingleOwnerViolation] = []
     for target in targets:
         target_name: str | None = None
         if isinstance(target, ast.Name):
             target_name = target.id
-        elif isinstance(target, ast.Attribute):
+        if isinstance(target, ast.Attribute):
             target_name = target.attr
         if (
             target_name is not None
@@ -451,7 +479,7 @@ def _check_production_call(
         recv_name: str | None = None
         if isinstance(recv, ast.Name):
             recv_name = recv.id
-        elif isinstance(recv, ast.Attribute):
+        if isinstance(recv, ast.Attribute):
             recv_name = recv.attr
         if (
             recv_name is not None
@@ -511,97 +539,48 @@ def _is_conflict_resolution_path(rel_path: str) -> bool:
     return rel_path.startswith(_CONFLICT_RESOLUTION_PATH_PREFIX)
 
 
-def _is_auto_integrate_module_path(rel_path: str) -> bool:
-    if not rel_path.startswith(_AUTO_INTEGRATE_PATH_PREFIX):
+def _static_bool_op_truth(node: ast.BoolOp) -> bool | None:
+    values = [_static_expression_truth(value) for value in node.values]
+    if isinstance(node.op, ast.And):
+        if any(value is False for value in values):
+            return False
+        return True if all(value is True for value in values) else None
+    if all(value is False for value in values):
         return False
-    name = rel_path.rsplit("/", 1)[-1]
-    return name.startswith("auto_integrate") and name.endswith(".py")
+    return True if any(value is True for value in values) else None
 
 
-def _is_cooldown_state_construction_path(rel_path: str) -> bool:
-    return _is_conflict_resolution_path(rel_path) or _is_auto_integrate_module_path(rel_path)
+def _static_if_exp_truth(node: ast.IfExp) -> bool | None:
+    body_truth = _static_expression_truth(node.body)
+    orelse_truth = _static_expression_truth(node.orelse)
+    return body_truth if body_truth is not None and body_truth == orelse_truth else None
 
 
-def _check_cooldown_state_single_owner(
-    tree: ast.Module, rel_path: str
-) -> list[SingleOwnerViolation]:
-    if not _is_cooldown_state_construction_path(rel_path):
-        return []
-    violations: list[SingleOwnerViolation] = []
-    conflict_path = _is_conflict_resolution_path(rel_path)
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = _call_name(node)
-        if name is None:
-            continue
-        if name in _COOLDOWN_STATE_CONSTRUCTION_SYMBOLS:
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule=_COOLDOWN_STATE_CONSTRUCTION_RULE,
-                    detail=f"Construction of '{name}': {_COOLDOWN_STATE_CONSTRUCTION_MESSAGE}",
-                )
-            )
-            continue
-        if not conflict_path:
-            continue
-        if name in _AGENT_FAILURE_CLASSIFY_SYMBOLS or (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "classify"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "FailureClassifier"
-        ):
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule=_AGENT_FAILURE_CLASSIFY_RULE,
-                    detail=f"Call to '{name}': {_AGENT_FAILURE_CLASSIFY_MESSAGE}",
-                )
-            )
-            continue
-        if name in _AGENT_RETRY_DELAY_SYMBOLS:
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule=_AGENT_RETRY_DELAY_RULE,
-                    detail=f"Call to '{name}': {_AGENT_RETRY_DELAY_MESSAGE}",
-                )
-            )
-    return violations
+def _static_container_truth(node: ast.AST) -> bool | None:
+    match node:
+        case ast.Tuple() | ast.List() | ast.Set():
+            return bool(node.elts)
+        case ast.Dict():
+            return bool(node.keys)
+        case _:
+            return None
 
 
 def _static_expression_truth(node: ast.AST) -> bool | None:
-    if isinstance(node, ast.Constant):
-        result: bool | None = bool(node.value)
-    elif isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-        result = bool(node.elts)
-    elif isinstance(node, ast.Dict):
-        result = bool(node.keys)
-    elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-        operand_truth = _static_expression_truth(node.operand)
-        result = None if operand_truth is None else not operand_truth
-    elif isinstance(node, ast.BoolOp):
-        values = [_static_expression_truth(value) for value in node.values]
-        if isinstance(node.op, ast.And):
-            if any(value is False for value in values):
-                result = False
-            else:
-                result = True if all(value is True for value in values) else None
-        elif all(value is False for value in values):
-            result = False
-        else:
-            result = True if any(value is True for value in values) else None
-    elif isinstance(node, ast.IfExp):
-        body_truth = _static_expression_truth(node.body)
-        orelse_truth = _static_expression_truth(node.orelse)
-        result = body_truth if body_truth is not None and body_truth == orelse_truth else None
-    else:
-        result = None
-    return result
+    match node:
+        case ast.Constant():
+            return bool(node.value)
+        case ast.Tuple() | ast.List() | ast.Set() | ast.Dict():
+            return _static_container_truth(node)
+        case ast.UnaryOp(op=ast.Not()):
+            operand_truth = _static_expression_truth(node.operand)
+            return None if operand_truth is None else not operand_truth
+        case ast.BoolOp():
+            return _static_bool_op_truth(node)
+        case ast.IfExp():
+            return _static_if_exp_truth(node)
+        case _:
+            return None
 
 
 def _is_statically_falsy_expression(node: ast.AST) -> bool:
@@ -656,9 +635,9 @@ def _check_conflict_resolution_classification_ownership(
                 and _is_statically_falsy_expression(keyword.value)
             )
             continue
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+        if not _is_assign_or_ann(node) or node.value is None:
             continue
-        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+        targets = _assignment_targets(node)
         if any(
             isinstance(target, ast.Attribute) and target.attr == "counts_against_budget"
             for target in targets
@@ -709,8 +688,7 @@ def _is_phase_implementation_path(rel_path: str) -> bool:
 
 
 def _assigned_name(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> str | None:
-    targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-    names = [target.id for target in targets if isinstance(target, ast.Name)]
+    names = [target.id for target in _assignment_targets(node) if isinstance(target, ast.Name)]
     return names[0] if len(names) == 1 else None
 
 
@@ -720,19 +698,21 @@ def _phase_local_retry_loop_violation(
     if not _is_phase_implementation_path(rel_path):
         return None
     parameters = _parameter_names(function)
-    retry_maps = {
-        name
-        for node in ast.walk(function)
-        if isinstance(node, (ast.Assign, ast.AnnAssign))
-        and (name := _assigned_name(node)) is not None
-        and "retr" in name.lower()
-        and isinstance(node.value, (ast.Dict, ast.Call))
-    }
+    retry_maps: set[str] = set()
+    for node in ast.walk(function):
+        if not _is_assign_or_ann(node):
+            continue
+        name = _assigned_name(node)
+        if name is None or "retr" not in name.lower():
+            continue
+        if node.value is not None and _is_dict_or_call(node.value):
+            retry_maps.add(name)
     if not retry_maps:
         return None
-    for loop in (
-        node for node in ast.walk(function) if isinstance(node, (ast.For, ast.AsyncFor, ast.While))
-    ):
+    for candidate in ast.walk(function):
+        if not _is_loop(candidate):
+            continue
+        loop = candidate
         calls = [node for node in ast.walk(loop) if isinstance(node, ast.Call)]
         invokes_parameter = any(
             isinstance(call.func, ast.Name) and call.func.id in parameters for call in calls
@@ -743,18 +723,18 @@ def _phase_local_retry_loop_violation(
             for name in call_names
         )
         retries = any(isinstance(node, ast.Continue) for node in ast.walk(loop))
-        mutated_map = any(
-            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
-            and any(
+        mutated_map = False
+        for node in ast.walk(loop):
+            if not _is_assignment(node):
+                continue
+            if any(
                 isinstance(target, ast.Subscript)
                 and isinstance(target.value, ast.Name)
                 and target.value.id in retry_maps
-                for target in (
-                    list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-                )
-            )
-            for node in ast.walk(loop)
-        )
+                for target in _assignment_targets(node)
+            ):
+                mutated_map = True
+                break
         injected_bound = any(
             isinstance(compare, ast.Compare)
             and any(
@@ -780,12 +760,14 @@ def _phase_local_retry_loop_violation(
 
 
 def check_phase_local_retry_loops(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
-    return [
-        violation
-        for function in ast.walk(tree)
-        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and (violation := _phase_local_retry_loop_violation(function, rel_path)) is not None
-    ]
+    violations: list[SingleOwnerViolation] = []
+    for function in ast.walk(tree):
+        if not _is_function_def(function):
+            continue
+        violation = _phase_local_retry_loop_violation(function, rel_path)
+        if violation is not None:
+            violations.append(violation)
+    return violations
 
 
 def _is_round_cap_name(name: str) -> bool:
@@ -811,7 +793,7 @@ def _assignment_has_hardcoded_round_cap(
         return False
     return any(
         isinstance(child, ast.Constant)
-        and isinstance(child.value, (int, float))
+        and _is_number(child.value)
         and not isinstance(child.value, bool)
         for child in ast.walk(value)
     )
@@ -882,12 +864,10 @@ def _function_chain_by_node(
     def visit(node: ast.AST, chain: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]) -> None:
         for child in ast.iter_child_nodes(node):
             chains[id(child)] = chain
-            child_chain = (
-                (*chain, child)
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                else chain
-            )
-            visit(child, child_chain)
+            if _is_function_def(child):
+                visit(child, (*chain, child))
+            else:
+                visit(child, chain)
 
     visit(tree, ())
     return chains
@@ -919,22 +899,22 @@ def _invoke_seam_names(tree: ast.Module) -> frozenset[str]:
 
 
 def _optional_return_names(tree: ast.Module) -> frozenset[str]:
-    return frozenset(
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.returns is not None
-        and _annotation_allows_none(node.returns)
-    )
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            _is_function_def(node)
+            and node.returns is not None
+            and _annotation_allows_none(node.returns)
+        ):
+            names.add(node.name)
+    return frozenset(names)
 
 
 def _build_ownership_context(tree: ast.Module) -> _OwnershipContext:
     return _OwnershipContext(
         function_chain=_function_chain_by_node(tree),
         defined_function_names=frozenset(
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            node.name for node in ast.walk(tree) if _is_function_def(node)
         ),
         invoke_seam_names=_invoke_seam_names(tree),
         try_body_ids=_try_body_node_ids(tree),
@@ -992,14 +972,15 @@ def _null_bound_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> froze
     for node in ast.walk(function):
         targets: list[ast.expr]
         value: ast.expr | None
-        if isinstance(node, ast.Assign):
-            targets = list(node.targets)
-            value = node.value
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-            targets = [node.target]
-            value = node.value
-        else:
-            continue
+        match node:
+            case ast.Assign():
+                targets = list(node.targets)
+                value = node.value
+            case ast.AnnAssign() | ast.AugAssign():
+                targets = [node.target]
+                value = node.value
+            case _:
+                continue
         for target in targets:
             if not isinstance(target, ast.Name):
                 continue
@@ -1014,7 +995,7 @@ def _is_narrowed_to_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, name
     for node in ast.walk(function):
         if not isinstance(node, ast.Compare):
             continue
-        if not any(isinstance(operator, (ast.Is, ast.IsNot)) for operator in node.ops):
+        if not any(_is_identity_cmp(operator) for operator in node.ops):
             continue
         for operand in (node.left, *node.comparators):
             if isinstance(operand, ast.Name) and operand.id == name:
@@ -1169,18 +1150,19 @@ def _check_runner_ownership(
 
 def _direct_calls(statement: ast.stmt) -> list[ast.Call]:
     headers: list[ast.AST]
-    if isinstance(statement, (ast.If, ast.While)):
-        headers = [statement.test]
-    elif isinstance(statement, (ast.For, ast.AsyncFor)):
-        headers = [statement.iter]
-    elif isinstance(statement, (ast.With, ast.AsyncWith)):
-        headers = list(statement.items)
-    elif isinstance(statement, ast.Match):
-        headers = [statement.subject]
-    elif isinstance(statement, ast.Try):
-        headers = []
-    else:
-        headers = [statement]
+    match statement:
+        case ast.If() | ast.While():
+            headers = [statement.test]
+        case ast.For() | ast.AsyncFor():
+            headers = [statement.iter]
+        case ast.With() | ast.AsyncWith():
+            headers = list(statement.items)
+        case ast.Match():
+            headers = [statement.subject]
+        case ast.Try():
+            headers = []
+        case _:
+            headers = [statement]
     return [
         child for header in headers for child in ast.walk(header) if isinstance(child, ast.Call)
     ]
@@ -1214,11 +1196,11 @@ def _routes_to_owner(
 def _annotation_names(annotation: ast.expr | None) -> frozenset[str]:
     if annotation is None:
         return frozenset()
-    return frozenset(
-        child.id if isinstance(child, ast.Name) else child.attr
-        for child in ast.walk(annotation)
-        if isinstance(child, (ast.Name, ast.Attribute))
-    )
+    names: set[str] = set()
+    for child in ast.walk(annotation):
+        if _is_name_or_attr(child):
+            names.add(child.id if isinstance(child, ast.Name) else child.attr)
+    return frozenset(names)
 
 
 def _is_cooldown_owner_handle(call: ast.Call, context: _OwnershipContext) -> bool:
@@ -1235,19 +1217,20 @@ def _is_cooldown_owner_handle(call: ast.Call, context: _OwnershipContext) -> boo
     annotation = _parameter_annotations(function).get(name)
     if "RecoveryController" in _annotation_names(annotation):
         return True
-    return any(
-        isinstance(node, (ast.Assign, ast.AnnAssign))
-        and any(
+    for node in ast.walk(function):
+        if not _is_assign_or_ann(node) or node.value is None:
+            continue
+        if not any(
             isinstance(target, ast.Name) and target.id == name
-            for target in (list(node.targets) if isinstance(node, ast.Assign) else [node.target])
-        )
-        and node.value is not None
-        and any(
+            for target in _assignment_targets(node)
+        ):
+            continue
+        if any(
             isinstance(child, ast.Call) and _call_name(child) == "RecoveryController"
             for child in ast.walk(node.value)
-        )
-        for node in ast.walk(function)
-    )
+        ):
+            return True
+    return False
 
 
 def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
@@ -1257,9 +1240,9 @@ def _branch_bodies(statement: ast.stmt) -> list[list[ast.stmt]] | None:
         branches = [statement.body, statement.orelse, statement.finalbody]
         branches.extend(handler.body for handler in statement.handlers)
         return branches
-    if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+    if _is_loop(statement):
         return [statement.body, statement.orelse]
-    if isinstance(statement, (ast.With, ast.AsyncWith)):
+    if _is_with_block(statement):
         return [statement.body]
     if isinstance(statement, ast.Match):
         return [case.body for case in statement.cases]
@@ -1275,7 +1258,7 @@ def _execute_statement(
         return {(classified, _PATH_ROUTED)}
     if isinstance(statement, ast.Raise):
         return {(classified, _PATH_DELEGATED)}
-    if isinstance(statement, (ast.Return, ast.Break, ast.Continue)):
+    if _is_flow_exit(statement):
         return {(classified, _PATH_SWALLOWED)}
     branches = _branch_bodies(statement)
     if branches is None:
@@ -1311,7 +1294,7 @@ def _handler_outcomes(handler: ast.ExceptHandler, context: _OwnershipContext) ->
 def _static_truth(node: ast.expr) -> bool | None:
     if isinstance(node, ast.Constant):
         return bool(node.value)
-    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+    if _is_sequence_display(node):
         return bool(node.elts)
     return None
 
@@ -1344,7 +1327,7 @@ def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
         _collect_dead_in_block(statement.orelse, dead)
         _collect_dead_in_block(statement.finalbody, dead)
         return
-    if isinstance(statement, (ast.For, ast.AsyncFor)):
+    if _is_for_loop(statement):
         _collect_dead_in_block(statement.body, dead)
         _collect_dead_in_block(statement.orelse, dead)
         return
@@ -1355,7 +1338,7 @@ def _collect_dead_in_statement(statement: ast.stmt, dead: set[int]) -> None:
         _collect_dead_in_block(statement.body, dead)
         _collect_dead_in_block(statement.orelse, dead)
         return
-    if isinstance(statement, (ast.With, ast.AsyncWith)):
+    if _is_with_block(statement):
         _collect_dead_in_block(statement.body, dead)
         return
     if isinstance(statement, ast.Match):
@@ -1498,20 +1481,19 @@ def _check_forbidden_integration_classifier(
 ) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
-                violations.append(
-                    SingleOwnerViolation(
-                        path=rel_path,
-                        line=node.lineno,
-                        rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
-                        detail=(
-                            f"Definition of '{node.name}' is forbidden. "
-                            f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
-                        ),
-                    )
+        if _is_function_def(node) and node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_FORBIDDEN_INTEGRATION_CLASSIFIER_RULE,
+                    detail=(
+                        f"Definition of '{node.name}' is forbidden. "
+                        f"{_FORBIDDEN_INTEGRATION_CLASSIFIER_MESSAGE}"
+                    ),
                 )
-        elif isinstance(node, ast.Call):
+            )
+        if isinstance(node, ast.Call):
             name = _call_name(node)
             if name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
                 violations.append(
@@ -1560,7 +1542,6 @@ def _check_agent_retry_timing_outside_shared_path(
 def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
     context = _build_ownership_context(tree)
     violations = _check_conflict_resolution_classification_ownership(tree, rel_path)
-    violations.extend(_check_cooldown_state_single_owner(tree, rel_path))
     violations.extend(_check_forbidden_integration_classifier(tree, rel_path))
     violations.extend(_check_agent_retry_timing_outside_shared_path(tree, rel_path))
     violations.extend(_check_unguarded_agent_invocation(tree, rel_path, context))
@@ -1590,7 +1571,7 @@ def _check_production_import(
                 or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
         )
-    elif isinstance(node, ast.ImportFrom):
+    if isinstance(node, ast.ImportFrom):
         if (
             node.module
             and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
@@ -1635,7 +1616,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
         if any(is_transitional_allowed(rel_path, ident) for ident in all_idents):
             continue
         has_forbidden = any(_is_forbidden_target_name(ident) for ident in all_idents)
-        if not has_forbidden and not any(isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops):
+        if not has_forbidden and not any(_is_greater_cmp(op) for op in node.ops):
             continue
         for other in [node.left, *node.comparators]:
             if other is operand:
@@ -1650,7 +1631,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
                     for k in other_idents
                 )
                 or any(_is_forbidden_target_name(k) for k in (other_attrs + other_names))
-                or (isinstance(other, ast.Constant) and isinstance(other.value, (int, float)))
+                or (isinstance(other, ast.Constant) and _is_number(other.value))
             )
             if is_cap:
                 return [
@@ -1769,7 +1750,7 @@ def _classifier_entry_name(
 def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+        if not _is_assign_or_ann(node) or node.value is None:
             continue
         if not any(
             isinstance(child, ast.Call)
@@ -1778,11 +1759,10 @@ def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
             for child in ast.walk(node.value)
         ):
             continue
-        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-        for target in targets:
+        for target in _assignment_targets(node):
             if isinstance(target, ast.Name):
                 names.add(target.id)
-            elif isinstance(target, ast.Attribute):
+            if isinstance(target, ast.Attribute):
                 names.add(target.attr)
     return names
 
@@ -1835,7 +1815,7 @@ def _collect_module_string_constants(tree: ast.Module) -> set[str]:
                     and isinstance(node.value.value, str)
                 ):
                     constants.add(target.id)
-        elif (
+        if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and isinstance(node.value, ast.Constant)
@@ -1856,13 +1836,12 @@ def _assignment_target_field(target: ast.AST) -> str | None:
 def _collect_tainted_failure_fields(tree: ast.Module, module_constants: set[str]) -> dict[str, int]:
     tainted_fields: dict[str, int] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+        if not _is_assign_or_ann(node):
             continue
         value = node.value
         if value is None:
             continue
-        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-        for target in targets:
+        for target in _assignment_targets(node):
             field = _assignment_target_field(target)
             if (
                 field is not None
@@ -1879,27 +1858,25 @@ def _collect_local_provenance(
     tainted: dict[str, int] = {}
     prose_returners: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+        if _is_assign_or_ann(node):
             value = node.value
             if value is None or not _expr_contains_ralph_authored_prose(value, module_constants):
                 continue
-            targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-            for target in targets:
+            for target in _assignment_targets(node):
                 name: str | None = None
                 if isinstance(target, ast.Name):
                     name = target.id
-                elif isinstance(target, ast.Attribute):
+                if isinstance(target, ast.Attribute):
                     name = target.attr
                 if name is not None and name not in tainted:
                     tainted[name] = node.lineno
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if any(
-                isinstance(child, ast.Return)
-                and child.value is not None
-                and _expr_contains_ralph_authored_prose(child.value, module_constants)
-                for child in ast.walk(node)
-            ):
-                prose_returners.add(node.name)
+        if _is_function_def(node) and any(
+            isinstance(child, ast.Return)
+            and child.value is not None
+            and _expr_contains_ralph_authored_prose(child.value, module_constants)
+            for child in ast.walk(node)
+        ):
+            prose_returners.add(node.name)
     return tainted, prose_returners
 
 

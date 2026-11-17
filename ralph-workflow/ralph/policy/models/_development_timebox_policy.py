@@ -5,13 +5,13 @@ from typing import Self
 
 from pydantic import ConfigDict, Field, model_validator
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 DEFAULT_DEVELOPMENT_TIMEBOX_SECONDS: float = 5400.0
 DEFAULT_DEVELOPMENT_WARNING_SECONDS: float = 4200.0
 
 
-class DevelopmentTimeboxPolicy(_FrozenPolicyModel):
+class DevelopmentTimeboxPolicy(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     duration_seconds: float = Field(default=DEFAULT_DEVELOPMENT_TIMEBOX_SECONDS)

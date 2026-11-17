@@ -287,34 +287,48 @@ __all__ = [
 ]
 
 
-_LAZY_REEXPORTS = {
-    "graph_module": "ralph.mcp.explore.graph",
-    "hubs": "ralph.mcp.explore._graph_impact",
-    "impact": "ralph.mcp.explore._graph_impact",
-    "neighbors": "ralph.mcp.explore._graph_neighbors",
-    "path_query": "ralph.mcp.explore._graph_path",
-    "run_query": "ralph.mcp.explore._graph_query",
-    "tests_for": "ralph.mcp.explore._graph_tests",
-}
-
-
 def __getattr__(name: str) -> object:
-    if name in _LAZY_REEXPORTS:
-        import importlib
-        import sys
+    if name == "graph_module":
+        return sys.modules[__name__]
+    if name == "hubs":
+        from ralph.mcp.explore._graph_impact import hubs
 
-        sub_module = importlib.import_module(_LAZY_REEXPORTS[name])
-        if name == "graph_module":
-            value: object = sub_module
-        else:
-            value = getattr(sub_module, name)
-        setattr(sys.modules[__name__], name, value)
-        return value
+        return hubs
+    if name == "impact":
+        from ralph.mcp.explore._graph_impact import impact
+
+        return impact
+    if name == "neighbors":
+        from ralph.mcp.explore._graph_neighbors import neighbors
+
+        return neighbors
+    if name == "path_query":
+        from ralph.mcp.explore._graph_path import path_query
+
+        return path_query
+    if name == "run_query":
+        from ralph.mcp.explore._graph_query import run_query
+
+        return run_query
+    if name == "tests_for":
+        from ralph.mcp.explore._graph_tests import tests_for
+
+        return tests_for
     raise AttributeError(f"module 'ralph.mcp.explore.graph' has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
-    module_globals: dict[str, str] = globals()
-    eagerly_defined_names: list[str] = list(module_globals)
-    lazy_rexport_names: list[str] = list(_LAZY_REEXPORTS.keys())
-    return sorted(set(eagerly_defined_names) | set(lazy_rexport_names))
+    return sorted(
+        {
+            "GraphEdge",
+            "GraphNode",
+            "GraphResult",
+            "graph_module",
+            "hubs",
+            "impact",
+            "neighbors",
+            "path_query",
+            "run_query",
+            "tests_for",
+        }
+    )

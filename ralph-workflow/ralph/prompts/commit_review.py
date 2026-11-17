@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_mapping
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL
 from ralph.phases._commit_review_catalog import render_delete_decision_rules_markdown
 from ralph.phases.required_artifacts import retry_hint_path
@@ -72,24 +73,25 @@ def render_commit_review_prompt(
         )
         if context_file.is_file():
             try:
-                raw = cast("object", json.loads(context_file.read_text(encoding="utf-8")))
-                if isinstance(raw, dict):
-                    raw_dict = cast("dict[str, object]", raw)
-                    if proposal_ref is None:
-                        ref_val = raw_dict.get("proposal_ref")
-                        if isinstance(ref_val, str):
-                            proposal_ref = ref_val
-                    if tree_sha is None:
-                        sha_val = raw_dict.get("tree_sha")
-                        if isinstance(sha_val, str):
-                            tree_sha = sha_val
-                    if soft_tripwires is None:
-                        tw_val = raw_dict.get("soft_tripwires")
-                        if isinstance(tw_val, str):
+                raw_dict = dict(as_mapping(json.loads(context_file.read_text(encoding="utf-8"))))
+                if proposal_ref is None:
+                    ref_val = raw_dict.get("proposal_ref")
+                    if isinstance(ref_val, str):
+                        proposal_ref = ref_val
+                if tree_sha is None:
+                    sha_val = raw_dict.get("tree_sha")
+                    if isinstance(sha_val, str):
+                        tree_sha = sha_val
+                if soft_tripwires is None:
+                    tw_val = raw_dict.get("soft_tripwires")
+                    match tw_val:
+                        case str():
                             soft_tripwires = tw_val
-                        elif isinstance(tw_val, list):
-                            soft_tripwires = cast("list[dict[str, object]]", tw_val)
-            except (OSError, ValueError):
+                        case list():
+                            soft_tripwires = [dict(as_mapping(item)) for item in tw_val]
+                        case _:
+                            pass
+            except (OSError, TypeError, ValueError):
                 pass
 
     diff = commit_review_diff(workspace_root, proposal_ref=proposal_ref)

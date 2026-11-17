@@ -16,6 +16,7 @@ from ralph.mcp.explore._store_types import (
 
 
 class _RetentionMethods:
+    __slots__ = ()
     _conn: sqlite3.Connection
     _db_path: Path
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]

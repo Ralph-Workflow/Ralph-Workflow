@@ -1,5 +1,7 @@
 from __future__ import annotations
 
-DEFAULT_MODE: str = "default"
+from typing import Literal
+
+DEFAULT_MODE: Literal["default"] = "default"
 
 __all__ = ["DEFAULT_MODE"]

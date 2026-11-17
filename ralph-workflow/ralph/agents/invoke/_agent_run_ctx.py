@@ -64,3 +64,4 @@ class AgentRunCtx:
         None
     )
     relay_health_error: Callable[[], str | None] | None = None
+    agy_cli_log_path: Path | None = None

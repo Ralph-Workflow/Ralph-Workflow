@@ -1,41 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from ._base import CompletionEnforcingStrategy
 
-from ralph.agents.completion_signals import completion_signals_terminal
-
-from .agent_execution_state import AgentExecutionState
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from ralph.agents.completion_signals import CompletionSignals
-    from ralph.process.liveness import LivenessProbe
-
-    from ._live_descendant_handle import LiveDescendantHandle
-
-
-class CompletionEnforcingStrategy:
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        super().__init_subclass__(**kwargs)
-        class_dict = cast("Mapping[str, object]", cls.__dict__)
-        if "supports_completion_enforcement" in class_dict:
-            msg = (
-                f"{cls.__name__} must not override supports_completion_enforcement(); "
-                "CompletionEnforcingStrategy is the sole source of truth"
-            )
-            raise TypeError(msg)
-
-    def supports_completion_enforcement(self) -> bool:
-        return True
-
-    def classify_exit(
-        self,
-        handle: LiveDescendantHandle,
-        completion_signals: CompletionSignals,
-        liveness_probe: LivenessProbe | None = None,
-    ) -> AgentExecutionState:
-        del handle, liveness_probe
-        if completion_signals_terminal(completion_signals):
-            return AgentExecutionState.TERMINAL_COMPLETE
-        return AgentExecutionState.RESUMABLE_CONTINUE
+__all__ = ["CompletionEnforcingStrategy"]

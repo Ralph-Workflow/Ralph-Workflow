@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
@@ -34,12 +34,21 @@ from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.agents.invoke._completion_options import CompletionCheckOptions
     from ralph.agents.invoke._completion_termination import _TerminationRecorder
     from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+
+
+
+@runtime_checkable
+class _TerminalReasonHandle(Protocol):
+    def original_terminal_reason(self) -> str | None: ...
+
+
+@runtime_checkable
+class _TerminationIssuerHandle(Protocol):
+    def termination_issuer(self) -> str | None: ...
 
 
 def _raise_if_broken_agent_exit(
@@ -116,12 +125,9 @@ def _has_interactive_completion_bypass(
     if check_options is None:
         return False
     with contextlib.suppress(Exception):
-        handle_terminal_reason = cast(
-            "Callable[[], str | None] | None", getattr(handle, "original_terminal_reason", None)
-        )
         if (
-            handle_terminal_reason is not None
-            and handle_terminal_reason() == "interactive_completion"
+            isinstance(handle, _TerminalReasonHandle)
+            and handle.original_terminal_reason() == "interactive_completion"
         ):
             bounded_output = _bounded_output_lines(
                 parsed_output or [],
@@ -142,10 +148,7 @@ def _handle_non_zero_returncode(
     stderr_available: bool,
     supervisor: AttemptSupervisor,
 ) -> None:
-    issuer_method = cast(
-        "Callable[[], str | None] | None", getattr(handle, "termination_issuer", None)
-    )
-    issuer = issuer_method() if issuer_method is not None else None
+    issuer = handle.termination_issuer() if isinstance(handle, _TerminationIssuerHandle) else None
     intentional = returncode in {-15, 143} and isinstance(issuer, str)
     termination_recorder = supervisor.recorder
     termination_recorder.record_observed_returncode(observed_returncode(handle))

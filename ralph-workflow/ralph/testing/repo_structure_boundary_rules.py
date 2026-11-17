@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
+from ralph.testing._audit_scope import is_assign_or_ann, is_mutable_literal
 from ralph.testing.repo_structure_boundary_b11 import b11_violations
 
 if TYPE_CHECKING:
@@ -22,13 +23,13 @@ __all__ = (
 )
 
 RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
-    ("B1", "AC-matrix-completeness"),
+    ("B1", "U6"),
     ("B2", "AC16"),
     ("B3", "AC16"),
-    ("B4", "AC3/AC15"),
-    ("B5", "AC-matrix-completeness"),
+    ("B4", "U3a/U10"),
+    ("B5", "U6"),
     ("B6", "AC4"),
-    ("B7", "AC4"),
+    ("B7", "U6"),
     ("B8", "AC4"),
     ("B9", "AC3/AC15"),
     ("B9b", "AC3/AC15"),
@@ -927,11 +928,16 @@ def _b7_violations(relative_path: str, tree: ast.Module, nodes: list[ast.AST]) -
                     _violation(relative_path, node, "B7", "environment read in decision layer")
                 )
     for node in tree.body:
-        value = node.value if isinstance(node, (ast.Assign, ast.AnnAssign)) else None
-        mutable = isinstance(value, (ast.Dict, ast.List, ast.Set)) or (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id in _MUTABLE_CONSTRUCTORS
+        if not is_assign_or_ann(node):
+            continue
+        value = node.value
+        mutable = value is not None and (
+            is_mutable_literal(value)
+            or (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id in _MUTABLE_CONSTRUCTORS
+            )
         )
         if mutable:
             violations.append(

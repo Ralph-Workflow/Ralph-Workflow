@@ -13,7 +13,7 @@ BLOCK_ENV = "STUB_BLOCK"
 EXIT_DELAY_ENV = "STUB_EXIT_DELAY_SECONDS"
 ARGV_RECORD_ENV = "STUB_ARGV_RECORD"
 
-DIALOG_LINE = "This workspace has not been confirmed yet. Press the Return key to proceed."
+_DIALOG_LINE = "This workspace has not been confirmed yet. Press the Return key to proceed."
 
 
 def _within(candidate: Path, parent: Path) -> bool:
@@ -44,7 +44,7 @@ def main() -> int:
         sys.stdout.write("fake-trust-dialog-cli: trusted cwd, marker written\n")
         sys.stdout.flush()
         return 0
-    sys.stdout.write(f"{DIALOG_LINE}\n")
+    sys.stdout.write(f"{_DIALOG_LINE}\n")
     sys.stdout.flush()
     if os.environ.get(BLOCK_ENV) == "1":
         while True:

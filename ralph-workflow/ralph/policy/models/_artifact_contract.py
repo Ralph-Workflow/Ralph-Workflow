@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
-
 from pydantic import Field, model_validator
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class ArtifactContract(_FrozenPolicyModel):
+class ArtifactContract(RalphBaseModel):
     drain: str = Field(..., description="Drain this artifact is submitted at")
     artifact_type: str = Field(
         ...,
@@ -34,10 +32,9 @@ class ArtifactContract(_FrozenPolicyModel):
     def _reject_phase_owned_fields(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        raw = cast("dict[str, object]", dict(data))
-        if "artifact_required" in raw:
+        if "artifact_required" in data:
             raise ValueError(
                 "ArtifactContract.artifact_required has moved to pipeline.toml. "
                 "Set phases.<phase>.artifact_required instead."
             )
-        return raw
+        return data

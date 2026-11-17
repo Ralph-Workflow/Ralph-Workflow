@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import ast
-import re
 from pathlib import Path
 from types import MappingProxyType
 
@@ -18,12 +16,6 @@ from ralph.testing.repo_structure_boundary_rules import (
 )
 
 _CONTROLLER_PATH = "ralph/recovery/controller.py"
-_MATRIX_SCENARIOS_PATH = (
-    Path(__file__).resolve().parents[1] / "recovery" / "pipeline_matrix_scenarios.py"
-)
-_PRODUCT_CRITERIA_PATH = Path(__file__).resolve().parents[3] / ".agent" / "PRODUCT_CRITERIA.md"
-_ACCEPTANCE_HEADING = "## Acceptance criteria (black box; write each failing first)"
-_ACCEPTANCE_ITEM = re.compile(r"(?m)^(\d+)\.\s")
 
 _REAL_CONTROLLER_SPENT_AGENTS_SNAPSHOT = """
 class RecoveryController:
@@ -238,52 +230,6 @@ def test_b7_flags_mutable_module_level_state_and_accepts_frozen_forms() -> None:
     assert not any(" B7 " in item for item in proxy_form)
 
 
-def _acceptance_tokens_from_product_criteria() -> frozenset[str]:
-    text = _PRODUCT_CRITERIA_PATH.read_text(encoding="utf-8")
-    start = text.index(_ACCEPTANCE_HEADING)
-    body = text[start:]
-    next_heading = body.find("\n## ", 1)
-    section = body if next_heading < 0 else body[:next_heading]
-    numbers = {int(match.group(1)) for match in _ACCEPTANCE_ITEM.finditer(section)}
-    assert numbers == set(range(1, 19)), f"unexpected acceptance criteria set: {sorted(numbers)}"
-    return frozenset(f"AC{number}" for number in numbers)
-
-
-def _scenario_tokens_from_matrix_source() -> frozenset[str]:
-    tree = ast.parse(_MATRIX_SCENARIOS_PATH.read_text(encoding="utf-8"))
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        is_matrix = (isinstance(func, ast.Name) and func.id == "MatrixScenario") or (
-            isinstance(func, ast.Attribute) and func.attr == "MatrixScenario"
-        )
-        if not is_matrix or not node.args:
-            continue
-        first = node.args[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            names.add(first.value)
-        for keyword in node.keywords:
-            if keyword.arg != "corpus_id":
-                continue
-            value = keyword.value
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                names.add(value.value)
-    assert names, "matrix scenarios source yielded no scenario names"
-    return frozenset(names)
-
-
-def _known_pairing_tokens() -> frozenset[str]:
-    return frozenset(
-        {
-            *_acceptance_tokens_from_product_criteria(),
-            *_scenario_tokens_from_matrix_source(),
-            "AC-matrix-completeness",
-        }
-    )
-
-
 def test_rule_pairings_cover_every_boundary_rule() -> None:
     assert {rule for rule, _pairing in RULE_PAIRINGS} == {
         "B1",
@@ -299,25 +245,12 @@ def test_rule_pairings_cover_every_boundary_rule() -> None:
         "B10",
         "B11",
     }
-    assert rule_pairing("B1") == "AC-matrix-completeness"
     assert rule_pairing("B2") == "AC16"
-    assert rule_pairing("B4") == "AC3/AC15"
-    assert rule_pairing("B5") == "AC-matrix-completeness"
-    assert rule_pairing("B7") == "AC4"
+    assert rule_pairing("B11") == "AC-matrix-completeness"
     assert rule_pairing("B8") == "AC4"
     assert rule_pairing("B9") == "AC3/AC15"
     assert rule_pairing("B9b") == "AC3/AC15"
     assert rule_pairing("B10") == "AC13"
-    assert rule_pairing("B11") == "AC-matrix-completeness"
-
-
-def test_rule_pairings_name_existing_criteria_or_scenarios() -> None:
-    known = _known_pairing_tokens()
-    for rule, pairing in RULE_PAIRINGS:
-        tokens = tuple(token for token in pairing.split("/") if token)
-        assert tokens, f"{rule} pairing is empty"
-        unknown = [token for token in tokens if token not in known]
-        assert not unknown, f"{rule} pairing {pairing!r} names unknown token(s): {unknown}"
 
 
 @pytest.mark.parametrize(

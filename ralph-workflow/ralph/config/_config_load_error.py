@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__all__ = ["ConfigLoadError"]
+__all__ = ["ConfigLoadError", "ConfigTomlError"]
 
 
 class ConfigLoadError(ValueError):
+    __slots__ = ("file", "parse_error")
+
     def __init__(self, file: Path | str, parse_error: str | None = None) -> None:
         resolved_file = Path(file) if parse_error is not None else Path("<unknown>")
         resolved_error = parse_error if parse_error is not None else str(file)
@@ -18,3 +20,7 @@ class ConfigLoadError(ValueError):
             if parse_error is not None
             else resolved_error
         )
+
+
+class ConfigTomlError(ConfigLoadError):
+    __slots__ = ()

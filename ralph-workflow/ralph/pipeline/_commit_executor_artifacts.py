@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -56,10 +56,10 @@ def default_mcp_capabilities_for_phase(
 def clear_phase_output_artifacts(
     workspace: FsWorkspace,
     phase: str,
-    **opts: object,
+    *,
+    drain: str | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> None:
-    drain = cast("str | None", opts.get("drain"))
-    policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
     effective_drain = drain or phase
     required_artifact = (
         resolve_phase_required_artifact(

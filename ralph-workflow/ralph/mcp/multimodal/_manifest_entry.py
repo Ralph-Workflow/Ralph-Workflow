@@ -1,24 +1,51 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
 
 ByteLoader = Callable[[], bytes | None]
 
 
-@dataclass
 class ManifestEntry:
-    artifact_id: str
-    uri: str
-    mime_type: str
-    title: str
-    modality: str
-    identity_key: str = ""
-    cache_path: str = ""
-    source_path: str = ""
-    source_uri: str = ""
-    _raw_bytes: bytes | None = field(default=None, repr=False)
-    _byte_loader: ByteLoader | None = field(default=None, repr=False, compare=False)
+    __slots__ = (
+        "_byte_loader",
+        "_raw_bytes",
+        "artifact_id",
+        "cache_path",
+        "identity_key",
+        "mime_type",
+        "modality",
+        "source_path",
+        "source_uri",
+        "title",
+        "uri",
+    )
+
+    def __init__(
+        self,
+        artifact_id: str,
+        uri: str,
+        mime_type: str,
+        title: str,
+        modality: str,
+        identity_key: str = "",
+        cache_path: str = "",
+        source_path: str = "",
+        source_uri: str = "",
+        *,
+        _raw_bytes: bytes | None = None,
+        _byte_loader: ByteLoader | None = None,
+    ) -> None:
+        self.artifact_id = artifact_id
+        self.uri = uri
+        self.mime_type = mime_type
+        self.title = title
+        self.modality = modality
+        self.identity_key = identity_key
+        self.cache_path = cache_path
+        self.source_path = source_path
+        self.source_uri = source_uri
+        self._raw_bytes = _raw_bytes
+        self._byte_loader = _byte_loader
 
     @property
     def raw_bytes(self) -> bytes:

@@ -37,6 +37,16 @@ class SaturatedResponse:
 
 
 class _SaturatedDispatch:
+    __slots__ = (
+        "_dispatch_timeout_seconds",
+        "_executor",
+        "_generation",
+        "_inflight",
+        "_last_saturation_warning_at",
+        "_lock",
+        "_max_workers",
+    )
+
     def __init__(
         self,
         max_workers: int = DEFAULT_MAX_WORKERS,

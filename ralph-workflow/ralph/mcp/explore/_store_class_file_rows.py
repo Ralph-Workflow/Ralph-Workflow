@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager
-from typing import cast
 
+from ralph.mcp.explore._narrowing import rows_from_cursor
 from ralph.mcp.explore._store_types import (
     FileRow,
     _row_int_opt,
@@ -13,6 +13,8 @@ from ralph.mcp.explore._store_types import (
 
 
 class _FileRowMethods:
+    __slots__ = ()
+
     _conn: sqlite3.Connection
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
@@ -60,7 +62,7 @@ class _FileRowMethods:
             f"SELECT * FROM files WHERE path IN ({placeholders})",
             tuple(paths),
         )
-        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
+        all_rows = rows_from_cursor(cur)
         result: dict[str, FileRow] = {}
         for row in all_rows:
             file_row = _row_to_file(row)
@@ -76,14 +78,13 @@ class _FileRowMethods:
             f"WHERE is_deleted = 0 AND path IN ({placeholders})",
             tuple(paths),
         )
-        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
+        all_rows = rows_from_cursor(cur)
         result: dict[str, tuple[int, int]] = {}
         for row in all_rows:
-            typed_row = cast("Mapping[str, int | str]", row)
             try:
-                size_obj = typed_row["size_bytes"]
-                mtime_obj = typed_row["mtime_ns"]
-                path_value = typed_row["path"]
+                size_obj = row["size_bytes"]
+                mtime_obj = row["mtime_ns"]
+                path_value = row["path"]
             except (KeyError, IndexError):
                 continue
             if not isinstance(path_value, str):
@@ -175,7 +176,7 @@ class _FileRowMethods:
 
     def iter_files(self) -> Iterator[FileRow]:
         cur = self._conn.execute("SELECT * FROM files WHERE is_deleted = 0")
-        all_rows = cast("list[sqlite3.Row]", cur.fetchall())
+        all_rows = rows_from_cursor(cur)
         for row in all_rows:
             yield _row_to_file(row)
 

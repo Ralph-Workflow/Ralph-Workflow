@@ -65,7 +65,7 @@ def remote_sync_enabled(config: object | None) -> bool:
         return False
     general: object = getattr(config, "general", config)
     fields_set: object = getattr(general, "model_fields_set", None)
-    if isinstance(fields_set, (set, frozenset)) and "auto_integrate_remote_enabled" in fields_set:
+    if (any(isinstance(fields_set, _t) for _t in (set, frozenset))) and "auto_integrate_remote_enabled" in fields_set:
         remote_enabled: object = getattr(general, "auto_integrate_remote_enabled", True)
         return isinstance(remote_enabled, bool) and remote_enabled
     general_enabled: object = _optional_attr(general, "auto_integrate_enabled", True)

@@ -6,7 +6,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NoReturn, cast
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -45,13 +45,14 @@ from ralph.git._lock_recovery import (
     _sleep_fn as _base_sleep_fn,
 )
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
-from ralph.git.errors import GitOperationError
+from ralph.git.errors import CommitTreeMismatchError, GitOperationError
 from ralph.git.git_command_queue import (
-    _classify_exception as _queue_outcome_kind,
-)
-from ralph.git.git_command_queue import (
+    GitMethodRepo,
     get_queue_for_repo,
     route_git_method,
+)
+from ralph.git.git_command_queue import (
+    _classify_exception as _queue_outcome_kind,
 )
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
@@ -68,7 +69,9 @@ def _raise_git_commit_error(detail: str) -> NoReturn:
 
 
 def _close_repo(repo: Repo | None) -> None:
-    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if repo is None:
+        return
+    close: object = getattr(repo, "close", None)
     if callable(close):
         close()
 
@@ -77,16 +80,16 @@ def _close_repo(repo: Repo | None) -> None:
 class _RepoQueueView:
     git: object
     git_dir: str
+    working_dir: str | None = None
 
 
 def _is_queue_view(candidate: object) -> bool:
     return isinstance(candidate, _RepoQueueView)
 
 
-def _queue_routing_target(repo_root: Path | str, repo: Repo) -> Repo:
+def _queue_routing_target(repo_root: Path | str, repo: Repo) -> GitMethodRepo:
     if not _is_queue_view(repo) and not hasattr(repo, "git_dir"):
-        view = _RepoQueueView(git=repo.git, git_dir=str(repo_root))
-        return cast("Repo", view)
+        return _RepoQueueView(git=repo.git, git_dir=str(repo_root))
     return repo
 
 
@@ -331,10 +334,10 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            status_output = cast(
-                "str", _queued_git_call(repo_root, repo, "status", ("--porcelain",))
+            status_raw: object = _queued_git_call(
+                repo_root, repo, "status", ("--porcelain",)
             )
-            status_lines = status_output.splitlines()
+            status_lines = [] if not isinstance(status_raw, str) else status_raw.splitlines()
         finally:
             _close_repo(repo)
 
@@ -728,10 +731,6 @@ def create_commit(
     finally:
         _close_repo(repo)
 
-
-class CommitTreeMismatchError(GitOperationError):
-    def __init__(self, message: str) -> None:
-        super().__init__("create_commit", message)
 
 
 def _commit_parent_sha(repo_root: Path, commit_sha: str) -> str:

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import importlib
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
 
@@ -15,6 +14,7 @@ from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
+from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
@@ -33,9 +33,10 @@ from ralph.pipeline.attempt_runner import (
 from ralph.pipeline.attempt_runner_deps import (
     AttemptInvoke,
     AttemptRunnerDeps,
+    effect_attempt_invoke,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.factory import DefaultPipelineFactory
+from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _prompt_ui
@@ -66,13 +67,12 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.cli.commands._load_result import _LoadResult
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.attempt_result import AttemptResult
-    from ralph.pipeline.factory import PipelineDeps
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
     from ralph.recovery.controller import RecoveryController
@@ -355,36 +355,20 @@ def _make_production_invoke_agent(
     return typed
 
 
-_effect_executor_module = importlib.import_module("ralph.pipeline.effect_executor")
-
-
 def _production_effect_invoke() -> AttemptInvoke:
-    def invoke(
-        target: InvokeAgentEffect | AgentConfig,
-        *args: object,
-        **kwargs: object,
-    ) -> object:
-        config = kwargs.pop("config")
-        pipeline_deps = kwargs.pop("pipeline_deps")
-        workspace_scope = kwargs.pop("workspace_scope")
-        runner: AttemptInvoke = _effect_executor_module.execute_agent_effect
-        result: object = runner(target, config, pipeline_deps, workspace_scope, *args, **kwargs)
-        return result
-
-    return invoke
+    return effect_attempt_invoke(_effect_executor_module.execute_agent_effect)
 
 
-def _run_project_policy_attempt(
-    *args: object,
-    effect: object | None = None,
-    invocation: object | None = None,
+def _run_project_policy_attempt_with_kwargs(
+    *,
+    effect: object | None,
+    invocation: object | None,
     config: UnifiedConfig,
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
-    state: object | None = None,
-    **execute_kwargs: object,
+    state: object | None,
+    execute_kwargs: Mapping[str, object],
 ) -> AttemptResult:
-    del args
     return run_agent_attempt(
         AgentEntryPoint.PROJECT_POLICY,
         effect=effect,
@@ -393,7 +377,28 @@ def _run_project_policy_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **execute_kwargs,
+        **dict(execute_kwargs),
+    )
+
+
+def _run_project_policy_attempt(
+    *,
+    effect: object | None = None,
+    invocation: object | None = None,
+    config: UnifiedConfig,
+    controller: RecoveryController,
+    deps: AttemptRunnerDeps,
+    state: object | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult:
+    return _run_project_policy_attempt_with_kwargs(
+        effect=effect,
+        invocation=invocation,
+        config=config,
+        controller=controller,
+        deps=deps,
+        state=state,
+        execute_kwargs=execute_kwargs,
     )
 
 

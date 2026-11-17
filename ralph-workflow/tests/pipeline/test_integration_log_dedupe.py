@@ -134,7 +134,7 @@ def test_retry_wait_critical_is_logged_once_for_an_unchanged_outcome(
     ctx = cast(
         "run_loop._LoopContext",
         SimpleNamespace(
-            active_display=SimpleNamespace(emit_warn_line=_noop_warn, emit=lambda *_a, **_k: None),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
             config=UnifiedConfig(),
             workspace_scope=SimpleNamespace(root=Path("/unused")),
             latest_state=latest_state,

@@ -2,15 +2,38 @@ from __future__ import annotations
 
 import re
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypedDict
 
+from ralph.checked_accessors import as_mapping
 from ralph.mcp.artifacts.markdown.specs._plan_steps import PLAN_STEP_ID_PATTERN
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, MutableMapping, Sequence
+
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
 
-type Content = dict[str, object]
+
+class StepTarget(TypedDict):
+    path: str
+    action: str
+
+
+class PlanStep(TypedDict, total=False):
+    id: str
+    number: int
+    depends_on: list[int]
+    targets: list[StepTarget]
+
+
+class WorkUnit(TypedDict):
+    unit_id: str
+    description: str
+    allowed_directories: list[str]
+    allowed_paths: list[str]
+    dependencies: list[str]
+    step_ids: list[str]
+
 
 _PLAN_WORDS = (
     "mini plan",
@@ -24,13 +47,86 @@ _PLAN_WORDS = (
 
 def attach_owned_step_ids(
     document: ParsedDocument,
-    entries: list[Content],
-    steps: list[Content],
+    entries: Sequence[MutableMapping[str, object]],
+    steps: Sequence[Mapping[str, object]],
     *,
     section_names: tuple[str, ...] = ("Work Units",),
 ) -> None:
+    typed_entries = [_work_unit(entry) for entry in entries]
+    typed_steps = [_plan_step(step) for step in steps]
+    _attach_owned_step_ids(document, typed_entries, typed_steps, section_names=section_names)
+    for entry, typed in zip(entries, typed_entries, strict=True):
+        entry["step_ids"] = typed["step_ids"]
+        entry["dependencies"] = typed["dependencies"]
+
+
+def _work_unit(entry: Mapping[str, object]) -> WorkUnit:
+    unit_id = entry["unit_id"]
+    description = entry["description"]
+    if not isinstance(unit_id, str) or not isinstance(description, str):
+        msg = "work unit requires string unit_id and description"
+        raise TypeError(msg)
+    return {
+        "unit_id": unit_id,
+        "description": description,
+        "allowed_directories": _optional_str_list(entry.get("allowed_directories")),
+        "allowed_paths": _optional_str_list(entry.get("allowed_paths")),
+        "dependencies": _optional_str_list(entry.get("dependencies")),
+        "step_ids": _optional_str_list(entry.get("step_ids")),
+    }
+
+
+def _plan_step(step: Mapping[str, object]) -> PlanStep:
+    result: PlanStep = {}
+    step_id = step.get("id")
+    if isinstance(step_id, str):
+        result["id"] = step_id
+    number = step.get("number")
+    if isinstance(number, int) and not isinstance(number, bool):
+        result["number"] = number
+    raw_depends = step.get("depends_on")
+    if isinstance(raw_depends, list):
+        result["depends_on"] = [
+            item for item in raw_depends if isinstance(item, int) and not isinstance(item, bool)
+        ]
+    raw_targets = step.get("targets")
+    if isinstance(raw_targets, list):
+        result["targets"] = _step_targets(raw_targets)
+    return result
+
+
+def _optional_str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        empty: list[str] = []
+        return empty
+    return [item for item in value if isinstance(item, str)]
+
+
+def _step_targets(raw_targets: list[object]) -> list[StepTarget]:
+    targets: list[StepTarget] = []
+    for item in raw_targets:
+        try:
+            mapping = as_mapping(item, field="targets")
+        except TypeError:
+            continue
+        path = mapping.get("path")
+        if not isinstance(path, str):
+            continue
+        action_value = mapping.get("action")
+        action = action_value if isinstance(action_value, str) else "modify"
+        targets.append({"path": path, "action": action})
+    return targets
+
+
+def _attach_owned_step_ids(
+    document: ParsedDocument,
+    entries: list[WorkUnit],
+    steps: list[PlanStep],
+    *,
+    section_names: tuple[str, ...],
+) -> None:
     owner_by_step: dict[str, str] = {}
-    entry_by_id = {cast("str", entry["unit_id"]): entry for entry in entries}
+    entry_by_id = {entry["unit_id"]: entry for entry in entries}
 
     for index, section in enumerate(document.sections):
         if section.name in section_names:
@@ -52,9 +148,7 @@ def attach_owned_step_ids(
                 _claim_section_steps(owned_section, matching_ids[0], owner_by_step)
 
     _claim_steps_by_target(entries, steps, owner_by_step)
-    ordered_step_ids = [
-        identifier for step in steps if isinstance((identifier := step.get("id")), str)
-    ]
+    ordered_step_ids = [step_id for step in steps if (step_id := step.get("id")) is not None]
     for unit_id, entry in entry_by_id.items():
         owned = sorted(
             {step_id for step_id in ordered_step_ids if owner_by_step.get(step_id) == unit_id},
@@ -89,7 +183,7 @@ def _claim_section_steps(
 
 def _claim_work_unit_section_steps(
     sections: tuple[ParsedSection, ...],
-    entry_by_id: dict[str, Content],
+    entry_by_id: dict[str, WorkUnit],
     owner_by_step: dict[str, str],
 ) -> None:
     unit_items = tuple(
@@ -122,39 +216,26 @@ def _owned_sections(
 
 
 def _claim_steps_by_target(
-    entries: list[Content],
-    steps: list[Content],
+    entries: list[WorkUnit],
+    steps: list[PlanStep],
     owner_by_step: dict[str, str],
 ) -> None:
     directories_by_unit = {
-        cast("str", entry["unit_id"]): [
-            directory
-            for directory in cast("list[object]", entry.get("allowed_directories", []))
-            if isinstance(directory, str)
-        ]
-        for entry in entries
+        entry["unit_id"]: list(entry["allowed_directories"]) for entry in entries
     }
     paths_by_unit = {
-        str(entry["unit_id"]): {
-            PurePosixPath(path)
-            for path in cast("list[object]", entry.get("allowed_paths", []))
-            if isinstance(path, str)
-        }
+        entry["unit_id"]: {PurePosixPath(path) for path in entry["allowed_paths"]}
         for entry in entries
     }
     for step in steps:
         number = step.get("number")
         targets = step.get("targets")
-        if not isinstance(number, int) or not isinstance(targets, list) or not targets:
+        if number is None or targets is None or not targets:
             continue
         step_id = f"S-{number}"
         if step_id in owner_by_step:
             continue
-        paths = [
-            cast("str", target["path"])
-            for target in targets
-            if isinstance(target, dict) and isinstance(target.get("path"), str)
-        ]
+        paths = [target["path"] for target in targets]
         candidates = [
             unit_id
             for unit_id, directories in directories_by_unit.items()
@@ -169,28 +250,26 @@ def _claim_steps_by_target(
 
 
 def _attach_cross_unit_dependencies(
-    entries: list[Content],
-    steps: list[Content],
+    entries: list[WorkUnit],
+    steps: list[PlanStep],
 ) -> None:
     owner_by_step = {
-        step_id: cast("str", entry["unit_id"])
-        for entry in entries
-        for step_id in cast("list[str]", entry.get("step_ids", []))
+        step_id: entry["unit_id"] for entry in entries for step_id in entry["step_ids"]
     }
     step_by_id = {
-        f"S-{number}": step for step in steps if isinstance((number := step.get("number")), int)
+        f"S-{number}": step for step in steps if (number := step.get("number")) is not None
     }
     for entry in entries:
-        unit_id = cast("str", entry["unit_id"])
-        dependencies = cast("list[str]", entry["dependencies"])
-        for step_id in cast("list[str]", entry.get("step_ids", [])):
-            step = step_by_id.get(step_id, {})
-            raw_dependencies = step.get("depends_on", [])
-            if not isinstance(raw_dependencies, list):
+        unit_id = entry["unit_id"]
+        dependencies = entry["dependencies"]
+        for step_id in entry["step_ids"]:
+            step = step_by_id.get(step_id)
+            if step is None:
                 continue
-            for number in raw_dependencies:
-                if not isinstance(number, int):
-                    continue
+            depends_on = step.get("depends_on")
+            if depends_on is None:
+                continue
+            for number in depends_on:
                 owner = owner_by_step.get(f"S-{number}")
                 if owner is not None and owner != unit_id and owner not in dependencies:
                     dependencies.append(owner)

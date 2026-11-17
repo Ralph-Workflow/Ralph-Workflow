@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
-from time import sleep
+from time import sleep as _default_sleep
+from typing import TYPE_CHECKING
 
+from ralph.config._env import getenv
 from ralph.mcp.server import _saturated_dispatch
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -24,6 +25,9 @@ from ralph.mcp.tools.names import (
     claude_tool_name,
     opencode_tool_name,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _EXEC_STREAMING_BASE_NAMES: tuple[str, ...] = (
     str(EXEC_TOOL),
@@ -53,7 +57,9 @@ _transport_repetition_tracker = TransportRepetitionTracker.from_parent_owned_sta
 
 
 class _FallbackHttpHandler(BaseHTTPRequestHandler):
+    __slots__ = ()
     protocol_version = "HTTP/1.1"
+    _sse_sleep: Callable[[float], object] = _default_sleep
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -76,7 +82,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except BrokenPipeError:
                 break
-            sleep(0.25)
+            type(self)._sse_sleep(0.25)
 
     def _handle_health_get(self) -> None:
         server = _coerce_fallback_server(self.server)
@@ -138,7 +144,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         try:
             require_trust_boundary(
                 self.headers.get("Authorization"),
-                os.environ,
+                {"MCP_AUTH_TOKEN": getenv("MCP_AUTH_TOKEN") or ""},
             )
         except PermissionError:
             self._write_json(
@@ -302,7 +308,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache, no-transform")
         self.send_header("Connection", "close")
         self.end_headers()
-        self.close_connection = True
+        object.__setattr__(self, "close_connection", True)
 
         def _write_frame(frame: bytes) -> None:
             with suppress(Exception):

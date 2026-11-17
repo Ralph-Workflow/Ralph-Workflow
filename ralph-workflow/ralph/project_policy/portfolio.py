@@ -5,7 +5,7 @@ import tomllib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
@@ -162,13 +162,43 @@ def _error(message: str) -> PortfolioError:
     return PortfolioError(message[:500])
 
 
+def _is_str_keyed_dict(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+
+
+def _is_table_list(value: object) -> TypeGuard[list[dict[str, object]]]:
+    if not isinstance(value, list):
+        return False
+    return all(_is_str_keyed_dict(item) for item in value)
+
+
+def _is_non_negative_number(value: object) -> TypeGuard[int | float]:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return value >= 0
+    if isinstance(value, float):
+        return value >= 0
+    return False
+
+
+def _is_positive_number(value: object) -> TypeGuard[int | float]:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return value > 0
+    if isinstance(value, float):
+        return value > 0
+    return False
+
+
 def _table_list(root: Mapping[str, object], key: str, limit: int) -> list[dict[str, object]]:
     value = root.get(key, [])
-    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+    if not _is_table_list(value):
         raise _error(f"{key} must be an array of tables")
     if len(value) > limit:
         raise _error(f"portfolio allows at most {limit} {key}")
-    return cast("list[dict[str, object]]", value)
+    return value
 
 
 def _reject_unknown(table: Mapping[str, object], allowed: frozenset[str], label: str) -> None:
@@ -386,7 +416,7 @@ def _parse_controls(
         if lane not in lane_ids:
             raise _error(f"control {control_id} references unknown lane: {lane}")
         cost = table["marginal_cost_seconds"]
-        if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
+        if not _is_non_negative_number(cost):
             raise _error(f"control {control_id} requires non-negative marginal cost")
         disposition = _text(table, "disposition", f"control {control_id}")
         if disposition not in _DISPOSITIONS:
@@ -541,14 +571,15 @@ def _apply_exceptions(
         _text(table, "reason", f"exception {exception_id}")
         _text(table, "review_trigger", f"exception {exception_id}")
         raw_expires = table.get("expires")
+        expires: date | None = None
         if isinstance(raw_expires, str):
             try:
                 expires = date.fromisoformat(raw_expires)
             except ValueError as exc:
                 raise _error(f"exception {exception_id} requires an ISO expiry date") from exc
-        elif isinstance(raw_expires, date):
+        if expires is None and isinstance(raw_expires, date):
             expires = raw_expires
-        else:
+        if expires is None:
             raise _error(f"exception {exception_id} requires an ISO expiry date")
         if expires < today:
             raise _error(f"expired exception: {exception_id}")
@@ -580,9 +611,12 @@ def _parse_portfolio_toml_strict(
     if len(content.encode("utf-8")) > MAX_PORTFOLIO_BYTES:
         raise _error(f"portfolio exceeds {MAX_PORTFOLIO_BYTES} bytes")
     try:
-        root = cast("dict[str, object]", tomllib.loads(content))
+        parsed_root: object = tomllib.loads(content)
     except ValueError as exc:
         raise _error(f"invalid portfolio TOML: {exc}") from exc
+    if not _is_str_keyed_dict(parsed_root):
+        raise _error("portfolio root must be a table")
+    root = parsed_root
     _reject_unknown(root, _ALLOWED_ROOT, "root")
     actual_version = root.get("schema_version")
     if expected_schema_version is not None:
@@ -597,7 +631,7 @@ def _parse_portfolio_toml_strict(
             )
         schema_version = actual_version
     budget = root.get("default_budget_seconds")
-    if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
+    if not _is_positive_number(budget):
         raise _error("default_budget_seconds must be positive")
     context_tuple = _parse_context(root.get("context", {}))
     context = dict(context_tuple)

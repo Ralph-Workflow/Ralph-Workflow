@@ -50,6 +50,8 @@ _CAPTURE_CELL_ID_ENV: str = "RALPH_CAPTURE_CELL_ID"
 
 
 class MediaCaptureError(RuntimeError):
+    __slots__ = ('cell_id', 'reason', 'returncode', 'target')
+
     def __init__(
         self,
         *,

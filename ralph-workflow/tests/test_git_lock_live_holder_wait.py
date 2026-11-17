@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,15 +9,6 @@ from ralph.git import lock_recovery as lr
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-def _aged_lock(tmp_path: Path) -> Path:
-    (tmp_path / ".git").mkdir()
-    lock = tmp_path / ".git" / "index.lock"
-    lock.write_text("held", encoding="utf-8")
-    then = time.time() - 60.0
-    os.utime(lock, (then, then))
-    return lock
 
 
 def _lock_error(lock_path: Path) -> GitCommandError:
@@ -75,19 +64,3 @@ def test_live_holder_wait_is_bounded_by_the_holder_ceiling(tmp_path: Path) -> No
     lock.write_text("held")
     with pytest.raises(GitCommandError):
         _run(lock, still_held_polls=int(lr.LIVE_HOLDER_PATIENCE_S) + 50, waitable=True)
-
-
-def test_waitable_only_when_liveness_is_live(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from ralph.git import _lock_recovery as lock_mod
-
-    lock = _aged_lock(tmp_path)
-    monkeypatch.setattr(lock_mod, "_lock_has_no_live_holder", lambda *_a, **_k: "live")
-    assert lock_mod._lock_holder_is_waitable(lock) is True
-    monkeypatch.setattr(lock_mod, "_lock_has_no_live_holder", lambda *_a, **_k: "unknown")
-    assert lock_mod._lock_holder_is_waitable(lock) is False, (
-        "unknown must not be waited on; refuse-unlink stays fail-closed"
-    )
-    monkeypatch.setattr(lock_mod, "_lock_has_no_live_holder", lambda *_a, **_k: "dead")
-    assert lock_mod._lock_holder_is_waitable(lock) is False

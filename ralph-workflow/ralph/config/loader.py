@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import tomllib
-from os import getenv
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.config._config_load_error import ConfigLoadError
+from ralph.checked_accessors import as_mapping
+from ralph.config._config_load_error import ConfigLoadError, ConfigTomlError
+from ralph.config._env import getenv
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
 from ralph.config._toml_fallback import (
     emit_config_failure_warning,
@@ -41,18 +43,11 @@ def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
             data.pop(field, None)
 
 
-class _ConfigTomlError(ConfigLoadError):
-    pass
-
-
-ConfigTomlError = _ConfigTomlError
-
-
 def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(cast("dict[str, object]", result[key]), value)
+            result[key] = deep_merge(dict(as_mapping(result[key])), dict(as_mapping(value)))
         else:
             result[key] = value
     return result
@@ -66,17 +61,19 @@ def load_toml(path: Path) -> dict[str, object]:
         if path.is_dir():
             raise IsADirectoryError(f"{path} is a directory, not a regular file")
         source = path.read_text(encoding="utf-8")
-        data: dict[str, object] = tomllib.loads(source)
-    except (
-        cast("type[ValueError]", tomllib.TOMLDecodeError),
-        UnicodeDecodeError,
-        OSError,
-    ) as exc:
+        loaded: object = tomllib.loads(source)
+        data = dict(as_mapping(loaded))
+    except UnicodeDecodeError as exc:
+        raise ConfigTomlError(path, str(exc)) from exc
+    except OSError as exc:
+        raise ConfigTomlError(path, str(exc)) from exc
+    except ValueError as exc:
         raise ConfigTomlError(path, str(exc)) from exc
     logger.debug("Loaded config from {}", path)
     migrated_source = remove_retired_agent_can_commit_assignments(source)
     if migrated_source != source:
-        data = tomllib.loads(migrated_source)
+        migrated_loaded: object = tomllib.loads(migrated_source)
+        data = dict(as_mapping(migrated_loaded))
         _warn_retired_agent_keys(path)
     return data
 
@@ -525,10 +522,15 @@ def _attribute_validation_error_to_layer(
     file_layers: list[tuple[Path, dict[str, object]]],
     cli_overrides: dict[str, object] | None,
 ) -> Path:
-    details = cast("list[dict[str, object]]", exc.errors())
+    raw_details: object = exc.errors()
+    details: list[dict[str, object]] = (
+        [dict(as_mapping(item)) for item in raw_details if isinstance(item, Mapping)]
+        if isinstance(raw_details, list)
+        else []
+    )
     blamed: set[int] = set()
     for detail in details:
-        loc = cast("tuple[object, ...]", detail.get("loc") or ())
+        loc = _error_loc(detail.get("loc"))
         if cli_overrides and _loc_in_data(loc, cli_overrides):
             continue
         owner = next(
@@ -538,6 +540,14 @@ def _attribute_validation_error_to_layer(
         if owner is not None:
             blamed.add(owner)
     return file_layers[min(blamed)][0] if blamed else local_path
+
+
+def _error_loc(raw: object) -> tuple[object, ...]:
+    if isinstance(raw, tuple):
+        return raw
+    if isinstance(raw, list):
+        return tuple(raw)
+    return ()
 
 
 def _loc_in_data(loc: tuple[object, ...], data: dict[str, object]) -> bool:

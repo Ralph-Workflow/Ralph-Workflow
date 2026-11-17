@@ -92,6 +92,18 @@ def _default_heartbeat_factory() -> _HeartbeatFactory:
 
 
 class ProMarkerWatcher:
+    __slots__ = (
+        "_clock",
+        "_heartbeat_client",
+        "_heartbeat_factory",
+        "_heartbeat_started",
+        "_loader",
+        "_poll_interval",
+        "_sleeper",
+        "_stop_event",
+        "_thread",
+    )
+
     def __init__(
         self,
         *,

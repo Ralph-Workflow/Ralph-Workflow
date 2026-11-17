@@ -1,22 +1,14 @@
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal
 
 from pydantic import Field
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
-
-if TYPE_CHECKING:
-    from ralph.policy.models._phase_definition import PhaseDefinition
-else:
-    PhaseDefinition = cast(
-        "type[object]",
-        import_module("ralph.policy.models._phase_definition").PhaseDefinition,
-    )
+from ralph.policy.models._phase_definition import PhaseDefinition
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class IndividualPolicyBlock(_FrozenPolicyModel):
+class IndividualPolicyBlock(RalphBaseModel):
     kind: Literal["individual"] = "individual"
     phase_name: str = Field(..., description="Compiled runtime phase name for this block.")
     phase: PhaseDefinition = Field(..., description="Compiled runtime phase definition.")

@@ -10,7 +10,7 @@ import threading
 import time
 import weakref
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, BinaryIO, Final, cast
+from typing import TYPE_CHECKING, BinaryIO, Final
 
 from loguru import logger
 
@@ -44,32 +44,56 @@ DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
 CONDENSED_LOG_SUFFIX: Final = ".overflow"
 
 
-_REGISTRY_LOCK = threading.Lock()
-_REGISTRY: weakref.WeakValueDictionary[str, RawOverflowLog] = weakref.WeakValueDictionary()
+class _OverflowRegistry:
+    __slots__ = ("_lock", "_values")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._values: weakref.WeakValueDictionary[str, RawOverflowLog] = (
+            weakref.WeakValueDictionary()
+        )
 
 
-_PATH_STATE_LOCK = threading.Lock()
-_PATH_STATE: dict[str, int] = {}
-_CAP_WARNED: set[str] = set()
+_OVERFLOW_REGISTRY = _OverflowRegistry()
+
+
+class _PathStateStore:
+    __slots__ = ("_cap_warned", "_lock", "_path_state")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._path_state: dict[str, int] = {}
+        self._cap_warned: set[str] = set()
+
+
+_PATH_STATE_STORE = _PathStateStore()
 
 
 def _resume_path_state(key: str) -> tuple[bool, int]:
-    with _PATH_STATE_LOCK:
-        if key not in _PATH_STATE:
+    with _PATH_STATE_STORE._lock:
+        if key not in _PATH_STATE_STORE._path_state:
             return True, 0
-        return False, _PATH_STATE[key]
+        return False, _PATH_STATE_STORE._path_state[key]
 
 
 _PROCESS_STARTED_AT: Final = time.time()
 
-_OUR_PATHS: set[str] = set()
-_OUR_PATHS_LOCK = threading.Lock()
+
+class _OurPathsStore:
+    __slots__ = ("_lock", "_paths")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._paths: set[str] = set()
+
+
+_OUR_PATHS_STORE = _OurPathsStore()
 
 
 def _claim_path_for_this_process(key: str) -> bool:
-    with _OUR_PATHS_LOCK:
-        seen = key in _OUR_PATHS
-        _OUR_PATHS.add(key)
+    with _OUR_PATHS_STORE._lock:
+        seen = key in _OUR_PATHS_STORE._paths
+        _OUR_PATHS_STORE._paths.add(key)
         return seen
 
 
@@ -98,35 +122,35 @@ def _is_live_foreign_capture(path: Path, key: str) -> bool:
 
 
 def _record_path_bytes(key: str, total: int) -> None:
-    with _PATH_STATE_LOCK:
-        _PATH_STATE[key] = total
+    with _PATH_STATE_STORE._lock:
+        _PATH_STATE_STORE._path_state[key] = total
 
 
 def _claim_cap_warning(key: str) -> bool:
-    with _PATH_STATE_LOCK:
-        if key in _CAP_WARNED:
+    with _PATH_STATE_STORE._lock:
+        if key in _PATH_STATE_STORE._cap_warned:
             return False
-        _CAP_WARNED.add(key)
+        _PATH_STATE_STORE._cap_warned.add(key)
         return True
 
 
 def reset_raw_overflow_path_state() -> None:
-    with _REGISTRY_LOCK:
-        stale = list(_REGISTRY.values())
-        _REGISTRY.clear()
+    with _OVERFLOW_REGISTRY._lock:
+        stale = list(_OVERFLOW_REGISTRY._values.values())
+        _OVERFLOW_REGISTRY._values.clear()
     for writer in stale:
         with contextlib.suppress(Exception):
             writer.disable()
-    with _PATH_STATE_LOCK:
-        _PATH_STATE.clear()
-        _CAP_WARNED.clear()
+    with _PATH_STATE_STORE._lock:
+        _PATH_STATE_STORE._path_state.clear()
+        _PATH_STATE_STORE._cap_warned.clear()
 
 
 _DISPATCHER_EXECUTABLES: Final = frozenset({"ccs"})
 
 
 def _signature_token(raw: object) -> str:
-    enum_value = cast("object", getattr(raw, "value", None))
+    enum_value: object = getattr(raw, "value", None)
     if isinstance(enum_value, str):
         return enum_value
     if isinstance(raw, str):
@@ -137,10 +161,8 @@ def _signature_token(raw: object) -> str:
 
 
 def _invocation_signature(config: AgentConfig, model: str | None) -> str:
-    fields = sorted(type(config).model_fields)
-    parts = [
-        f"{name}={_signature_token(cast('object', getattr(config, name, None)))}" for name in fields
-    ]
+    dumped = config.model_dump()
+    parts = [f"{name}={_signature_token(dumped[name])}" for name in sorted(dumped)]
     parts.append(f"resolved_model={model or ''}")
     return "\x00".join(parts)
 
@@ -150,7 +172,7 @@ def _digest_of(raw: str) -> str:
 
 
 def _model_from_flag(config: AgentConfig, model: str | None) -> str:
-    raw = cast("object", getattr(config, "model_flag", None))
+    raw: object = config.model_flag
     if not isinstance(raw, str) or not raw.strip():
         return ""
     try:
@@ -180,7 +202,7 @@ def raw_log_unit_id_for(config: AgentConfig) -> str:
         return ""
     if not tokens:
         return ""
-    raw_model = cast("object", getattr(config, "model", None))
+    raw_model: object = config.model
     model = raw_model if isinstance(raw_model, str) and raw_model.strip() else None
     executable = PurePosixPath(tokens[0]).name or tokens[0]
     flags = set(tokens[1:]) | set((config.output_flag or "").split())
@@ -224,8 +246,8 @@ def get_or_create_raw_overflow_log(
 ) -> RawOverflowLog:
     key_path = raw_log_path_for(workspace_root, unit_id, model=model, condensed=condensed)
     key = str(key_path.resolve(strict=False))
-    with _REGISTRY_LOCK:
-        existing = _REGISTRY.get(key)
+    with _OVERFLOW_REGISTRY._lock:
+        existing = _OVERFLOW_REGISTRY._values.get(key)
         if existing is not None:
             return existing
         instance = RawOverflowLog(
@@ -237,13 +259,13 @@ def get_or_create_raw_overflow_log(
             flush_interval_seconds=flush_interval_seconds,
             now=now,
         )
-        _REGISTRY[key] = instance
+        _OVERFLOW_REGISTRY._values[key] = instance
         return instance
 
 
 def _forget_raw_overflow_log(key_path: str) -> None:
-    with _REGISTRY_LOCK:
-        _REGISTRY.pop(key_path, None)
+    with _OVERFLOW_REGISTRY._lock:
+        _OVERFLOW_REGISTRY._values.pop(key_path, None)
 
 
 def _finalize_close_raw_overflow_log(handle_box: list[BinaryIO | None]) -> None:
@@ -257,8 +279,8 @@ def _finalize_close_raw_overflow_log(handle_box: list[BinaryIO | None]) -> None:
 
 def close_all_raw_overflow_logs() -> None:
     snapshot: list[RawOverflowLog] = []
-    with _REGISTRY_LOCK:
-        snapshot = list(_REGISTRY.values())
+    with _OVERFLOW_REGISTRY._lock:
+        snapshot = list(_OVERFLOW_REGISTRY._values.values())
     for instance in snapshot:
         with contextlib.suppress(Exception):
             instance.close()
@@ -270,6 +292,23 @@ atexit.register(close_all_raw_overflow_logs)
 
 
 class RawOverflowLog:
+    __slots__ = (
+        "__weakref__",
+        "_bytes_written",
+        "_disabled",
+        "_file_bytes",
+        "_first_write",
+        "_flush_interval",
+        "_handle_box",
+        "_last_flush",
+        "_lock",
+        "_max_bytes",
+        "_needs_live_claim",
+        "_now",
+        "_path_key",
+        "path",
+    )
+
     def __init__(
         self,
         workspace_root: Path,
@@ -356,8 +395,7 @@ class RawOverflowLog:
                     if not self._first_write and not self.path.exists():
                         self._file_bytes = 0
                     mode = "wb" if self._first_write else "ab"
-                    handle_obj: object = self.path.open(mode, buffering=_BUFFER_BYTES)
-                    self._fh = cast("BinaryIO", handle_obj)
+                    self._fh = self.path.open(mode, buffering=_BUFFER_BYTES)
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:

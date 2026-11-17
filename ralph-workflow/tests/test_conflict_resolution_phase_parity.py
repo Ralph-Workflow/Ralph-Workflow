@@ -66,10 +66,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
     "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
-    "test_cooling_agent_is_not_launched_and_idle_comes_from_shared_options": (
-        "resolver launch uses the shared effect-executor eligibility gate and stock "
-        "general idle options; conflict-only timeout remap and pre-launch refuse are retired"
-    ),
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
 
@@ -1278,112 +1274,6 @@ def _step_ordinary(
         pipeline_subscriber=None,
         recovery_controller=controller,
     )
-
-
-def test_cooling_agent_is_not_launched_and_idle_comes_from_shared_options(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    import dataclasses
-
-    from ralph.agents.invoke import InvokeRuntimeOptions, build_invoke_options_from_config
-    from ralph.config.conflict_resolution_config import ConflictResolutionConfig
-    from ralph.config.general_config import GeneralConfig
-    from ralph.display.context import make_display_context
-    from ralph.pipeline.conflict_resolution import session as conflict_session
-    from ralph.pipeline.effect_executor import (
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
-    )
-    from ralph.pipeline.effects import InvokeAgentEffect
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
-    from ralph.recovery.unavailability_reason import UnavailabilityReason
-    from tests._pipeline_deps_factory import make_test_pipeline_deps
-
-    clock = FakeClock(start=0.0)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            clock=clock,
-            unavailability_entries={
-                "cooled": UnavailabilityEntry(
-                    unavailable_until_ms=60_000,
-                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-                    attempt=0,
-                    base_backoff_ms=5000,
-                    max_backoff_ms=18000000,
-                )
-            },
-        )
-    )
-    assert not controller.agent_eligibility(PHASE_RESOLUTION, "cooled").is_eligible
-
-    launched: list[str] = []
-    captured_idle: list[float] = []
-    captured_activity_only: list[bool] = []
-    original_attempt = conflict_session.run_agent_attempt
-
-    def _stub_runner(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
-        del args, kwargs
-        launched.append(str(getattr(effect, "agent_name", "")))
-        return PipelineEvent.AGENT_SUCCESS
-
-    def _wrap_attempt(*args: object, **kwargs: object) -> object:
-        effect = kwargs.get("effect")
-        config = kwargs.get("config")
-        assert isinstance(effect, InvokeAgentEffect)
-        assert isinstance(config, UnifiedConfig)
-        captured_activity_only.append(effect.activity_only_supervision)
-        opts = build_invoke_options_from_config(
-            config.general,
-            InvokeRuntimeOptions(activity_only_supervision=effect.activity_only_supervision),
-        )
-        captured_idle.append(float(opts.idle_timeout_seconds or 0.0))
-        return original_attempt(*args, **kwargs)
-
-    monkeypatch.setattr(conflict_session, "run_agent_attempt", _wrap_attempt)
-
-    display_ctx = make_display_context()
-    shared_idle = 13.0
-    conflict_idle = 47.0
-    config = UnifiedConfig(
-        general=GeneralConfig(agent_idle_timeout_seconds=shared_idle),
-        conflict_resolution=ConflictResolutionConfig(inactivity_timeout_seconds=conflict_idle),
-    )
-    deps = dataclasses.replace(
-        make_test_pipeline_deps(display_ctx),
-        recovery_controller=controller,
-        ledger=controller.ledger,
-    )
-    prompt = tmp_path / "prompt.md"
-    prompt.write_text("resolve", encoding="utf-8")
-    session = ResolutionSession(
-        recovery_controller=controller,
-        inactivity_timeout_seconds=conflict_idle,
-    )
-    token = install_agent_effect_dependencies(
-        agent_runner=_stub_runner,
-        recovery_controller=controller,
-    )
-    try:
-        outcome = invoke_resolution_agent(
-            agent_name="cooled",
-            prompt_path=prompt,
-            config=config,
-            pipeline_deps=deps,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=display_ctx,
-            session=session,
-        )
-    finally:
-        reset_agent_effect_dependencies(token)
-
-    assert isinstance(outcome, RetryLaterOutcome)
-    assert launched == []
-    assert captured_idle == [shared_idle]
-    assert captured_activity_only == [True]
-    assert config.general.agent_idle_timeout_seconds == shared_idle
 
 
 def test_ordinary_phase_two_agent_fall_over_then_wait(

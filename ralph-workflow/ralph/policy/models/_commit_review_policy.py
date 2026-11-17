@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class CommitReviewPolicy(_FrozenPolicyModel):
+class CommitReviewPolicy(RalphBaseModel):
     max_deleted_files: int = Field(
         default=50,
         ge=0,

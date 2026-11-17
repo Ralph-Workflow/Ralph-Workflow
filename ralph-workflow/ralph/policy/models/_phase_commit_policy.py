@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class PhaseCommitPolicy(_FrozenPolicyModel):
+class PhaseCommitPolicy(RalphBaseModel):
     requires_artifact: bool = True
     skipped_advances_progress: bool = True
     increments_counter: str | None = Field(

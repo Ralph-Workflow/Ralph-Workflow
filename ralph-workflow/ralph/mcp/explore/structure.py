@@ -99,8 +99,39 @@ def _line_col(node: ast.AST) -> tuple[int, int, int, int]:
     return (start_line, start_col, end_line, end_col)
 
 
+
+def _is_function_def(node: ast.AST) -> bool:
+    if isinstance(node, ast.FunctionDef):
+        return True
+    return isinstance(node, ast.AsyncFunctionDef)
+
+
+def _is_def_or_class(node: ast.AST) -> bool:
+    if _is_function_def(node):
+        return True
+    return isinstance(node, ast.ClassDef)
+
+
+def _callee_from_call_func(func_obj: object) -> str | None:
+    if isinstance(func_obj, ast.Name):
+        return func_obj.id
+    if isinstance(func_obj, ast.Attribute):
+        attr_id: object = func_obj.attr
+        return attr_id if isinstance(attr_id, str) else None
+    return None
+
 def _get_int_attr(node: ast.AST, attr: str, default: int) -> int:
-    raw: object = getattr(node, attr, default)
+    raw: object
+    if attr == "lineno":
+        raw = getattr(node, "lineno", default)
+    elif attr == "col_offset":
+        raw = getattr(node, "col_offset", default)
+    elif attr == "end_lineno":
+        raw = getattr(node, "end_lineno", default)
+    elif attr == "end_col_offset":
+        raw = getattr(node, "end_col_offset", default)
+    else:
+        raw = default
     if isinstance(raw, bool):
         return int(raw)
     if isinstance(raw, int):
@@ -317,13 +348,8 @@ def extract_python_scalar(
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            callee: object | None = None
             func_obj: object = node.func
-            if isinstance(func_obj, ast.Name):
-                callee = func_obj.id
-            elif isinstance(func_obj, ast.Attribute):
-                attr_id: object = getattr(func_obj, "attr", None)
-                callee = attr_id if isinstance(attr_id, str) else None
+            callee: object | None = _callee_from_call_func(func_obj)
             if not callee or not isinstance(callee, str):
                 continue
             span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
@@ -391,7 +417,7 @@ def extract_python_scalar(
                         generation=generation,
                     )
                 )
-        elif isinstance(node, ast.ImportFrom):
+        if isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
             for alias in node.names:
                 target = f"{module_name}.{alias.name}" if module_name else alias.name
@@ -433,7 +459,7 @@ def extract_python_scalar(
     }
     if defined_names:
         for body_node in ast.walk(tree):
-            if not isinstance(body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if not _is_def_or_class(body_node):
                 continue
             body_start, _, body_end, _ = _line_col(body_node)
             for sub in ast.walk(body_node):
@@ -441,9 +467,7 @@ def extract_python_scalar(
                     name = sub.id
                     if name in defined_names:
                         body_node_name: str = ""
-                        if isinstance(
-                            body_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                        ):
+                        if _is_def_or_class(body_node):
                             raw_name: object = getattr(body_node, "name", "")
                             body_node_name = raw_name if isinstance(raw_name, str) else ""
                         if body_node_name == name:
@@ -768,13 +792,8 @@ def extract_python_accelerated(
                 body_stack.append(active_body)
 
         if isinstance(node, ast.Call):
-            callee: object | None = None
             func_obj: object = node.func
-            if isinstance(func_obj, ast.Name):
-                callee = func_obj.id
-            elif isinstance(func_obj, ast.Attribute):
-                attr_id: object = getattr(func_obj, "attr", None)
-                callee = attr_id if isinstance(attr_id, str) else None
+            callee: object | None = _callee_from_call_func(func_obj)
             if isinstance(callee, str) and callee:
                 span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
                 call_span_id = derive_span_id(
@@ -806,7 +825,7 @@ def extract_python_accelerated(
                         generation=generation,
                     )
                 )
-        elif isinstance(node, ast.Import):
+        if isinstance(node, ast.Import):
             for alias in node.names:
                 target = alias.name
                 span_start_line, span_start_col, span_end_line, span_end_col = _line_col(node)
@@ -839,7 +858,7 @@ def extract_python_accelerated(
                         generation=generation,
                     )
                 )
-        elif isinstance(node, ast.ImportFrom):
+        if isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
             for alias in node.names:
                 target = f"{module_name}.{alias.name}" if module_name else alias.name
@@ -873,7 +892,7 @@ def extract_python_accelerated(
                         generation=generation,
                     )
                 )
-        elif isinstance(node, ast.Name):
+        if isinstance(node, ast.Name):
             raw_id: object = node.id
             ref_name: str = raw_id if isinstance(raw_id, str) else ""
             if ref_name and ref_name in defined_names and body_stack:
@@ -994,7 +1013,7 @@ _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 def _node_kind(node: ast.AST) -> str | None:
     if isinstance(node, ast.ClassDef):
         return "class"
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+    if _is_function_def(node):
         return "function"
     return None
 

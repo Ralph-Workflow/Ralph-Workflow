@@ -103,14 +103,102 @@ def _strip_ansi(value: object) -> str:
         return ""
 
 
+def _read_entry_timestamp(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "timestamp")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_phase(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "phase")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_cycle(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "cycle")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_iter(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "iter")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_agent(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "agent")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_severity(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "severity")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_body(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "body")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_grouping_role(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "grouping_role")
+    except AttributeError:
+        return None
+    return value
+
+
+def _read_entry_indent_level(entry: object) -> object:
+    try:
+        value: object = object.__getattribute__(entry, "indent_level")
+    except AttributeError:
+        return None
+    return value
+
+
+_ENTRY_ATTR_READERS: dict[str, Callable[[object], object]] = {
+    "timestamp": _read_entry_timestamp,
+    "phase": _read_entry_phase,
+    "cycle": _read_entry_cycle,
+    "iter": _read_entry_iter,
+    "agent": _read_entry_agent,
+    "severity": _read_entry_severity,
+    "body": _read_entry_body,
+    "grouping_role": _read_entry_grouping_role,
+    "indent_level": _read_entry_indent_level,
+}
+
+_ENTRY_ATTR_NAMES = frozenset(_ENTRY_ATTR_READERS)
+
+
 def _extract_field(entry: object, name: str) -> object:
     if entry is None:
         return None
     if isinstance(entry, dict):
         value: object = entry.get(name)
         return value
-    raw: object = getattr(entry, name, None)
-    return raw
+    if name not in _ENTRY_ATTR_NAMES:
+        return None
+    return _ENTRY_ATTR_READERS[name](entry)
 
 
 def _extract_indent_level(entry: object) -> int:

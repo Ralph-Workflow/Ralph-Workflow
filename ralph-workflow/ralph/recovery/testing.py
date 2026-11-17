@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 
 class FakeConnectivityMonitor:
+    __slots__ = ("_listeners", "_online_event", "_state")
+
     def __init__(self, initial_state: ConnectivityState = ConnectivityState.ONLINE) -> None:
         self._state: ConnectivityState = initial_state
         self._listeners: list[Callable[[ConnectivityEvent], None]] = []

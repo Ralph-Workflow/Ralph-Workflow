@@ -204,12 +204,12 @@ def _run_user_global_skill_migration(emit_warning: Callable[[str], None]) -> Non
 
 def _run_universal_skill_update(emit_warning: Callable[[str], None]) -> None:
     try:
-        import os
         import threading
 
+        from ralph.config._env import environ
         from ralph.skills.gating import universal_skill_updates_enabled
 
-        enabled = universal_skill_updates_enabled(os.environ)
+        enabled = universal_skill_updates_enabled(environ())
     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.debug("Universal skill update gate failed (non-fatal): {}", exc)
         return

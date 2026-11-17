@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.agents.catalog import AgentCatalog, default_catalog
@@ -22,27 +22,54 @@ __all__ = [
     "register_my_agent",
 ]
 
-_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
-    "AgentCatalog": ("ralph.agents.catalog", "AgentCatalog"),
-    "AgentChain": ("ralph.agents.chain", "AgentChain"),
-    "AgentRegistry": ("ralph.agents.registry", "AgentRegistry"),
-    "AgentSupport": ("ralph.agents.support", "AgentSupport"),
-    "default_catalog": ("ralph.agents.catalog", "default_catalog"),
-    "invoke_agent": ("ralph.agents.invoke", "invoke_agent"),
-    "register_agent_support": ("ralph.agents.registration", "register_agent_support"),
-    "register_my_agent": ("ralph.agents.registration", "register_my_agent"),
+
+def _load_AgentCatalog() -> object:
+    from ralph.agents.catalog import AgentCatalog
+    return AgentCatalog
+
+def _load_AgentChain() -> object:
+    from ralph.agents.chain import AgentChain
+    return AgentChain
+
+def _load_AgentRegistry() -> object:
+    from ralph.agents.registry import AgentRegistry
+    return AgentRegistry
+
+def _load_AgentSupport() -> object:
+    from ralph.agents.support import AgentSupport
+    return AgentSupport
+
+def _load_default_catalog() -> object:
+    from ralph.agents.catalog import default_catalog
+    return default_catalog
+
+def _load_invoke_agent() -> object:
+    from ralph.agents.invoke import invoke_agent
+    return invoke_agent
+
+def _load_register_agent_support() -> object:
+    from ralph.agents.registration import register_agent_support
+    return register_agent_support
+
+def _load_register_my_agent() -> object:
+    from ralph.agents.registration import register_my_agent
+    return register_my_agent
+
+_LOADERS: dict[str, Callable[[], object]] = {
+    "AgentCatalog": _load_AgentCatalog,
+    "AgentChain": _load_AgentChain,
+    "AgentRegistry": _load_AgentRegistry,
+    "AgentSupport": _load_AgentSupport,
+    "default_catalog": _load_default_catalog,
+    "invoke_agent": _load_invoke_agent,
+    "register_agent_support": _load_register_agent_support,
+    "register_my_agent": _load_register_my_agent,
 }
 
 
 def __getattr__(name: str) -> object:
-    try:
-        module_name, attr_name = _LAZY_EXPORTS[name]
-    except KeyError as exc:
+    loader = _LOADERS.get(name)
+    if loader is None:
         msg = f"module {__name__!r} has no attribute {name!r}"
-        raise AttributeError(msg) from exc
-
-    module = import_module(module_name)
-    namespace = cast("dict[str, object]", module.__dict__)
-    value = namespace[attr_name]
-    cast("dict[str, object]", globals())[name] = value
-    return value
+        raise AttributeError(msg)
+    return loader()

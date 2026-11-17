@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-import os
 from typing import TYPE_CHECKING
 
+from ralph.config._env import getenv
 from ralph.mcp.protocol.env import CYCLE_WARN_EPOCH_ENV, DEV_WARN_EPOCH_ENV
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ __all__ = [
 ]
 
 
-def read_published_epoch(name: str, env_getter: EnvGetter = os.environ.get) -> float | None:
+def read_published_epoch(name: str, env_getter: EnvGetter = getenv) -> float | None:
     raw = env_getter(name)
     if raw is None or not raw.strip():
         return None
@@ -30,7 +30,7 @@ def read_published_epoch(name: str, env_getter: EnvGetter = os.environ.get) -> f
 def development_warning_is_active(
     *,
     now_epoch: float,
-    env_getter: EnvGetter = os.environ.get,
+    env_getter: EnvGetter = getenv,
 ) -> bool:
     warn_epoch = read_published_epoch(DEV_WARN_EPOCH_ENV, env_getter)
     return warn_epoch is not None and now_epoch >= warn_epoch
@@ -39,7 +39,7 @@ def development_warning_is_active(
 def cycle_warning_is_active(
     *,
     now_epoch: float,
-    env_getter: EnvGetter = os.environ.get,
+    env_getter: EnvGetter = getenv,
 ) -> bool:
     warn_epoch = read_published_epoch(CYCLE_WARN_EPOCH_ENV, env_getter)
     return warn_epoch is not None and now_epoch >= warn_epoch

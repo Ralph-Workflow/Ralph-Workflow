@@ -586,12 +586,20 @@ def test_both_agents_templates_interpolate_canonical_dir() -> None:
         end=markers.AGENTS_BLOCK_END,
         canonical_dir=markers.CANONICAL_DIR,
     )
+    cited_dir = f"`{markers.CANONICAL_DIR}`"
+    cited_gate = f"`{markers.CANONICAL_DIR}gate-script-policy.md`"
     assert "{canonical_dir}" in agents_md._AGENTS_PLACEHOLDER_TEMPLATE
     assert "{canonical_dir}" in agents_md._AGENTS_READY_TEMPLATE
-    assert markers.CANONICAL_DIR in placeholder
-    assert markers.CANONICAL_DIR in ready
+    assert "`{canonical_dir}`" in agents_md._AGENTS_PLACEHOLDER_TEMPLATE
+    assert "`{canonical_dir}`" in agents_md._AGENTS_READY_TEMPLATE
+    assert "`{canonical_dir}gate-script-policy.md`" in agents_md._AGENTS_READY_TEMPLATE
+    assert cited_dir in placeholder
+    assert cited_dir in ready
+    assert cited_gate in ready
     assert placeholder.count(markers.CANONICAL_DIR) >= 1
     assert ready.count(markers.CANONICAL_DIR) >= 1
+    assert "{canonical_dir}" not in placeholder
+    assert "{canonical_dir}" not in ready
 
 
 def test_agents_md_renderer_double_render_into_tmp_is_byte_identical() -> None:
@@ -608,7 +616,8 @@ def test_agents_md_renderer_double_render_into_tmp_is_byte_identical() -> None:
     changed = agents_md.bootstrap(ws)
     assert markers.AGENTS_MD in changed
     first = agents_path.read_bytes()
-    assert markers.CANONICAL_DIR.encode("utf-8") in first
+    cited_dir = f"`{markers.CANONICAL_DIR}`".encode()
+    assert cited_dir in first
     assert markers.AGENTS_BLOCK_BEGIN.encode("utf-8") in first
     assert b"{canonical_dir}" not in first
     assert b"_AGENTS_PLACEHOLDER_TEMPLATE" not in first
@@ -619,7 +628,9 @@ def test_agents_md_renderer_double_render_into_tmp_is_byte_identical() -> None:
     ready_changed = agents_md.condense_placeholder_block(ws)
     assert markers.AGENTS_MD in ready_changed
     ready_first = agents_path.read_bytes()
-    assert markers.CANONICAL_DIR.encode("utf-8") in ready_first
+    cited_gate = f"`{markers.CANONICAL_DIR}gate-script-policy.md`".encode()
+    assert cited_dir in ready_first
+    assert cited_gate in ready_first
     assert b"{canonical_dir}" not in ready_first
     assert agents_md.condense_placeholder_block(ws) == []
     assert agents_path.read_bytes() == ready_first

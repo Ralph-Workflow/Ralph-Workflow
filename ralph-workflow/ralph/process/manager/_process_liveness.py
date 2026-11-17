@@ -55,9 +55,11 @@ def _psutil_pid_exists_liveness(psutil_mod: _PsutilModuleLike, pid: int) -> Live
             return LivenessResult.GONE
         if _is_access_denied_error(psutil_mod, exc):
             return LivenessResult.ALIVE
-        if isinstance(exc, (OSError, RuntimeError, TypeError, ValueError)):
-            return LivenessResult.UNKNOWN
-        raise
+        match exc:
+            case OSError() | RuntimeError() | TypeError() | ValueError():
+                return LivenessResult.UNKNOWN
+            case _:
+                raise
     else:
         return LivenessResult.ALIVE if exists else LivenessResult.GONE
 
@@ -77,8 +79,11 @@ def verify_process_liveness(
                 return LivenessResult.GONE
             if _is_access_denied_error(psutil_mod, exc):
                 return LivenessResult.ALIVE
-            if not isinstance(exc, (OSError, RuntimeError, TypeError, ValueError)):
-                raise
+            match exc:
+                case OSError() | RuntimeError() | TypeError() | ValueError():
+                    pass
+                case _:
+                    raise
         else:
             return _psutil_pid_exists_liveness(psutil_mod, pid)
 

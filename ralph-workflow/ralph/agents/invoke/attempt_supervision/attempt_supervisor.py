@@ -5,7 +5,7 @@ import subprocess
 import threading
 import weakref
 from collections import deque
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents.invoke._quota_detection import is_quota_kill_evidence
 from ralph.agents.invoke.attempt_supervision import _issuer_mapping
@@ -20,8 +20,6 @@ from ralph.agents.invoke.termination_recorder import TerminationRecorder, observ
 from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.agents.invoke.attempt_supervision.attempt_observation import AttemptObservation
     from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
     from ralph.process.teardown import ProcessTeardown
@@ -33,17 +31,17 @@ _OWNERS_BY_RECORDER_ID: weakref.WeakValueDictionary[int, AttemptSupervisor] = (
 
 
 def _signal_fn_of(handle: object) -> _SignalFn | None:
-    candidate = cast("object", getattr(handle, "terminate", None))
+    candidate: object = getattr(handle, "terminate", None)
     return candidate if isinstance(candidate, _SignalFn) else None
 
 
 def _wait_fn_of(handle: object) -> _WaitFn | None:
-    candidate = cast("object", getattr(handle, "wait", None))
+    candidate: object = getattr(handle, "wait", None)
     return candidate if isinstance(candidate, _WaitFn) else None
 
 
 def _handle_pid(handle: object) -> int | None:
-    pid = cast("object", getattr(handle, "pid", None))
+    pid: object = getattr(handle, "pid", None)
     if isinstance(pid, bool) or not isinstance(pid, int):
         return None
     return pid
@@ -60,10 +58,36 @@ def _coerce_returncode(value: object) -> int | None:
 
 
 def _recorded_returncode(handle: object) -> int | None:
-    return _coerce_returncode(cast("object", getattr(handle, "returncode", None)))
+    return _coerce_returncode(getattr(handle, "returncode", None))
+
+
+
+@runtime_checkable
+class _RecordTerminalReasonHandle(Protocol):
+    def record_terminal_reason(self, reason: str) -> None: ...
+
+
+@runtime_checkable
+class _CloseHandle(Protocol):
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class _PollHandle(Protocol):
+    def poll(self) -> int | None: ...
 
 
 class AttemptSupervisor:
+    __slots__ = (
+        "__weakref__",
+        "_handle",
+        "_lock",
+        "_observations",
+        "_recorder",
+        "_teardown",
+        "_winner",
+    )
+
     def __init__(
         self,
         handle: object,
@@ -192,20 +216,15 @@ class AttemptSupervisor:
     def _record_terminal_reason(self, reason: str | None) -> None:
         if reason is None:
             return
-        record_reason = cast(
-            "Callable[[str], None] | None",
-            getattr(self._handle, "record_terminal_reason", None),
-        )
-        if record_reason is not None:
-            record_reason(reason)
+        if isinstance(self._handle, _RecordTerminalReasonHandle):
+            self._handle.record_terminal_reason(reason)
 
     def _close_if_declared(self, observation: AttemptObservation) -> None:
         if not _issuer_mapping.closes_before_signal(observation):
             return
-        close_fn = cast("Callable[[], None] | None", getattr(self._handle, "close", None))
-        if close_fn is not None:
+        if isinstance(self._handle, _CloseHandle):
             with contextlib.suppress(Exception):
-                close_fn()
+                self._handle.close()
 
     def _signal_if_alive(
         self,
@@ -222,11 +241,10 @@ class AttemptSupervisor:
         if not waits_for_exit:
             self._signal_with_suppression(observation, terminate_fn, process_issuer, reason)
             return _RETURNCODE_NOT_POLLED
-        poll_fn = cast("Callable[[], int | None] | None", getattr(self._handle, "poll", None))
-        if poll_fn is None:
+        if not isinstance(self._handle, _PollHandle):
             return _POLLED_WITHOUT_RETURNCODE
         with contextlib.suppress(*_issuer_mapping._SIGNAL_WAIT_ERRORS):
-            returncode = poll_fn()
+            returncode = self._handle.poll()
             if returncode is None:
                 self._signal_with_suppression(observation, terminate_fn, process_issuer, reason)
                 return _POLLED_WITHOUT_RETURNCODE

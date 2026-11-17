@@ -1,16 +1,10 @@
 from __future__ import annotations
 
-import os
 import shutil
-from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents.agent_install_links import install_url_for
-from ralph.onboarding import (
-    STARTER_PROMPT_SENTINEL,
-    missing_prompt_validation_hint,
-    starter_prompt_validation_hint,
-)
+from ralph.config._env import environ, getenv
 from ralph.policy.validation._checkpoint_policy_mismatch_error import (
     CheckpointPolicyMismatchError,
 )
@@ -266,10 +260,11 @@ def validate_agent_chains_satisfiable(
     if unknown_agents:
         agy_help = ""
         if any("'agy/" in agent for agent in unknown_agents):
-            registry: object = import_module("ralph.agents.registry")
-            if not isinstance(registry, _AgyAliasHelpModule):
+            import ralph.agents.registry as registry_module
+
+            if not isinstance(registry_module, _AgyAliasHelpModule):
                 raise TypeError("ralph.agents.registry lacks agy_alias_help")
-            agy_help = f" {registry.agy_alias_help()}"
+            agy_help = f" {registry_module.agy_alias_help()}"
         raise PolicyValidationError(
             "Agent chains reference unknown agents (check configuration, not PATH): "
             + "; ".join(unknown_agents)
@@ -283,10 +278,11 @@ def validate_chain_agents_on_path(
     available: Callable[[str], bool] | None = None,
     warn: Callable[[str], None] | None = None,
 ) -> None:
-    builtin: object = import_module("ralph.agents.builtin")
-    if not isinstance(builtin, _BuiltinAgentModule):
+    import ralph.agents.builtin as builtin_module
+
+    if not isinstance(builtin_module, _BuiltinAgentModule):
         raise TypeError("ralph.agents.builtin lacks builtin_supports")
-    supports = {support.name: support for support in builtin.builtin_supports()}
+    supports = {support.name: support for support in builtin_module.builtin_supports()}
 
     def is_available(agent_name: str) -> bool:
         if available is not None:
@@ -298,7 +294,7 @@ def validate_chain_agents_on_path(
             "cursor": "RALPH_CURSOR_BINARY",
             "opencode": "RALPH_OPENCODE_BINARY",
         }.get(base_name)
-        command = os.environ.get(override_name) if override_name is not None else None
+        command = getenv(override_name) if override_name is not None else None
         return (
             support is not None
             and isinstance(support, _AgentSupport)
@@ -364,7 +360,13 @@ def validate_checkpoint_against_policy(
 
 
 def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
-    prompt_path = resolve_effective_prompt_path(workspace_scope.root, os.environ)
+    from ralph.onboarding import (
+        STARTER_PROMPT_SENTINEL,
+        missing_prompt_validation_hint,
+        starter_prompt_validation_hint,
+    )
+
+    prompt_path = resolve_effective_prompt_path(workspace_scope.root, environ())
     if not prompt_path.exists():
         raise PolicyValidationError(
             f"Required input file not found: {prompt_path}. " + missing_prompt_validation_hint()

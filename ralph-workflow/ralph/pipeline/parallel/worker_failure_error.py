@@ -2,6 +2,8 @@ from __future__ import annotations
 
 
 class WorkerFailureError(Exception):
+    __slots__ = ("error", "exit_code", "unit_id")
+
     def __init__(self, unit_id: str, exit_code: int, error: str) -> None:
         super().__init__(error)
         self.unit_id = unit_id

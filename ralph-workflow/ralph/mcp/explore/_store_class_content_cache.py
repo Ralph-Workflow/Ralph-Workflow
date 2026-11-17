@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager
-from typing import cast
 
+from ralph.mcp.explore._narrowing import rows_from_cursor
 from ralph.mcp.explore._store_types import (
     ContentCacheRow,
     _row_int_opt,
@@ -13,6 +13,7 @@ from ralph.mcp.explore._store_types import (
 
 
 class _ContentCacheMethods:
+    __slots__ = ()
     _conn: sqlite3.Connection
     _transaction: Callable[[], AbstractContextManager[sqlite3.Cursor]]
 
@@ -77,7 +78,7 @@ class _ContentCacheMethods:
 
     def iter_content_cache(self) -> Iterator[ContentCacheRow]:
         cur = self._conn.execute("SELECT * FROM content_cache")
-        rows = cast("list[sqlite3.Row]", cur.fetchall())
+        rows = rows_from_cursor(cur)
         for cache_row in rows:
             yield _row_to_content_cache(cache_row)
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_int
 from ralph.pro_support.marker import read_marker_file, read_run_id
 
 if TYPE_CHECKING:
@@ -39,9 +40,11 @@ class PipelineStateSnapshot:
                 )
 
 
-@dataclasses.dataclass
 class SnapshotRegistry:
-    latest: PipelineStateSnapshot | None = None
+    __slots__ = ("latest",)
+
+    def __init__(self, latest: PipelineStateSnapshot | None = None) -> None:
+        self.latest = latest
 
     def publish(self, snapshot: PipelineStateSnapshot) -> None:
         self.latest = dataclasses.replace(
@@ -71,7 +74,7 @@ def build_pipeline_state_snapshot(
         run_id=run_id,
         interrupted_by_user=state.interrupted_by_user,
         last_error=state.last_error,
-        metrics={k: int(cast("int", v)) for k, v in state.metrics.model_dump().items()},
+        metrics={k: as_int(v) for k, v in state.metrics.model_dump().items()},
         budget_caps=dict(state.budget_caps),
         outer_progress=dict(state.outer_progress),
         loop_iterations=dict(state.loop_iterations),

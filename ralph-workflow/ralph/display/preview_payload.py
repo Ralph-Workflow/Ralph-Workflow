@@ -4,7 +4,7 @@ import ast
 import json
 import re
 from dataclasses import dataclass
-from typing import Final, Literal, cast
+from typing import Final, Literal
 
 _PATCH_HUNK_RE: Final[re.Pattern[str]] = re.compile(
     r"^@@ -(?P<old>\d+)(?:,\d+)? \+(?P<new>\d+)(?:,\d+)? @@", re.MULTILINE
@@ -56,11 +56,7 @@ def _mapping(value: object) -> dict[str, object] | None:
                 return None
     if not isinstance(parsed, dict):
         return None
-    return {
-        key: item
-        for key, item in cast("dict[object, object]", parsed).items()
-        if isinstance(key, str)
-    }
+    return {key: item for key, item in parsed.items() if isinstance(key, str)}
 
 
 def _tool_info_parameters(mapping: dict[str, object]) -> dict[str, object] | None:

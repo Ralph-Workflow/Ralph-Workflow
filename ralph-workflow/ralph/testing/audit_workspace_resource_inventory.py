@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.testing._audit_scope import is_function_or_class
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -104,7 +106,7 @@ class _SymbolSpan:
 def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
     spans: list[_SymbolSpan] = []
     for node in tree.body:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if is_function_or_class(node):
             spans.append(
                 _SymbolSpan(
                     qualified_name=node.name,
@@ -120,7 +122,7 @@ def _module_symbols(tree: ast.Module) -> list[_SymbolSpan]:
                         end_line=child.end_lineno or child.lineno,
                     )
                     for child in node.body
-                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                    if is_function_or_class(child)
                 )
     return spans
 

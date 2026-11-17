@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from tests.doc_roots import REPOSITORY_ROOT
+from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
@@ -22,6 +24,16 @@ RALPH_TEST_CHANGE_REASONS = {
         "against the wired step labels, so the hyphenated form named no enforcer. The "
         "expected cell is now the wired label, and the row is additionally required to "
         "name a label the gate declares"
+    ),
+    "test_pilot_ledger_pins_section6_r1_invalid_and_r3_failed": (
+        "paired-replay §6 counts a timed-out run as a failure on the pack and only "
+        "invalid runs as replaceable, so the canonical pilot ledger must pin R1 as "
+        "invalid with ENOSPC and R3 as failed at wall_seconds 720 with agent_exit 124"
+    ),
+    "test_unblinded_scored_effects_exclude_s2": (
+        "R3 failed under §6 so category S2 has no valid baseline arm; unblinded "
+        "treatment-effect aggregation must exclude S2 and must not compute a scored "
+        "S2 pair from the failed baseline"
     ),
 }
 
@@ -66,11 +78,51 @@ _CITED_POLICY_SCHEMA_SYMBOLS = (
     "VERSION_SPECS",
 )
 
+_PILOT_LEDGER_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "ledger.jsonl"
+_PILOT_UNBLINDED_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "unblinded.json"
+_PILOT_R3_AGENT_EXIT_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "R3" / "agent_exit"
+_LEDGER_FIELDS = (
+    "run_id",
+    "arm",
+    "category",
+    "outcome",
+    "wall_seconds",
+    "invalid",
+    "scores_path",
+)
+_R1_INVALID_REASON = (
+    "ENOSPC: agent commands never started; no source change (see transcript.jsonl)"
+)
+_R3_TIMEOUT_SECONDS = 720
+_R3_AGENT_EXIT = 124
+
 
 def _read_bytes(relative_path: str) -> bytes:
     path = REPOSITORY_ROOT / relative_path
     assert path.is_file(), f"expected shipped document at {path}"
     return path.read_bytes()
+
+
+def _decode_ledger_row(line: str) -> dict[str, object]:
+    decoded: object = json.loads(line)
+    assert isinstance(decoded, dict), f"ledger row is not a JSON object: {line}"
+    row: dict[str, object] = {}
+    for key, value in decoded.items():
+        assert isinstance(key, str), f"ledger row key is not a string: {line}"
+        row[key] = value
+    return row
+
+
+def _pilot_ledger_rows() -> list[dict[str, object]]:
+    assert _PILOT_LEDGER_PATH.is_file(), f"expected pilot ledger at {_PILOT_LEDGER_PATH}"
+    lines = _PILOT_LEDGER_PATH.read_text(encoding="utf-8").splitlines()
+    return [_decode_ledger_row(line) for line in lines if line.strip()]
+
+
+def _row_by_arm(rows: list[dict[str, object]], arm: str) -> dict[str, object]:
+    matches = [row for row in rows if row.get("arm") == arm]
+    assert len(matches) == 1, f"expected exactly one ledger row for arm {arm!r}; found {len(matches)}"
+    return matches[0]
 
 
 def test_plan_copies_are_byte_identical() -> None:
@@ -167,3 +219,59 @@ def test_cited_policy_schema_source_defines_the_cited_symbols() -> None:
     source = _read_bytes(_CITED_POLICY_SCHEMA_SOURCE).decode("utf-8")
     missing = [name for name in _CITED_POLICY_SCHEMA_SYMBOLS if name not in source]
     assert not missing, f"{_CITED_POLICY_SCHEMA_SOURCE} no longer defines: {missing}"
+
+
+def test_pilot_ledger_pins_section6_r1_invalid_and_r3_failed() -> None:
+    rows = _pilot_ledger_rows()
+    assert len(rows) == 5, f"expected five pilot ledger rows; found {len(rows)}"
+    for row in rows:
+        assert list(row) == list(_LEDGER_FIELDS), f"unexpected ledger row schema: {row}"
+
+    r1 = _row_by_arm(rows, "R1")
+    assert r1["outcome"] == "invalid"
+    assert r1["invalid"] == _R1_INVALID_REASON
+    assert "ENOSPC" in str(r1["invalid"])
+    assert r1["scores_path"] is None
+
+    r3 = _row_by_arm(rows, "R3")
+    assert r3["outcome"] == "failed"
+    assert r3["wall_seconds"] == _R3_TIMEOUT_SECONDS
+    assert r3["invalid"] is None
+    assert r3["scores_path"] is None
+    assert r3["category"] == "S2"
+
+    assert _PILOT_R3_AGENT_EXIT_PATH.is_file(), (
+        f"expected R3 agent_exit pin at {_PILOT_R3_AGENT_EXIT_PATH}"
+    )
+    assert int(_PILOT_R3_AGENT_EXIT_PATH.read_text(encoding="utf-8").strip()) == _R3_AGENT_EXIT
+
+    by_outcome = {row["arm"]: row["outcome"] for row in rows}
+    assert by_outcome == {
+        "R1": "invalid",
+        "R1b": "valid",
+        "R2": "valid",
+        "R3": "failed",
+        "R4": "valid",
+    }
+
+
+def test_unblinded_scored_effects_exclude_s2() -> None:
+    assert _PILOT_UNBLINDED_PATH.is_file(), f"expected unblinded scores at {_PILOT_UNBLINDED_PATH}"
+    decoded: object = json.loads(_PILOT_UNBLINDED_PATH.read_text(encoding="utf-8"))
+    assert isinstance(decoded, dict), f"unblinded.json must be a JSON object: {decoded!r}"
+    pairs = decoded.get("pairs")
+    assert isinstance(pairs, dict), f"unblinded.json must carry a pairs object: {decoded!r}"
+    assert "S2" not in pairs, (
+        "S2 must be excluded from scored treatment effects because R3 failed under §6; "
+        f"observed pairs keys: {sorted(pairs)}"
+    )
+    assert "S1" in pairs, f"S1 remains the evaluable scored pair; observed: {sorted(pairs)}"
+    excluded = decoded.get("excluded_from_scored_treatment_effects")
+    assert excluded == ["S2"], (
+        "unblinded.json must record S2 as excluded from scored treatment effects; "
+        f"observed: {excluded!r}"
+    )
+    note = decoded.get("note")
+    assert isinstance(note, str) and "S2 is excluded" in note, (
+        f"unblinded note must state S2 exclusion; observed: {note!r}"
+    )

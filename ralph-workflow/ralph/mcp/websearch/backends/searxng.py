@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import cast
 from urllib.parse import urljoin
 
 import httpx
@@ -33,7 +32,7 @@ class SearxngBackend:
                 timeout=effective_timeout,
             )
             response.raise_for_status()
-            payload = cast("object", response.json())
+            payload: object = response.json()
         except Exception as exc:
             raise WebSearchError("searxng search failed") from exc
         return self._normalize_results(payload, limit=limit)

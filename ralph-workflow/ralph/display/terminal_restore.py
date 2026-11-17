@@ -46,7 +46,9 @@ class _HasFileno(Protocol):
 
 
 def terminal_understands_vt(env: Mapping[str, str] | None = None) -> bool:
-    term = (os.environ if env is None else env).get("TERM", "")
+    from ralph.config._env import getenv
+
+    term = env.get("TERM", "") if env is not None else (getenv("TERM") or "")
     return bool(term and term != "dumb")
 
 

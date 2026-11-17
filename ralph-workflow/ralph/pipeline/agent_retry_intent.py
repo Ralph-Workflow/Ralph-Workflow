@@ -1,24 +1,13 @@
 from __future__ import annotations
 
 import threading as _threading
-from importlib import import_module
-from typing import Literal, Protocol, cast
+from typing import Literal
 
 from pydantic import ConfigDict, model_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
 AgentRetryAction = Literal["fresh", "resume", "new_session_with_id"]
-
-
-class _RecoveryActionForFailureReason(Protocol):
-    def __call__(
-        self,
-        failure_reason: str,
-        *,
-        has_prior_session: bool,
-        reset_tool_registry: bool = False,
-    ) -> AgentRetryAction: ...
 
 
 class AgentRetryIntent(RalphBaseModel):
@@ -62,12 +51,7 @@ def agent_retry_intent_for_failure(
     session_id: str | None,
     reset_tool_registry: bool,
 ) -> AgentRetryIntent:
-
-    module = import_module("ralph.agents.invoke._session_resume")
-    recovery_action_for_failure_reason = cast(
-        "_RecoveryActionForFailureReason",
-        module.recovery_action_for_failure_reason,
-    )
+    from ralph.agents.invoke._session_resume import recovery_action_for_failure_reason
 
     action = recovery_action_for_failure_reason(
         failure_reason,

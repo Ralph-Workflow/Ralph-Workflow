@@ -4,13 +4,14 @@ import threading
 import time
 from datetime import UTC, datetime
 
-from ralph.agents.clock import Clock
-
 __all__ = ["SystemClock"]
 
 
-class SystemClock(Clock):
-    _offset: float = 0.0
+class SystemClock:
+    __slots__ = ("_offset",)
+
+    def __init__(self) -> None:
+        self._offset = 0.0
 
     def monotonic(self) -> float:
         return time.monotonic() + self._offset

@@ -24,7 +24,16 @@ if TYPE_CHECKING:
     from ralph.mcp.server._json_rpc_response import JsonRpcResponse
     from ralph.mcp.server._server_state import ServerState
 
-_SINK_SWAP_LOCK = threading.Lock()
+
+class _SinkSwapLock:
+    __slots__ = ("lock",)
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+
+
+_SINK_SWAP_LOCK_HOLDER = _SinkSwapLock()
+_SINK_SWAP_LOCK = _SINK_SWAP_LOCK_HOLDER.lock
 
 _CURRENT_PROGRESS_SUB: ContextVar[ProgressSubscription | None] = ContextVar(
     "current_progress_sub", default=None
@@ -43,28 +52,46 @@ def set_default_exec_job_registry(registry: ExecJobRegistry | None) -> None:
     _set_exec_job_registry(registry)
 
 
+def _as_progress_token(value: object) -> str | int | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _as_progress_number(value: object) -> float | int:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return value
+    return 0.0
+
+
 def extract_progress_token(request: JsonRpcRequest) -> str | int | None:
     if not isinstance(request.params, dict):
         return None
     meta = request.params.get("_meta")
     if isinstance(meta, dict) and meta.get("progressToken") is not None:
-        tok = meta["progressToken"]
-        if isinstance(tok, (str, int)):
+        tok = _as_progress_token(meta["progressToken"])
+        if tok is not None:
             return tok
     if request.params.get("progressToken") is not None:
-        tok = request.params["progressToken"]
-        if isinstance(tok, (str, int)):
+        tok = _as_progress_token(request.params["progressToken"])
+        if tok is not None:
             return tok
     args = request.params.get("arguments")
     if isinstance(args, dict):
         args_meta = args.get("_meta")
         if isinstance(args_meta, dict) and args_meta.get("progressToken") is not None:
-            tok = args_meta["progressToken"]
-            if isinstance(tok, (str, int)):
+            tok = _as_progress_token(args_meta["progressToken"])
+            if tok is not None:
                 return tok
         if args.get("progressToken") is not None:
-            tok = args["progressToken"]
-            if isinstance(tok, (str, int)):
+            tok = _as_progress_token(args["progressToken"])
+            if tok is not None:
                 return tok
     return None
 
@@ -87,7 +114,7 @@ def _build_progress_frame(token: str | int, sample: dict[str, object]) -> bytes:
     raw_progress = sample.get("progress")
     if raw_progress is None:
         raw_progress = sample.get("elapsed_s", 0.0)
-    progress_val: float | int = raw_progress if isinstance(raw_progress, (int, float)) else 0.0
+    progress_val = _as_progress_number(raw_progress)
 
     params: dict[str, object] = {
         "progressToken": token,

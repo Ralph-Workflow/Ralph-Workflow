@@ -33,8 +33,12 @@ class AgentsFileConflictError(OSError):
     pass
 
 
+def _new_lock() -> threading.Lock:
+    return threading.Lock()
+
+
 _PATH_LOCKS: weakref.WeakValueDictionary[Path, threading.Lock] = weakref.WeakValueDictionary()
-_PATH_LOCKS_GUARD = threading.Lock()
+_PATH_LOCKS_GUARD = _new_lock()
 
 
 def _get_target_lock(target: Path) -> threading.Lock:

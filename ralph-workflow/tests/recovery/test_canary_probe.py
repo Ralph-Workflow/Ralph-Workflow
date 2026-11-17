@@ -290,7 +290,7 @@ def test_probe_places_scratch_under_the_trusted_parent_and_removes_it(
     assert not (workspace_path / CANARY_MARKER_FILENAME).exists()
 
 
-def test_probe_is_inconclusive_when_trusted_parent_resolution_fails(
+def test_probe_falls_back_to_mkdtemp_when_trusted_parent_resolution_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -303,40 +303,14 @@ def test_probe_is_inconclusive_when_trusted_parent_resolution_fails(
         _agent_config(),
         invoke_fn=_make_invoke("write_marker", calls),
     )
-    assert result.outcome == ProbeOutcome.INCONCLUSIVE
-    assert result.detail == "probe_could_not_run"
-    assert result.marker_written is None
-    assert calls == []
-
-
-def test_invocation_error_with_structured_facts_feeds_the_judge(tmp_path: Path) -> None:
-    from ralph.agents.invoke import AgentInvocationError
-
-    calls: list[_Call] = []
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    dialog = "This workspace has not been confirmed yet. Press the Return key to proceed."
-
-    def _invoke(
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None:
-        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
-        raise AgentInvocationError("fake-agent", 1, dialog)
-
-    result = run_canary_probe(
-        _agent_config(),
-        invoke_fn=_invoke,
-        workspace_factory=lambda: scratch,
-    )
-    assert result.outcome == ProbeOutcome.INCONCLUSIVE
-    assert result.detail == "probe_could_not_run"
-    assert result.marker_written is None
-    assert result.error is not None
-    assert dialog in result.error
+    assert result.outcome == ProbeOutcome.PASSED
     assert len(calls) == 1
+    options = calls[0].options
+    assert options is not None
+    workspace_path = options.workspace_path
+    assert workspace_path is not None
+    assert workspace_path.name.startswith("ralph-canary-probe-")
+    assert not workspace_path.exists()
 
 
 def test_inconclusive_maps_to_the_unknown_verdict_hint(tmp_path: Path) -> None:

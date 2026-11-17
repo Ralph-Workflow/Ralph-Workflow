@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -138,7 +138,8 @@ class WorkspaceScope:
 
         scope = object.__new__(cls)
         object.__setattr__(scope, "root", canonical_root)
-        object.__setattr__(scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots)))
+        roots: tuple[Path, ...] = tuple(allowed_roots)
+        object.__setattr__(scope, "allowed_roots", roots)
         object.__setattr__(scope, "local_config_path", _default_local_config_path(canonical_root))
         object.__setattr__(scope, "propagated_config_paths", ())
         return scope

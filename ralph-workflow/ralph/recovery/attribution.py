@@ -157,7 +157,7 @@ def runtime_or_unattributed_kill_of_live_session_clears_agent(
 
 
 def satisfied_outcome_clears_agent(facts: AttemptFacts) -> _AttributionVerdict | None:
-    if not facts.artifact_valid and not facts.outcome_exists:
+    if not facts.artifact_valid:
         return None
     return _AttributionVerdict(
         attribution=_Attribution.TASK_OR_ENVIRONMENT,
@@ -172,7 +172,7 @@ def peers_fail_identically_points_to_task(
     *,
     peer_failures_identical: bool = False,
 ) -> _AttributionVerdict | None:
-    if facts.artifact_valid or facts.outcome_exists:
+    if facts.artifact_valid:
         return None
     if not peer_failures_identical:
         return None
@@ -212,7 +212,7 @@ def authoritative_typed_signal_convicts_agent(
     typed_signal_observed: bool = False,
     typed_signal_provider_originated: bool = False,
 ) -> _AttributionVerdict | None:
-    if facts.artifact_valid or facts.outcome_exists:
+    if facts.artifact_valid:
         return None
     if not typed_signal_observed:
         return None

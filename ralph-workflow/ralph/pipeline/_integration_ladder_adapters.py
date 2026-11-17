@@ -297,10 +297,7 @@ class _ProductionGitPlumbing:
     def clean_untracked(self, root: Path, paths: tuple[str, ...]) -> bool:
         from ralph.git.subprocess_runner import run_git
 
-        if paths:
-            args: tuple[str, ...] = ("clean", "-fd", "--", *paths)
-        else:
-            args = ("clean", "-fd", "-e", ".agent", "-e", ".agent/**")
+        args = ("clean", "-fd", "--", *paths) if paths else ("clean", "-fd")
         result = run_git(
             (*_HOOKS_DISABLED, *args),
             cwd=root,

@@ -128,12 +128,13 @@ def resolve_mixed_kind_deterministic(
     gitlink_policy: GitlinkPolicyConfig | None = None,
 ) -> MixedKindResolution:
     target_paths: tuple[str, ...]
-    if isinstance(paths, tuple):
-        target_paths = paths
-    elif isinstance(paths, _StopWithConflicts):
-        target_paths = paths.conflicted_files
-    else:
-        target_paths = tuple(paths)
+    match paths:
+        case tuple():
+            target_paths = paths
+        case _StopWithConflicts():
+            target_paths = paths.conflicted_files
+        case _:
+            target_paths = tuple(paths)
     if not target_paths:
         return MixedKindResolution((), ())
 

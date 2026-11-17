@@ -5,14 +5,14 @@ from typing import Literal, Self
 
 from pydantic import ConfigDict, Field, model_validator
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 DEFAULT_CYCLE_TIMEBOX_SECONDS: float = 36000.0
 WARNING_THRESHOLD_RATIO: float = 0.8
 DEFAULT_FINALIZATION_CYCLE_OUTCOME: Literal["completed", "failed"] = "completed"
 
 
-class CycleTimeboxPolicy(_FrozenPolicyModel):
+class CycleTimeboxPolicy(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     duration_seconds: float = Field(

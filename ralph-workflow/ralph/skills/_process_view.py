@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
+from ralph.checked_accessors import as_mapping
+from ralph.config._env import pop_environ, set_environ
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.skills._content import (
@@ -53,12 +54,9 @@ def _is_valid_managed_skill(skills_dir: Path, name: str) -> bool:
     if not (skill_file.is_file() and marker_file.is_file()):
         return False
     try:
-        raw_marker = cast("object", json.loads(marker_file.read_text(encoding="utf-8")))
+        marker = dict(as_mapping(json.loads(marker_file.read_text(encoding="utf-8"))))
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return False
-    if not isinstance(raw_marker, dict):
-        return False
-    marker = cast("dict[str, object]", raw_marker)
     if not (marker.get("managed_by") == "ralph-workflow" and marker.get("skill") == name):
         return False
     return skill_file.read_text(encoding="utf-8") == get_skill_content(name)
@@ -72,6 +70,8 @@ def has_machine_global_skills() -> bool:
 
 
 class SkillsProcessView(AbstractContextManager[Path]):
+    __slots__ = ("_target_dir", "_tempdir")
+
     def __init__(self, target_dir: Path | None = None) -> None:
         self._target_dir = target_dir
         self._tempdir: tempfile.TemporaryDirectory[str] | None = None
@@ -85,7 +85,7 @@ class SkillsProcessView(AbstractContextManager[Path]):
             target.mkdir(parents=True, exist_ok=True)
         _merge_external_skills(target)
         materialize_skills_to_dir(target)
-        os.environ[_ENV_VAR] = str(target)
+        set_environ(_ENV_VAR, str(target))
         return target
 
     def __exit__(
@@ -94,7 +94,7 @@ class SkillsProcessView(AbstractContextManager[Path]):
         exc: BaseException | None,
         tb: object | None,
     ) -> Literal[False]:
-        os.environ.pop(_ENV_VAR, None)
+        pop_environ(_ENV_VAR)
         if self._tempdir is not None:
             self._tempdir.cleanup()
         return False

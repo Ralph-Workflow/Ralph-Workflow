@@ -114,7 +114,6 @@ class _AttemptFacts:
     tool_calls: tuple[str, ...] = field(default_factory=tuple)
     workspace_changed_by_tool: bool | None = None
     artifact_valid: bool = False
-    outcome_exists: bool = False
     workspace_changed: bool | None = None
     elapsed_to_terminal_ms: int | None = None
     exit_status: str | None = None

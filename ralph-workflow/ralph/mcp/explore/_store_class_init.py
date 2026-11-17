@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
+from typing import ClassVar
 
 from ralph.mcp.explore._store_types import (
     _DDL,
@@ -17,6 +18,7 @@ from ralph.mcp.explore._store_types import (
 
 
 class _InitializeMethods:
+    __slots__ = ()
     _conn: sqlite3.Connection
     _db_path: Path
     _busy_timeout_ms: int
@@ -24,6 +26,7 @@ class _InitializeMethods:
 
     _INIT_LOCK_ATTEMPTS: int = 3
     _INIT_LOCK_BACKOFF_SECONDS: float = 0.25
+    _pause: ClassVar[Callable[[float], None]] = time.sleep
 
     def _initialize(self) -> None:
         attempts = 0
@@ -53,7 +56,7 @@ class _InitializeMethods:
                         check_same_thread=False,
                     )
                     self._conn.row_factory = sqlite3.Row
-                time.sleep(backoff)
+                self._pause(backoff)
                 backoff *= 2
             else:
                 return
@@ -129,7 +132,7 @@ class _InitializeMethods:
                 attempts += 1
                 if attempts >= self._INIT_LOCK_ATTEMPTS:
                     raise
-                time.sleep(backoff)
+                self._pause(backoff)
                 backoff *= 2
             else:
                 return

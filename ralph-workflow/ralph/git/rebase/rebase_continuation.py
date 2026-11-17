@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -23,7 +22,7 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
 __all__ = [
     "ConflictRemainingError",
@@ -46,7 +45,9 @@ _MAX_EMPTY_SKIP_ATTEMPTS: int = 20
 
 
 def _git_env() -> dict[str, str]:
-    env = os.environ.copy()
+    from ralph.config._env import copy_environ
+
+    env = copy_environ()
     env["GIT_EDITOR"] = ":"
     env["EDITOR"] = ":"
     env["VISUAL"] = ":"
@@ -310,7 +311,9 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
 
 
 def _close_repo(repo: Repo) -> None:
-    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if repo is None:
+        return
+    close: object = getattr(repo, "close", None)
     if callable(close):
         close()
 

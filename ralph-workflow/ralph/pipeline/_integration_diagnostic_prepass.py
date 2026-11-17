@@ -10,10 +10,7 @@ from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_diagnostic_evidence import EVIDENCE_LEASE_SECONDS
-from ralph.pipeline._integration_diagnostic_handoff import (
-    _feature_tip_for,
-    escalate_diagnostic_budget_to_ladder,
-)
+from ralph.pipeline._integration_diagnostic_handoff import escalate_diagnostic_budget_to_ladder
 from ralph.pipeline._integration_diagnostic_state import DIAGNOSTIC_REPAIR_ATTEMPT_CAP
 from ralph.pipeline.auto_integrate_record import (
     RELEASE_DIAGNOSTIC_EVIDENCE,
@@ -85,7 +82,6 @@ def _settle_spent_budget(
             fs=fs,
             env=env,
             clock=clock,
-            feature_tip=_feature_tip_for(record),
         )
     except (OSError, RuntimeError, ValueError):
         terminal_emitter.critical(

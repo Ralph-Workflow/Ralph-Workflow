@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import replace
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from loguru import logger
 from rich.text import Text
@@ -12,6 +11,7 @@ from rich.text import Text
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.config.enums import AgentTransport
+from ralph.display import parallel_display as _parallel_display_mod
 from ralph.display._tool_correlation import tool_call_id
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
@@ -31,10 +31,13 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
 
-if TYPE_CHECKING:
 
-    class _ParallelDisplayModule(Protocol):
-        ParallelDisplay: type[ParallelDisplay]
+class _EmitSubagentHook(Protocol):
+    def __call__(
+        self,
+        line: AgentOutputLine,
+        sink: Callable[[str], None],
+    ) -> None: ...
 
 
 _MAX_TEXT_LENGTH = 200
@@ -44,8 +47,11 @@ _MAX_RETAINED_TOOL_TARGETS = 128
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
-    return module.ParallelDisplay
+    return _parallel_display_mod.ParallelDisplay
+
+
+def _is_emit_subagent_hook(value: object) -> TypeGuard[_EmitSubagentHook]:
+    return callable(value)
 
 
 def _terminal_width() -> int:
@@ -63,28 +69,20 @@ def stream_parsed_agent_activity(
     display: ParallelDisplay | None = None,
     *,
     agent_config: AgentConfig | None = None,
-    **kwargs: object,
+    transport: AgentTransport | None = None,
+    display_context: DisplayContext | None = None,
+    raw_output_sink: deque[str] | list[str] | None = None,
+    rendered_output_sink: deque[str] | list[str] | None = None,
+    session_id_sink: Callable[[str], None] | None = None,
+    raw_line_sink: Callable[[str], None] | None = None,
+    subagent_pid_registry: SubagentPidRegistry | None = None,
+    subagent_source_label: str | None = None,
 ) -> None:
-    transport = cast("AgentTransport | None", kwargs.get("transport"))
-    display_context = cast("DisplayContext | None", kwargs.get("display_context"))
-    raw_output_sink = cast("deque[str] | list[str] | None", kwargs.get("raw_output_sink"))
-    rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
-    session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
-    raw_line_sink = cast("Callable[[str], None] | None", kwargs.get("raw_line_sink"))
-    subagent_pid_registry = cast(
-        "SubagentPidRegistry | None",
-        kwargs.get("subagent_pid_registry"),
-    )
-    subagent_source_label = cast(
-        "str | None",
-        kwargs.get("subagent_source_label"),
-    )
-
     if agent_config is not None:
         parser_key = resolve_parser_key(
             agent_config.cmd,
             agent_config.json_parser,
-            cast("AgentTransport", agent_config.transport),
+            agent_config.transport,
         )
     else:
         parser_key = (
@@ -118,14 +116,10 @@ def stream_parsed_agent_activity(
     tool_targets: dict[str, dict[str, object]] = {}
     for parsed_line in parser.parse(_iter_lines()):
         retained_line = _retain_tool_result_target(parsed_line, tool_targets)
-        if callable(emit_hook_raw):
-            emit_hook = cast(
-                "Callable[[AgentOutputLine, Callable[[str], None]], None]",
-                emit_hook_raw,
-            )
+        if _is_emit_subagent_hook(emit_hook_raw):
             last_subagent_summary.clear()
             try:
-                _capture_summary_into(retained_line, emit_hook, last_subagent_summary)
+                _capture_summary_into(retained_line, emit_hook_raw, last_subagent_summary)
             except (OSError, RuntimeError, ValueError, KeyError):
                 logger.debug("parser.emit_subagent_activity failed", exc_info=True)
         rendered = _render_agent_activity_line(retained_line, agent_name)
@@ -168,7 +162,7 @@ def _retain_tool_result_target(
             payload: object = raw_input
             if isinstance(payload, str):
                 try:
-                    payload = json.loads(payload)
+                    payload: object = json.loads(payload)
                 except (TypeError, ValueError):
                     payload = None
             if isinstance(payload, dict):

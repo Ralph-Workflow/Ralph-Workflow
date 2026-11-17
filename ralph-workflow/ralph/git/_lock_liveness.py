@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from ralph.git._lock_proc_inspect import (
     _UNPROVABLE_LOCK_CEILING_S,
@@ -17,14 +17,9 @@ from ralph.git._lock_proc_inspect import (
     _scan_lock_fd_holders,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 _PROBE_TIMEOUT_S = 0.5
 _PROBE_MAX_WORKERS: int = 4
 PROBE_MAX_WORKERS: int = _PROBE_MAX_WORKERS
-_PROBE_QUEUE_SLACK_S: float = _PROBE_TIMEOUT_S * _PROBE_MAX_WORKERS
-PROBE_QUEUE_SLACK_S: float = _PROBE_QUEUE_SLACK_S
 
 _PROBE_THREAD_NAME_PREFIX = "ralph-git-lock-probe"
 
@@ -45,13 +40,11 @@ class ProbeExecutorStatus:
 
 
 class _ProbeExecutorHolder:
-    __slots__ = ("_executor", "_generation", "_lock", "_max_workers")
-
+    __slots__ = ('_executor', '_lock', '_max_workers',)
     def __init__(self, max_workers: int = _PROBE_MAX_WORKERS) -> None:
         self._max_workers = max_workers
         self._executor: ThreadPoolExecutor | None = None
         self._lock = threading.Lock()
-        self._generation = 0
 
     def get(self) -> ThreadPoolExecutor:
         if self._executor is None:
@@ -63,16 +56,8 @@ class _ProbeExecutorHolder:
                     )
         return self._executor
 
-    def generation(self) -> int:
-        return self._generation
-
-    def abandon_inflight(self) -> None:
-        with self._lock:
-            self._generation += 1
-
     def reset(self) -> None:
         with self._lock:
-            self._generation += 1
             if self._executor is not None:
                 self._executor.shutdown(wait=False, cancel_futures=True)
                 self._executor = None
@@ -130,33 +115,40 @@ def _normalize_external_liveness(
     return "unknown"
 
 
-def _deadline_or_cancelled(
-    deadline: float | None,
-    cancelled: Callable[[], bool] | None,
-) -> bool:
-    if cancelled is not None and cancelled():
-        return True
-    return deadline is not None and time.monotonic() >= deadline
-
-
-def _scan_pids_for_liveness(
+def _scan_proc(
     proc_root: Path,
-    pids: list[int],
-    lock_resolved: str,
+    lock: Path,
     live_cwds: set[Path],
     common_worktrees_dir: Path,
     gitdir_bytes: bytes,
     gitdir_common_bytes: bytes,
-    lock_uid: int | None,
-    lock_ident: tuple[int, int] | None,
-    lock_mtime: float | None,
     *,
-    deadline: float | None,
-    cancelled: Callable[[], bool] | None,
+    lock_stat: os.stat_result | None = None,
+    deadline: float | None = None,
 ) -> Literal["live", "dead", "unknown"]:
+    pids = _list_pids(proc_root)
+    try:
+        lock_resolved: str | None = str(lock.resolve())
+    except OSError:
+        lock_resolved = None
+    if lock_resolved is None or not pids:
+        return "unknown"
+
     has_unknown = False
+    lock_uid = lock_stat.st_uid if lock_stat is not None else None
+    lock_ident = (lock_stat.st_dev, lock_stat.st_ino) if lock_stat is not None else None
+    lock_mtime = lock_stat.st_mtime if lock_stat is not None else None
+    lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
+    aged_orphan = lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S
+
+    fd_status = _scan_lock_fd_holders(proc_root, lock_resolved, lock_ident, deadline=deadline)
+    if fd_status == "live":
+        return "live"
+    if aged_orphan:
+        return "dead" if fd_status == "not_live" else "unknown"
+
     for pid in pids:
-        if _deadline_or_cancelled(deadline, cancelled):
+        if deadline is not None and time.monotonic() >= deadline:
             return "unknown"
         status = _check_pid_liveness(
             proc_root,
@@ -174,60 +166,8 @@ def _scan_pids_for_liveness(
             return "live"
         if status == "unknown":
             has_unknown = True
+
     return "unknown" if has_unknown else "dead"
-
-
-def _scan_proc(
-    proc_root: Path,
-    lock: Path,
-    live_cwds: set[Path],
-    common_worktrees_dir: Path,
-    gitdir_bytes: bytes,
-    gitdir_common_bytes: bytes,
-    *,
-    lock_stat: os.stat_result | None = None,
-    deadline: float | None = None,
-    cancelled: Callable[[], bool] | None = None,
-) -> Literal["live", "dead", "unknown"]:
-    pids = _list_pids(proc_root)
-    try:
-        lock_resolved = str(lock.resolve())
-    except OSError:
-        lock_resolved = ""
-    if not lock_resolved or not pids:
-        return "unknown"
-
-    lock_uid = lock_stat.st_uid if lock_stat is not None else None
-    lock_ident = (lock_stat.st_dev, lock_stat.st_ino) if lock_stat is not None else None
-    lock_mtime = lock_stat.st_mtime if lock_stat is not None else None
-    lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
-    aged_orphan = lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S
-
-    fd_status = _scan_lock_fd_holders(
-        proc_root,
-        lock_resolved,
-        lock_ident,
-        deadline=deadline,
-        cancelled=cancelled,
-    )
-    if fd_status == "live":
-        return "live"
-    if aged_orphan:
-        return "dead" if fd_status == "not_live" else "unknown"
-    return _scan_pids_for_liveness(
-        proc_root,
-        pids,
-        lock_resolved,
-        live_cwds,
-        common_worktrees_dir,
-        gitdir_bytes,
-        gitdir_common_bytes,
-        lock_uid,
-        lock_ident,
-        lock_mtime,
-        deadline=deadline,
-        cancelled=cancelled,
-    )
 
 
 def _resolve_repo_identity(

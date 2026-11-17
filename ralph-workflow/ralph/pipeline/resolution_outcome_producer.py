@@ -77,24 +77,23 @@ def classify_resolution_failure(
 def stop_resolution_outcome_from_legacy(
     outcome: object,
 ) -> StopResolutionOutcome:
-    if isinstance(
-        outcome,
-        (
-            ResolvedOutcome,
-            WaitingOutcome,
-            RetryLaterOutcome,
-            NextStrategyOutcome,
-            ConfigFailureOutcome,
-            UnknownOutcome,
-        ),
+    if (
+        any(isinstance(outcome, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))
     ):
         return outcome
     result: StopResolutionOutcome
     match outcome:
         case Resolved():
             result = ResolvedOutcome()
-        case NeedsOperator():
-            result = NextStrategyOutcome(strategy="completion_in_place")
+        case NeedsOperator(command=command):
+            result = WaitingOutcome(
+                external_condition=(
+                    f"operator action required: {command}"
+                    if command
+                    else "operator action required"
+                ),
+                resumes_when="operator resolves the conflict",
+            )
         case RetryLater(until=until, on_change=on_change):
             result = RetryLaterOutcome(until=until, on_change=on_change)
         case Exhausted(agents=agents):

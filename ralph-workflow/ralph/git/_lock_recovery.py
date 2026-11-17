@@ -9,7 +9,7 @@ import threading
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 if sys.platform != "win32":
     import fcntl
@@ -33,11 +33,9 @@ from loguru import logger
 from ralph.git._lock_liveness import (
     _HOST_INIT_MAX_START_S,
     _PROBE_MAX_WORKERS,
-    _PROBE_QUEUE_SLACK_S,
     _PROBE_THREAD_NAME_PREFIX,
     _PROBE_TIMEOUT_S,
     PROBE_MAX_WORKERS,
-    PROBE_QUEUE_SLACK_S,
     ProbeExecutorStatus,
     _combine_verdicts,
     _get_probe_executor,
@@ -161,15 +159,10 @@ def _lock_has_no_live_holder(
 ) -> Literal["live", "dead", "unknown"]:
     effective_proc_root = proc_root if proc_root is not None else _proc_root
     lsof_fuser = probe_lsof_fuser_fn if probe_lsof_fuser_fn is not None else _probe_lsof_fuser
-    started_generation = _probe_pool.generation()
 
-    def _cancelled() -> bool:
-        return _probe_pool.generation() != started_generation
+    probe_start = time.monotonic()
 
     def _probe() -> Literal["live", "dead", "unknown"]:
-        probe_start = time.monotonic()
-        if _cancelled():
-            return "unknown"
         try:
             (
                 lock,
@@ -205,7 +198,6 @@ def _lock_has_no_live_holder(
             gitdir_common_bytes,
             lock_stat=lock_stat,
             deadline=probe_start + probe_timeout_s,
-            cancelled=_cancelled,
         )
         if (
             proc_status == "dead"
@@ -221,10 +213,8 @@ def _lock_has_no_live_holder(
         remaining_s = probe_start + probe_timeout_s - time.monotonic()
         external: Literal["live", "dead", "unknown"] = "unknown"
         if (
-            not _cancelled()
-            and (effective_proc_root == Path("/proc") or probe_lsof_fuser_fn is not None)
-            and remaining_s > 0
-        ):
+            effective_proc_root == Path("/proc") or probe_lsof_fuser_fn is not None
+        ) and remaining_s > 0:
             external = _normalize_external_liveness(lsof_fuser(lock, remaining_s))
         verdict = _combine_verdicts(proc_status, external, has_proc=effective_proc_root.exists())
         if verdict == "unknown" and time.monotonic() - probe_start < probe_timeout_s:
@@ -246,7 +236,7 @@ def _lock_has_no_live_holder(
     active_executor = executor if executor is not None else _get_probe_executor()
     future = active_executor.submit(_probe)
     try:
-        return future.result(timeout=probe_timeout_s + _PROBE_QUEUE_SLACK_S)
+        return future.result(timeout=probe_timeout_s)
     except TimeoutError:
         logger.debug(
             "Lock liveness probe returning 'unknown' for {}: probe exceeded "
@@ -254,7 +244,6 @@ def _lock_has_no_live_holder(
             lock_path,
             probe_timeout_s,
         )
-        _probe_pool.abandon_inflight()
         with suppress(AttributeError):
             future.cancel()
         return "unknown"
@@ -274,7 +263,6 @@ def _lock_has_no_live_holder(
             type(exc).__name__,
             exc,
         )
-        _probe_pool.abandon_inflight()
         with suppress(AttributeError):
             future.cancel()
         return "unknown"
@@ -330,7 +318,21 @@ def _stale_age_or_none(
     return age_seconds
 
 
-_reap_thread_lock = threading.Lock()
+
+class _ReapThreadLock:
+    __slots__ = ()
+    _lock: ClassVar[threading.Lock | None] = None
+
+    @classmethod
+    def get(cls) -> threading.Lock:
+        existing = cls._lock
+        if existing is not None:
+            return existing
+        created = threading.Lock()
+        cls._lock = created
+        return created
+
+
 
 
 def _flock(fd: int, *, exclusive: bool) -> None:
@@ -340,7 +342,7 @@ def _flock(fd: int, *, exclusive: bool) -> None:
 
 @contextlib.contextmanager
 def _reap_mutex(ralph_dir: Path) -> Iterator[None]:
-    with _reap_thread_lock:
+    with _ReapThreadLock.get():
         ralph_dir.mkdir(parents=True, exist_ok=True)
         p = ralph_dir / "reap.mutex"
         with p.open("a+b") as handle:
@@ -500,7 +502,7 @@ def _lock_holder_is_waitable(lock_path: Path) -> bool:
     if age_seconds < _STALE_GIT_LOCK_AGE_SECONDS:
         return True
     try:
-        return _lock_has_no_live_holder(lock_path, _gitdir_for_lock(lock_path)) == "live"
+        return _lock_has_no_live_holder(lock_path, _gitdir_for_lock(lock_path)) != "dead"
     except OSError:
         return False
 
@@ -638,7 +640,6 @@ __all__ = [
     "LIVE_HOLDER_POLL_S",
     "LOCK_BACKOFF_S",
     "PROBE_MAX_WORKERS",
-    "PROBE_QUEUE_SLACK_S",
     "_CONFIG_LOCK_PATTERN",
     "_GIT_DIR_MARKERS",
     "_GIT_OPTS_WITH_ARG",
@@ -649,7 +650,6 @@ __all__ = [
     "_LOCK_FAILURE_MARKERS",
     "_LOCK_PATH_PATTERN",
     "_PROBE_MAX_WORKERS",
-    "_PROBE_QUEUE_SLACK_S",
     "_PROBE_THREAD_NAME_PREFIX",
     "_PROBE_TIMEOUT_S",
     "_READ_ONLY_GIT_SUBCOMMANDS",
@@ -657,6 +657,7 @@ __all__ = [
     "_STRUCTURAL_LOCK_DIRS",
     "_UNPROVABLE_LOCK_CEILING_S",
     "ProbeExecutorStatus",
+    "_ReapThreadLock",
     "_can_rule_out_non_git_process",
     "_check_git_liveness",
     "_check_pid_liveness",
@@ -694,7 +695,6 @@ __all__ = [
     "_read_proc_status",
     "_reap_mutex",
     "_reap_stale_lock",
-    "_reap_thread_lock",
     "_recover_stale_git_lock",
     "_reset_probe_executor",
     "_resolve_environ_gitdir",

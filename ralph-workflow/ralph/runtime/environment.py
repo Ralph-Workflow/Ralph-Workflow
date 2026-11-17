@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
+from ralph.config import _env as config_env
 from ralph.runtime._version_info import PythonVersionInfo
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ _VIRTUAL_ENV_KEYS = ("VIRTUAL_ENV", "CONDA_PREFIX")
 
 
 def _normalize_env(env: Mapping[str, str] | None) -> Mapping[str, str]:
-    captured = dict(os.environ if env is None else env)
+    captured = dict(config_env.environ() if env is None else env)
     return MappingProxyType(captured)
 
 

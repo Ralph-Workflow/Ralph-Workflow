@@ -10,7 +10,7 @@ import pytest
 
 from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_run_script_pins_exact_harness_command": (

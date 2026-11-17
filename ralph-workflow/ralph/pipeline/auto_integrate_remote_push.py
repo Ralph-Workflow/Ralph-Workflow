@@ -425,17 +425,7 @@ def _reconcile_in_progress_rebase(
             )
         if isinstance(result, RebaseResolutionResult):
             result = result.outcome
-        if not isinstance(
-            result,
-            (
-                ResolvedOutcome,
-                WaitingOutcome,
-                RetryLaterOutcome,
-                NextStrategyOutcome,
-                ConfigFailureOutcome,
-                UnknownOutcome,
-            ),
-        ):
+        if not (any(isinstance(result, _t) for _t in (ResolvedOutcome, WaitingOutcome, RetryLaterOutcome, NextStrategyOutcome, ConfigFailureOutcome, UnknownOutcome))):
             return _PushOutcome(
                 success=False,
                 summary=f"rebase in progress on {target} could not be resolved",

@@ -4,7 +4,7 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from queue import Full, Queue
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -74,10 +74,9 @@ class _WaitingKindLike(Protocol):
 def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKindLike]]:
     from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 
-    return (
-        cast("type[_WaitingEventLike]", WaitingStatusEvent),
-        cast("type[_WaitingKindLike]", WaitingStatusKind),
-    )
+    event_cls: type[_WaitingEventLike] = WaitingStatusEvent
+    kind_cls: type[_WaitingKindLike] = WaitingStatusKind
+    return event_cls, kind_cls
 
 
 def _format_waiting_status_line(event: object) -> str:
@@ -140,7 +139,11 @@ def _format_waiting_subagent_progress_line(
     ceil: str,
 ) -> str:
     live_count = event.diagnostic.get("live_subagent_count", 0)
-    live_label = f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
+    live_label = (
+        f"{live_count} alive"
+        if any(isinstance(live_count, _t) for _t in (int, float))
+        else "live"
+    )
     base = (
         f"Background child work: subagent progress"
         f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
@@ -211,6 +214,37 @@ def _now_iso() -> str:
 
 
 class PipelineSubscriber:
+    __slots__ = (
+        "_activity",
+        "_analysis_decision",
+        "_analysis_phase",
+        "_analysis_reason",
+        "_decision_log",
+        "_dropped_count",
+        "_last_plan_refresh_marker",
+        "_last_state",
+        "_lock",
+        "_mcp_restart_count",
+        "_on_snapshot",
+        "_pipeline_policy",
+        "_plan_marker_reader",
+        "_plan_reader",
+        "_plan_risks",
+        "_plan_scope_items",
+        "_plan_summary",
+        "_plan_total_steps",
+        "_previous_phase",
+        "_prompt_path",
+        "_prompt_preview",
+        "_queue",
+        "_run_id",
+        "_snapshot_cache",
+        "_snapshot_cache_state",
+        "_watchdog_attention_sink",
+        "_watchdog_attention_sink_lock",
+        "_workspace_root",
+    )
+
     def __init__(
         self,
         *,

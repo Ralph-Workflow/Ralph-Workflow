@@ -78,8 +78,10 @@ def _install_test_dependency_stubs() -> None:
 _install_test_dependency_stubs()
 
 runner_module = importlib.import_module("ralph.pipeline.runner")
+run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
 interrupt_module = importlib.import_module("ralph.interrupt")
 config_models = importlib.import_module("ralph.config.models")
+pipeline_effects = importlib.import_module("ralph.pipeline.effects")
 pipeline_state_module = importlib.import_module("ralph.pipeline.state")
 policy_loader_module = importlib.import_module("ralph.policy.loader")
 workspace_scope_module = importlib.import_module("ralph.workspace.scope")
@@ -173,6 +175,11 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
         runner_module.ckpt,
         "save",
         lambda state, *_args, **_kwargs: saved_states.append(state),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_capture_planning_baseline_if_entry",
+        lambda *_args, **_kwargs: None,
     )
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     monkeypatch.setattr(

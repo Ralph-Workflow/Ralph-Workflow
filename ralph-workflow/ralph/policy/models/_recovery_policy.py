@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
-
 from pydantic import Field, model_validator
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class RecoveryPolicy(_FrozenPolicyModel):
+class RecoveryPolicy(RalphBaseModel):
     cycle_cap: int = Field(default=200, ge=1)
     failed_route: str = Field(
         default="failed_terminal",
@@ -33,7 +31,7 @@ class RecoveryPolicy(_FrozenPolicyModel):
     def _reject_legacy_route_fields(cls, data: object) -> object:
         if not isinstance(data, dict):
             return data
-        d = cast("dict[str, object]", dict(data))
+        d = data
         if "terminal_recovery_route" in d:
             raise ValueError(
                 "recovery.terminal_recovery_route is deprecated; rename it to "

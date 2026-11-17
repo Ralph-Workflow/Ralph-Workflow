@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.explore.dirty_paths import (
+    ExploreStoreLike,
     mark_path,
     mark_paths,
     resolve_explore_index,
 )
+from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
@@ -39,8 +41,7 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.dirty_paths import ExploreIndexLike, ExploreStoreLike
-    from ralph.mcp.explore.store import ExploreStore
+    from ralph.mcp.explore.dirty_paths import ExploreIndexLike
     from ralph.workspace import Workspace
 
 
@@ -60,13 +61,13 @@ def _freshness_payload_from_handle(
     *,
     paths: list[str],
 ) -> dict[str, object]:
-    typed_handle = cast("ExploreIndexLike | None", handle)
+    typed_handle = handle
     if typed_handle is None:
         return {}
     store_obj: ExploreStoreLike | None = getattr(typed_handle, "store", None)
     if store_obj is None:
         return {}
-    store: ExploreStore = cast("ExploreStore", store_obj)
+    store = store_obj
     generation_raw = store.get_setting("current_generation") or "0"
     try:
         generation_int = int(generation_raw)
@@ -204,8 +205,8 @@ def handle_edit_file(
                 "target": target_param,
             }
         else:
-            store_obj: ExploreStoreLike | None = handle_for_target.store
-            if store_obj is None:
+            store_raw: object = handle_for_target.store
+            if store_raw is None or not isinstance(store_raw, ExploreStore):
                 target_resolution_error = {
                     "status": "ambiguous_target",
                     "reason": "no_explore_index_handle",
@@ -215,7 +216,7 @@ def handle_edit_file(
                     content=[ToolContent.text_content(_tool_json(target_resolution_error))],
                     is_error=True,
                 )
-            store: ExploreStore = cast("ExploreStore", store_obj)
+            store = store_raw
             evidence_id = target_param.get("evidence_id")
             span_id = target_param.get("span_id")
             symbol_name = target_param.get("symbol")
@@ -370,8 +371,13 @@ def handle_edit_file(
                     from ralph.mcp.explore._graph_query import run_query
 
                     impact_handle = handle_for_impact
-                    impact_store_obj: ExploreStoreLike | None = (
+                    impact_store_raw: object = (
                         impact_handle.store if impact_handle is not None else None
+                    )
+                    impact_store_obj: ExploreStore | None = (
+                        impact_store_raw
+                        if isinstance(impact_store_raw, ExploreStore)
+                        else None
                     )
                     target_param_dict: dict[str, object] = (
                         target_param if isinstance(target_param, dict) else {}
@@ -384,7 +390,7 @@ def handle_edit_file(
                         and isinstance(target_symbol_name, str)
                         and target_symbol_name
                     ):
-                        symbols = list(cast("ExploreStore", impact_store_obj).iter_symbols())
+                        symbols = list(impact_store_obj.iter_symbols())
                         scoped_symbols = [
                             s for s in symbols if target_symbol_name in (s.name, s.qualified_name)
                         ]
@@ -396,7 +402,7 @@ def handle_edit_file(
                                 target_path = scoped_symbols[0].path
                     if impact_store_obj is not None and target_symbol_id is not None:
                         result = run_query(
-                            cast("ExploreStore", impact_store_obj),
+                            impact_store_obj,
                             query_type="impact",
                             target=target_symbol_id,
                             change_kind="behavior",
@@ -458,12 +464,13 @@ def handle_edit_file(
     mark_path(handle, path=normalized, source_tool="edit_file")
     if reindex_mode == "changed_blocking":
         typed_handle: ExploreIndexLike | None = handle
-        edit_store_obj: ExploreStoreLike | None = (
-            typed_handle.store if typed_handle is not None else None
+        edit_store_raw: object = typed_handle.store if typed_handle is not None else None
+        edit_store_obj: ExploreStore | None = (
+            edit_store_raw if isinstance(edit_store_raw, ExploreStore) else None
         )
         workspace_root_obj: object = getattr(workspace, "root", None)
         workspace_root_path: Path | None = (
-            Path(str(workspace_root_obj)) if isinstance(workspace_root_obj, (str, Path)) else None
+            Path(str(workspace_root_obj)) if (any(isinstance(workspace_root_obj, _t) for _t in (str, Path))) else None
         )
         if edit_store_obj is not None and workspace_root_path is not None:
             with contextlib.suppress(Exception):
@@ -474,7 +481,7 @@ def handle_edit_file(
                 )
 
                 reindex(
-                    cast("ExploreStore", edit_store_obj),
+                    edit_store_obj,
                     workspace_root_path,
                     options=ReindexOptions(
                         mode="changed",

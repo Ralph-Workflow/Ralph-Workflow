@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import ctypes
 import errno
 import functools
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol
 
+from ralph.checked_accessors import as_int
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._git_termination import is_git_name
@@ -86,6 +87,7 @@ from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from types import ModuleType
 
 
 class _Prctl(Protocol):
@@ -110,6 +112,19 @@ class _PopenConstructor(Protocol):
     ) -> subprocess.Popen[bytes]: ...
 
 
+def _ctypes_module() -> ModuleType:
+    existing = sys.modules.get("ctypes")
+    if existing is not None:
+        return existing
+    spec = importlib.util.find_spec("ctypes")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("ctypes is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["ctypes"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SUPERVISOR_SCRIPT: Final[Path] = Path(__file__).with_name("_supervisor.py")
 _SIGKILL: Final[int] = 9
@@ -117,10 +132,16 @@ _SIGTERM: Final[int] = 15
 _PRCTL_FN: _Prctl | None = None
 if sys.platform.startswith("linux"):
     try:
-        _libc = ctypes.CDLL(None, use_errno=True)
+        _libc = _ctypes_module().CDLL(None, use_errno=True)
         _raw_prctl: object = getattr(_libc, "prctl", None)
+
+        def _bound_prctl(option: int, value: int) -> int:
+            if not callable(_raw_prctl):
+                return -1
+            return as_int(_raw_prctl(option, value), field="prctl")
+
         if callable(_raw_prctl):
-            _PRCTL_FN = cast("_Prctl", _raw_prctl)
+            _PRCTL_FN = _bound_prctl
     except (OSError, RuntimeError, ValueError, AttributeError):
         _PRCTL_FN = None
 

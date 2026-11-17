@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 
 class InMemoryOperationEvidenceCollector:
+    __slots__ = ("_facts", "_reachability")
+
     def __init__(
         self,
         facts: tuple[OperationFact, ...] = (),

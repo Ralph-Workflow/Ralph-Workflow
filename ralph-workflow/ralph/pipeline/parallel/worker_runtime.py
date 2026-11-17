@@ -310,8 +310,8 @@ def _invoke_worker_effect(
         config,
         pipeline_deps,
         workspace_scope,
-        *args,
-        **kwargs,
+        *tuple(args),
+        **dict(kwargs),
     )
     return result
 
@@ -356,7 +356,7 @@ def _run_parallel_worker_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **execute_kwargs,
+        **dict(execute_kwargs),
     )
 
 

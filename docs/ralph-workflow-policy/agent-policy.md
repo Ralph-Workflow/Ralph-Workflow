@@ -89,7 +89,7 @@ the minimum evidence of compliance with this policy.
 The dogfooded commit rule (commit generation) is mandatory when an agent
 creates a commit, but it is not a bounded verification gate. It launches a
 configured remote coding agent and the current startup-silence allowance is
-120 seconds (`ralph/timeout_defaults.py:295-305`), so a valid invocation
+120 seconds (`ralph/timeout_defaults.py:85`), so a valid invocation
 cannot truthfully promise a result within the policy probe's 10-second cap.
 
 RALPH-PENDING: uv --directory ralph-workflow run python -m ralph --generate-commit (assumed 2026-08-11); review trigger: once commit generation has a local bounded preflight that emits an observable result and exits within 10 seconds before any remote agent is started

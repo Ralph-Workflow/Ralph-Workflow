@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.config.enums import PipelinePhase
-else:
-    PipelinePhase = import_module("ralph.config.enums").PipelinePhase
 
 
 @dataclass(frozen=True)

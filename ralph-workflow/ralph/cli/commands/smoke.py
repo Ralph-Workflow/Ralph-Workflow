@@ -20,6 +20,7 @@ from ralph.cli.commands.smoke_binary_override import (
     apply_smoke_binary_overrides_to_config,
     smoke_transport_binary,
 )
+from ralph.config._env import setdefault_environ
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -364,7 +365,7 @@ def smoke_harness_agent_command(
         overridden_agents[agent_name] = agent_config
         config = config.model_copy(update={"agents": overridden_agents})
         if agent_config.transport is AgentTransport.AGY and is_mock_agy_override():
-            os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
+            setdefault_environ("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     write_text_if_changed(

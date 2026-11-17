@@ -6,7 +6,6 @@ from ralph.policy.models._budget_counter_config import BudgetCounterConfig
 from ralph.policy.models._commit_review_policy import CommitReviewPolicy
 from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
 from ralph.policy.models._development_timebox_policy import DevelopmentTimeboxPolicy
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._lifecycle_phase_policy import LifecyclePhasePolicy
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
 from ralph.policy.models._phase_definition import PhaseDefinition
@@ -14,9 +13,10 @@ from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
 from ralph.policy.models._policy_block import PolicyBlock
 from ralph.policy.models._post_commit_route import PostCommitRoute
 from ralph.policy.models._recovery_policy import RecoveryPolicy
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class PipelinePolicy(_FrozenPolicyModel):
+class PipelinePolicy(RalphBaseModel):
     blocks: dict[str, PolicyBlock] = Field(
         default_factory=dict,
         description="Authoring-time block graph for block-oriented pipeline policies.",

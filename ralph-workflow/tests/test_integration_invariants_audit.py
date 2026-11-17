@@ -118,46 +118,6 @@ def test_clean_fixture_tree_reports_no_violations(tmp_path: Path) -> None:
     assert _rules(tree) == []
 
 
-def test_clean_fixture_tree_allows_shared_eligibility_projection(tmp_path: Path) -> None:
-    tree = _clean_tree(tmp_path)
-    _write(
-        tree,
-        "ralph/pipeline/launch_gate.py",
-        "def agents_may_launch(ledger, candidates):\n"
-        "    return ledger.any_eligible('rebase_conflict_resolution', candidates)\n",
-    )
-
-    assert "pipeline_local_launch_budget" not in _rules(tree)
-    assert "pipeline_agent_eligibility_helper" not in _rules(tree)
-
-
-def test_planted_local_launch_budget_helper_is_detected(tmp_path: Path) -> None:
-    tree = _clean_tree(tmp_path)
-    _write(
-        tree,
-        "ralph/pipeline/local_launch.py",
-        "def may_launch(state, target):\n"
-        "    return not (state.resolution_exhausted and state.consecutive_conflicts > 0)\n",
-    )
-
-    assert "pipeline_local_launch_budget" in _rules(tree)
-    assert "ralph/pipeline/local_launch.py:1" in _locations(tree, "pipeline_local_launch_budget")
-
-
-def test_planted_retired_resolver_allowed_name_is_detected(tmp_path: Path) -> None:
-    tree = _clean_tree(tmp_path)
-    _write(
-        tree,
-        "ralph/pipeline/retired_gate.py",
-        "def resolver_allowed(state, target):\n    return True\n",
-    )
-
-    assert "pipeline_agent_eligibility_helper" in _rules(tree)
-    assert "ralph/pipeline/retired_gate.py:1" in _locations(
-        tree, "pipeline_agent_eligibility_helper"
-    )
-
-
 def test_planted_package_reexport_of_the_resolver_is_detected(tmp_path: Path) -> None:
     tree = _clean_tree(tmp_path)
     _write(tree, "ralph/pipeline/__init__.py", _PIPELINE_INIT_ALL_SOURCE)

@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 import shutil
 import tomllib
-from collections.abc import Mapping
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.checked_accessors import as_mapping
 from ralph.config._bootstrap_types import BootstrapResult
 from ralph.config._config_filenames import (
     _GLOBAL_AGENTS_FILENAME,
@@ -35,7 +35,7 @@ __all__ = [
 
 
 def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
-    namespace = cast("dict[str, object]", module.__dict__)
+    namespace = dict(as_mapping(module.__dict__))
     return namespace.get(attribute)
 
 
@@ -131,13 +131,14 @@ def _agents_config_alias_reason(target: Path) -> str | None:
 
 def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
     try:
-        data = cast("Mapping[str, object]", load_toml(target))
+        data = as_mapping(load_toml(target))
     except (OSError, ValueError, TypeError, KeyError):
         return []
     raw_drains_obj: object = data.get("agent_drains")
-    if not isinstance(raw_drains_obj, Mapping):
+    try:
+        raw_drains = as_mapping(raw_drains_obj)
+    except TypeError:
         return []
-    raw_drains = cast("Mapping[str, object]", raw_drains_obj)
 
     drains: dict[str, object] = {
         key: value for key, value in raw_drains.items() if isinstance(key, str)

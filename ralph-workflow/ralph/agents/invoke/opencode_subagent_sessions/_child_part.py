@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import cast
 
 
 @dataclass(frozen=True)
@@ -23,13 +22,13 @@ def _as_str_object_dict(value: object) -> dict[str, object] | None:
 
 def part_kind_from_data(data: str) -> str:
     try:
-        decoded = cast("object", json.loads(data))
+        decoded: object = json.loads(data)
     except (TypeError, ValueError):
         return "part"
     payload = _as_str_object_dict(decoded)
     if payload is None:
         return "part"
-    payload = cast("dict[str, object]", decoded)
+    payload = {str(key): value for key, value in decoded.items()}
     part_type = payload.get("type")
     if not isinstance(part_type, str) or not part_type:
         return "part"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from pathlib import Path
+from typing import ClassVar
 
 _MAX_DIRTY_PATHS = 512
 _FRESHNESS_STATES = frozenset(
@@ -11,6 +12,14 @@ _FRESHNESS_STATES = frozenset(
 
 
 class WorkspaceAwareness:
+    __slots__ = (
+        '_cause',
+        '_dirty_paths',
+        '_freshness_override',
+        '_lock',
+        '_mode',
+        '_workspace_root',
+    )
     def __init__(self, workspace_root: Path) -> None:
         self._workspace_root = workspace_root.absolute()
         self._dirty_paths: OrderedDict[str, None] = OrderedDict()
@@ -106,12 +115,25 @@ class WorkspaceAwareness:
 
 
 _awareness_by_workspace: dict[str, WorkspaceAwareness] = {}
-_awareness_lock = threading.Lock()
+class _AwarenessRegistry:
+    __slots__ = ()
+    _lock: ClassVar[threading.Lock | None] = None
+
+    @classmethod
+    def lock(cls) -> threading.Lock:
+        existing = cls._lock
+        if existing is not None:
+            return existing
+        created = threading.Lock()
+        cls._lock = created
+        return created
+
+
 
 
 def awareness_for_workspace(workspace_root: Path) -> WorkspaceAwareness:
     key = str(workspace_root.absolute())
-    with _awareness_lock:
+    with _AwarenessRegistry.lock():
         awareness = _awareness_by_workspace.get(key)
         if awareness is None:
             awareness = WorkspaceAwareness(workspace_root)
@@ -120,7 +142,7 @@ def awareness_for_workspace(workspace_root: Path) -> WorkspaceAwareness:
 
 
 def release_workspace_awareness(workspace_root: Path) -> None:
-    with _awareness_lock:
+    with _AwarenessRegistry.lock():
         _awareness_by_workspace.pop(str(workspace_root.absolute()), None)
 
 

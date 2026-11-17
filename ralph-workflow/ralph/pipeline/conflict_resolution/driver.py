@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -236,6 +236,8 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
 
 
 class _IntegrationClockAdapter:
+    __slots__ = ("_clock",)
+
     def __init__(self, clock: AgentClock) -> None:
         self._clock = clock
 
@@ -298,24 +300,24 @@ def _extract_clock_candidate(
     active_session: ResolutionSession, pipeline_deps: PipelineDeps | None
 ) -> object:
     if active_session.ledger is not None:
-        c1 = cast("object", getattr(active_session.ledger, "clock", None))
+        c1: object = getattr(active_session.ledger, "clock", None)
         if c1 is not None:
             return c1
-        c2 = cast("object", getattr(active_session.ledger, "_clock", None))
+        c2: object = getattr(active_session.ledger, "_clock", None)
         if c2 is not None:
             return c2
     if pipeline_deps is not None:
-        c3 = cast("object", getattr(pipeline_deps, "recovery_clock", None))
+        c3: object = getattr(pipeline_deps, "recovery_clock", None)
         if c3 is not None:
             return c3
     store: object = active_session.unavailability_store
     if store is None and pipeline_deps is not None:
-        store = cast("object", getattr(pipeline_deps, "unavailability_store", None))
+        store = getattr(pipeline_deps, "unavailability_store", None)
     if store is not None:
-        c4 = cast("object", getattr(store, "clock", None))
+        c4: object = getattr(store, "clock", None)
         if c4 is not None:
             return c4
-        c5 = cast("object", getattr(store, "_clock", None))
+        c5: object = getattr(store, "_clock", None)
         if c5 is not None:
             return c5
     return None
@@ -1084,6 +1086,23 @@ def _execute_round_loop(
     return False
 
 
+def _wait_for_candidates_if_cooling_down(
+    session: ResolutionSession, candidates: Sequence[str]
+) -> None:
+    controller = session.recovery_controller
+    if controller is not None:
+        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+        if wait_ms > 0:
+            wait_s = wait_ms / 1000.0
+            if hasattr(controller._clock, "advance"):
+                controller._clock.advance(wait_s)
+            else:
+                _sleep_seconds(wait_s)
+            controller.prune_expired()
+            if isinstance(session.recovery_state, PipelineState):
+                session.recovery_state = session.recovery_state.clear_waiting()
+
+
 def _can_continue_controller_rounds(
     session: ResolutionSession,
     controller: RecoveryController,
@@ -1157,41 +1176,12 @@ def _wait_for_eligible_agent(
     session: ResolutionSession,
     candidates: Sequence[str],
 ) -> int:
-    from types import SimpleNamespace
-
-    from ralph.pipeline.run_loop import handle_cooldown_delay
-
     controller = session.recovery_controller
     if controller is None:
         return 0
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-    if wait_ms <= 0:
-        return 0
-    state = (
-        session.recovery_state
-        if isinstance(session.recovery_state, PipelineState)
-        else PipelineState(phase=PHASE_RESOLUTION)
-    )
-    state = state.copy_with(last_retry_delay_ms=wait_ms)
-
-    def _shared_sleep(seconds: float) -> None:
-        _sleep_seconds(seconds)
-
-    state = handle_cooldown_delay(
-        state,
-        SimpleNamespace(
-            sleep=_shared_sleep,
-            active_display=None,
-            last_waiting_state_phase=None,
-            last_waiting_state_sig=None,
-            controller=controller,
-        ),  # type: ignore[arg-type]
-    )
-    controller.prune_expired()
-    if state.is_waiting_state:
-        state = state.clear_waiting()
-    session.recovery_state = state
-    return wait_ms
+    _wait_for_candidates_if_cooling_down(session, candidates)
+    return max(wait_ms, 0)
 
 
 def _record_unconfigured_resolver(

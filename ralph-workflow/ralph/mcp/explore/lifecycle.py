@@ -5,14 +5,14 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, cast
-
-if TYPE_CHECKING:
-    from ralph.mcp.explore.store import ExploreStore
+from typing import TYPE_CHECKING, Final, Protocol
 
 from ralph.mcp.explore._pipeline_writer import ReindexWriter
 from ralph.mcp.explore.pipeline import ReindexOptions, ReindexResult
 from ralph.workspace.awareness import awareness_for_workspace
+
+if TYPE_CHECKING:
+    from ralph.mcp.explore.store import ExploreStore
 
 
 class ReindexRunner(Protocol):
@@ -23,6 +23,33 @@ class ReindexRunner(Protocol):
         *args: object,
         **kwargs: object,
     ) -> ReindexResult: ...
+
+
+def _coerce_reindex_runner(value: object) -> ReindexRunner | None:
+    if not callable(value):
+        return None
+
+    def _runner(
+        store: ExploreStore,
+        workspace_root: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> ReindexResult:
+        options = kwargs.get("options")
+        if options is None:
+            options = kwargs.get("opts")
+        if options is None and args:
+            options = args[0]
+        if options is None:
+            msg = "reindex runner requires options"
+            raise TypeError(msg)
+        raw = value(store, workspace_root, options=options)
+        if isinstance(raw, ReindexResult):
+            return raw
+        msg = f"reindex runner returned {type(raw).__name__}, expected ReindexResult"
+        raise TypeError(msg)
+
+    return _runner
 
 
 ReindexOptionsFactory = Callable[[int], ReindexOptions]
@@ -129,20 +156,27 @@ def _run_hook(
     if runner_value is None:
         handle_runner_obj: object = getattr(explore_index, "runner", None)
         if callable(handle_runner_obj):
-            resolved_runner: object = handle_runner_obj()
-            runner_value = cast("ReindexRunner", resolved_runner)
+            runner_value = _coerce_reindex_runner(handle_runner_obj())
     if runner_value is None:
-        runner_value = cast("ReindexRunner", claim_reindex)
+        runner_value = claim_reindex
     options_value: ReindexOptions = ReindexOptions(mode="changed", timeout_ms=timeout_ms)
+
+    def _require_reindex_result(raw_result: object) -> ReindexResult:
+        if not isinstance(raw_result, ReindexResult):
+            msg = f"reindex runner returned {type(raw_result).__name__}, expected ReindexResult"
+            raise TypeError(msg)
+        return raw_result
+
     try:
         runner: ReindexRunner = runner_value
         kwargs_name = "opts" if reindex_runner is not None else "options"
-        raw_result: object = runner(
-            store,
-            workspace_root,
-            **{kwargs_name: options_value},
+        result = _require_reindex_result(
+            runner(
+                store,
+                workspace_root,
+                **{kwargs_name: options_value},
+            )
         )
-        result = cast("ReindexResult", raw_result)
     except (
         OSError,
         RuntimeError,

@@ -7,7 +7,6 @@ import signal
 import threading
 import time
 from collections import OrderedDict
-from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import psutil
@@ -31,9 +30,14 @@ _LOG = logging.getLogger(__name__)
 
 _MAX_ANCESTOR_WALK: int = 32
 
+def _new_lock() -> threading.Lock:
+    return threading.Lock()
+
+
 _SESSION_REGISTRY_MAX: int = 256
 _SESSION_REGISTRY: OrderedDict[int, int] = OrderedDict()
-_SESSION_REGISTRY_LOCK = threading.Lock()
+_SESSION_REGISTRY_LOCK = _new_lock()
+_sleep = time.sleep
 
 
 def _own_pgid() -> int | None:
@@ -239,7 +243,8 @@ class DefaultProcessTeardown:
     def _record_for(self, host_pid: int) -> ProcessRecord | None:
         if self._record_lookup is not None:
             return self._record_lookup(host_pid)
-        manager_module: object = import_module("ralph.process.manager")
+        import ralph.process.manager as manager_module
+
         if not isinstance(manager_module, _ProcessManagerModule):
             raise TypeError("process manager module does not expose get_process_manager")
         return manager_module.get_process_manager().get_record(host_pid)
@@ -251,7 +256,8 @@ class DefaultProcessTeardown:
         issuer: ProcessTerminationIssuer,
         outcome: str,
     ) -> None:
-        manager_module: object = import_module("ralph.process.manager")
+        import ralph.process.manager as manager_module
+
         if not isinstance(manager_module, _ProcessManagerModule):
             raise TypeError("process manager module does not expose get_process_manager")
         manager = manager_module.get_process_manager()
@@ -271,7 +277,7 @@ class DefaultProcessTeardown:
                     gone.add(proc.pid)
             if len(gone) >= len(procs):
                 break
-            time.sleep(poll_interval)
+            _sleep(poll_interval)
             poll_interval = min(poll_interval * 1.5, 0.025)
         return gone
 
@@ -290,7 +296,7 @@ class DefaultProcessTeardown:
                 return
             except (PermissionError, OSError):
                 return
-            time.sleep(0.05)
+            _sleep(0.05)
 
         with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
             os.killpg(pgid, signal.SIGKILL)

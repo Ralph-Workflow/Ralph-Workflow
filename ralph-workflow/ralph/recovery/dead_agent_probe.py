@@ -24,11 +24,10 @@ def build_dead_agent_probe_runner(
     *,
     max_probes: int = DEFAULT_MAX_PROBES_PER_RUN,
 ) -> Callable[[str, str], ProbeOutcome | None]:
-    probes_started = 0
+    probes_started = [0]
 
     def run(phase: str, agent: str) -> ProbeOutcome | None:
-        nonlocal probes_started
-        if probes_started >= max_probes:
+        if probes_started[0] >= max_probes:
             return None
         try:
             config = resolve_agent(agent)
@@ -37,7 +36,7 @@ def build_dead_agent_probe_runner(
             return None
         if config is None:
             return None
-        probes_started += 1
+        probes_started[0] += 1
         try:
             return probe(config).outcome
         except (OSError, RuntimeError, ValueError, KeyError) as exc:

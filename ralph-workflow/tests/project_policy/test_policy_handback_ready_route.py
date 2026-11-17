@@ -10,7 +10,6 @@ import pytest
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline._runner_session import (
     apply_session_capture,
@@ -40,17 +39,9 @@ _POLICY_ANALYSIS_FAKE_SESSION_ID: str = "sess-policy-analysis-approved"
 _POLICY_ANALYSIS_STALE_MARKER: str = "STALE-PRE-POLICY-ANALYSIS-MARKER-DO-NOT-SEE"
 
 
-class _ShutdownCountingBridge(RestartAwareMcpBridge):
+class _ShutdownCountingBridge:
     def __init__(self) -> None:
-        pass
-
-    @property
-    def run_id(self) -> str:
-        return "shutdown-counting-bridge"
-
-    @property
-    def restart_count(self) -> int:
-        return 0
+        self.run_id: str = "shutdown-counting-bridge"
 
     def shutdown(self) -> None:
         _shutdown_counter["count"] += 1
@@ -59,9 +50,6 @@ class _ShutdownCountingBridge(RestartAwareMcpBridge):
         return "http://127.0.0.1:0/mcp"
 
     def reset_tool_registry(self) -> None:
-        pass
-
-    def reset_session_budget(self) -> None:
         pass
 
 

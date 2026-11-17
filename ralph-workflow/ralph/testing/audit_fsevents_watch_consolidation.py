@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.testing._audit_scope import is_assign_binding, is_function_def, is_loop
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -119,11 +121,12 @@ def _find_schedule_calls(nodes: Sequence[ast.AST]) -> list[ast.Call]:
 def _find_schedule_aliases(nodes: Sequence[ast.AST]) -> list[ast.expr]:
     aliases: list[ast.expr] = []
     for node in nodes:
-        if not isinstance(node, (ast.Assign, ast.NamedExpr, ast.AnnAssign)):
+        if not is_assign_binding(node):
             continue
         value = node.value
-        if (isinstance(value, ast.Attribute) and value.attr == "schedule") or (
-            isinstance(value, ast.Call) and _is_dynamic_schedule_lookup(value)
+        if value is not None and (
+            (isinstance(value, ast.Attribute) and value.attr == "schedule")
+            or (isinstance(value, ast.Call) and _is_dynamic_schedule_lookup(value))
         ):
             aliases.append(value)
     return aliases
@@ -139,14 +142,14 @@ def _has_recursive_true_kwarg(call: ast.Call) -> bool:
 
 
 def _has_loop_ancestor(ancestors: list[ast.AST]) -> bool:
-    return any(isinstance(ancestor, (ast.For, ast.AsyncFor, ast.While)) for ancestor in ancestors)
+    return any(is_loop(ancestor) for ancestor in ancestors)
 
 
 def _nearest_enclosing_function(
     ancestors: list[ast.AST],
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     for ancestor in ancestors:
-        if isinstance(ancestor, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if is_function_def(ancestor):
             return ancestor
     return None
 

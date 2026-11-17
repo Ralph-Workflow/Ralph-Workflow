@@ -28,6 +28,15 @@ _ToolMap = OrderedDict[str, str]
 
 
 class ClaudeInteractiveParser:
+    __slots__ = (
+        '_last_tool_name',
+        '_parser',
+        '_subagent_pid_registry',
+        '_subagent_source_label',
+        '_text_accumulator',
+        '_thinking_accumulator',
+        '_tool_names_by_id',
+    )
     def __init__(
         self,
         subagent_pid_registry: SubagentPidRegistry | None = None,

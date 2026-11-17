@@ -743,7 +743,7 @@ def _is_tautological(text: str) -> bool:
     if isinstance(test, ast.Compare) and len(test.ops) == 1 and len(test.comparators) == 1:
         op = test.ops[0]
         comparator = test.comparators[0]
-        if isinstance(op, (ast.Eq, ast.Is, ast.LtE, ast.GtE)) and ast.dump(test.left) == ast.dump(
+        if (any(isinstance(op, _t) for _t in (ast.Eq, ast.Is, ast.LtE, ast.GtE))) and ast.dump(test.left) == ast.dump(
             comparator
         ):
             return True

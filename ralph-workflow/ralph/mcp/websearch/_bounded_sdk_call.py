@@ -33,6 +33,8 @@ def _default_label(callable_: Callable[[], object]) -> str:
 
 
 class _BoundedSdkCall:
+    __slots__ = ("_executor", "_lock", "_max_workers")
+
     def __init__(self, max_workers: int = DEFAULT_MAX_WORKERS) -> None:
         self._max_workers = max_workers
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None

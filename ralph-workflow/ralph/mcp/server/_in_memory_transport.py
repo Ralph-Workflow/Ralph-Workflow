@@ -4,39 +4,62 @@ import io
 import json
 from email.message import Message
 from threading import Event
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
-from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._server_state import ServerState
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.mcp.server._mcp_server import McpServer
-
-    class _HandlerWithBaseAttrs(_FallbackHttpHandler):
-        rfile: io.BytesIO
-        wfile: io.BytesIO
-        headers: Message
-        raw_requestline: bytes
-        request_version: str
-        requestline: str
-        command: str
-        path: str
-        server: _FallbackHttpServer
-        client_address: tuple[str, int]
-        close_connection: bool
+    from ralph.mcp.server._metrics import McpMetrics
 
 
-class _InMemoryFallbackServer(_FallbackHttpServer):
+class _InMemoryServerLike(Protocol):
+    mcp_server: McpServer
+    state: ServerState
+    shutdown_event: Event
+    server_address: tuple[str, int]
+    health_probe_fn: object | None
+    metrics: McpMetrics | None
+
+
+class _HandlerWithBaseAttrs(Protocol):
+    rfile: io.BytesIO
+    wfile: io.BytesIO
+    headers: Message
+    raw_requestline: bytes
+    request_version: str
+    requestline: str
+    command: str
+    path: str
+    server: _InMemoryServerLike
+    client_address: tuple[str, int]
+    close_connection: bool
+
+    def do_POST(self) -> None: ...
+
+    def do_GET(self) -> None: ...
+
+
+class _InMemoryFallbackServer:
+    __slots__ = (
+        "health_probe_fn",
+        "mcp_server",
+        "metrics",
+        "server_address",
+        "shutdown_event",
+        "state",
+    )
+
     def __init__(self, mcp_server: McpServer, state: ServerState) -> None:
         self.mcp_server = mcp_server
         self.state = state
         self.shutdown_event = Event()
         self.server_address = ("127.0.0.1", 0)
-        self.health_probe_fn = None
-        self.metrics = None
+        self.health_probe_fn: object | None = None
+        self.metrics: McpMetrics | None = None
 
     def server_bind(self) -> None:
         pass
@@ -45,7 +68,7 @@ class _InMemoryFallbackServer(_FallbackHttpServer):
         pass
 
 
-def _make_fake_server(mcp_server: McpServer, state: ServerState) -> _FallbackHttpServer:
+def _make_fake_server(mcp_server: McpServer, state: ServerState) -> _InMemoryFallbackServer:
     return _InMemoryFallbackServer(mcp_server, state)
 
 
@@ -57,6 +80,105 @@ def _make_headers(payload: bytes, override: dict[str, str] | None) -> Message:
     return msg
 
 
+class _BoundInMemoryHandler:
+    __slots__ = (
+        "_inner",
+        "client_address",
+        "close_connection",
+        "command",
+        "headers",
+        "path",
+        "raw_requestline",
+        "request_version",
+        "requestline",
+        "rfile",
+        "server",
+        "wfile",
+    )
+
+    def __init__(
+        self,
+        inner: _FallbackHttpHandler,
+        *,
+        rfile: io.BytesIO,
+        wfile: io.BytesIO,
+        headers: Message,
+        raw_requestline: bytes,
+        request_version: str,
+        requestline: str,
+        command: str,
+        path: str,
+        server: _InMemoryFallbackServer,
+        client_address: tuple[str, int],
+        close_connection: bool,
+    ) -> None:
+        self._inner = inner
+        self.rfile = rfile
+        self.wfile = wfile
+        self.headers = headers
+        self.raw_requestline = raw_requestline
+        self.request_version = request_version
+        self.requestline = requestline
+        self.command = command
+        self.path = path
+        self.server: _InMemoryServerLike = server
+        self.client_address = client_address
+        self.close_connection = close_connection
+
+    def _sync_inner(self) -> None:
+        inner: object = self._inner
+        object.__setattr__(inner, "rfile", self.rfile)
+        object.__setattr__(inner, "wfile", self.wfile)
+        object.__setattr__(inner, "headers", self.headers)
+        object.__setattr__(inner, "raw_requestline", self.raw_requestline)
+        object.__setattr__(inner, "request_version", self.request_version)
+        object.__setattr__(inner, "requestline", self.requestline)
+        object.__setattr__(inner, "command", self.command)
+        object.__setattr__(inner, "path", self.path)
+        object.__setattr__(inner, "server", self.server)
+        object.__setattr__(inner, "client_address", self.client_address)
+        object.__setattr__(inner, "close_connection", self.close_connection)
+
+    def do_POST(self) -> None:
+        self._sync_inner()
+        self._inner.do_POST()
+
+    def do_GET(self) -> None:
+        self._sync_inner()
+        self._inner.do_GET()
+
+
+def _bind_handler_attrs(
+    handler: _FallbackHttpHandler,
+    *,
+    rfile: io.BytesIO,
+    wfile: io.BytesIO,
+    headers: Message,
+    raw_requestline: bytes,
+    request_version: str,
+    requestline: str,
+    command: str,
+    path: str,
+    server: _InMemoryFallbackServer,
+    client_address: tuple[str, int],
+    close_connection: bool,
+) -> _HandlerWithBaseAttrs:
+    return _BoundInMemoryHandler(
+        handler,
+        rfile=rfile,
+        wfile=wfile,
+        headers=headers,
+        raw_requestline=raw_requestline,
+        request_version=request_version,
+        requestline=requestline,
+        command=command,
+        path=path,
+        server=server,
+        client_address=client_address,
+        close_connection=close_connection,
+    )
+
+
 def _build_handler(
     mcp_server: McpServer,
     payload: bytes,
@@ -64,25 +186,25 @@ def _build_handler(
     headers: dict[str, str] | None,
     method: str,
     path: str,
-) -> tuple[_HandlerWithBaseAttrs, io.BytesIO, _FallbackHttpServer]:
+) -> tuple[_HandlerWithBaseAttrs, io.BytesIO, _InMemoryFallbackServer]:
     rfile = io.BytesIO(payload)
     wfile = io.BytesIO()
     server = _make_fake_server(mcp_server, ServerState.UNINITIALIZED)
-    handler: _HandlerWithBaseAttrs = cast(
-        "_HandlerWithBaseAttrs",
-        _FallbackHttpHandler.__new__(_FallbackHttpHandler),
+    raw_handler = _FallbackHttpHandler.__new__(_FallbackHttpHandler)
+    handler = _bind_handler_attrs(
+        raw_handler,
+        rfile=rfile,
+        wfile=wfile,
+        headers=_make_headers(payload, headers),
+        raw_requestline=f"{method} {path} HTTP/1.1\r\n".encode(),
+        request_version="HTTP/1.1",
+        requestline=f"{method} {path} HTTP/1.1",
+        command=method,
+        path=path,
+        server=server,
+        client_address=("127.0.0.1", 0),
+        close_connection=False,
     )
-    handler.rfile = rfile
-    handler.wfile = wfile
-    handler.headers = _make_headers(payload, headers)
-    handler.raw_requestline = f"{method} {path} HTTP/1.1\r\n".encode()
-    handler.request_version = "HTTP/1.1"
-    handler.requestline = f"{method} {path} HTTP/1.1"
-    handler.command = method
-    handler.path = path
-    handler.server = server
-    handler.client_address = ("127.0.0.1", 0)
-    handler.close_connection = False
     return handler, wfile, server
 
 
@@ -97,18 +219,11 @@ def drive_request(
     handler, wfile, _server = _build_handler(
         mcp_server, payload_bytes, headers=headers, method=method, path=path
     )
-    _invoke_http_method(handler, method)
-    return _parse_sse_envelope(wfile.getvalue())
-
-
-def _invoke_http_method(handler: _FallbackHttpHandler, method: str) -> None:
     if method == "POST":
         handler.do_POST()
-        return
-    if method == "GET":
+    else:
         handler.do_GET()
-        return
-    raise TypeError(f"unsupported HTTP method {method!r}")
+    return _parse_sse_envelope(wfile.getvalue())
 
 
 def drive_streamed_request(
@@ -120,7 +235,7 @@ def drive_streamed_request(
     handler, wfile, server = _build_handler(
         mcp_server, payload_bytes, headers=headers, method="POST", path="/mcp"
     )
-    _invoke_http_method(handler, "POST")
+    handler.do_POST()
     server.shutdown_event.set()
     body = wfile.getvalue()
     for chunk in _split_sse_frames(body):
@@ -161,9 +276,12 @@ def parse_sse_data(body: bytes) -> dict[str, object]:
     for line in text.splitlines():
         if line.startswith("data: "):
             try:
-                return cast("dict[str, object]", json.loads(line[len("data: ") :]))
+                decoded: object = json.loads(line[len("data: ") :])
             except json.JSONDecodeError:
                 return {}
+            if isinstance(decoded, dict):
+                return {str(key): value for key, value in decoded.items()}
+            return {}
     return {}
 
 

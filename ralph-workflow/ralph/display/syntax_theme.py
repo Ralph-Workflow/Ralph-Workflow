@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Final, cast
+from typing import Final, Protocol, TypedDict, runtime_checkable
 
 import pygments.token as pygments_token
 from pygments.style import Style as PygmentsStyle
@@ -27,32 +27,108 @@ from ralph.display._palette import (
 )
 
 
-def _child_token(parent: object, name: str) -> object:
-    return cast("object", getattr(parent, name))
+@runtime_checkable
+class _BuiltinNameToken(Protocol):
+    Pseudo: object
 
 
-_NAME_CLASS = _child_token(Name, "Class")
-_NAME_NAMESPACE = _child_token(Name, "Namespace")
-_NAME_BUILTIN = _child_token(Name, "Builtin")
-_NAME_BUILTIN_PSEUDO = _child_token(_NAME_BUILTIN, "Pseudo")
-_NAME_DECORATOR = _child_token(Name, "Decorator")
-_NAME_ATTRIBUTE = _child_token(Name, "Attribute")
-_NAME_VARIABLE = _child_token(Name, "Variable")
-_NAME_CONSTANT = _child_token(Name, "Constant")
-_KEYWORD_TYPE = _child_token(Keyword, "Type")
-_KEYWORD_NAMESPACE = _child_token(Keyword, "Namespace")
-_TEXT_WHITESPACE = _child_token(Text, "Whitespace")
-_LITERAL = _child_token(_child_token(pygments_token, "Token"), "Literal")
-_ERROR = _child_token(_child_token(pygments_token, "Token"), "Error")
-_GENERIC_HEADING = _child_token(Generic, "Heading")
-_GENERIC_STRONG = _child_token(Generic, "Strong")
-_GENERIC_PROMPT = _child_token(Generic, "Prompt")
-_GENERIC_OUTPUT = _child_token(Generic, "Output")
-_GENERIC_TRACEBACK = _child_token(Generic, "Traceback")
-_GENERIC_ERROR = _child_token(Generic, "Error")
-_GENERIC_EMPH = _child_token(Generic, "Emph")
-_TOKEN_OTHER = _child_token(_child_token(pygments_token, "Token"), "Other")
-_TOKEN_ESCAPE = _child_token(_child_token(pygments_token, "Token"), "Escape")
+@runtime_checkable
+class _NameToken(Protocol):
+    Class: object
+    Namespace: object
+    Builtin: _BuiltinNameToken
+    Decorator: object
+    Attribute: object
+    Variable: object
+    Constant: object
+
+
+@runtime_checkable
+class _KeywordToken(Protocol):
+    Type: object
+    Namespace: object
+
+
+@runtime_checkable
+class _GenericExtras(Protocol):
+    Heading: object
+    Strong: object
+    Prompt: object
+    Output: object
+    Traceback: object
+    Error: object
+    Emph: object
+
+
+@runtime_checkable
+class _RootToken(Protocol):
+    Literal: object
+    Error: object
+    Other: object
+    Escape: object
+
+
+@runtime_checkable
+class _PygmentsTokenModule(Protocol):
+    Token: _RootToken
+
+
+class _StyleNamespace(TypedDict):
+    default_style: str
+    styles: dict[object, str]
+
+
+def _require_name_token(value: object) -> _NameToken:
+    if not isinstance(value, _NameToken):
+        raise TypeError("pygments Name token shape mismatch")
+    return value
+
+
+def _require_keyword_token(value: object) -> _KeywordToken:
+    if not isinstance(value, _KeywordToken):
+        raise TypeError("pygments Keyword token shape mismatch")
+    return value
+
+
+def _require_generic_extras(value: object) -> _GenericExtras:
+    if not isinstance(value, _GenericExtras):
+        raise TypeError("pygments Generic token shape mismatch")
+    return value
+
+
+def _require_token_module(value: object) -> _PygmentsTokenModule:
+    if not isinstance(value, _PygmentsTokenModule):
+        raise TypeError("pygments.token module shape mismatch")
+    return value
+
+
+_NAME = _require_name_token(Name)
+_KEYWORD = _require_keyword_token(Keyword)
+_GENERIC = _require_generic_extras(Generic)
+_TOKEN_ROOT = _require_token_module(pygments_token).Token
+
+_NAME_CLASS = _NAME.Class
+_NAME_NAMESPACE = _NAME.Namespace
+_NAME_BUILTIN = _NAME.Builtin
+_NAME_BUILTIN_PSEUDO = _NAME_BUILTIN.Pseudo
+_NAME_DECORATOR = _NAME.Decorator
+_NAME_ATTRIBUTE = _NAME.Attribute
+_NAME_VARIABLE = _NAME.Variable
+_NAME_CONSTANT = _NAME.Constant
+_KEYWORD_TYPE = _KEYWORD.Type
+_KEYWORD_NAMESPACE = _KEYWORD.Namespace
+_TEXT_WHITESPACE = Text.Whitespace
+_LITERAL = _TOKEN_ROOT.Literal
+_ERROR = _TOKEN_ROOT.Error
+_GENERIC_HEADING = _GENERIC.Heading
+_GENERIC_STRONG = _GENERIC.Strong
+_GENERIC_PROMPT = _GENERIC.Prompt
+_GENERIC_OUTPUT = _GENERIC.Output
+_GENERIC_TRACEBACK = _GENERIC.Traceback
+_GENERIC_ERROR = _GENERIC.Error
+_GENERIC_EMPH = _GENERIC.Emph
+_TOKEN_OTHER = _TOKEN_ROOT.Other
+_TOKEN_ESCAPE = _TOKEN_ROOT.Escape
 
 _SYNTAX_ROLES: Final[tuple[str, ...]] = (
     "foreground",
@@ -118,46 +194,49 @@ def _style(colors: dict[str, str]) -> type[PygmentsStyle]:
     deleted = colors["diff_removed"]
     inserted = colors["diff_added"]
     subheading = colors["info"]
-    namespace: dict[str, object] = {
-        "default_style": foreground,
-        "styles": cast(
-            "object",
-            {
-                Comment: comment,
-                _NAME_DECORATOR: comment,
-                Keyword: keyword,
-                _KEYWORD_NAMESPACE: keyword,
-                Operator: keyword,
-                Punctuation: keyword,
-                _ERROR: keyword,
-                Name: foreground,
-                _NAME_VARIABLE: foreground,
-                Text: foreground,
-                _TEXT_WHITESPACE: foreground,
-                String: string,
-                Number: number,
-                _LITERAL: number,
-                _NAME_CONSTANT: number,
-                Name.Function: function,
-                _NAME_CLASS: function,
-                _NAME_NAMESPACE: function,
-                _NAME_ATTRIBUTE: attribute,
-                _KEYWORD_TYPE: builtin,
-                _NAME_BUILTIN: builtin,
-                _NAME_BUILTIN_PSEUDO: builtin,
-                Generic.Subheading: subheading,
-                Generic.Deleted: deleted,
-                Generic.Inserted: inserted,
-                _GENERIC_HEADING: subheading,
-                _GENERIC_STRONG: subheading,
-                _GENERIC_PROMPT: foreground,
-                _GENERIC_OUTPUT: foreground,
-                _GENERIC_EMPH: foreground,
-                _GENERIC_TRACEBACK: keyword,
-                _GENERIC_ERROR: keyword,
-                _TOKEN_OTHER: foreground,
-                _TOKEN_ESCAPE: string,
-            },
-        ),
+    style_map: dict[object, str] = {
+        Comment: comment,
+        _NAME_DECORATOR: comment,
+        Keyword: keyword,
+        _KEYWORD_NAMESPACE: keyword,
+        Operator: keyword,
+        Punctuation: keyword,
+        _ERROR: keyword,
+        Name: foreground,
+        _NAME_VARIABLE: foreground,
+        Text: foreground,
+        _TEXT_WHITESPACE: foreground,
+        String: string,
+        Number: number,
+        _LITERAL: number,
+        _NAME_CONSTANT: number,
+        Name.Function: function,
+        _NAME_CLASS: function,
+        _NAME_NAMESPACE: function,
+        _NAME_ATTRIBUTE: attribute,
+        _KEYWORD_TYPE: builtin,
+        _NAME_BUILTIN: builtin,
+        _NAME_BUILTIN_PSEUDO: builtin,
+        Generic.Subheading: subheading,
+        Generic.Deleted: deleted,
+        Generic.Inserted: inserted,
+        _GENERIC_HEADING: subheading,
+        _GENERIC_STRONG: subheading,
+        _GENERIC_PROMPT: foreground,
+        _GENERIC_OUTPUT: foreground,
+        _GENERIC_EMPH: foreground,
+        _GENERIC_TRACEBACK: keyword,
+        _GENERIC_ERROR: keyword,
+        _TOKEN_OTHER: foreground,
+        _TOKEN_ESCAPE: string,
     }
-    return type("RalphSyntaxTheme", (PygmentsStyle,), namespace)
+    namespace: _StyleNamespace = {
+        "default_style": foreground,
+        "styles": style_map,
+    }
+
+    class RalphSyntaxTheme(PygmentsStyle):
+        default_style = namespace["default_style"]
+        styles = namespace["styles"]
+
+    return RalphSyntaxTheme

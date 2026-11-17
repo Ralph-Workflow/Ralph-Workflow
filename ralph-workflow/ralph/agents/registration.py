@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
-from ralph.agents._contracts import StrategyFactory
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.support import AgentSupport
 from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agent
@@ -12,6 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.agents._contracts import StrategyFactory
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
     from ralph.config.agent_config import AgentConfig
@@ -25,13 +25,6 @@ class _ParserFactory(Protocol):
     def __call__(self) -> AgentParser: ...
 
 
-class _AnyKwargsStrategyFactory(Protocol):
-    def __call__(self, **kwargs: object) -> object: ...
-
-
-_UserStrategyFactory = StrategyFactory | object
-
-
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:
     return default_catalog()._default_strategy_for_transport(transport)
 
@@ -40,7 +33,7 @@ def _validate_and_materialize_support(
     name: str,
     transport: AgentTransport,
     parser_factory: _ParserFactory,
-    strategy_factory: _UserStrategyFactory,
+    strategy_factory: StrategyFactory,
     agent_registry: AgentRegistry | object,
     json_parser: JsonParserType,
     cmd: str | None,
@@ -66,7 +59,7 @@ def _validate_and_materialize_support(
         name,
         transport=transport,
         parser_factory=parser_factory,
-        strategy_factory=cast("StrategyFactory", strategy_factory),
+        strategy_factory=strategy_factory,
         agent_registry=agent_registry,
         json_parser=json_parser,
         interactive=interactive,
@@ -99,7 +92,7 @@ def register_agent_support(
     *,
     transport: AgentTransport,
     parser_factory: _ParserFactory,
-    strategy_factory: _UserStrategyFactory,
+    strategy_factory: StrategyFactory,
     agent_registry: AgentRegistry,
     json_parser: JsonParserType = JsonParserType.GENERIC,
     interactive: bool = False,
@@ -175,7 +168,7 @@ def register_my_agent(
     name: str,
     transport: AgentTransport,
     *,
-    parser: type[AgentParser],
+    parser: _ParserFactory,
     strategy: StrategyFactory | None = None,
     agent_registry: AgentRegistry,
     interactive: bool = False,
@@ -191,7 +184,7 @@ def register_my_agent(
     return register_agent_support(
         name,
         transport=transport,
-        parser_factory=cast("_ParserFactory", parser),
+        parser_factory=parser,
         strategy_factory=resolved_strategy,
         agent_registry=agent_registry,
         json_parser=json_parser,

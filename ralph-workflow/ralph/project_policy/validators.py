@@ -211,15 +211,25 @@ def _extract_verify_step_labels(source: str) -> set[str]:
         if isinstance(node, ast.Assign):
             target_names = [t.id for t in node.targets if isinstance(t, ast.Name)]
             value_node = node.value
-        elif isinstance(node, ast.AnnAssign):
+        if isinstance(node, ast.AnnAssign):
             if isinstance(node.target, ast.Name):
                 target_names = [node.target.id]
             value_node = node.value
 
-        if "_VERIFY_STEPS" in target_names and isinstance(value_node, (ast.Tuple, ast.List)):
-            for elt in value_node.elts:
-                if isinstance(elt, (ast.Tuple, ast.List)) and elt.elts:
-                    first = elt.elts[0]
+        sequence_elts: list[ast.expr] | None = None
+        if isinstance(value_node, ast.Tuple):
+            sequence_elts = list(value_node.elts)
+        if sequence_elts is None and isinstance(value_node, ast.List):
+            sequence_elts = list(value_node.elts)
+        if "_VERIFY_STEPS" in target_names and sequence_elts is not None:
+            for elt in sequence_elts:
+                nested_elts: list[ast.expr] | None = None
+                if isinstance(elt, ast.Tuple):
+                    nested_elts = list(elt.elts)
+                if nested_elts is None and isinstance(elt, ast.List):
+                    nested_elts = list(elt.elts)
+                if nested_elts:
+                    first = nested_elts[0]
                     if isinstance(first, ast.Constant) and isinstance(first.value, str):
                         labels.add(first.value)
     return labels

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
+
+from ralph.config._env import getenv as config_getenv
 
 from .backends.base import WebSearchError
 
@@ -12,7 +13,7 @@ def resolve_secret(
     api_key: str | None,
     api_key_env: str | None,
     *,
-    getenv: EnvGetter = os.getenv,
+    getenv: EnvGetter = config_getenv,
 ) -> str:
 
     normalized_key = _normalize_optional_string(api_key)

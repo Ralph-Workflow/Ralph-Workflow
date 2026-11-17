@@ -46,7 +46,7 @@ def _read_cache(workspace: Workspace) -> dict[str, object] | None:
         return None
     parsed: object
     try:
-        parsed = json.loads(raw)
+        parsed: object = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
         return None
     if not isinstance(parsed, dict):

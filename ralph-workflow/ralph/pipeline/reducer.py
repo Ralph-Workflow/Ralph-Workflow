@@ -6,7 +6,7 @@ import time
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard
 
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
@@ -437,6 +437,64 @@ def _reduce_agent_failure_pure(
     return None
 
 
+def _is_commit_review_event(event: object) -> TypeGuard[CommitReviewEvent]:
+    return (
+        any(isinstance(event, _t) for _t in (CommitReviewApproved, CommitReviewRejected, CommitReviewGateFailed, CommitReviewLoopback))
+    )
+
+
+def _is_pipeline_event(event: object) -> TypeGuard[PipelineEvent]:
+    return isinstance(event, PipelineEvent)
+
+
+def _reduce_commit_residual_event(
+    state: PipelineState,
+    event: Event | CommitReviewEvent,
+    pipeline_policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    if event == PipelineEvent.COMMIT_RESIDUAL:
+        return state, []
+    if not isinstance(event, CommitResidualEvent):
+        return None
+    committed = event.committed_paths
+    remaining = event.remaining_paths
+    if (
+        not committed
+        or not remaining
+        or len(committed) != len(set(committed))
+        or len(remaining) != len(set(remaining))
+        or not set(committed).isdisjoint(remaining)
+    ):
+        return state, []
+    return _handle_commit_residual(state, pipeline_policy, routing_timing)
+
+
+def _reduce_typed_pipeline_event(
+    state: PipelineState,
+    event: Event | CommitReviewEvent,
+    pipeline_policy: PipelinePolicy | None,
+    recovery: RecoveryController | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    residual = _reduce_commit_residual_event(state, event, pipeline_policy, routing_timing)
+    if residual is not None:
+        return residual
+    if isinstance(event, PostFanoutVerificationEvent):
+        return _reduce_post_fanout_verification(state, event, pipeline_policy)
+    if isinstance(event, PhaseFailureEvent):
+        return _reduce_phase_failure(state, event, pipeline_policy, recovery, routing_timing)
+    if isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
+        return _reduce_result_event(
+            state, event, pipeline_policy, routing_timing, recovery=recovery
+        )
+    if event == PipelineEvent.AGENT_FAILURE or isinstance(event, AgentFailureEvent):
+        return _reduce_agent_failure_pure(
+            state, event, pipeline_policy, recovery, routing_timing
+        )
+    return None
+
+
 def _reduce_pure(
     state: PipelineState,
     event: Event | CommitReviewEvent,
@@ -445,59 +503,24 @@ def _reduce_pure(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    if isinstance(
-        event,
-        (
-            CommitReviewApproved,
-            CommitReviewRejected,
-            CommitReviewGateFailed,
-            CommitReviewLoopback,
-        ),
-    ):
+    if _is_commit_review_event(event):
         return _reduce_commit_review_event(
             state, event, pipeline_policy, routing_timing=routing_timing, recovery=recovery
         )
 
-    reduced_event: tuple[PipelineState, list[Effect]] | None = None
-    if event == PipelineEvent.COMMIT_RESIDUAL:
-        reduced_event = (state, [])
-    elif isinstance(event, CommitResidualEvent):
-        committed = event.committed_paths
-        remaining = event.remaining_paths
-        if (
-            not committed
-            or not remaining
-            or len(committed) != len(set(committed))
-            or len(remaining) != len(set(remaining))
-            or not set(committed).isdisjoint(remaining)
-        ):
-            reduced_event = (state, [])
-        else:
-            reduced_event = _handle_commit_residual(state, pipeline_policy, routing_timing)
-    elif isinstance(event, PostFanoutVerificationEvent):
-        reduced_event = _reduce_post_fanout_verification(state, event, pipeline_policy)
-    elif isinstance(event, PhaseFailureEvent):
-        reduced_event = _reduce_phase_failure(
-            state, event, pipeline_policy, recovery, routing_timing
-        )
-    elif isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
-        reduced_event = _reduce_result_event(
-            state, event, pipeline_policy, routing_timing, recovery=recovery
-        )
-    if reduced_event is not None:
-        return reduced_event
-    if event == PipelineEvent.AGENT_FAILURE or isinstance(event, AgentFailureEvent):
-        agent_failure_result = _reduce_agent_failure_pure(
-            state, event, pipeline_policy, recovery, routing_timing
-        )
-        if agent_failure_result is not None:
-            return agent_failure_result
+    typed_result = _reduce_typed_pipeline_event(
+        state, event, pipeline_policy, recovery, routing_timing
+    )
+    if typed_result is not None:
+        return typed_result
     worker_result = _dispatch_worker_event(
         state, event, recovery, policy=pipeline_policy, routing_timing=routing_timing
     )
     if worker_result is not None:
         return worker_result
-    handler = _get_event_handlers().get(cast("PipelineEvent", event))
+    if not _is_pipeline_event(event):
+        return state, []
+    handler = _get_event_handlers().get(event)
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy, routing_timing)
@@ -534,7 +557,7 @@ def reduce(
             snap = recovery.ledger.snapshot()
             if snap != routed_state.ledger_snapshot:
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
-        verdict_record = cast("object", getattr(recovery, "last_verdict_record", None))
+        verdict_record = getattr(recovery, "last_verdict_record", None)
         if (
             verdict_record is not None
             and verdict_record != routed_state.dead_agent_verdict_record

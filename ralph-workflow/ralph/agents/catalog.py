@@ -1,7 +1,6 @@
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, TypeVar, overload, runtime_checkable
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.execution_state._strategy_builders import (
@@ -54,47 +53,21 @@ _T = TypeVar("_T")
 _ParserRegistryEntry = ParserRegistryEntry
 
 
-@runtime_checkable
-class _BuiltinModule(Protocol):
-    def builtin_supports(self) -> tuple[AgentSupport, ...]: ...
-
-
-@runtime_checkable
-class _RegistryModule(Protocol):
-    def _resolve_dynamic_agent(
-        self,
-        name: str,
-        ccs_defaults: CcsConfig,
-        *,
-        base_lookup: Callable[[str], AgentConfig | None] | None = None,
-    ) -> AgentConfig | None: ...
-
-
 def _builtin_supports() -> tuple[AgentSupport, ...]:
-    module: object = import_module("ralph.agents.builtin")
-    if not isinstance(module, _BuiltinModule):
-        raise TypeError("ralph.agents.builtin does not expose builtin_supports")
-    return module.builtin_supports()
+    from ralph.agents.builtin import builtin_supports
+
+    return builtin_supports()
 
 
-def _registry_module() -> _RegistryModule:
-    module: object = import_module("ralph.agents.registry")
-    if not isinstance(module, _RegistryModule):
-        raise TypeError("ralph.agents.registry does not expose _resolve_dynamic_agent")
-    return module
+def _resolve_dynamic_agent_from_registry(
+    name: str,
+    ccs_defaults: CcsConfig,
+    *,
+    base_lookup: Callable[[str], AgentConfig | None] | None = None,
+) -> AgentConfig | None:
+    from ralph.agents.registry import _resolve_dynamic_agent
 
-
-class _FlexibleFactory:
-    __slots__ = ("_factory",)
-
-    def __init__(self, factory: Callable[[], "AgentParser"]) -> None:
-        self._factory = factory
-
-    def __call__(self, **kwargs: object) -> "AgentParser":
-        try:
-            return self._factory(**kwargs)
-        except TypeError:
-            return self._factory()
+    return _resolve_dynamic_agent(name, ccs_defaults, base_lookup=base_lookup)
 
 
 class _CatalogBackedMapping(Mapping[K, V]):
@@ -368,7 +341,7 @@ def _resolve_dynamic_support(catalog: AgentCatalog, name_or_command: str) -> "Ag
             return entry.config
         return None
 
-    config = _registry_module()._resolve_dynamic_agent(
+    config = _resolve_dynamic_agent_from_registry(
         name_or_command,
         CcsConfig(),
         base_lookup=_catalog_base_lookup,

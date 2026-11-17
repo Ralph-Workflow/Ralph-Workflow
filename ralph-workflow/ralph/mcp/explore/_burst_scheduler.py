@@ -5,6 +5,16 @@ from threading import Lock
 
 
 class BurstDebounceScheduler:
+    __slots__ = (
+        "_clock",
+        "_debounce_window",
+        "_last_mark_at",
+        "_lock",
+        "_on_fire",
+        "_pending",
+        "_suppressed",
+    )
+
     def __init__(
         self,
         *,

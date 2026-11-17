@@ -32,6 +32,8 @@ class _BaselineError(RuntimeError):
 
 
 class _MissingBaselineError(_BaselineError):
+    __slots__ = ("matrix_key", "target")
+
     def __init__(self, *, target: str, matrix_key: str) -> None:
         self.target = target
         self.matrix_key = matrix_key
@@ -43,6 +45,8 @@ class _MissingBaselineError(_BaselineError):
 
 
 class _DuplicateBaselineError(_BaselineError):
+    __slots__ = ("matrix_key", "target")
+
     def __init__(self, *, target: str, matrix_key: str) -> None:
         self.target = target
         self.matrix_key = matrix_key
@@ -213,7 +217,10 @@ class _RetainedBaselineEntry:
             raise BaselineStorageError("capture_run_id must be a non-empty string")
         if not isinstance(cycle_id, str) or not cycle_id:
             raise BaselineStorageError("cycle_id must be a non-empty string")
-        if not isinstance(captured_at_unix, (int, float)) or isinstance(captured_at_unix, bool):
+        if (
+            not (any(isinstance(captured_at_unix, _t) for _t in (int, float)))
+            or isinstance(captured_at_unix, bool)
+        ):
             raise BaselineStorageError("captured_at_unix must be a number")
         if not isinstance(cells, list):
             raise BaselineStorageError("cells must be a list")
@@ -332,6 +339,8 @@ def _default_clock() -> float:
 
 
 class CaptureLifecycle:
+    __slots__ = ("_clock", "_cycle_id", "_run_id", "_workspace_root")
+
     def __init__(
         self,
         workspace_root: Path,

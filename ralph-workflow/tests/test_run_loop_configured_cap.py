@@ -51,7 +51,7 @@ def _create_retry_ctx(
                     },
                 ),
             ),
-            active_display=SimpleNamespace(emit_warn_line=_noop_warn, emit=lambda *_a, **_k: None),
+            active_display=SimpleNamespace(emit_warn_line=_noop_warn),
             config=UnifiedConfig(),
             workspace_scope=WorkspaceScope(root),
             latest_state=latest_state,
@@ -60,8 +60,6 @@ def _create_retry_ctx(
             _session_handoff_dispatched=False,
             registry={},
             controller=RecoveryController(),
-            last_waiting_state_phase=None,
-            last_waiting_state_sig=None,
         ),
     )
 

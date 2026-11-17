@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
 
@@ -52,15 +51,12 @@ class ExaBackend:
 
 def _load_exa_type() -> _ExaType:
     try:
-        module = import_module("exa_py")
+        from exa_py import Exa
     except ImportError as exc:
         raise WebSearchError(
             "backend 'exa' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    exa_type = cast("object | None", getattr(module, "Exa", None))
-    if exa_type is None:
-        raise WebSearchError("exa backend is unavailable")
-    return cast("_ExaType", exa_type)
+    return Exa
 
 
 def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
@@ -79,11 +75,10 @@ def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
 def _object_payload(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
         return value
-    try:
-        payload = cast("dict[str, object]", vars(value))
-    except TypeError:
+    dunder_dict = getattr(value, "__dict__", None)
+    if not isinstance(dunder_dict, dict):
         return {}
-    return payload
+    return {key: item for key, item in dunder_dict.items() if isinstance(key, str)}
 
 
 def _string_value(payload: Mapping[str, object], *keys: str) -> str:

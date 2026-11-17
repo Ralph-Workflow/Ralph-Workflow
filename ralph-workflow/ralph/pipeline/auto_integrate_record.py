@@ -124,7 +124,7 @@ class IntegrationRecord(RalphBaseModel):
     ) -> IntegrationRecord:
         if not isinstance(transition, Transition) or transition not in Transition.ALL:
             raise ValueError(f"Invalid transition: {transition!r}")
-        return transition.apply(self, **fields)
+        return transition.apply(self, **dict(fields))
 
     def with_resolution_gate_key(
         self,

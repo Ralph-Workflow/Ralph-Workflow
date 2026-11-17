@@ -27,7 +27,7 @@ class _ManagedBlock(NamedTuple):
 _AGENTS_PLACEHOLDER_TEMPLATE = """{begin}
 This project participates in Ralph Workflow's project-policy-readiness
 preflight. Before ordinary planning or development begins, the canonical
-quality-policy files under {canonical_dir} must exist, be customized for
+quality-policy files under `{canonical_dir}` must exist, be customized for
 this project's languages, frameworks, and commands, and pass the
 deterministic validator. All agent roles MUST load policies in this order:
 execution-kernel.md first, then their role slice, then any triggered domain
@@ -39,7 +39,7 @@ The remediation agent MUST, in order:
 
 1. Inspect the project's actual languages, frameworks, package managers,
    and existing docs; create and maintain the canonical policy files under
-   {canonical_dir}, replacing every starter placeholder with verified
+   `{canonical_dir}`, replacing every starter placeholder with verified
    project evidence.
 2. Migrate existing policy-like content into the matching canonical file,
    leaving a `ralph-workflow-policy:migrated ->` marker at the old
@@ -67,17 +67,31 @@ _RALPH_MANAGED_SIGNATURE = "Readiness reports THREE dimensions, not two:"
 
 
 class _AgentsReadyTemplate(str):
-    def format(self, *args: object, **kwargs: object) -> str:
-        kwargs.setdefault("structure_complete", "unknown")
-        kwargs.setdefault("implementation_verified", "unknown")
-        kwargs.setdefault("outcome_evidence_reviewed", "unknown")
-        return super().format(*args, **kwargs)
+    def format(
+        self,
+        *,
+        begin: object,
+        end: object,
+        canonical_dir: object,
+        structure_complete: object = "unknown",
+        implementation_verified: object = "unknown",
+        outcome_evidence_reviewed: object = "unknown",
+    ) -> str:
+        return str.format(
+            self,
+            begin=begin,
+            end=end,
+            canonical_dir=canonical_dir,
+            structure_complete=structure_complete,
+            implementation_verified=implementation_verified,
+            outcome_evidence_reviewed=outcome_evidence_reviewed,
+        )
 
 
 _AGENTS_READY_TEMPLATE = _AgentsReadyTemplate(
     """{begin}
-Quality policies live under {canonical_dir}. All agent roles MUST load policies in this order: execution-kernel.md first, then their role slice, then any triggered domain policy before changing the project; load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
-Run declared RALPH-COMMAND gates; read {canonical_dir}gate-script-policy.md FIRST when touching a build, gate, gate script, or CI.
+Quality policies live under `{canonical_dir}`. All agent roles MUST load policies in this order: execution-kernel.md first, then their role slice, then any triggered domain policy before changing the project; load only its effective bounded policy portfolio: kernel, selected profiles, local tightening, and valid exceptions.
+Run declared RALPH-COMMAND gates; read `{canonical_dir}gate-script-policy.md` FIRST when touching a build, gate, gate script, or CI.
 Search nearest coverage before a control; record REMOVE, MERGE, REPLACE, or KEEP; use the cheapest sufficient layer and keep the default-gate budget neutral — the testing policy's B5 below-budget browser carve-out (a new browser journey under the measured `browser_budget_seconds` needs no offset elsewhere in the lane) is the only relaxation of the mandatory offset, and the aggregate ceiling plus the distinct-risk requirement still hold.
 Give non-default work an owner, trigger, lane, evidence, and review condition. Material claims need a predeclared public-surface observation tied to an immutable subject and run, preserved artifact, validated oracle, and independent verdict.
 Telemetry, provenance, private-state inspection, and agent narration are not correctness proof. These are living documents: keep facts current without amending policy intent.

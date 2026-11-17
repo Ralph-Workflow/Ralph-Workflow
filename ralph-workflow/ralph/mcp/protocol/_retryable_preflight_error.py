@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from ralph.mcp.protocol._preflight_error import PreflightError
+from ralph.mcp.protocol._preflight_error import RetryablePreflightError
 
-
-class RetryablePreflightError(PreflightError):
-    pass
+__all__ = ["RetryablePreflightError"]

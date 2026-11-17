@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Final
 
 from loguru import logger
@@ -12,13 +11,19 @@ def clamp_tail(text: str, *, max_chars: int) -> str:
     return text if len(text) <= max_chars else text[-max_chars:]
 
 
-@dataclass(slots=True)
 class BoundedTextBuffer:
-    max_chars: int = DEFAULT_MAX_BUFFER_CHARS
-    label: str = "text"
-    _text: str = field(default="", init=False, repr=False)
-    _truncated_chars: int = field(default=0, init=False, repr=False)
-    _warned: bool = field(default=False, init=False, repr=False)
+    __slots__ = ("_text", "_truncated_chars", "_warned", "label", "max_chars")
+
+    def __init__(
+        self,
+        max_chars: int = DEFAULT_MAX_BUFFER_CHARS,
+        label: str = "text",
+    ) -> None:
+        self.max_chars = max_chars
+        self.label = label
+        self._text = ""
+        self._truncated_chars = 0
+        self._warned = False
 
     def append(self, text: str) -> None:
         self.replace(self._text + text)

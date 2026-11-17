@@ -1,41 +1,59 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
-from ralph.policy.validation import PolicyValidationError
+
+if TYPE_CHECKING:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
 
 _DEVELOPMENT_DRAIN = "development"
 _DEVELOPMENT_CLASS = "development"
 _CLI_CHAIN_NAME = "cli_developer"
 
 
+def _agents_error(message: str) -> PolicyValidationError:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
+    return PolicyValidationError(message, source="agents")
+
+
 def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig) -> str:
     if agent is not None and not agent.strip():
-        raise PolicyValidationError("--developer-agent must name an agent", source="agents")
+        raise _agents_error("--developer-agent must name an agent")
     if model is not None and not model.strip():
-        raise PolicyValidationError("--developer-model must name a model", source="agents")
+        raise _agents_error("--developer-model must name a model")
     base = agent.strip() if agent is not None else current.agents[0]
     if model is None:
         return base
     return f"{base.split('/', 1)[0]}/{model.strip()}"
 
 
-def _pinned_value(config: object, name: str) -> str | None:
-    value: object = getattr(config, name, None)
+def _pinned_developer_agent(config: object) -> str | None:
+    if config is None or not hasattr(config, "developer_agent"):
+        return None
+    value: object = config.developer_agent
+    return value if isinstance(value, str) else None
+
+
+def _pinned_developer_model(config: object) -> str | None:
+    if config is None or not hasattr(config, "developer_model"):
+        return None
+    value: object = config.developer_model
     return value if isinstance(value, str) else None
 
 
 def apply_developer_override(policy: AgentsPolicy, config: object) -> AgentsPolicy:
-    agent = _pinned_value(config, "developer_agent")
-    model = _pinned_value(config, "developer_model")
+    agent = _pinned_developer_agent(config)
+    model = _pinned_developer_model(config)
     if agent is None and model is None:
         return policy
     binding = policy.agent_drains.get(_DEVELOPMENT_DRAIN)
     current = policy.agent_chains.get(binding.chain) if binding is not None else None
     if binding is None or current is None:
-        raise PolicyValidationError(
+        raise _agents_error(
             "--developer-agent/--developer-model need a bound `development` drain; "
             'add `development = "<chain>"` under [agent_drains]',
-            source="agents",
         )
     pinned = AgentChainConfig(
         agents=[_agent_spec(agent, model, current)],

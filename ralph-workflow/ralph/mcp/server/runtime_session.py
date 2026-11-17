@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 import uuid
@@ -13,6 +12,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools._exec_resource_protocol import ExecResourceResolverLike
 
+from ralph.config._env import getenv
 from ralph.mcp.explore.handlers import build_explore_index
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
@@ -46,6 +46,7 @@ from ralph.mcp.protocol.session import (
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+from ralph.runtime.environment import detect_runtime_environment
 
 
 def reconcile_declared_transport(declared: str | None, persisted: object) -> str | None:
@@ -74,6 +75,25 @@ def session_identity_from_payload(
 
 
 class FileBackedSession:
+    __slots__ = (
+        "_broker_secret",
+        "_cache_key",
+        "_cached_payload",
+        "_created_at",
+        "_declared_agent_transport",
+        "_env_getter",
+        "_exec_resource_resolver",
+        "_exec_spill_roots",
+        "_explicit_workspace_root",
+        "_loader",
+        "_media_manifest",
+        "_path",
+        "_run_id_factory",
+        "_session_id_factory",
+        "explore_index",
+        "tool_output_sink_entry",
+    )
+
     def __init__(
         self,
         path: Path,
@@ -98,7 +118,7 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
-        self._env_getter = env_getter if env_getter is not None else os.environ.get
+        self._env_getter = env_getter if env_getter is not None else getenv
         self._broker_secret: str | None = broker_secret
         self._media_manifest = MediaManifest()
         self._created_at = time.time()
@@ -288,7 +308,10 @@ class FileBackedSession:
     @property
     def created_at(self) -> float:
         payload_raw = self._load().get("created_at")
-        if isinstance(payload_raw, (int, float)) and not isinstance(payload_raw, bool):
+        if (
+            isinstance(payload_raw, int | float)
+            and not isinstance(payload_raw, bool)
+        ):
             return float(payload_raw)
         if isinstance(payload_raw, float):
             return payload_raw
@@ -393,7 +416,7 @@ def session_from_env(
     declared_agent_transport: str | None = None,
     workspace_root: Path | None = None,
 ) -> McpSession | None:
-    env_map = os.environ if env is None else env
+    env_map = detect_runtime_environment().env if env is None else env
     broker_secret_value: str | None = env_map.get("RALPH_BROKER_SECRET") or None
     session_file = env_map.get(SESSION_FILE_ENV)
     if session_file:

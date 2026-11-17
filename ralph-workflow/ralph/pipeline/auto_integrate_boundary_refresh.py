@@ -16,6 +16,8 @@ _MAX_TRACKED_KEYS = 64
 
 
 class BoundaryRefreshThrottle:
+    __slots__ = ("_clock", "_last_refresh", "_max_tracked_keys", "_min_interval_seconds")
+
     def __init__(
         self,
         *,

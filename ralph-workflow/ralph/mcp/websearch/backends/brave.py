@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from importlib import import_module
-from typing import cast
 
 import httpx
 
@@ -41,7 +39,7 @@ class BraveBackend:
                 timeout=effective_timeout,
             )
             response.raise_for_status()
-            payload = cast("object", response.json())
+            payload: object = response.json()
         except Exception as exc:
             raise WebSearchError("brave search failed") from exc
         return _normalize_results(payload)
@@ -49,11 +47,12 @@ class BraveBackend:
 
 def _ensure_brave_extra_installed() -> None:
     try:
-        import_module("brave_search_python_client")
+        import brave_search_python_client as _brave_search_python_client
     except ImportError as exc:
         raise WebSearchError(
             "backend 'brave' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
+    del _brave_search_python_client
 
 
 def _normalize_results(payload: object) -> list[SearchResult]:

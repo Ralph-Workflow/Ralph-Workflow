@@ -1,67 +1,32 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
+    resolver_allowed,
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
 _RESOLUTION_PHASE = "rebase_conflict_resolution"
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_unchanged_paths_and_oids_are_the_same_conflict": (
-        "launch permission is shared eligibility, not resolution_exhausted; same-conflict "
-        "identity still matches while an Eligible ledger may launch"
-    ),
-    "test_changed_stage_oids_are_a_new_conflict": (
-        "launch permission is shared eligibility; a new conflict identity is orthogonal to "
-        "whether any_eligible reports an agent may run"
-    ),
-    "test_scope_separates_feature_and_remote_conflict_budgets": (
-        "scope still separates conflict identity; launch permission follows any_eligible, "
-        "not the durable local exhaustion flag"
-    ),
-    "test_resolver_eligibility_follows_the_ledger_not_the_stored_count": (
-        "durable consecutive_conflicts / resolution_exhausted do not veto launch when the "
-        "shared ledger reports Eligible"
-    ),
-    "test_a_cooling_resolver_is_not_launched": (
-        "cooldown-strict any_eligible replaces the retired cooldown-blind all_exhausted branch"
-    ),
-    "test_no_ledger_does_not_apply_a_local_launch_veto": (
-        "with no shared ledger the launch gate applies no local counter veto; chain "
-        "dispatch sites that select among candidates separately require a non-empty set"
-    ),
-    "test_budget_spend_advances_the_strategy_rung": (
-        "apply_conflict_budget advances the strategy rung in the same step as the spend"
-    ),
-    "test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate": (
-        "remote refresh no longer suppresses the resolver from resolution_exhausted; "
-        "launch permission is shared eligibility only"
-    ),
-}
-
 
 def _ledger() -> AgentFailureLedger:
     return AgentFailureLedger(clock=FakeClock())
 
 
-def _cooling_ledger(agent: str = "resolver") -> AgentFailureLedger:
-    ledger = AgentFailureLedger(
-        clock=FakeClock(),
-        consecutive_limit=1,
-        base_cooldown_seconds=10.0,
-    )
-    ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
+def _benched_ledger(agent: str = "resolver") -> AgentFailureLedger:
+    ledger = _ledger()
+    for _ in range(3):
+        ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
     return ledger
 
 
@@ -83,12 +48,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
         resolution_exhausted=True,
     )
     assert identity.matches(state) is True
-    assert (
-        _configured_resolver_allowed(
-            state, "main", identity, ledger=_ledger(), candidates=("resolver",)
-        )
-        is True
-    )
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is False
 
 
 def test_changed_stage_oids_are_a_new_conflict() -> None:
@@ -108,26 +68,7 @@ def test_changed_stage_oids_are_a_new_conflict() -> None:
         last_conflict_stage_oids=("oid-a",),
     )
     assert identity.matches(state) is False
-    assert (
-        _configured_resolver_allowed(
-            state, "main", identity, ledger=_ledger(), candidates=("resolver",)
-        )
-        is True
-    )
-
-
-def test_budget_spend_advances_the_strategy_rung() -> None:
-    identity = ConflictIdentity(feature_sha="feat", target_sha="main")
-    updated = apply_conflict_budget(
-        RebaseState(last_action="conflict", last_target="main"),
-        prior=RebaseState(),
-        target="main",
-        resolver_suppressed=False,
-        identity=identity,
-        attempts=1,
-    )
-    assert updated.conflict_strategy_index == 1
-    assert updated.consecutive_conflicts == 1
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is True
 
 
 def test_apply_conflict_budget_persists_path_identity() -> None:
@@ -241,7 +182,7 @@ def test_remote_refresh_books_conflict_identity_and_rejects_a_duplicate(
     )
     assert observed == [identity]
     assert applied == [identity]
-    assert suppressed == [False]
+    assert suppressed == [True]
 
 
 def test_remote_refresh_failure_still_books_conflict_budget(
@@ -374,19 +315,8 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
         last_conflict_scope="feature",
         resolution_exhausted=True,
     )
-    assert feature.matches(state) is True
-    assert remote.matches(state) is False
-    ledger = _ledger()
-    assert (
-        _configured_resolver_allowed(
-            state, "main", feature, ledger=ledger, candidates=("resolver",)
-        )
-        is True
-    )
-    assert (
-        _configured_resolver_allowed(state, "main", remote, ledger=ledger, candidates=("resolver",))
-        is True
-    )
+    assert resolver_allowed(state, "main", feature, ledger=_ledger()) is False
+    assert resolver_allowed(state, "main", remote, ledger=_ledger()) is True
 
 
 def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
@@ -397,18 +327,12 @@ def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
         consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
-        resolution_exhausted=True,
     )
 
-    assert (
-        _configured_resolver_allowed(
-            state, "main", identity, ledger=_ledger(), candidates=("resolver",)
-        )
-        is True
-    )
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is True
 
 
-def test_a_cooling_resolver_is_not_launched() -> None:
+def test_a_benched_resolver_does_not_affect_conflict_identity_exhaustion() -> None:
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")
     state = RebaseState(
         last_action="conflict",
@@ -417,22 +341,22 @@ def test_a_cooling_resolver_is_not_launched() -> None:
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
     )
-    cooling = _cooling_ledger()
-    assert not cooling.any_eligible(_RESOLUTION_PHASE, ("resolver",))
-    assert not cooling.all_exhausted(_RESOLUTION_PHASE, ("resolver",))
+
     assert (
-        _configured_resolver_allowed(
+        resolver_allowed(
             state,
             "main",
             identity,
-            ledger=cooling,
+            ledger=_benched_ledger(),
             candidates=("resolver",),
         )
-        is False
+        is True
     )
 
 
-def test_no_ledger_does_not_apply_a_local_launch_veto() -> None:
+def test_the_predicate_carries_no_attempt_budget() -> None:
+    assert "attempts" not in inspect.signature(resolver_allowed).parameters
+
     identity = ConflictIdentity(feature_sha="feat", target_sha="main")
     state = RebaseState(
         last_action="conflict",
@@ -440,14 +364,6 @@ def test_no_ledger_does_not_apply_a_local_launch_veto() -> None:
         consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
-        resolution_exhausted=True,
     )
 
-    assert (
-        _configured_resolver_allowed(state, "main", identity, ledger=None, candidates=("resolver",))
-        is True
-    )
-    assert (
-        _configured_resolver_allowed(state, "main", identity, ledger=_ledger(), candidates=())
-        is True
-    )
+    assert resolver_allowed(state, "main", identity, ledger=None) is True

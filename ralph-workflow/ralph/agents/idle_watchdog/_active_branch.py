@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog._activity_methods import (
@@ -42,8 +42,9 @@ def build_evidence_summary_diag(
         ):
             freshest_age = entry.age_seconds
             active_channel = entry.channel_name.value
+    evidence_rows: list[object] = list(flat)
     diag: dict[str, object] = {
-        "evidence_summary": cast("list[object]", list(flat)),
+        "evidence_summary": evidence_rows,
         "active_channel": active_channel,
         "activity_evidence_ttl_seconds": ttl,
     }

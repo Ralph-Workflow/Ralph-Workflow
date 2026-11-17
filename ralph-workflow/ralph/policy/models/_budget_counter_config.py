@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.pydantic_compat import RalphBaseModel
 
 
-class BudgetCounterConfig(_FrozenPolicyModel):
+class BudgetCounterConfig(RalphBaseModel):
     description: str = Field(default="", description="Human-readable description")
     tracks_budget: bool = Field(
         default=True,

@@ -44,6 +44,12 @@ class _WorktreeLeaseUnavailableError(RuntimeError):
 
 
 class _WorktreeLease:
+    __slots__ = (
+        '_fd',
+        '_holder',
+        '_lock_path',
+        '_released',
+    )
     def __init__(self, lock_path: Path, holder: _WorktreeLeaseHolder) -> None:
         self._lock_path = lock_path
         self._holder = holder

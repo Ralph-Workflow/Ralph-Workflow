@@ -77,7 +77,6 @@ def derive_attempt_facts(fixture: Mapping[str, object]) -> AttemptFacts:
         tool_calls=tool_calls,
         workspace_changed_by_tool=_tri_state(fixture.get("workspace_changed_by_tool", "unknown")),
         artifact_valid=bool(fixture.get("artifact_valid", False)),
-        outcome_exists=bool(fixture.get("outcome_exists", False)),
         workspace_changed=derive_workspace_change(fixture),
         elapsed_to_terminal_ms=_optional_int(fixture.get("elapsed_to_terminal_ms")),
         exit_status=_optional_str(fixture.get("exit_status")),

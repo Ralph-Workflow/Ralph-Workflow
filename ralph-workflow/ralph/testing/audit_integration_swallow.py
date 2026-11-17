@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.testing._audit_scope import is_function_def, is_sequence_display
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -29,7 +31,7 @@ def _is_broad(handler: ast.ExceptHandler) -> bool:
 
 def _normal_return(node: ast.Return) -> bool:
     value = node.value
-    empty_sequence = isinstance(value, (ast.Tuple, ast.List, ast.Set)) and not value.elts
+    empty_sequence = value is not None and is_sequence_display(value) and not value.elts
     empty_mapping = isinstance(value, ast.Dict) and not value.keys
     default_constant = isinstance(value, ast.Constant) and value.value in {None, False, ""}
     return value is None or empty_sequence or empty_mapping or default_constant
@@ -66,7 +68,7 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
         integration_functions = (
             node
             for node in ast.walk(tree)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            if is_function_def(node)
             and any(word in node.name for word in ("resolve", "resolution", "landing"))
             and node.name not in {"_resolve_agent_config", "resolve_failure_ledger"}
         )

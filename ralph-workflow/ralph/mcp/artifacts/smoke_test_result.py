@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from importlib import import_module
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
@@ -52,7 +51,8 @@ def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str,
 def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None:
     artifact_path = repo_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.md"
     try:
-        import_module("ralph.mcp.artifacts.markdown.specs")
+        from ralph.mcp.artifacts.markdown import specs as _markdown_specs
+        _ = _markdown_specs
         markdown = artifact_path.read_text(encoding="utf-8")
         content, diagnostics = parse_and_validate(
             markdown,

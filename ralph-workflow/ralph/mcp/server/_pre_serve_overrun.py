@@ -25,6 +25,7 @@ from ralph.mcp.server._overrun_handler import OverrunHandler
 from ralph.mcp.server._pre_serve_overrun_events import StageEventRecorder
 from ralph.mcp.server._stage_recorder import StageRecorder
 from ralph.mcp.server._start_stage_tracker import record as _record_stage
+from ralph.runtime.environment import detect_runtime_environment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -201,7 +202,7 @@ def log_and_record_stage(
     stage_recorder: StageRecorder | None = None,
 ) -> None:
     clk = clock_fn if clock_fn is not None else time.monotonic
-    eff_env = os.environ if env_map is None else env_map
+    eff_env = detect_runtime_environment().env if env_map is None else env_map
     eff_t0 = t0 if t0 is not None else clk()
     real_deadline_s = mcp_real_startup_deadline_from_env(eff_env)
     remaining_s = max(0.0, real_deadline_s - (clk() - eff_t0))
@@ -284,7 +285,7 @@ def run_pre_serve_bounded[T](
     exit_fn: ExitHandler | None = None,
 ) -> T:
     clk = clock_fn if clock_fn is not None else mcp_startup_now
-    eff_env = os.environ if env_map is None else env_map
+    eff_env = detect_runtime_environment().env if env_map is None else env_map
     eff_t0 = t0 if t0 is not None else clk()
     remaining_s = mcp_pre_serve_timeout_seconds(eff_env, t0=eff_t0, clock_fn=clk)
     effective_timeout_s = timeout_s if timeout_s is not None else remaining_s

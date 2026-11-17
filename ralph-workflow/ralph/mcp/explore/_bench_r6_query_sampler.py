@@ -9,6 +9,11 @@ from ralph.mcp.tools.coordination import CoordinationSessionLike
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
+if TYPE_CHECKING:
+    from ralph.mcp.tools.coordination_session_like import CoordinationSessionLike
+    from ralph.mcp.tools.tool_result import ToolResult
+    from ralph.workspace.protocol import Workspace
+
 
 class _QueryCallable(Protocol):
     def __call__(
@@ -16,7 +21,7 @@ class _QueryCallable(Protocol):
         session: CoordinationSessionLike,
         workspace: Workspace,
         params: dict[str, object],
-    ) -> object: ...
+    ) -> ToolResult: ...
 
 
 def sample_query_latencies(

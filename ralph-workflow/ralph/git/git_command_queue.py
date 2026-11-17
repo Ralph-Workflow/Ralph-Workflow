@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import importlib
 import os
-import sys
 import threading
 from collections import deque
 from dataclasses import dataclass, field, replace
@@ -68,9 +66,45 @@ class RepoPath(Protocol):
     def git_dir(self) -> str | os.PathLike[str]: ...
 
 
+class GitCmdProxy(Protocol):
+    def add(self, *args: object, **kwargs: object) -> object: ...
+
+    def cat_file(self, *args: object, **kwargs: object) -> object: ...
+
+    def check_ignore(self, *args: object, **kwargs: object) -> object: ...
+
+    def commit_tree(self, *args: object, **kwargs: object) -> object: ...
+
+    def diff(self, *args: object, **kwargs: object) -> object: ...
+
+    def diff_tree(self, *args: object, **kwargs: object) -> object: ...
+
+    def for_each_ref(self, *args: object, **kwargs: object) -> object: ...
+
+    def ls_files(self, *args: object, **kwargs: object) -> object: ...
+
+    def ls_tree(self, *args: object, **kwargs: object) -> object: ...
+
+    def read_tree(self, *args: object, **kwargs: object) -> object: ...
+
+    def reset(self, *args: object, **kwargs: object) -> object: ...
+
+    def rev_parse(self, *args: object, **kwargs: object) -> object: ...
+
+    def rm(self, *args: object, **kwargs: object) -> object: ...
+
+    def status(self, *args: object, **kwargs: object) -> object: ...
+
+    def update_index(self, *args: object, **kwargs: object) -> object: ...
+
+    def update_ref(self, *args: object, **kwargs: object) -> object: ...
+
+    def write_tree(self, *args: object, **kwargs: object) -> object: ...
+
+
 class GitMethodRepo(RepoPath, Protocol):
     @property
-    def git(self) -> object: ...
+    def git(self) -> GitCmdProxy | None: ...
 
     @property
     def working_dir(self) -> str | os.PathLike[str] | None: ...
@@ -87,20 +121,12 @@ class _SpawnGit(Protocol):
     ) -> GitRunResult: ...
 
 
-class _SpawnModule(Protocol):
-    _spawn_git: object
-
-
 def _is_git_method(value: object) -> TypeGuard[Callable[..., object]]:
     return callable(value)
 
 
 def _is_spawn_git(value: object) -> TypeGuard[_SpawnGit]:
     return callable(value)
-
-
-def _is_spawn_module(value: object) -> TypeGuard[_SpawnModule]:
-    return hasattr(value, "_spawn_git")
 
 
 _HEALTH_LOG_CAP: int = 256
@@ -117,6 +143,12 @@ class QueuedCallOutcome:
 
 
 class GitCommandQueue:
+    __slots__ = (
+        'common_dir',
+        'consecutive_timeouts',
+        'execute_lock',
+        'outcome_log',
+    )
     common_dir: Path
     execute_lock: threading.RLock
     consecutive_timeouts: int
@@ -189,7 +221,7 @@ _REGISTRY: _QueueRegistry = _QueueRegistry()
 
 
 def _resolve_common_dir(repo_or_path: RepoPath | Path | str) -> Path:
-    if not isinstance(repo_or_path, (Path, str)):
+    if not isinstance(repo_or_path, Path) and not isinstance(repo_or_path, str):
         return _normalize_git_dir(Path(repo_or_path.git_dir))
     path = Path(repo_or_path).expanduser()
     return _normalize_git_dir(path)
@@ -276,6 +308,45 @@ def route_git_method(
     return second_result
 
 
+
+def _git_cmd_method(git_attr: GitCmdProxy, method_name: str) -> object:
+    if method_name == "add":
+        return git_attr.add
+    if method_name == "cat_file":
+        return git_attr.cat_file
+    if method_name == "check_ignore":
+        return git_attr.check_ignore
+    if method_name == "commit_tree":
+        return git_attr.commit_tree
+    if method_name == "diff":
+        return git_attr.diff
+    if method_name == "diff_tree":
+        return git_attr.diff_tree
+    if method_name == "for_each_ref":
+        return git_attr.for_each_ref
+    if method_name == "ls_files":
+        return git_attr.ls_files
+    if method_name == "ls_tree":
+        return git_attr.ls_tree
+    if method_name == "read_tree":
+        return git_attr.read_tree
+    if method_name == "reset":
+        return git_attr.reset
+    if method_name == "rev_parse":
+        return git_attr.rev_parse
+    if method_name == "rm":
+        return git_attr.rm
+    if method_name == "status":
+        return git_attr.status
+    if method_name == "update_index":
+        return git_attr.update_index
+    if method_name == "update_ref":
+        return git_attr.update_ref
+    if method_name == "write_tree":
+        return git_attr.write_tree
+    raise AttributeError(f"repo.git has no method named {method_name!r}")
+
+
 def _dispatch_git_method(
     queue: GitCommandQueue,
     repo: GitMethodRepo,
@@ -289,7 +360,7 @@ def _dispatch_git_method(
         msg = f"repo {repo!r} has no .git attribute"
         raise AttributeError(msg)
     try:
-        method: object = getattr(git_attr, method_name)
+        method: object = _git_cmd_method(git_attr, method_name)
     except AttributeError as exc:
         queue.record_outcome("error")
         raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
@@ -332,14 +403,7 @@ def route_run_git(
     options: GitRunOptions | None = None,
     call_class: GitCallClass | None = None,
 ) -> GitRunResult:
-    spawn_module: object = sys.modules.get("ralph.git.subprocess_runner")
-    if spawn_module is None:
-        spawn_module = importlib.import_module("ralph.git.subprocess_runner")
-    if not _is_spawn_module(spawn_module):
-        raise TypeError("ralph.git.subprocess_runner has no _spawn_git")
-    spawn_git: object = spawn_module._spawn_git
-    if not _is_spawn_git(spawn_git):
-        raise TypeError("ralph.git.subprocess_runner._spawn_git is not callable")
+    from ralph.git.subprocess_runner import _spawn_git as spawn_git
 
     effective_options = _apply_call_class_deadline(options, call_class)
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
@@ -450,7 +514,9 @@ def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
 
 
 def _repo_or_open(repo_or_path: RepoPath | Path | str) -> RepoPath:
-    if isinstance(repo_or_path, (Path, str)):
+    if isinstance(repo_or_path, Path):
+        return Repo(repo_or_path)
+    if isinstance(repo_or_path, str):
         return Repo(Path(repo_or_path))
     return repo_or_path
 

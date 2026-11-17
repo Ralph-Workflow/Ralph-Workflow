@@ -18,6 +18,8 @@ __all__ = [
 
 
 class ChainManager:
+    __slots__ = ("_policy",)
+
     def __init__(self, agents_policy: AgentsPolicy) -> None:
         self._policy = agents_policy
 

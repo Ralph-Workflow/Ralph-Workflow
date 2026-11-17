@@ -17,6 +17,15 @@ if TYPE_CHECKING:
 
 
 class _FallbackHttpServer(ThreadingHTTPServer):
+    __slots__ = (
+        "_dummy_pair",
+        "health_probe_fn",
+        "mcp_server",
+        "metrics",
+        "shutdown_event",
+        "state",
+    )
+
     daemon_threads = True
     mcp_server: McpServer
     state: ServerState
@@ -56,7 +65,9 @@ class _FallbackHttpServer(ThreadingHTTPServer):
         client_address: tuple[str, int],
     ) -> None:
         error = sys.exc_info()[1]
-        if isinstance(error, (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)):
+        if (
+            any(isinstance(error, _t) for _t in (BrokenPipeError, ConnectionAbortedError, ConnectionResetError))
+        ):
             return
         super().handle_error(request, client_address)
 

@@ -432,7 +432,9 @@ def _extract_rebase_params(
 
     raw_display_state = _safe_attr(rebase, "operation_display_state")
     operation_display_state = (
-        raw_display_state if isinstance(raw_display_state, (str, OperationDisplayState)) else None
+        raw_display_state
+        if any(isinstance(raw_display_state, _t) for _t in (str, OperationDisplayState))
+        else None
     )
 
     integration_action: object | None = _safe_attr(rebase, "next_action") or _safe_attr(

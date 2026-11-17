@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents.invoke import AttemptEnded, attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
@@ -94,7 +94,7 @@ def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
         *,
         options: InvokeOptions | None = None,
     ) -> Generator[str, None, object] | None:
-        lines = cast("Iterable[object] | None", injected(config, prompt_file, options=options))
+        lines: Iterable[object] | None = injected(config, prompt_file, options=options)
         if lines is None:
             return None
         return _validated_text_lines(lines)

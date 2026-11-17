@@ -348,7 +348,7 @@ def _entry_tracked_paths(entry: object) -> frozenset[str]:
         items = frozenset(raw)
     else:
         raw = getattr(entry, "base_tree_paths", None)
-    if not isinstance(raw, (frozenset, set, tuple, list)):
+    if not (any(isinstance(raw, _t) for _t in (frozenset, set, tuple, list))):
         return frozenset()
     return frozenset(str(item) for item in items)
 

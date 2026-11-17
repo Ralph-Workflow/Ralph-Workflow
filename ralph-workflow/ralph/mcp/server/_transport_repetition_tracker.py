@@ -4,15 +4,14 @@ import contextlib
 import fcntl
 import hashlib
 import json
-import os
 import re
 import threading
 import time as _time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
 from ralph.mcp.protocol.env import MCP_SNAPSHOT_DIR_ENV
+from ralph.runtime.environment import detect_runtime_environment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -98,14 +97,23 @@ def failure_signature(method: str, params: object, failure: BaseException | str)
 
 
 def repetition_state_path(env: Mapping[str, str] | None = None) -> Path | None:
-    source: Mapping[str, str] = os.environ if env is None else env
+    source: Mapping[str, str] = detect_runtime_environment().env if env is None else env
     raw = source.get(MCP_SNAPSHOT_DIR_ENV)
     if not raw:
         return None
     return Path(raw) / REPETITION_STATE_FILENAME
 
 
-def _acquire_state_lock(handle: IO[str], timeout: float) -> bool:
+def _pause(seconds: float) -> None:
+    threading.Event().wait(seconds)
+
+
+def _acquire_state_lock(
+    handle: IO[str],
+    timeout: float,
+    *,
+    sleep_fn: Callable[[float], None] = _pause,
+) -> bool:
     deadline = _time.monotonic() + timeout
     while True:
         try:
@@ -113,7 +121,7 @@ def _acquire_state_lock(handle: IO[str], timeout: float) -> bool:
         except BlockingIOError:
             if _time.monotonic() >= deadline:
                 return False
-            _time.sleep(0.01)
+            sleep_fn(0.01)
         except OSError:
             return False
         else:
@@ -144,16 +152,34 @@ def _decode_carried_state(raw: bytes) -> tuple[str, int, float] | None:
     return signature, streak, float(seen_wall)
 
 
-@dataclass
 class TransportRepetitionTracker:
-    window_seconds: float = WINDOW_SECONDS
-    threshold: int = THRESHOLD
-    state_path: Path | None = None
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    _last_signature: str | None = field(default=None, init=False)
-    _last_seen_at: float = field(default=0.0, init=False)
-    _streak: int = field(default=0, init=False)
-    _clock: Callable[[], float] = field(default=_time.monotonic, repr=False)
+    __slots__ = (
+        "_clock",
+        "_last_seen_at",
+        "_last_signature",
+        "_lock",
+        "_streak",
+        "state_path",
+        "threshold",
+        "window_seconds",
+    )
+
+    def __init__(
+        self,
+        window_seconds: float = WINDOW_SECONDS,
+        threshold: int = THRESHOLD,
+        state_path: Path | None = None,
+        *,
+        _clock: Callable[[], float] = _time.monotonic,
+    ) -> None:
+        self.window_seconds = window_seconds
+        self.threshold = threshold
+        self.state_path = state_path
+        self._lock = threading.Lock()
+        self._last_signature: str | None = None
+        self._last_seen_at = 0.0
+        self._streak = 0
+        self._clock = _clock
 
     @classmethod
     def from_parent_owned_state(

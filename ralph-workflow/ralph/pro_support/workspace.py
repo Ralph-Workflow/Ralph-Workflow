@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.config._env import environ
 from ralph.pro_support.env import RALPH_WORKSPACE, _get_env
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ def resolve_pro_workspace(
 def resolve_pro_workspace_from_environ(
     fallback: Path | str | None = None,
 ) -> Path:
-    return resolve_pro_workspace(os.environ, fallback=fallback)
+    return resolve_pro_workspace(environ(), fallback=fallback)
 
 
 __all__ = ["resolve_pro_workspace", "resolve_pro_workspace_from_environ"]

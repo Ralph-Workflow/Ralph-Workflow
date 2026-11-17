@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import subprocess
 from typing import TYPE_CHECKING, Final
 
+from ralph.config import _env as config_env
 from ralph.executor._process_error_details import ProcessErrorDetails
 from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
@@ -317,7 +317,7 @@ def _normalize_cwd(cwd: str | Path | None) -> str | None:
 def _build_env(
     env: Mapping[str, str] | None, remove: frozenset[str] = frozenset()
 ) -> dict[str, str]:
-    merged = os.environ.copy()
+    merged = dict(config_env.environ())
     if env is not None:
         merged.update(env)
     for name in remove:

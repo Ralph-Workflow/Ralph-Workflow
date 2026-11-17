@@ -46,9 +46,7 @@ class _DeadAgentVerdictRunner(Protocol):
 
 
 def _restored_unavailability_entries(
-    timeouts: Mapping[str, int],
-    reasons: Mapping[str, object],
-    backoff_attempts: Mapping[str, int],
+    timeouts: Mapping[str, int], reasons: Mapping[str, object], backoff_attempts: Mapping[str, int]
 ) -> dict[str, UnavailabilityEntry]:
     entries: dict[str, UnavailabilityEntry] = {}
     for agent, until_ms in timeouts.items():
@@ -104,7 +102,7 @@ class RecoveryControllerOptions:
         event_bus: FailureEventBus | None = None,
     ) -> RecoveryControllerOptions:
         cycle_cap_raw = snapshot.get("cycle_cap", 200)
-        cycle_cap = int(cycle_cap_raw) if isinstance(cycle_cap_raw, (int, str)) else 200
+        cycle_cap = int(cycle_cap_raw) if isinstance(cycle_cap_raw, int | str) else 200
         backoff_attempts = {
             k: as_int(v, field=f"backoff_attempts[{k}]")
             for k, v in as_mapping(
@@ -126,18 +124,15 @@ class RecoveryControllerOptions:
             k: set(as_str_list(v, field=f"spent_agents[{k}]"))
             for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
         }
-
         effective_clock = clock or SystemClock()
         ledger_snap = snapshot.get("ledger")
         ledger: AgentFailureLedger | None = None
         if isinstance(ledger_snap, Mapping):
             ledger = AgentFailureLedger.from_snapshot(ledger_snap, clock=effective_clock)
-
         feedback_snap = snapshot.get("false_bench_feedback")
         false_bench_feedback = FalseBenchFeedback.from_snapshot(
             feedback_snap if isinstance(feedback_snap, Mapping) else None
         )
-
         return cls(
             cycle_cap=cycle_cap,
             backoff_attempts=backoff_attempts,

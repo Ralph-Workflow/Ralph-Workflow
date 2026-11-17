@@ -120,26 +120,130 @@ def _catches(handler_type: ast.expr | None, catchers: frozenset[str]) -> bool:
     return isinstance(handler_type, ast.Attribute) and handler_type.attr in catchers
 
 
+def _as_assign_value_stmt(
+    node: ast.stmt,
+) -> ast.Assign | ast.AugAssign | ast.Expr | ast.AnnAssign | None:
+    if isinstance(node, ast.Assign):
+        return node
+    if isinstance(node, ast.AugAssign):
+        return node
+    if isinstance(node, ast.Expr):
+        return node
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
+        return node
+    return None
+
+
+def _as_function_stmt(node: ast.stmt) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    if isinstance(node, ast.FunctionDef):
+        return node
+    if isinstance(node, ast.AsyncFunctionDef):
+        return node
+    return None
+
+
+def _as_bool_test_stmt(node: ast.stmt) -> ast.If | ast.While | None:
+    if isinstance(node, ast.If):
+        return node
+    if isinstance(node, ast.While):
+        return node
+    return None
+
+
+def _as_for_stmt(node: ast.stmt) -> ast.For | ast.AsyncFor | None:
+    if isinstance(node, ast.For):
+        return node
+    if isinstance(node, ast.AsyncFor):
+        return node
+    return None
+
+
+def _as_with_stmt(node: ast.stmt) -> ast.With | ast.AsyncWith | None:
+    if isinstance(node, ast.With):
+        return node
+    if isinstance(node, ast.AsyncWith):
+        return node
+    return None
+
+
+def _as_sequence_target(target: ast.expr) -> ast.Tuple | ast.List | None:
+    if isinstance(target, ast.Tuple):
+        return target
+    if isinstance(target, ast.List):
+        return target
+    return None
+
+
+def _as_try_stmt(node: ast.stmt) -> ast.Try | ast.TryStar | None:
+    if isinstance(node, ast.Try):
+        return node
+    if isinstance(node, ast.TryStar):
+        return node
+    return None
+
+
+def _as_decorated_stmt(
+    node: ast.stmt,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None:
+    if isinstance(node, ast.FunctionDef):
+        return node
+    if isinstance(node, ast.AsyncFunctionDef):
+        return node
+    if isinstance(node, ast.ClassDef):
+        return node
+    return None
+
+
+def _as_bind_target_stmt(
+    node: ast.stmt,
+) -> ast.AugAssign | ast.For | ast.AsyncFor | ast.AnnAssign | None:
+    if isinstance(node, ast.AugAssign):
+        return node
+    if isinstance(node, ast.For):
+        return node
+    if isinstance(node, ast.AsyncFor):
+        return node
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
+        return node
+    return None
+
+
+def _as_loop_stmt(node: ast.stmt) -> ast.For | ast.AsyncFor | ast.While | None:
+    if isinstance(node, ast.For):
+        return node
+    if isinstance(node, ast.AsyncFor):
+        return node
+    if isinstance(node, ast.While):
+        return node
+    return None
+
+
 def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
     evaluated: list[ast.expr] = []
+    value_stmt = _as_assign_value_stmt(node)
+    function_stmt = _as_function_stmt(node)
+    bool_test_stmt = _as_bool_test_stmt(node)
+    for_stmt = _as_for_stmt(node)
+    with_stmt = _as_with_stmt(node)
     match True:
-        case _ if isinstance(node, (ast.Assign, ast.AugAssign, ast.Expr)) or (
-            isinstance(node, ast.AnnAssign) and node.value is not None
-        ):
-            evaluated = [node.value] if node.value is not None else []
-        case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
-            evaluated = [*node.decorator_list, *defaults]
+        case _ if value_stmt is not None:
+            evaluated = [value_stmt.value] if value_stmt.value is not None else []
+        case _ if function_stmt is not None:
+            defaults = [
+                *function_stmt.args.defaults,
+                *(d for d in function_stmt.args.kw_defaults if d is not None),
+            ]
+            evaluated = [*function_stmt.decorator_list, *defaults]
         case _ if isinstance(node, ast.ClassDef):
             evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
         case _ if isinstance(node, ast.Return) and node.value is not None:
             evaluated = [node.value]
-        case _ if isinstance(node, (ast.If, ast.While)):
-            evaluated = [node.test]
-        case _ if isinstance(node, (ast.For, ast.AsyncFor)):
-            evaluated = [node.iter]
-        case _ if isinstance(node, (ast.With, ast.AsyncWith)):
-            evaluated = [item.context_expr for item in node.items]
+        case _ if bool_test_stmt is not None:
+            evaluated = [bool_test_stmt.test]
+        case _ if for_stmt is not None:
+            evaluated = [for_stmt.iter]
+        case _ if with_stmt is not None:
+            evaluated = [item.context_expr for item in with_stmt.items]
         case _ if isinstance(node, ast.Match):
             evaluated = [node.subject]
     return evaluated
@@ -192,8 +296,9 @@ def _is_main_guard(test: ast.expr) -> bool:
 def _target_names(target: ast.expr) -> list[str]:
     if isinstance(target, ast.Name):
         return [target.id]
-    if isinstance(target, (ast.Tuple, ast.List)):
-        return [name for element in target.elts for name in _target_names(element)]
+    sequence = _as_sequence_target(target)
+    if sequence is not None:
+        return [name for element in sequence.elts for name in _target_names(element)]
     if isinstance(target, ast.Starred):
         return _target_names(target.value)
     return []
@@ -246,7 +351,8 @@ class _OpCollector:
             self.statement(statement)
 
     def statement(self, node: ast.stmt) -> None:
-        if not isinstance(node, (ast.Try, ast.TryStar)):
+        try_stmt = _as_try_stmt(node)
+        if try_stmt is None:
             self.reads(node)
         match True:
             case _ if isinstance(node, ast.Import):
@@ -262,8 +368,8 @@ class _OpCollector:
                 self.from_import(node)
             case _ if isinstance(node, ast.If):
                 self.conditional(node)
-            case _ if isinstance(node, (ast.Try, ast.TryStar)):
-                self.try_block(node)
+            case _ if try_stmt is not None:
+                self.try_block(try_stmt)
             case _ if isinstance(node, ast.ClassDef):
                 self.class_body(node)
             case _:
@@ -289,8 +395,9 @@ class _OpCollector:
         for expression in expressions:
             for call in _calls(expression):
                 self.call(call.func, call)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            for decorator in reversed(node.decorator_list):
+        decorated = _as_decorated_stmt(node)
+        if decorated is not None:
+            for decorator in reversed(decorated.decorator_list):
                 if isinstance(decorator, ast.Name):
                     self.call(decorator, None)
 
@@ -326,33 +433,36 @@ class _OpCollector:
 
     def binds(self, node: ast.stmt) -> None:
         targets: list[ast.expr] = []
+        function_stmt = _as_function_stmt(node)
+        bind_target = _as_bind_target_stmt(node)
+        with_stmt = _as_with_stmt(node)
         match True:
-            case _ if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.ops.append(_Bind(node.name))
-                self.rebind(node.name)
-                if isinstance(node, ast.FunctionDef):
-                    self.functions[node.name] = node
+            case _ if function_stmt is not None:
+                self.ops.append(_Bind(function_stmt.name))
+                self.rebind(function_stmt.name)
+                if isinstance(function_stmt, ast.FunctionDef):
+                    self.functions[function_stmt.name] = function_stmt
             case _ if isinstance(node, ast.TypeAlias):
                 targets.append(node.name)
             case _ if isinstance(node, ast.Assign):
                 targets.extend(node.targets)
-            case _ if isinstance(node, (ast.AugAssign, ast.For, ast.AsyncFor)) or (
-                isinstance(node, ast.AnnAssign) and node.value is not None
-            ):
-                targets.append(node.target)
-            case _ if isinstance(node, (ast.With, ast.AsyncWith)):
-                targets.extend(item.optional_vars for item in node.items if item.optional_vars)
+            case _ if bind_target is not None:
+                targets.append(bind_target.target)
+            case _ if with_stmt is not None:
+                targets.extend(item.optional_vars for item in with_stmt.items if item.optional_vars)
         for name in [name for target in targets for name in _target_names(target)]:
             self.ops.append(_Bind(name))
             self.rebind(name)
 
     def nested(self, node: ast.stmt) -> None:
+        loop_stmt = _as_loop_stmt(node)
+        with_stmt = _as_with_stmt(node)
         match True:
-            case _ if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
-                self.statements(node.body)
-                self.statements(node.orelse)
-            case _ if isinstance(node, (ast.With, ast.AsyncWith)):
-                self.statements(node.body)
+            case _ if loop_stmt is not None:
+                self.statements(loop_stmt.body)
+                self.statements(loop_stmt.orelse)
+            case _ if with_stmt is not None:
+                self.statements(with_stmt.body)
             case _ if isinstance(node, ast.Match):
                 for case in node.cases:
                     self.statements(case.body)

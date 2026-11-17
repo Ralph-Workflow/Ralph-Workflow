@@ -18,10 +18,8 @@ from ralph.pipeline.integration_owner import (
     decide_integration_verdict,
     ladder_rung_for_record_fact_outcome,
 )
-from ralph.pipeline.last_resort_production_pools import production_last_resort_agent_pools
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -34,8 +32,6 @@ if TYPE_CHECKING:
         GitPlumbing,
     )
     from ralph.pipeline.integration_observation import Observation
-    from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 __all__ = [
     "PlanningSyncVerdict",
@@ -160,30 +156,9 @@ def execute_planning_ladder_rung(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
     state_dir: Path | None = None,
-    agent_eligibility: AgentFailureLedger | None = None,
-    agent_pools: tuple[LastResortAgentPool, ...] | None = None,
-    resolver_agents: Sequence[str] | None = None,
-    integration_agents: Sequence[str] | None = None,
-    epoch_now: Callable[[], float] | None = None,
 ) -> LadderStepResult | None:
     if verdict.ladder_rung is None:
         return None
-    import time
-
-    from ralph.pipeline._integration_recovery_controller import (
-        reachable_shared_recovery_controller,
-    )
-
-    controller = reachable_shared_recovery_controller()
-    pools = production_last_resort_agent_pools(
-        explicit=agent_pools,
-        resolver_agents=resolver_agents,
-        integration_agents=integration_agents,
-        controller=controller,
-    )
-    eligibility = agent_eligibility
-    if eligibility is None and controller is not None:
-        eligibility = controller.ledger
     return run_ladder_rung(
         verdict.ladder_rung,
         root=root,
@@ -196,7 +171,4 @@ def execute_planning_ladder_rung(
         target="main" if target is None else target,
         in_progress_kind=verdict.observation.in_progress_kind,
         expected_target_sha=expected_target_sha,
-        agent_eligibility=eligibility,
-        agent_pools=pools,
-        epoch_now=epoch_now if epoch_now is not None else time.time,
     )

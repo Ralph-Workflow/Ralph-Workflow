@@ -66,6 +66,7 @@ __all__ = [
     "_execute_single_candidate",
     "_handle_candidate_failure",
     "_paths_still_unresolved",
+    "_preferred_conflict_candidate",
     "_record_invoker_outcome",
     "_revive_cooling_candidates",
     "_run_one_round",
@@ -383,23 +384,12 @@ def _run_one_round(
     total = len(candidates)
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
-    from ralph.recovery.controller import RecoveryController
-
     visited: set[int] = set()
     attempt = RoundAttempt(succeeded=False, invoked=False)
     revived = False
     while len(visited) < total:
         skipped = _skipped_candidates(session, candidates)
-        controller = session.recovery_controller
-        if isinstance(controller, RecoveryController):
-            selection = controller.preferred_agent_index(
-                PHASE_RESOLUTION,
-                [name for name in candidates if name not in skipped],
-                exclude=frozenset(candidates[index] for index in visited),
-            )
-            selected = candidates.index(selection.agent) if selection.agent is not None else None
-        else:
-            selected = None
+        selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
             if revived or not _revive_cooling_candidates(
                 session, candidates, visited, skipped, cohort_wait_ms
@@ -467,10 +457,6 @@ def _revive_cooling_candidates(
     skipped: frozenset[str],
     cohort_wait_ms: int,
 ) -> bool:
-    from types import SimpleNamespace
-
-    from ralph.pipeline.run_loop import handle_cooldown_delay
-    from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
 
     controller = session.recovery_controller
@@ -491,27 +477,41 @@ def _revive_cooling_candidates(
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, cohort)
     if wait_ms <= 0:
         return False
-    state = (
-        session.recovery_state
-        if isinstance(session.recovery_state, PipelineState)
-        else PipelineState(phase=PHASE_RESOLUTION)
-    )
-    state = state.copy_with(last_retry_delay_ms=wait_ms)
-    state = handle_cooldown_delay(
-        state,
-        SimpleNamespace(
-            sleep=controller.clock.sleep,
-            active_display=None,
-            last_waiting_state_phase=None,
-            last_waiting_state_sig=None,
-            controller=controller,
-        ),  # type: ignore[arg-type]
-    )
+    wait_s = wait_ms / 1000.0
+    if hasattr(controller._clock, "advance"):
+        controller._clock.advance(wait_s)
+    else:
+        controller.clock.sleep(wait_s)
     controller.prune_expired()
-    if state.is_waiting_state:
-        state = state.clear_waiting()
-    session.recovery_state = state
     return any(
         status.is_eligible
         for _agent, status in controller.chain_eligibility(PHASE_RESOLUTION, cohort)
     )
+
+
+def _preferred_conflict_candidate(
+    session: ResolutionSession,
+    candidates: tuple[str, ...],
+    visited: set[int],
+    skipped: frozenset[str],
+) -> int | None:
+    from ralph.recovery.controller import RecoveryController
+
+    eligible = [
+        name
+        for index, name in enumerate(candidates)
+        if index not in visited and name not in skipped
+    ]
+    if not eligible:
+        return None
+    controller = session.recovery_controller
+    if not isinstance(controller, RecoveryController):
+        return candidates.index(eligible[0])
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
+        [name for name in candidates if name not in skipped],
+        exclude=frozenset(candidates[index] for index in visited),
+    )
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+    return None

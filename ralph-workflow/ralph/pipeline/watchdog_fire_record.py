@@ -33,7 +33,7 @@ _MAX_CLIP_DEPTH: Final[int] = 6
 def _clip(value: object, depth: int = 0) -> object:
     if isinstance(value, str) and len(value) > _MAX_RECORDED_TEXT:
         return value[:_MAX_RECORDED_TEXT] + "...[truncated]"
-    if isinstance(value, (list, dict)) and depth >= _MAX_CLIP_DEPTH:
+    if depth >= _MAX_CLIP_DEPTH and (any(isinstance(value, _t) for _t in (list, dict))):
         return "...[nested too deep]"
     if isinstance(value, list):
         return [_clip(item, depth + 1) for item in value]

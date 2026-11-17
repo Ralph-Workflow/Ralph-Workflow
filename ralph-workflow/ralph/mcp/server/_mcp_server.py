@@ -4,11 +4,12 @@ import base64 as _base64
 import hashlib
 import json
 import time
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
 from ralph import __version__
+from ralph.checked_accessors import as_mapping, as_sequence
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.multimodal.capabilities import inline_image_roundtrip_unsafe
@@ -42,7 +43,6 @@ from ralph.mcp.upstream.client import carries_upstream_media_blocks
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Protocol
 
     from ralph.mcp.protocol.session import McpSession
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -50,14 +50,6 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.bridge import ToolBridge
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
     from ralph.workspace.fs import FsWorkspace
-
-if TYPE_CHECKING:
-
-    class _ToDict(Protocol):
-        def __call__(self) -> dict[str, object]: ...
-
-    class _ModelDump(Protocol):
-        def __call__(self, **kwargs: bool) -> dict[str, object]: ...
 
 
 for _member in RalphToolName:
@@ -79,28 +71,50 @@ def _client_name_from_initialize_params(params: dict[str, object] | None) -> str
     return name if isinstance(name, str) else None
 
 
+def _as_str_object_dict(value: object) -> dict[str, object]:
+    try:
+        return dict(as_mapping(value))
+    except TypeError as exc:
+        raise TypeError(f"expected dict, got {type(value).__name__}") from exc
+
+
+def _call_to_dict(block: object) -> dict[str, object] | None:
+    to_dict: object = getattr(block, "to_dict", None)
+    if not callable(to_dict):
+        return None
+    result: object = to_dict()
+    return _as_str_object_dict(result)
+
+
+def _call_model_dump(block: object) -> dict[str, object] | None:
+    model_dump: object = getattr(block, "model_dump", None)
+    if not callable(model_dump):
+        return None
+    result: object = model_dump(exclude_none=True, by_alias=True)
+    return _as_str_object_dict(result)
+
+
 def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
-    if not isinstance(content_blocks, list | tuple):
+    if not isinstance(content_blocks, list) and not isinstance(content_blocks, tuple):
         raise TypeError(
             f"content_blocks must be a list or tuple, got {type(content_blocks).__name__}. "
             "Use ToolContent.text_content() or ImageContent() to wrap content."
         )
 
     serialized: list[dict[str, object]] = []
-    blocks = cast("list[object]", content_blocks)
-    for idx, block in enumerate(blocks):
+    for idx, block in enumerate(as_sequence(content_blocks)):
         if isinstance(block, dict):
-            serialized.append(cast("dict[str, object]", block))
+            serialized.append(_as_str_object_dict(block))
             continue
 
-        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
-        if callable(to_dict):
-            serialized.append(to_dict())
+        to_dict_payload = _call_to_dict(block)
+        if to_dict_payload is not None:
+            serialized.append(to_dict_payload)
             continue
 
-        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
-        if callable(model_dump):
-            serialized.append(model_dump(exclude_none=True, by_alias=True))
+        model_dump_payload = _call_model_dump(block)
+        if model_dump_payload is not None:
+            serialized.append(model_dump_payload)
             continue
 
         raise TypeError(
@@ -122,20 +136,32 @@ def decode_json_payload_from_content(content_blocks: object) -> dict[str, object
     if not isinstance(text, str):
         return None
     try:
-        decoded = cast("object", json.loads(text))
+        decoded: object = json.loads(text)
     except json.JSONDecodeError:
         return None
     if not isinstance(decoded, dict) or "content" not in decoded:
         return None
     if carries_upstream_media_blocks(decoded.get("content")):
         return None
-    return cast("dict[str, object]", decoded)
+    return _as_str_object_dict(decoded)
 
 
 _SLOW_PRE_DISPATCH_S: Final[float] = 5.0
 
 
 class McpServer:
+    __slots__ = (
+        "_activity_relay_error",
+        "_clock",
+        "_expose_mcp_aliases",
+        "_mcp_activity_sink",
+        "_metrics",
+        "_registry",
+        "_schema_flavor",
+        "_session",
+        "_workspace",
+    )
+
     def __init__(
         self,
         session: McpSession,
@@ -625,8 +651,11 @@ class McpServer:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-        to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
-        payload_source = to_dict() if callable(to_dict) else raw_result
+        to_dict: object = getattr(raw_result, "to_dict", None)
+        if callable(to_dict):
+            payload_source: object = to_dict()
+        else:
+            payload_source = raw_result
         payload = self._build_tools_call_payload(payload_source)
         self._maybe_append_notice(
             payload,
@@ -652,7 +681,7 @@ class McpServer:
         content = payload.get("content")
         block = {"type": "text", "text": notice}
         if isinstance(content, list):
-            cast("list[object]", content).append(block)
+            content.append(block)
         else:
             payload["content"] = [block]
 
@@ -672,10 +701,10 @@ class McpServer:
 
     def _build_tools_call_payload(self, payload_source: object) -> dict[str, object]:
         if isinstance(payload_source, dict):
-            payload = cast("dict[str, object]", dict(payload_source))
+            payload = _as_str_object_dict(payload_source)
             result_obj = payload.get("result")
             if isinstance(result_obj, dict):
-                payload = cast("dict[str, object]", dict(result_obj))
+                payload = _as_str_object_dict(result_obj)
             if "content" not in payload:
                 payload["content"] = _serialize_content_blocks(payload_source)
             return payload

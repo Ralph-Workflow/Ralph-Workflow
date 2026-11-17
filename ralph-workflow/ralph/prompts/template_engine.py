@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from jinja2 import (
     DictLoader,
@@ -12,10 +12,10 @@ from jinja2 import (
     Template,
     TemplateError,
     TemplateNotFound,
-    Undefined,
     select_autoescape,
 )
 
+from ralph.checked_accessors import as_str
 from ralph.prompts.template_rendering_error import TemplateRenderingError
 
 if TYPE_CHECKING:
@@ -46,22 +46,28 @@ def _raise_template_error(message: str) -> str:
 
 
 class TemplateRenderer:
+    __slots__ = (
+        "_active_blank_line_token",
+        "_compiled_templates",
+        "_environment",
+        "_partial_tool_variables",
+        "_render_lock",
+    )
+
     def __init__(self, partials: Mapping[str, str]) -> None:
         templates = {
             f"{name}.j2": _normalize_static_spacing(content) for name, content in partials.items()
         }
-        strict_undefined = cast("type[Undefined]", StrictUndefined)
         self._environment = Environment(
             loader=DictLoader(templates),
             autoescape=select_autoescape(
                 enabled_extensions=(), default_for_string=False, default=False
             ),
-            undefined=strict_undefined,
+            undefined=StrictUndefined,
             keep_trailing_newline=True,
             cache_size=_MAX_COMPILED_TEMPLATES,
         )
-        filters = cast("dict[str, object]", self._environment.filters)
-        filters["split_items"] = self._split_items
+        self._environment.filters["split_items"] = self._split_items
         self._environment.globals["raise_error"] = _raise_template_error
         self._compiled_templates: _TemplateCache = OrderedDict()
         self._render_lock = threading.RLock()
@@ -127,8 +133,12 @@ class TemplateRenderer:
         return template
 
 
+def _new_lock() -> threading.Lock:
+    return threading.Lock()
+
+
 _RENDERERS: _RendererCache = OrderedDict()
-_RENDERERS_LOCK = threading.Lock()
+_RENDERERS_LOCK = _new_lock()
 
 
 def _renderer_for(partials: Mapping[str, str]) -> TemplateRenderer:
@@ -219,7 +229,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
                 outside.append(line)
                 continue
             flush_outside()
-            fence = cast("str", match.group("fence"))
+            fence = as_str(match.group("fence"))
             fence_character = fence[0]
             fence_length = len(fence)
             output.append(line)
@@ -228,7 +238,7 @@ def _collapse_unfenced_blank_runs(text: str) -> str:
         output.append(line)
         if match is None:
             continue
-        fence = cast("str", match.group("fence"))
+        fence = as_str(match.group("fence"))
         if fence[0] == fence_character and len(fence) >= fence_length:
             fence_character = ""
             fence_length = 0

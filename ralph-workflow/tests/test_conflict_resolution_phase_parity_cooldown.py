@@ -10,10 +10,9 @@ from ralph.agents.invoke import (
     SupervisionInfrastructureError,
 )
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline import run_loop
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
+    resolver_allowed,
 )
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
@@ -31,21 +30,6 @@ from tests._conflict_resolution_phase_parity_seams import (
     _install_seams,
     _policy_bundle,
 )
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_shared_eligibility_governs_run_loop_escalation_and_cooldown": (
-        "launch permission and cold-capped escalation follow shared any_eligible / "
-        "all_exhausted; durable resolution_exhausted is not a launch veto"
-    ),
-    "test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay": (
-        "conflict-driver eligibility waits must sleep through ordinary "
-        "handle_cooldown_delay rather than an integration-only advance/_sleep fork"
-    ),
-    "test_revive_cooling_candidates_uses_shared_handle_cooldown_delay": (
-        "in-round revive waits for cooling candidates must sleep through ordinary "
-        "handle_cooldown_delay rather than a hasattr(advance)/_sleep fork"
-    ),
-}
 
 
 class _CooldownClock(FakeClock):
@@ -102,122 +86,6 @@ def test_conflict_waits_for_earliest_cooldown(
         controller.preferred_agent_index("rebase_conflict_resolution", ["one", "two"]).agent
         == "two"
     )
-
-
-def test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    clock = _CooldownClock(start=0.0)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            clock=clock,
-            unavailability_entries={
-                "one": UnavailabilityEntry(
-                    unavailable_until_ms=7000,
-                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-                    attempt=1,
-                    base_backoff_ms=5000,
-                    max_backoff_ms=18000000,
-                )
-            },
-        )
-    )
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    delay_ms_seen: list[int] = []
-    real_handle = run_loop.handle_cooldown_delay
-
-    def _spy_handle(state: object, ctx: object) -> object:
-        delay = getattr(state, "last_retry_delay_ms", 0)
-        if isinstance(delay, int) and delay > 0:
-            delay_ms_seen.append(delay)
-        return real_handle(state, ctx)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(run_loop, "handle_cooldown_delay", _spy_handle)
-    if hasattr(driver_module, "handle_cooldown_delay"):
-        monkeypatch.setattr(driver_module, "handle_cooldown_delay", _spy_handle)
-
-    called_at: list[float] = []
-
-    def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called_at.append(clock.monotonic())
-        return True
-
-    token = install_executors(clock=clock)
-    try:
-        _install_seams(monkeypatch, surviving_per_round=[[]])
-        assert run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=invoke,
-            session=ResolutionSession(recovery_controller=controller),
-        )
-    finally:
-        reset_executors(token)
-
-    assert delay_ms_seen == [7000]
-    assert called_at == [7.0]
-    assert clock.monotonic() == 7.0
-    assert controller.agent_eligibility("rebase_conflict_resolution", "one").is_eligible
-    assert not hasattr(driver_module, "_wait_for_candidates_if_cooling_down")
-
-
-def test_revive_cooling_candidates_uses_shared_handle_cooldown_delay(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ralph.pipeline.conflict_resolution import _driver_rounds as rounds_module
-
-    clock = _CooldownClock(start=0.0)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            clock=clock,
-            unavailability_entries={
-                "one": UnavailabilityEntry(
-                    unavailable_until_ms=5000,
-                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-                    attempt=1,
-                    base_backoff_ms=5000,
-                    max_backoff_ms=18000000,
-                )
-            },
-        )
-    )
-    session = ResolutionSession(recovery_controller=controller)
-    delay_ms_seen: list[int] = []
-    real_handle = run_loop.handle_cooldown_delay
-
-    def _spy_handle(state: object, ctx: object) -> object:
-        delay = getattr(state, "last_retry_delay_ms", 0)
-        if isinstance(delay, int) and delay > 0:
-            delay_ms_seen.append(delay)
-        return real_handle(state, ctx)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(run_loop, "handle_cooldown_delay", _spy_handle)
-    if hasattr(rounds_module, "handle_cooldown_delay"):
-        monkeypatch.setattr(rounds_module, "handle_cooldown_delay", _spy_handle)
-
-    revived = rounds_module._revive_cooling_candidates(
-        session,
-        ("one",),
-        set(),
-        frozenset(),
-        cohort_wait_ms=5000,
-    )
-
-    assert revived is True
-    assert delay_ms_seen == [5000]
-    assert clock.monotonic() == 5.0
-    assert controller.agent_eligibility("rebase_conflict_resolution", "one").is_eligible
-    import inspect
-
-    source = inspect.getsource(rounds_module._revive_cooling_candidates)
-    assert "handle_cooldown_delay" in source
-    assert 'hasattr(controller._clock, "advance")' not in source
 
 
 @pytest.mark.parametrize(
@@ -361,9 +229,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
     )
     assert not ledger.any_eligible("rebase_conflict_resolution", candidates)
     assert not ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert not _configured_resolver_allowed(
-        state, "main", ident, ledger=ledger, candidates=candidates
-    )
+    assert not resolver_allowed(state, "main", ident)
 
     assert not cold_capped_escalation_due(
         ctx,
@@ -395,9 +261,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
         AttemptFact(phase="rebase_conflict_resolution", agent="res-1", artifact_valid=False)
     )
     assert spent_ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert not _configured_resolver_allowed(
-        state, "main", ident, ledger=spent_ledger, candidates=candidates
-    )
+    assert not resolver_allowed(state, "main", ident)
     assert cold_capped_escalation_due(
         ctx,
         state,

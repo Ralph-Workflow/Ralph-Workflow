@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import signal
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal, TextIO, cast
+from typing import TYPE_CHECKING, Final, Literal, TextIO
 
 from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
@@ -169,13 +168,13 @@ def _compute_width_uncached(
         return resolved_env.columns
     configured_width: object = getattr(console, "_width", None)
     if injected_console:
-        configured_width = cast("object", getattr(console, "_width", None))
+        configured_width: object = getattr(console, "_width", None)
         if isinstance(configured_width, int) and configured_width > 0:
             return configured_width
         if console.width > 0:
             return console.width
         return 80
-    configured_width = cast("object", getattr(console, "_width", None))
+    configured_width = getattr(console, "_width", None)
     if prefer_configured_width and isinstance(configured_width, int) and configured_width > 0:
         return configured_width
     return console.width or 80
@@ -183,7 +182,7 @@ def _compute_width_uncached(
 
 def _set_injected_console_width(console: Console, width: int) -> None:
     with contextlib.suppress(Exception):
-        height = cast("object", getattr(console, "_height", None))
+        height: object = getattr(console, "_height", None)
         if not isinstance(height, int) or height <= 0:
             height = console.size.height
         console._width = width
@@ -195,7 +194,7 @@ def _compute_height(console: Console, force_height: int | None) -> int | None:
         return force_height
     if force_height is not None:
         return None
-    configured_height = cast("object", getattr(console, "_height", None))
+    configured_height: object = getattr(console, "_height", None)
     if isinstance(configured_height, int) and configured_height > 0:
         return configured_height
     size_obj: object = getattr(console, "size", None)
@@ -207,7 +206,7 @@ def _compute_height(console: Console, force_height: int | None) -> int | None:
 
 
 def _compute_default_mode() -> Literal["default"]:
-    return cast("Literal['default']", DEFAULT_MODE)
+    return DEFAULT_MODE
 
 
 @dataclass(frozen=True)
@@ -279,7 +278,7 @@ class DisplayContext:
             console=self.console,
             theme=self.theme,
             width=new_width,
-            mode=cast("Literal['default']", DEFAULT_MODE),
+            mode=DEFAULT_MODE,
             color_enabled=self.color_enabled,
             glyphs_enabled=self.glyphs_enabled,
             headline_max_chars=self.headline_max_chars,
@@ -316,8 +315,10 @@ def make_display_context(
     if console is not None and output_stream is not None:
         msg = "output_stream cannot be combined with an injected console"
         raise ValueError(msg)
+    from ralph.config import _env as config_env
+
     env_was_provided = env is not None
-    env_dict: dict[str, str] = dict(os.environ if env is None else env)
+    env_dict: dict[str, str] = dict(config_env.environ() if env is None else env)
     resolved_env = _resolve_env(env_dict)
     resolved_background: bool | None = None
     resolved_background_hex: str | None = None
@@ -423,16 +424,23 @@ def install_sigwinch_refresher(
     if threading.main_thread() is not threading.current_thread():
         return lambda: None
 
-    getter = signal_getter if signal_getter is not None else cast("SignalGetter", signal.getsignal)
-    setter = signal_setter if signal_setter is not None else cast("SignalSetter", signal.signal)
+    class _RefreshGate:
+        __slots__ = ("busy",)
+
+        def __init__(self) -> None:
+            self.busy = False
+
+    getter: SignalGetter = (
+        signal_getter if signal_getter is not None else signal.getsignal
+    )
+    setter: SignalSetter = signal_setter if signal_setter is not None else signal.signal
     previous = getter(signal.SIGWINCH)
-    refresh_in_progress = False
+    gate = _RefreshGate()
 
     def handler(_signum: int, _frame: object) -> None:
-        nonlocal refresh_in_progress
-        if refresh_in_progress:
+        if gate.busy:
             return
-        refresh_in_progress = True
+        gate.busy = True
         try:
             refreshed = ctx_holder[0].refreshed()
             ctx_holder[0] = refreshed
@@ -441,7 +449,7 @@ def install_sigwinch_refresher(
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             return
         finally:
-            refresh_in_progress = False
+            gate.busy = False
 
     setter(signal.SIGWINCH, handler)
 

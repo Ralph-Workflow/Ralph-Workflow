@@ -20,6 +20,7 @@ if sys.platform != "win32":
 import httpx
 
 from ralph.checked_accessors import as_mapping, as_str_dict, optional_str
+from ralph.config._env import getenv
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.skills._agent_paths import (
     agent_skill_roots,
@@ -150,7 +151,12 @@ NO_RELEASE_ERROR = "release-api-no-release"
 
 _NOFOLLOW_FLAG: int = getattr(os, "O_NOFOLLOW", 0)
 
-_ATTEMPT_LOCK = threading.Lock()
+def _new_lock() -> threading.Lock:
+    return threading.Lock()
+
+
+_ATTEMPT_LOCK = _new_lock()
+_sleep = time.sleep
 
 _CARRIED_SUFFIXES: Final[frozenset[str]] = frozenset(
     suffix.lower() for suffix in ALLOWED_FILE_SUFFIXES
@@ -218,7 +224,7 @@ def sibling_skills_roots() -> tuple[Path, ...]:
 
 
 def attempt_cache_path() -> Path:
-    xdg = os.environ.get("XDG_CACHE_HOME")
+    xdg = getenv("XDG_CACHE_HOME")
     return (Path(xdg) if xdg else Path.home() / ".cache") / "ralph-workflow" / CACHE_FILE_NAME
 
 
@@ -389,7 +395,7 @@ def _claim_lock(lock_path: Path) -> Iterator[None]:
             if _claim_is_stale(claim_path) or time.monotonic() >= deadline:
                 DEFAULT_FILE_BACKEND.unlink(claim_path, missing_ok=True)
                 continue
-            time.sleep(LOCK_POLL_SECONDS)
+            _sleep(LOCK_POLL_SECONDS)
             continue
         os.close(descriptor)
         break

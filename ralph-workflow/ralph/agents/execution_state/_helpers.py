@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import re
 from contextlib import suppress
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.checked_accessors import as_object_list
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -23,6 +24,20 @@ if TYPE_CHECKING:
 
 
 _AGENT_LABEL_PREFIX = "agent:"
+
+
+def as_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {str(key): item for key, item in value.items()}
+
+
+def loads_json_object(text: str) -> dict[str, object] | None:
+    try:
+        parsed: object = json.loads(text, strict=False)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return as_object_dict(parsed)
 
 
 _CLAUDE_LIFECYCLE_EVENTS = frozenset(
@@ -55,10 +70,10 @@ def _tool_state_error_message(obj: dict[str, object]) -> str | None:
     part = obj.get("part")
     if not isinstance(part, dict):
         return None
-    state = cast("dict[str, object]", part).get("state")
+    state = (as_object_dict(part) or {}).get("state")
     if not isinstance(state, dict):
         return None
-    state_dict = cast("dict[str, object]", state)
+    state_dict = as_object_dict(state) or {}
     if str(state_dict.get("status", "")) != "error":
         return None
     return str(state_dict.get("error", "tool error"))
@@ -69,12 +84,12 @@ def _error_output_signal(line: str) -> AgentActivitySignal | None:
     if not stripped:
         return None
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     event_type = str(obj.get("type", ""))
     if event_type == "error":
         return AgentActivitySignal(
@@ -126,7 +141,7 @@ def _opencode_tool_name(obj: dict[str, object]) -> str | None:
     part = obj.get("part")
     if not isinstance(part, dict):
         return None
-    part_obj = cast("dict[str, object]", part)
+    part_obj = as_object_dict(part) or {}
     part_type = part_obj.get("type")
     if part_type is not None and part_type != "tool":
         return None
@@ -168,12 +183,12 @@ def _opencode_step_frame_signal(line: str) -> AgentActivitySignal | None:
     if not stripped.startswith("{"):
         return None
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     if str(obj.get("type", "")) not in _OPENCODE_STEP_FRAME_TYPES:
         return None
     return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=line)
@@ -184,12 +199,12 @@ def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
     if not stripped:
         return None
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     event_type = str(obj.get("type", ""))
     kind = _OPENCODE_CHILD_KIND.get(event_type)
     if kind is not None:
@@ -257,12 +272,12 @@ def _extract_event_kind_from_json(line: str) -> str | None:
     if not stripped:
         return None
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     raw_type = obj.get("type")
     if isinstance(raw_type, str) and raw_type:
         return raw_type.strip().lower()
@@ -325,12 +340,12 @@ def parse_opencode_child_id(line: str) -> str | None:
     if not stripped:
         return None
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return None
     if not isinstance(parsed, dict):
         return None
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     native_task_id = _opencode_native_task_call_id(obj)
     if native_task_id is not None:
         return native_task_id
@@ -343,7 +358,7 @@ def _opencode_native_task_call_id(obj: dict[str, object]) -> str | None:
     part = obj.get("part")
     if not isinstance(part, dict):
         return None
-    part_obj = cast("dict[str, object]", part)
+    part_obj = as_object_dict(part) or {}
     for key in ("callID", "callId"):
         call_id = part_obj.get(key)
         if isinstance(call_id, str) and call_id:
@@ -360,12 +375,12 @@ def _route_opencode_line_to_registry(
     if not stripped:
         return
     try:
-        parsed = cast("object", json.loads(stripped, strict=False))
+        parsed: object = json.loads(stripped, strict=False)
     except json.JSONDecodeError:
         return
     if not isinstance(parsed, dict):
         return
-    obj = cast("dict[str, object]", parsed)
+    obj = as_object_dict(parsed) or {}
     event_type = str(obj.get("type", ""))
     if _opencode_native_task_call_id(obj) is not None:
         _route_opencode_native_task(obj, registry, scope_prefix)
@@ -413,12 +428,12 @@ def _route_opencode_native_task(
     part = obj.get("part")
     if not isinstance(part, dict):
         return
-    part_obj = cast("dict[str, object]", part)
+    part_obj = as_object_dict(part) or {}
     call_id = _opencode_native_task_call_id(obj)
     state = part_obj.get("state")
     if call_id is None or not isinstance(state, dict):
         return
-    state_obj = cast("dict[str, object]", state)
+    state_obj = as_object_dict(state) or {}
     status = str(state_obj.get("status", ""))
     if status not in {"pending", "running", "completed", "error"}:
         return
@@ -435,7 +450,7 @@ def _opencode_native_task_session_id(state: dict[str, object]) -> str | None:
     metadata = state.get("metadata")
     if not isinstance(metadata, dict):
         return None
-    session_id = cast("dict[str, object]", metadata).get("sessionId")
+    session_id = (as_object_dict(metadata) or {}).get("sessionId")
     if isinstance(session_id, str) and session_id:
         return session_id
     return None
@@ -553,13 +568,15 @@ def _claude_nested_tool_kind(obj: dict[str, object]) -> AgentActivityKind | None
     message = obj.get("message")
     if not isinstance(message, dict):
         return None
-    content = cast("dict[str, object]", message).get("content")
-    if not isinstance(content, list):
+    content: object = (as_object_dict(message) or {}).get("content")
+    try:
+        blocks = as_object_list(content)
+    except TypeError:
         return None
-    for block in cast("list[object]", content):
+    for block in blocks:
         if not isinstance(block, dict):
             continue
-        block_obj = cast("dict[str, object]", block)
+        block_obj = as_object_dict(block) or {}
         block_type = str(block_obj.get("type", ""))
         if block_type == "tool_use":
             tool_name = str(block_obj.get("name", "")).strip().lower()
@@ -577,7 +594,7 @@ def _classify_claude_json_object(
 ) -> AgentActivitySignal:
     event_obj = obj.get("event")
     if obj.get("type") == "stream_event" and isinstance(event_obj, dict):
-        return _classify_claude_json_object(cast("dict[str, object]", event_obj), raw)
+        return _classify_claude_json_object((as_object_dict(event_obj) or {}), raw)
 
     event_type = str(obj.get("type", ""))
     if event_type in {"assistant", "user"}:

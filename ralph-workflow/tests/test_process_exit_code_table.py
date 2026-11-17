@@ -75,18 +75,15 @@ _NEW_ANSWER_LABELS = (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_every_emitted_label_has_an_exit_code_decision": (
-        "the reviewed inventory keeps recovery:feature-tip-exists, a cat-file -e probe whose "
+        "the reviewed inventory gains recovery:feature-tip-exists, a cat-file -e probe whose "
         "rc=1 means the recorded feature tip is absent and is therefore an expected answer; "
-        "the legacy-record existence probe reuses that registered answer label instead of "
-        "adding a second operation_evidence:merge_object_resolvable emission site, so the "
-        "inventory keeps one answer-label site per label; prior notes still cover the "
-        "integration-preservation reapply labels and the retired "
+        "prior notes still cover the integration-preservation reapply labels and the retired "
         "recovery:recorded-identity-status and hardening:porcelain-z probes"
     ),
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "e0df739ea39e192726b1c18680315b8d6b20eef7bb6e9230c138273f331d4680"
+    "1cdac078d9d6eebe691c2a5f47b6c92663ac254fdb33828b0dffc6902cd834ca"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds recovery:feature-tip-exists (cat-file -e of a recorded "
@@ -94,12 +91,9 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "replacements for git-rebase:diff, operation-snapshot:index-tree, "
     "auto-integrate:update-feature-ref, git-completion-in-place, git-append-only-attributes, "
     "git-rm-resolved, recovery:completed-rebase-*, pending-rebase:land-*, and "
-    "integration-preservation:reapply-work-diff*. The legacy-record existence probe keeps a "
-    "single answer-label site: it reuses recovery:feature-tip-exists, so no second "
-    "operation_evidence:merge_object_resolvable site is introduced. Retired probes "
-    "recovery:recorded-identity-status and hardening:porcelain-z remain absent. Real recovery "
-    "and conflict-resolution operations whose nonzero exits are not answers keep the loud "
-    "default."
+    "integration-preservation:reapply-work-diff*. Retired probes recovery:recorded-identity-status "
+    "and hardening:porcelain-z remain absent. Real recovery and conflict-resolution operations "
+    "whose nonzero exits are not answers keep the loud default."
 )
 
 

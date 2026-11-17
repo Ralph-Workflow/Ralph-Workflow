@@ -8,9 +8,8 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from importlib import import_module
 from pathlib import Path as RuntimePath
-from typing import TYPE_CHECKING, Annotated, Protocol, cast
+from typing import TYPE_CHECKING, Annotated, Protocol, TypeGuard
 
 import rich_click as click
 import typer
@@ -26,6 +25,7 @@ from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.contribute import contribute
 from ralph.cli.commands.star import star
 from ralph.cli.commands.workspace_health import workspace_health
+from ralph.config._env import getenv
 from ralph.config.bootstrap import (
     ensure_global_agents_config,
     ensure_global_config,
@@ -68,7 +68,7 @@ from ralph.workspace.scope import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from types import ModuleType, TracebackType
+    from types import TracebackType
 
     from rich.console import Console
 
@@ -116,8 +116,14 @@ app = typer.Typer(
 _typer_get_command = typer.main.get_command
 
 
+def _is_click_command(value: object) -> TypeGuard[click.Command]:
+    return isinstance(value, click.Command)
+
+
 def _as_click_command(command: object) -> click.Command:
-    return cast("click.Command", command)
+    if not _is_click_command(command):
+        raise TypeError(f"expected click.Command, got {type(command).__name__}")
+    return command
 
 
 def _get_cli_context() -> DisplayContext:
@@ -144,33 +150,40 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
     return normalized_args
 
 
-def _module_attr(module: ModuleType, attribute: str) -> object:
-    namespace = cast("dict[str, object]", module.__dict__)
-    return namespace[attribute]
+def _is_agent_registry_factory(value: object) -> TypeGuard[_AgentRegistryFactory]:
+    return isinstance(value, type) and callable(getattr(value, "from_config", None))
+
+
+def _is_validate_custom_mcp_servers_fn(
+    value: object,
+) -> TypeGuard[_ValidateCustomMcpServersFn]:
+    return callable(value)
 
 
 def _load_agent_registry_factory() -> _AgentRegistryFactory:
-    return cast(
-        "_AgentRegistryFactory",
-        _module_attr(import_module("ralph.agents.registry"), "AgentRegistry"),
-    )
+    from ralph.agents.registry import AgentRegistry
+
+    if not _is_agent_registry_factory(AgentRegistry):
+        raise TypeError("AgentRegistry does not satisfy AgentRegistryFactory")
+    return AgentRegistry
 
 
 def _load_validate_custom_mcp_servers() -> _ValidateCustomMcpServersFn:
-    return cast(
-        "_ValidateCustomMcpServersFn",
-        _module_attr(import_module("ralph.pipeline.runner"), "validate_custom_mcp_servers"),
-    )
+    from ralph.pipeline.runner import validate_custom_mcp_servers
+
+    if not _is_validate_custom_mcp_servers_fn(validate_custom_mcp_servers):
+        raise TypeError("validate_custom_mcp_servers is not callable")
+    return validate_custom_mcp_servers
 
 
 def _set_command_main(command: click.Command, callback: _CommandMain) -> None:
-    cast("dict[str, object]", command.__dict__)["main"] = callback
+    object.__setattr__(command, "main", callback)
 
 
 def _set_typer_testing_get_command(
     callback: Callable[[typer.Typer], click.Command],
 ) -> None:
-    cast("dict[str, object]", typer.testing.__dict__)["_get_command"] = callback
+    object.__setattr__(typer.testing, "_get_command", callback)
 
 
 def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
@@ -538,13 +551,13 @@ _CLI_RESTORE_STATE = _CLIRestoreState()
 def _set_sys_excepthook(
     hook: Callable[[type[BaseException], BaseException, TracebackType | None], None],
 ) -> None:
-    sys.excepthook = hook
+    sys.modules["sys"].excepthook = hook
 
 
 def _set_threading_excepthook(
     hook: Callable[[threading.ExceptHookArgs], None],
 ) -> None:
-    threading.excepthook = hook
+    sys.modules["threading"].excepthook = hook
 
 
 def ensure_cli_terminal_restore(
@@ -1786,7 +1799,7 @@ def _run_pipeline(
     *,
     display_context: DisplayContext,
 ) -> int:
-    _raw_disable = os.environ.get("RALPH_DISABLE_TELEMETRY", "")
+    _raw_disable = getenv("RALPH_DISABLE_TELEMETRY") or ""
     _telemetry_enabled = _raw_disable.strip().lower() not in {"1", "true", "yes", "on"}
 
     def _set_outcome(outcome: str) -> None:
