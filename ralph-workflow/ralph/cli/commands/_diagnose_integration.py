@@ -94,29 +94,6 @@ _RELATION_BY_TARGET_VS_FEATURE: Final[dict[TargetVsFeature, IntegrationRelation]
 }
 
 
-def _lifecycle_rows(view: IntegrationLifecycleView) -> list[tuple[object, ...]]:
-    rows: list[tuple[object, ...]] = [
-        (
-            "Relation (feature vs target)",
-            view.relation.value if view.relation is not None else "unknown",
-        ),
-        (
-            "Chosen strategy",
-            view.decision.strategy.value if view.decision is not None else "unknown",
-        ),
-        (
-            "Why this strategy",
-            view.decision.reason
-            if view.decision is not None
-            else "no strategy could be chosen from the observed relation",
-        ),
-        ("Done (paths resolved)", str(view.done_count)),
-        ("Remaining (paths unresolved)", str(view.remaining_count)),
-        ("At risk", "\n".join(view.at_risk) or "nothing"),
-    ]
-    return rows
-
-
 def _read_durable_record(workspace_root: Path) -> IntegrationRecord | None:
     try:
         return read_record(workspace_root)

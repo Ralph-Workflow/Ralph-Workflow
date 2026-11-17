@@ -13,6 +13,27 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_diagnose_reports_relation_strategy_reason_progress_and_risk_while_in_flight": (
+        "35ffc7014 retired the labels 'Done (paths resolved)', 'Remaining (paths '"
+        "unresolved)' and 'At risk' from ralph --diagnose; the canonical in-gate "
+        "contracts _L10_FACT_LABELS (tests/test_integration_status.py) and "
+        "tests/scenarios/test_lifecycle_diagnose.py pin the current rows 'Done', "
+        "'Remaining' and 'At risk of loss'. This out-of-gate duplicate is aligned "
+        "to the enforced contract rather than weakened: every retired-label "
+        "assertion is replaced by the canonical row the CLI actually renders, "
+        "and its unique coverage (in-flight line, relation, strategy, rationale, "
+        "risk path) is kept."
+    ),
+    "test_diagnose_states_nothing_is_in_flight_without_an_integration_record": (
+        "the retired 'At risk' label is now 'At risk of loss' (see "
+        "test_diagnose_reports_relation_strategy_reason_progress_and_risk_while_"
+        "in_flight); the duplicated assertion is replaced by one canonical-row "
+        "assertion, matching the in-gate contract in "
+        "tests/scenarios/test_lifecycle_diagnose.py"
+    ),
+}
+
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -135,14 +156,14 @@ def test_diagnose_reports_relation_strategy_reason_progress_and_risk_while_in_fl
     assert "Relation (feature vs target)" in table, table
     assert "Chosen strategy" in table, table
     assert "Why this strategy" in table, table
-    assert "Done (paths resolved)" in table, table
-    assert "Remaining (paths unresolved)" in table, table
-    assert "At risk" in table, table
+    assert "Done 0" in table, table
+    assert "Remaining 1" in table, table
+    assert "At risk of loss" in table, table
     assert "diverged" in table, table
     assert "merge" in table, table
     assert "Rebase is not the cheapest safe strategy" in table, table
     assert "shared.txt" in table, table
-    assert "Remaining (paths unresolved) 1" in table, table
+    assert "At risk of loss shared.txt" in table, table
 
 
 def test_diagnose_states_nothing_is_in_flight_without_an_integration_record(
@@ -158,8 +179,7 @@ def test_diagnose_states_nothing_is_in_flight_without_an_integration_record(
     assert "behind" in table, table
     assert "Chosen strategy" in table, table
     assert "rebase" in table, table
-    assert "At risk nothing" in table, table
-    assert "At risk nothing" in table, table
+    assert "At risk of loss nothing" in table, table
 
 
 def test_diagnose_reports_a_feature_that_is_strictly_ahead_of_the_target(
@@ -168,7 +188,6 @@ def test_diagnose_reports_a_feature_that_is_strictly_ahead_of_the_target(
     _feature_ahead_of_target(workspace)
 
     output = _diagnose(workspace)
-    print("AFTER DIAGNOSE LAST COMMIT:\n", _git(workspace, "log", "-n", "1"))
     table = _table_text(output)
 
     assert "Relation (feature vs target)" in table, table
