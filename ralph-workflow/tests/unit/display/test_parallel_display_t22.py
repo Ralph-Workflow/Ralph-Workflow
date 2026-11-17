@@ -48,14 +48,21 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
         run_id="test-run",
     )
 
-    with patch.object(sub, "notify", wraps=sub.notify) as notify_mock:
+    notify_calls: list[PipelineState] = []
+    original_notify = PipelineSubscriber.notify
+
+    def tracking_notify(self: PipelineSubscriber, state: PipelineState) -> None:
+        notify_calls.append(state)
+        original_notify(self, state)
+
+    with patch.object(PipelineSubscriber, "notify", tracking_notify):
         pd = ParallelDisplay(
             make_display_context(console=console, env={}),
             subscriber=sub,
         )
         pd.set_status("u1", WorkerStatus.RUNNING)
 
-    notify_mock.assert_not_called()
+    assert notify_calls == []
 
 
 def test_subscriber_property_exposed() -> None:

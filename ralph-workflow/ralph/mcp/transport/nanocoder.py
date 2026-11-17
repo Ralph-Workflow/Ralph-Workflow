@@ -39,6 +39,7 @@ def build_nanocoder_mcp_config(
     }
     if always_allow:
         ralph_server["alwaysAllow"] = expand_tool_names_with_aliases(always_allow)
+    merged_servers: dict[str, object]
     if unsafe_mode:
         file_servers = _load_mcpservers_from_paths(
             _nanocoder_mcp_config_paths(workspace_path, env=env)
@@ -55,7 +56,7 @@ def build_nanocoder_mcp_config(
     else:
         merged_servers = dict(agent_servers)
     merged_servers["ralph"] = ralph_server
-    payload = {"mcpServers": merged_servers}
+    payload: dict[str, object] = {"mcpServers": merged_servers}
     return json.dumps(payload, sort_keys=True), upstreams
 
 

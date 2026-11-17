@@ -14,7 +14,7 @@ import zlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -157,11 +157,12 @@ def _condense_pair(text: str, *, options: CondenseOptions) -> tuple[str, bool]:
 def _condense_with_summaries(
     text: str, *, options: CondenseOptions
 ) -> tuple[str, bool, str | None, str | None]:
-    match condense_content(text, options=options):
-        case (str() as condensed, bool() as truncated, summary, detail):
-            return condensed, truncated, summary, detail
-        case (str() as condensed, bool() as truncated):
-            return condensed, truncated, None, None
+    result = condense_content(text, options=options)
+    match result:
+        case (visible, condensed, summary_line, ai_summary_line):
+            return visible, condensed, summary_line, ai_summary_line
+        case _:
+            return result[0], result[1], None, None
 
 
 def _clean_tool_result_content(content: str, unit_id: str) -> str:
@@ -3952,26 +3953,31 @@ class ParallelDisplay:
         self.stop()
 
 
+@runtime_checkable
+class _ActivityLineEmitter(Protocol):
+    def emit(self, unit_id: str | None, line: str) -> None: ...
+
+
 def emit_activity_line(
-    display: ParallelDisplay | None,
+    display: object | None,
     unit_id: str | None,
     line: str,
     display_context: DisplayContext | None = None,
 ) -> None:
-    if display is None:
-        if display_context is None:
-            return
-        console = display_context.console
-        if unit_id is None:
-            console.print(_sanitize(line), markup=False, highlight=False)
-            return
-        console.print(
-            f"[{_render_unit_id(unit_id)}] {_sanitize(line)}",
-            markup=False,
-            highlight=False,
-        )
+    if isinstance(display, _ActivityLineEmitter):
+        display.emit(unit_id, line)
         return
-    display.emit(unit_id, line)
+    if display_context is None:
+        return
+    console = display_context.console
+    if unit_id is None:
+        console.print(_sanitize(line), markup=False, highlight=False)
+        return
+    console.print(
+        f"[{_render_unit_id(unit_id)}] {_sanitize(line)}",
+        markup=False,
+        highlight=False,
+    )
 
 
 def resolve_active_display(

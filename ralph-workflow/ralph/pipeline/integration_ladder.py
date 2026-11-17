@@ -190,14 +190,14 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
         )
     elif facts.terminal_for_attempt:
         transition = LadderTransition(
-            LadderState.NEEDS_OPERATOR,
+            LadderState.COMPLETE_IN_PLACE,
             terminal=True,
             reason=facts.reason,
             next_rung=None,
             effects=(),
         )
     elif facts.rung is None:
-        transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+        transition = _completion_in_place_transition(NO_ENABLED_NEXT_RUNG)
     elif facts.outcome is None:
         transition = LadderTransition(
             _RUNG_STATES[facts.rung],
@@ -212,7 +212,7 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
             facts.reason.startswith("failed:disabled:") and next_rung is None
         )
         if terminal:
-            transition = _needs_operator_transition(facts.reason)
+            transition = _completion_in_place_transition(facts.reason)
         elif facts.outcome == "waiting" or facts.reason.startswith("autonomous-transition:"):
             transition = LadderTransition(
                 _RUNG_STATES[facts.rung],
@@ -222,7 +222,7 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
                 effects=(),
             )
         elif next_rung is None:
-            transition = _needs_operator_transition(NO_ENABLED_NEXT_RUNG)
+            transition = _completion_in_place_transition(NO_ENABLED_NEXT_RUNG)
         else:
             transition = LadderTransition(
                 _RUNG_STATES[next_rung],
@@ -234,13 +234,13 @@ def decide_ladder_transition(facts: LadderFacts) -> LadderTransition:
     return transition
 
 
-def _needs_operator_transition(reason: str) -> LadderTransition:
+def _completion_in_place_transition(reason: str) -> LadderTransition:
     effects = (
         LadderEffect(LadderEffectKind.EMIT_TERMINAL),
         LadderEffect(LadderEffectKind.RECORD_TERMINAL_MARKER),
     )
     return LadderTransition(
-        LadderState.NEEDS_OPERATOR, terminal=True, reason=reason, next_rung=None, effects=effects
+        LadderState.COMPLETE_IN_PLACE, terminal=True, reason=reason, next_rung=None, effects=effects
     )
 
 
@@ -685,12 +685,12 @@ def terminal_operator_message(
         expected.append(f"merge_commit_parent={record.merge_commit_parent}")
     failures = "; ".join(proof_failures) or reason
     return (
-        f"Integration ladder terminal state: NeedsOperator ({reason}); "
+        f"Integration ladder terminal state: complete_in_place ({reason}); "
         f"observed HEAD {observed_head or 'unreadable'}; "
         f"expected {'; '.join(expected)}; "
         f"proof failures: {failures}; "
         f"preserved copy: {preserved_copy}; "
-        "operator action required: land the expected commit and run 'ralph --resume'"
+        "resume point: ralph --resume"
     )
 
 

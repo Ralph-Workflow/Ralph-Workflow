@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
 
 @runtime_checkable
@@ -339,26 +339,14 @@ def _entry_tracked_paths(entry: object) -> frozenset[str]:
         raw = entry.base_tree_paths
     else:
         raw = getattr(entry, "base_tree_paths", None)
-    items = _path_collection(raw)
-    if items is None:
+    values: tuple[object, ...]
+    if isinstance(raw, (frozenset, set, list)):
+        values = tuple(cast("Iterable[object]", raw))
+    elif isinstance(raw, tuple):
+        values = cast("tuple[object, ...]", raw)
+    else:
         return frozenset()
-    return frozenset(str(item) for item in items)
-
-
-def _path_collection(raw: object) -> frozenset[object] | None:
-    if isinstance(raw, frozenset):
-        frozen: frozenset[object] = raw
-        return frozen
-    if isinstance(raw, set):
-        members: set[object] = raw
-        return frozenset(members)
-    if isinstance(raw, tuple):
-        ordered: tuple[object, ...] = raw
-        return frozenset(ordered)
-    if isinstance(raw, list):
-        listed: list[object] = raw
-        return frozenset(listed)
-    return None
+    return frozenset(str(item) for item in values)
 
 
 def _status_kind(status: str) -> str:

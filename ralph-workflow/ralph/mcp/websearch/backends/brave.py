@@ -13,6 +13,7 @@ from ..secrets import resolve_secret
 from .base import SearchResult, WebSearchError
 
 _DEFAULT_URL = "https://api.search.brave.com/res/v1/web/search"
+_BRAVE_CLIENT_MODULE = "brave_search_python_client"
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,7 @@ class BraveBackend:
 
 def _ensure_brave_extra_installed() -> None:
     try:
-        import_module("brave_search_python_client")
+        import_module(_BRAVE_CLIENT_MODULE)
     except ImportError as exc:
         raise WebSearchError(
             "backend 'brave' requires 'pip install ralph-workflow[web-search]'"

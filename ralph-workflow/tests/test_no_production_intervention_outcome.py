@@ -22,7 +22,35 @@ _NEEDLES: Final = (
     "diagnostic_intervention_required",
     "REPORT_INTERVENTION_REQUIRED",
 )
+_PERSON_GATED_NEEDLES: Final = (
+    "NEEDS_OPERATOR",
+    "NeedsOperator",
+    "LandedProofFailed",
+    "resolution_terminal_marker",
+    "operator action required",
+)
 _DISPLAY_NEEDLE: Final = "INTERVENTION_REQUIRED"
+
+_ALLOW_PERSON_GATED: Final = {
+    ("pipeline/auto_integrate_recovery_terminal.py", "resolution_terminal_marker"): (
+        "durable restart marker API; does not park a running process on a person"
+    ),
+    ("pipeline/auto_integrate_record.py", "resolution_terminal_marker"): (
+        "IntegrationRecord field and helpers for the durable restart marker"
+    ),
+    ("pipeline/_integration_diagnostic_handoff.py", "resolution_terminal_marker"): (
+        "clears or records the durable restart marker without person-gated parking"
+    ),
+    ("pipeline/_integration_diagnostic.py", "resolution_terminal_marker"): (
+        "reads and writes the durable restart marker; U13 routes away from person-gated parking"
+    ),
+    ("pipeline/resolution_outcome_needs_operator.py", "NeedsOperator"): (
+        "legacy outcome type retained only so stop_resolution_outcome_from_legacy can map it"
+    ),
+    ("pipeline/resolution_outcome_producer.py", "NeedsOperator"): (
+        "legacy match arm maps NeedsOperator onto NextStrategyOutcome(completion_in_place)"
+    ),
+}
 
 _INTEGRATION_ACTION_PRODUCER_MODULE: Final = "pipeline/_integration_action.py"
 
@@ -178,9 +206,34 @@ def _production_sources() -> tuple[tuple[str, str], ...]:
     sources: dict[str, str] = {}
     for path in sorted(_PRODUCTION_ROOT.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if any(needle in source for needle in (*_NEEDLES, _DISPLAY_NEEDLE)):
+        if any(needle in source for needle in (*_NEEDLES, *_PERSON_GATED_NEEDLES, _DISPLAY_NEEDLE)):
             sources[str(path.relative_to(_PRODUCTION_ROOT))] = source
     return tuple(sources.items())
+
+
+def _scan_person_gated(sources: dict[str, str] | tuple[tuple[str, str], ...]) -> list[str]:
+    violations: list[str] = []
+    hits: set[tuple[str, str]] = set()
+    items = sources.items() if isinstance(sources, dict) else sources
+    for rel, source in sorted(items):
+        for lineno, text in _code_lines(source).items():
+            for needle in _PERSON_GATED_NEEDLES:
+                if needle not in text:
+                    continue
+                key = (rel, needle)
+                entry = _ALLOW_PERSON_GATED.get(key)
+                if entry is None:
+                    violations.append(
+                        f"{rel}:{lineno}: person-gated vocabulary {needle!r}: {text.strip()}"
+                    )
+                    continue
+                hits.add(key)
+    violations.extend(
+        f"{rel}: stale person-gated allow-list entry for {needle!r}"
+        for rel, needle in sorted(_ALLOW_PERSON_GATED)
+        if (rel, needle) not in hits
+    )
+    return violations
 
 
 def _check_allow_list(
@@ -274,7 +327,9 @@ def _scan_tree(sources: dict[str, str] | tuple[tuple[str, str], ...]) -> list[st
 
 @pytest.mark.timeout_seconds(5)
 def test_no_production_module_produces_an_intervention_outcome() -> None:
-    violations = _scan_tree(_production_sources())
+    sources = _production_sources()
+    violations = _scan_tree(sources)
+    violations.extend(_scan_person_gated(sources))
     assert not violations, "intervention-outcome guard violations:\n" + "\n".join(violations)
 
 

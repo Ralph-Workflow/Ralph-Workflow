@@ -344,18 +344,26 @@ if not _PROBE_SUCCESS_HYSTERESIS_COUNT > 0:
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
-def _optional_poll(obj: object) -> object | None:
+class _PollFn(Protocol):
+    def __call__(self) -> object: ...
+
+
+class _WaitFn(Protocol):
+    def __call__(self, timeout: float = 0.0) -> object: ...
+
+
+def _optional_poll(obj: object) -> _PollFn | None:
     attr: object = getattr(obj, "poll", None)
     if attr is None or not callable(attr):
         return None
-    return attr
+    return cast("_PollFn", attr)
 
 
-def _optional_wait(obj: object) -> object | None:
+def _optional_wait(obj: object) -> _WaitFn | None:
     attr: object = getattr(obj, "wait", None)
     if attr is None or not callable(attr):
         return None
-    return attr
+    return cast("_WaitFn", attr)
 
 
 def _as_finite_float(value: object, default: float) -> float:

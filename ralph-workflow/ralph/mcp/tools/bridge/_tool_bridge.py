@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.tools.bridge._lazy_tool_handler import LazyToolHandler
@@ -16,6 +16,8 @@ from ralph.mcp.tools.tool_error import ToolError
 from ralph.mcp.tools.tool_result import ToolResult
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.mcp.tools.bridge._registration_handler import RegistrationHandler
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
     from ralph.mcp.tools.bridge._tool_metadata import ToolMetadata
@@ -164,4 +166,5 @@ class ToolBridge:
         checker_obj = attr_or_none(effective_session, "check_capability")
         if not _is_capability_checker(checker_obj):
             return True
-        return _is_approved(checker_obj(metadata.required_capability))
+        checker = cast("Callable[[object], object]", checker_obj)
+        return _is_approved(checker(metadata.required_capability))

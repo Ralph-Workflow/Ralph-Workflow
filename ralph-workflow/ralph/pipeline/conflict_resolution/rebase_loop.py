@@ -132,7 +132,6 @@ def _resolution_succeeded(result: object) -> bool:
 def resolution_session_from_config(config: UnifiedConfig) -> ResolutionSession:
     limits = config.conflict_resolution
     return ResolutionSession(
-        inactivity_timeout_seconds=limits.inactivity_timeout_seconds,
         max_rounds_per_stop=limits.max_rounds_per_stop,
         max_rebase_conflict_stops=limits.max_rebase_conflict_stops,
         max_fallback_agents=limits.max_fallback_agents,

@@ -169,13 +169,11 @@ def _compute_width_uncached(
         return resolved_env.columns
     configured_width: object = getattr(console, "_width", None)
     if injected_console:
-        configured_width = cast("object", getattr(console, "_width", None))
         if isinstance(configured_width, int) and configured_width > 0:
             return configured_width
         if console.width > 0:
             return console.width
         return 80
-    configured_width = cast("object", getattr(console, "_width", None))
     if prefer_configured_width and isinstance(configured_width, int) and configured_width > 0:
         return configured_width
     return console.width or 80

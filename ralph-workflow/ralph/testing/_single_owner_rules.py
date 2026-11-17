@@ -154,6 +154,53 @@ _CONFLICT_RESOLUTION_BUDGET_BINDING_MESSAGE = (
     "budget classification belongs to the shared FailureClassifier recovery path."
 )
 
+_AUTO_INTEGRATE_PATH_PREFIX = "ralph/pipeline/"
+
+_COOLDOWN_STATE_CONSTRUCTION_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "RecoveryController",
+        "AgentFailureLedger",
+        "AgentUnavailabilityTracker",
+    }
+)
+
+_COOLDOWN_STATE_CONSTRUCTION_RULE = "production_cooldown_state_construction_outside_owner"
+
+_COOLDOWN_STATE_CONSTRUCTION_MESSAGE = (
+    "Conflict-resolution and auto-integrate modules must not construct RecoveryController, "
+    "AgentFailureLedger, or AgentUnavailabilityTracker; adopt the run's shared controller "
+    "through the shared accessor instead."
+)
+
+_AGENT_FAILURE_CLASSIFY_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "FailureClassifier",
+        "classify_failure",
+        "ClassifiedFailure",
+    }
+)
+
+_AGENT_FAILURE_CLASSIFY_RULE = "production_agent_failure_classify_outside_owner"
+
+_AGENT_FAILURE_CLASSIFY_MESSAGE = (
+    "Conflict-resolution and auto-integrate modules must not classify agent failures; "
+    "hand typed AttemptFacts to RecoveryController.finalize_attempt."
+)
+
+_AGENT_RETRY_DELAY_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "compute_retry_delay",
+        "wait_before_retry",
+    }
+)
+
+_AGENT_RETRY_DELAY_RULE = "production_agent_retry_delay_outside_owner"
+
+_AGENT_RETRY_DELAY_MESSAGE = (
+    "Conflict-resolution and auto-integrate modules must not compute agent retry delays; "
+    "use RecoveryController preferred_agent_index / earliest_available_wait_ms."
+)
+
 
 def is_transitional_allowed(rel_path: str, name: str) -> bool:
     allowed = TEMPORARY_TRANSITIONAL_RULES.get(rel_path)
@@ -537,6 +584,69 @@ def _call_name(node: ast.Call) -> str | None:
 
 def _is_conflict_resolution_path(rel_path: str) -> bool:
     return rel_path.startswith(_CONFLICT_RESOLUTION_PATH_PREFIX)
+
+
+def _is_auto_integrate_module_path(rel_path: str) -> bool:
+    if not rel_path.startswith(_AUTO_INTEGRATE_PATH_PREFIX):
+        return False
+    name = rel_path.rsplit("/", 1)[-1]
+    return name.startswith("auto_integrate") and name.endswith(".py")
+
+
+def _is_cooldown_state_construction_path(rel_path: str) -> bool:
+    return _is_conflict_resolution_path(rel_path) or _is_auto_integrate_module_path(rel_path)
+
+
+def _check_cooldown_state_single_owner(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    if not _is_cooldown_state_construction_path(rel_path):
+        return []
+    violations: list[SingleOwnerViolation] = []
+    conflict_path = _is_conflict_resolution_path(rel_path)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if name is None:
+            continue
+        if name in _COOLDOWN_STATE_CONSTRUCTION_SYMBOLS:
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_COOLDOWN_STATE_CONSTRUCTION_RULE,
+                    detail=f"Construction of '{name}': {_COOLDOWN_STATE_CONSTRUCTION_MESSAGE}",
+                )
+            )
+            continue
+        if not conflict_path:
+            continue
+        if name in _AGENT_FAILURE_CLASSIFY_SYMBOLS or (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "classify"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "FailureClassifier"
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_AGENT_FAILURE_CLASSIFY_RULE,
+                    detail=f"Call to '{name}': {_AGENT_FAILURE_CLASSIFY_MESSAGE}",
+                )
+            )
+            continue
+        if name in _AGENT_RETRY_DELAY_SYMBOLS:
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule=_AGENT_RETRY_DELAY_RULE,
+                    detail=f"Call to '{name}': {_AGENT_RETRY_DELAY_MESSAGE}",
+                )
+            )
+    return violations
 
 
 def _static_bool_op_truth(node: ast.BoolOp) -> bool | None:
@@ -1540,6 +1650,7 @@ def _check_agent_retry_timing_outside_shared_path(
 def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
     context = _build_ownership_context(tree)
     violations = _check_conflict_resolution_classification_ownership(tree, rel_path)
+    violations.extend(_check_cooldown_state_single_owner(tree, rel_path))
     violations.extend(_check_forbidden_integration_classifier(tree, rel_path))
     violations.extend(_check_agent_retry_timing_outside_shared_path(tree, rel_path))
     violations.extend(_check_unguarded_agent_invocation(tree, rel_path, context))

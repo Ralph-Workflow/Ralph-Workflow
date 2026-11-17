@@ -83,6 +83,7 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
         effect: object,
         _config: object,
         _workspace_scope: object,
+        **_kwargs: object,
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
@@ -206,6 +207,7 @@ def test_width_refresher_updates_live_display_context(
     class StubDisplay:
         def __init__(self) -> None:
             self._ctx = wide_ctx
+            self.subscriber = None
 
         def __enter__(self) -> StubDisplay:
             return self

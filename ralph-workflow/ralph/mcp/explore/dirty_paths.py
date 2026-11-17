@@ -19,6 +19,23 @@ from ralph.mcp.explore.store import (
 )
 
 
+class _SymbolLike(Protocol):
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def qualified_name(self) -> str: ...
+
+    @property
+    def kind(self) -> str: ...
+
+    @property
+    def symbol_id(self) -> str: ...
+
+    @property
+    def span_id(self) -> str: ...
+
+
 class ExploreIndexLike(Protocol):
     def mark_dirty(
         self, paths: list[str], *, source_tool: str, reason: str = "mutated"

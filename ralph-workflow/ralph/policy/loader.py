@@ -571,21 +571,20 @@ def _load_agents_policy_from_path(
     strict_optional_files: bool = False,
 ) -> AgentsPolicy:
     default_policy = cached_default_agents_policy()
+    agents_data: dict[str, object] = {}
+    if agents_path.exists():
+        agents_data = load_toml(agents_path, kind="agents", strict=strict_optional_files)
     if config is not None and _config_defines_agent_policy(config):
         policy = _merge_agents_policy_onto_defaults(build_agents_policy_from_config(config))
-    elif agents_path.exists():
-        agents_data = load_toml(agents_path, kind="agents", strict=strict_optional_files)
-        if agents_data:
-            policy = validate_or_default(
-                agents_path,
-                agents_data,
-                lambda d: _merge_agents_policy_onto_defaults(validate_agents(d)),
-                default_policy,
-                kind="agents",
-                strict=strict_optional_files,
-            )
-        else:
-            policy = default_policy
+    elif agents_data:
+        policy = validate_or_default(
+            agents_path,
+            agents_data,
+            lambda d: _merge_agents_policy_onto_defaults(validate_agents(d)),
+            default_policy,
+            kind="agents",
+            strict=strict_optional_files,
+        )
     else:
         policy = default_policy
     return apply_developer_override(policy, config)

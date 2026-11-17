@@ -93,15 +93,8 @@ def stop_resolution_outcome_from_legacy(
     match outcome:
         case Resolved():
             result = ResolvedOutcome()
-        case NeedsOperator(command=command):
-            result = WaitingOutcome(
-                external_condition=(
-                    f"operator action required: {command}"
-                    if command
-                    else "operator action required"
-                ),
-                resumes_when="operator resolves the conflict",
-            )
+        case NeedsOperator():
+            result = NextStrategyOutcome(strategy="completion_in_place")
         case RetryLater(until=until, on_change=on_change):
             result = RetryLaterOutcome(until=until, on_change=on_change)
         case Exhausted(agents=agents):

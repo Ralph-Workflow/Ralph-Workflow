@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.display.parallel_display import phase_style_for_phase
+from ralph.display.parallel_display import emit_activity_line, phase_style_for_phase, status_text
 from ralph.display.status_bar import StatusBarModel
 from ralph.pipeline._integration_status import build_integration_status
 from ralph.pipeline.conflict_resolution.attempt_fault import (
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline._integration_status import IntegrationStatus
 
 
@@ -79,7 +80,8 @@ class ResolutionStatusReporter:
         emit_conflict_phase_line(
             self.display,
             f"{label} status: "
-            f"round={min(self.round_index, self.round_cap)}/{self.round_cap}; agent={self.agent_name or 'pending'}; "
+            f"round={min(self.round_index, self.round_cap)}/{self.round_cap}; "
+            f"agent={self.agent_name or 'pending'}; "
             f"last_activity_kind={kind}; last_activity_age_seconds={age}; "
             f"elapsed_seconds={max(0.0, now - self.started_at):.1f}; "
             f"last_progress={progress_status.progress}",
@@ -106,6 +108,7 @@ __all__ = [
     "capture_status_bar_model",
     "clear_conflict_status_bar",
     "conflict_status_bar_session",
+    "emit_agent_lifecycle_status",
     "emit_conflict_phase_line",
     "phase_label",
     "push_conflict_status_bar",
@@ -269,6 +272,15 @@ def _display_run_started_monotonic(display: object) -> float | None:
     except AttributeError:
         value = None
     return value if isinstance(value, float) else None
+
+
+def emit_agent_lifecycle_status(
+    display: ParallelDisplay | None,
+    label: str,
+    value: str,
+    style: str = "cyan",
+) -> None:
+    emit_activity_line(display, None, status_text(label, value, style))
 
 
 def emit_conflict_phase_line(

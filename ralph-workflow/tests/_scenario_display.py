@@ -7,5 +7,8 @@ class ScenarioDisplay:
     def __init__(self) -> None:
         self.lines: list[OperatorLine] = []
 
+    def emit(self, _unit_id: str | None, _line: str) -> None:
+        return
+
     def emit_warn_line(self, _unit_id: str, _tag: str, message: str) -> None:
         self.lines.append(OperatorLine("WARNING", message))

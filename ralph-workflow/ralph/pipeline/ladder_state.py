@@ -13,4 +13,4 @@ class LadderState(StrEnum):
     ENVIRONMENT_DEGRADE = "environment_degrade"
     LAST_RESORT = "last_resort"
     LANDED = "landed"
-    NEEDS_OPERATOR = "NeedsOperator"
+    COMPLETE_IN_PLACE = "complete_in_place"

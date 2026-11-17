@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from rich.text import Text
@@ -206,8 +206,12 @@ def _as_read_commit_artifact(value: object) -> _ReadCommitArtifact:
     return value
 
 
+def _is_materialize_master_prompt(value: object) -> TypeGuard[MaterializeMasterPromptFn]:
+    return callable(value)
+
+
 def _as_materialize_master_prompt(value: object) -> MaterializeMasterPromptFn:
-    if not isinstance(value, MaterializeMasterPromptFn):
+    if not _is_materialize_master_prompt(value):
         raise TypeError("materialize_master_prompt must be callable")
     return value
 

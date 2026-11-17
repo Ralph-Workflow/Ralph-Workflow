@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.explore._narrowing import coerce_int
 from ralph.mcp.explore.dirty_paths import (
     ExploreIndexLike,
+    _SymbolLike,
     resolve_explore_index,
 )
 from ralph.mcp.explore.serving import serving_metadata
@@ -686,7 +687,7 @@ def _read_via_symbol(
         )
     if sym_obj is _SYMBOL_AMBIGUOUS:
         handle = resolve_explore_index(session)
-        candidates: Sequence[SymbolRow] = []
+        candidates: Sequence[_SymbolLike] = []
         if handle is not None:
             store = handle.store
             if store is not None:

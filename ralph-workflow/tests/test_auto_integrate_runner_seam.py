@@ -183,7 +183,7 @@ def _install_retry_loop(
     monkeypatch.setattr(auto_integrate, "observe_conflict_identity", lambda _root, _target: "id")
     monkeypatch.setattr(
         auto_integrate,
-        "resolver_allowed",
+        "_configured_resolver_allowed",
         lambda _state, _target, _identity, **_kwargs: True,
     )
 

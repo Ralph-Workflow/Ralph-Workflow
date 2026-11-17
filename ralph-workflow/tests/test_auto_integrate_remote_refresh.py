@@ -368,7 +368,7 @@ def test_retry_attempt_refetches_and_reclassifies_the_remote_base(
     )
     monkeypatch.setattr(
         auto_integrate,
-        "resolver_allowed",
+        "_configured_resolver_allowed",
         lambda _state, _target, _identity, **_kwargs: True,
     )
     monkeypatch.setattr(

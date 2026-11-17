@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -16,7 +17,23 @@ from ralph.workspace import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 
-class _FakeBridge:
+class _FakeBridge(RestartAwareMcpBridge):
+    def __init__(self) -> None:
+        pass
+
+    @property
+    def run_id(self) -> str:
+        return "test-run-id"
+
+    def start(self) -> None:
+        pass
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+    def endpoint_uri(self) -> str:
+        return self.agent_endpoint_uri()
+
     def shutdown(self) -> None:
         pass
 

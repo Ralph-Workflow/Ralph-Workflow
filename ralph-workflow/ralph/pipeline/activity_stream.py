@@ -168,9 +168,10 @@ def _retain_tool_result_target(
             payload: object = raw_input
             if isinstance(payload, str):
                 try:
-                    payload = json.loads(payload)
+                    loaded: object = json.loads(payload)
                 except (TypeError, ValueError):
-                    payload = None
+                    loaded = None
+                payload = loaded
             if isinstance(payload, dict):
                 for field in ("path", "file_path", "filePath", "filename"):
                     value = payload.get(field)

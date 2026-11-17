@@ -477,8 +477,8 @@ The failure ledger answers eligibility for every agent, and every other consumer
 The recovery ladder is a table of states with explicit transitions and a persisted terminal marker.
 
 1. **Pure transition**: `ralph.pipeline.integration_ladder` exposes `decide_ladder_transition(...)` over `LadderFacts`, producing a `LadderTransition` (a `LadderState`, a `LandedVerdict` and the `LadderEffect` to apply). Git reads, record writes and escalation emission are effects, not decisions.
-2. **No enabled rung**: a state with no enabled next rung ends in `NeedsOperator` once. It names the observed HEAD, the expected facts, why each proof failed, the resume command and what is preserved. A rung that did nothing is never reported as an autonomous escalation.
-3. **Durable terminal marker**: `IntegrationRecord.resolution_terminal_marker` holds `(resolution_gate_key, "NeedsOperator", "ralph --resume")`. It is written with the terminal transition, before the terminal status is emitted, and it is cleared when `resolution_gate_key` changes.
+2. **No enabled rung**: a state with no enabled next rung ends in `complete_in_place` once. It names the observed HEAD, the expected facts, why each proof failed, the resume point and what is preserved. A rung that did nothing is never reported as an autonomous escalation.
+3. **Durable terminal marker**: `IntegrationRecord.resolution_terminal_marker` holds `(resolution_gate_key, "complete_in_place", "ralph --resume")`. It is written with the terminal transition, before the terminal status is emitted, and it is cleared when `resolution_gate_key` changes.
 4. **Unchanged facts**: the terminal fingerprint covers HEAD, the target tip, the record's proof facts and `resolution_gate_key`. A landed-proof terminal-for-now key also includes the current target tip, so a moved target re-arms the round. Unchanged facts therefore produce no additional CRITICAL line, no diagnostic retry and no resolver selection, including across a supervisor restart that discards process-local state.
 
 ### One integration status model

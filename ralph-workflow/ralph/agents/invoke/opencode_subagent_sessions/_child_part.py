@@ -29,7 +29,6 @@ def part_kind_from_data(data: str) -> str:
     payload = _as_str_object_dict(decoded)
     if payload is None:
         return "part"
-    payload = cast("dict[str, object]", decoded)
     part_type = payload.get("type")
     if not isinstance(part_type, str) or not part_type:
         return "part"

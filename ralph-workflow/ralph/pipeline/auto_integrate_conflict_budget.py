@@ -8,8 +8,6 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_backoff import MAX_RETRY_DEADLINE_HORIZON_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -23,7 +21,6 @@ __all__ = [
     "finish_conflict_attempt",
     "prior_conflict_count",
     "resolve_failure_ledger",
-    "resolver_allowed",
     "start_conflict_attempt",
 ]
 
@@ -97,36 +94,6 @@ def resolve_failure_ledger(
     if active is not None:
         return session_ledger(active)
     return None
-
-
-def _is_same_conflict(
-    state: RebaseState,
-    target: str,
-    identity: ConflictIdentity,
-) -> bool:
-    return (
-        state.last_target == target
-        and identity.matches(state)
-        and state.last_conflict_strategy_index == state.conflict_strategy_index
-    )
-
-
-def resolver_allowed(
-    state: RebaseState,
-    target: str,
-    identity: ConflictIdentity = _UNKNOWN_IDENTITY,
-    *,
-    ledger: AgentFailureLedger | None = None,
-    candidates: Sequence[str] = (),
-    phase: str = "rebase_conflict_resolution",
-    session: ResolutionSession | None = None,
-    **kwargs: object,
-) -> bool:
-    del kwargs
-    effective_ledger = resolve_failure_ledger(ledger, session=session)
-    if effective_ledger is not None and candidates:
-        return not effective_ledger.all_exhausted(phase, candidates)
-    return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)
 
 
 @runtime_checkable
@@ -226,10 +193,15 @@ def apply_conflict_budget(
         if effective_deadline is not None
         else (record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline)
     )
+    new_count = min(attempts, carried + 1)
     updated = (
-        record.record_consecutive_conflicts(min(attempts, carried + 1), cap=attempts)
+        record.record_consecutive_conflicts(new_count, cap=attempts)
         .set_retry_deadline(deadline_value)
         .project_conflict_strategy_from(prior)
+    )
+    advance_reason = (
+        f"conflict resolution budget exhausted for '{target}' after "
+        f"{new_count} unresolved attempts; escalating to the next resolution strategy"
     )
     update: dict[str, object] = {
         "last_conflict_feature_sha": identity.feature_sha,
@@ -239,12 +211,12 @@ def apply_conflict_budget(
         "last_conflict_scope": identity.scope,
         "last_conflict_strategy_index": prior.conflict_strategy_index,
     }
-    if resolver_suppressed:
-        update["last_reason"] = (
-            f"conflict resolution budget exhausted for '{target}' after "
-            f"{min(carried, attempts)} unresolved attempts; escalating to the next resolution strategy"
-        )
-    return updated.model_copy(update=update)
+    if resolver_suppressed or new_count >= attempts:
+        update["last_reason"] = advance_reason
+    updated = updated.model_copy(update=update)
+    if new_count >= attempts:
+        updated = updated.advance_conflict_strategy(advance_reason)
+    return updated
 
 
 _MAX_ACTIVE_CONFLICT_ATTEMPTS = 64

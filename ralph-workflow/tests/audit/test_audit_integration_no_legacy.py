@@ -218,3 +218,51 @@ def test_resolve_repository_root_falls_back_to_the_package_root(tmp_path: Path) 
     (package_root / "ralph").mkdir(parents=True)
 
     assert resolve_repository_root(package_root) == package_root.resolve()
+
+
+_THREE_SHA_TEXT = "integrated_feature_sha, pre_target_sha, or pre_feature_sha"
+_THREE_SHA_RULE = "retired three-SHA landed-proof message reappeared"
+
+
+def test_audit_flags_retired_three_sha_message_text() -> None:
+    planted = {
+        "ralph/pipeline/planted_three_sha_literal.py": f'msg = "{_THREE_SHA_TEXT}"\n',
+        "ralph/pipeline/planted_three_sha_fstring.py": f'msg = f"{_THREE_SHA_TEXT}"\n',
+        "ralph-workflow/ralph/pipeline/planted_three_sha_pkg.py": (
+            f'reason = "HEAD does not match {_THREE_SHA_TEXT}"\n'
+        ),
+    }
+    for rel, source in planted.items():
+        violations = audit_modules({rel: source}, ignore_transitional=True)
+        rules = [v.rule for v in violations]
+        assert _THREE_SHA_RULE in rules, f"Failed for {rel}: got {rules}"
+
+
+def test_audit_allows_live_three_sha_identifier_variants() -> None:
+    live_variants = {
+        "ralph/pipeline/clean_stop_fallback.py": (
+            "return record.resolving_stop_sha or record.pre_target_sha or record.pre_feature_sha\n"
+        ),
+        "ralph/pipeline/clean_landed_fields.py": (
+            "fields = (\n"
+            "    f'integrated_feature_sha={record.integrated_feature_sha or \"unset\"}',\n"
+            "    f'pre_target_sha={record.pre_target_sha or \"unset\"}',\n"
+            "    f'pre_feature_sha={record.pre_feature_sha}',\n"
+            ")\n"
+        ),
+        "ralph/pipeline/clean_identity_pair.py": (
+            "return current == (record.pre_feature_sha, record.pre_target_sha)\n"
+        ),
+    }
+    violations = audit_modules(live_variants, ignore_transitional=True)
+    assert not [v for v in violations if v.rule == _THREE_SHA_RULE]
+
+
+def test_audit_allows_historical_three_sha_fixture_outside_ralph() -> None:
+    fixture = {
+        "tests/scenarios/_ralphsite_worktree_copy.py": (
+            f'"salvage:resolver_agent": "failed: {_THREE_SHA_TEXT}"\n'
+        ),
+    }
+    violations = audit_modules(fixture, ignore_transitional=True)
+    assert not [v for v in violations if v.rule == _THREE_SHA_RULE]

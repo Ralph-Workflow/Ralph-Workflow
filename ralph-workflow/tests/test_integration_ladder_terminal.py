@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from loguru import logger
 
-from ralph.config.models import UnifiedConfig
-from ralph.pipeline import RebaseOutcomeKind, escalate_record_fact_outcome, run_loop
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+from ralph.pipeline._integration_diagnostic_handoff import escalate_record_fact_outcome
+from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_ladder import (
     LAST_RESORT_TERMINAL_NO_SIGNATURE,
@@ -19,11 +17,6 @@ from ralph.pipeline.integration_ladder import (
     run_ladder_rung,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
-from ralph.pipeline.rebase_state import RebaseState
-from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks, wait_for_integration_retry
-from ralph.pipeline.state import PipelineState
-from ralph.policy.models import AgentsPolicy, PhaseDefinition, PhaseTransition, PipelinePolicy
-from ralph.workspace.scope import WorkspaceScope
 from tests._fake_git_clock import FakeClock
 from tests._integration_ladder_fakes import (
     _evidence,
@@ -105,23 +98,32 @@ def test_disabled_rung6_ends_the_ladder_in_a_terminal_outcome(tmp_path: Path) ->
     ledger = _exhausted_ledger(tmp_path)
     git = _FakePlumbing(changed=())
 
-    step = escalate_record_fact_outcome(
-        tmp_path,
-        _record(),
-        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
-        reason="diagnostic budget spent",
-        ledger=ledger,
-        git=git,
-        fs=_FakeQuarantineFs(),
-        clock=FakeClock(),
-        state_dir=tmp_path / ".agent",
-    )
+    with _captured_warnings() as warnings:
+        step = escalate_record_fact_outcome(
+            tmp_path,
+            _record(),
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
 
     assert step.rung is CleanupLadderRung.LAST_RESORT
     assert step.outcome == "terminal"
     assert step.outcome != "failed"
     assert step.reason == LAST_RESORT_TERMINAL_NO_SIGNATURE
+    assert step.evidence.get("next_strategy") == "completion_in_place"
+    assert "NeedsOperator" not in step.reason
     assert not any(call.startswith(_DESTRUCTIVE_GIT_CALLS) for call in git.calls), git.calls
+    terminal = [message for message in warnings if "Integration ladder terminal state:" in message]
+    assert len(terminal) == 1, warnings
+    message = terminal[0]
+    assert "NeedsOperator" not in message
+    assert "operator action required" not in message
+    assert "completion_in_place" in message or "complete_in_place" in message
 
 
 def test_changed_resolution_key_reopens_the_terminal_attempt(tmp_path: Path) -> None:
@@ -154,10 +156,14 @@ def test_changed_resolution_key_reopens_the_terminal_attempt(tmp_path: Path) -> 
             state_dir=tmp_path / ".agent",
         )
 
-    terminal = [message for _level, message in captured if "NeedsOperator" in message]
+    terminal = [
+        message for _level, message in captured if "Integration ladder terminal state:" in message
+    ]
     assert first.outcome == "terminal"
     assert second.outcome == "terminal"
     assert len(terminal) == 2, captured
+    assert all("NeedsOperator" not in message for message in terminal), terminal
+    assert all("operator action required" not in message for message in terminal), terminal
 
 
 def test_terminal_operator_message_names_head_expected_shas_and_resume_command(
@@ -191,8 +197,61 @@ def test_terminal_operator_message_names_head_expected_shas_and_resume_command(
     assert f"rebase_continue_tree={'1' * 40}" in message
     assert f"merge_commit_parent={'e' * 40}" in message
     assert "ralph --resume" in message
+    assert "NeedsOperator" not in message
+    assert "operator action required" not in message
     assert "no preserved copy yet" not in message
     assert "the run continues without waiting on a person" not in message
+
+
+def test_decide_ladder_transition_routes_terminal_to_completion_in_place() -> None:
+    from ralph.pipeline.integration_decision import CLEANUP_LADDER_ORDER
+    from ralph.pipeline.integration_ladder import decide_ladder_transition
+    from ralph.pipeline.ladder_facts import LadderFacts
+    from ralph.pipeline.ladder_state import LadderState
+    from ralph.pipeline.landed_verdict import LandedVerdict
+
+    transition = decide_ladder_transition(
+        LadderFacts(
+            rung=CleanupLadderRung.LAST_RESORT,
+            outcome="terminal",
+            reason=LAST_RESORT_TERMINAL_NO_SIGNATURE,
+            landed=LandedVerdict.NOT_LANDED,
+            enabled_rungs=frozenset(CLEANUP_LADDER_ORDER),
+            terminal_for_attempt=False,
+            clock_now=0.0,
+        )
+    )
+    assert transition.terminal is True
+    assert "NeedsOperator" not in transition.state
+    assert transition.state is LadderState.COMPLETE_IN_PLACE
+
+
+def test_production_escalation_callers_supply_feature_tip() -> None:
+    production_root = Path(__file__).resolve().parent.parent / "ralph" / "pipeline"
+    sources = {
+        "_integration_diagnostic.py": (production_root / "_integration_diagnostic.py").read_text(
+            encoding="utf-8"
+        ),
+        "_integration_diagnostic_prepass.py": (
+            production_root / "_integration_diagnostic_prepass.py"
+        ).read_text(encoding="utf-8"),
+    }
+    call_needles = (
+        "escalate_diagnostic_budget_to_ladder(",
+        "escalate_record_fact_outcome(",
+    )
+    missing: list[str] = []
+    for rel, source in sources.items():
+        for index, line in enumerate(source.splitlines(), start=1):
+            if not any(needle in line for needle in call_needles):
+                continue
+            window = "\n".join(source.splitlines()[index - 1 : index + 20])
+            if "feature_tip=" not in window:
+                missing.append(f"{rel}:{index}")
+    assert not missing, (
+        "escalation callers must supply feature_tip so completion-in-place is reachable:\n"
+        + "\n".join(missing)
+    )
 
 
 def test_terminal_operator_message_states_nothing_to_preserve_on_a_clean_worktree(
@@ -341,88 +400,66 @@ def test_ensure_preserved_copy_is_a_no_op_when_the_ledger_already_holds_one(
     assert git.calls == calls_after_first
 
 
-def test_unchanged_retained_facts_end_in_exactly_one_terminal_round(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _exhausted_ledger(tmp_path)
-    record = IntegrationRecord.model_validate(
-        {
-            "phase": "integrating",
-            "target": "main",
-            "pre_feature_sha": "a" * 40,
-            "pre_target_sha": "b" * 40,
-            "integrated_feature_sha": "c" * 40,
-            "merge_commit_repair_attempts": run_loop.diagnostic_repair_attempt_cap(),
-            "diagnostic_evidence": (("integration.diagnostic", "held"),),
-        }
-    )
-    write_record(tmp_path, record)
-    state = PipelineState(
-        phase="development",
-        rebase=RebaseState(
-            last_outcome=RebaseOutcomeKind.CONFLICT,
-            last_reason="unresolved shared.txt",
-            resolution_exhausted=True,
-            conflict_strategies_tried=("rebase_resolver: unresolved shared.txt",),
-        ),
-    )
-    resolver_calls: list[str] = []
-    monkeypatch.setattr(
-        run_loop,
-        "run_integration_conflict_resolution",
-        lambda *_args, **_kwargs: resolver_calls.append("resolver") or False,
-    )
-    outcome_log = run_loop.new_integration_outcome_log()
-    monkeypatch.setattr(run_loop, "integration_outcome_log", lambda: outcome_log)
-    ctx = cast(
-        "run_loop.LoopContext",
-        SimpleNamespace(
-            hooks=RetryDiagnosticHooks(save_checkpoint=lambda *_args: None),
-            workspace_scope=WorkspaceScope(tmp_path),
-            latest_state=[state],
-            config=UnifiedConfig(),
-            policy_bundle=SimpleNamespace(
-                pipeline=PipelinePolicy(
-                    entry_phase="development",
-                    phases={
-                        "development": PhaseDefinition(
-                            drain="development",
-                            transitions=PhaseTransition(on_success="complete"),
-                        )
-                    },
-                ),
-                agents=AgentsPolicy(),
-            ),
-            registry=SimpleNamespace(get=lambda _agent: None),
-            active_display=SimpleNamespace(emit_warn_line=lambda *_args: None),
-            display_context=None,
-            controller=None,
-            pipeline_deps=SimpleNamespace(),
-            _session_handoff_dispatched=False,
-            sleep=lambda _seconds: None,
-        ),
-    )
+def test_unchanged_retained_facts_end_in_exactly_one_terminal_round(tmp_path: Path) -> None:
+    ledger = _exhausted_ledger(tmp_path)
+    git = _FakePlumbing(changed=())
+    record = _record()
 
     with _captured_records() as captured:
-        wait_for_integration_retry(state, ctx)
+        first = escalate_record_fact_outcome(
+            tmp_path,
+            record,
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
         after_first_round = len(captured)
-        run_loop.dispatch_retained_handoff(ctx, "integration retained")
+        second = escalate_record_fact_outcome(
+            tmp_path,
+            record,
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
         after_second_round = len(captured)
-        ctx._session_handoff_dispatched = False
-        wait_for_integration_retry(state, ctx)
+        third = escalate_record_fact_outcome(
+            tmp_path,
+            record,
+            RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            reason="diagnostic budget spent",
+            ledger=ledger,
+            git=git,
+            fs=_FakeQuarantineFs(),
+            clock=FakeClock(),
+            state_dir=tmp_path / ".agent",
+        )
 
     terminal = [
         message for _level, message in captured if "Integration ladder terminal state:" in message
     ]
     critical = [level for level, _message in captured if level == "CRITICAL"]
+    assert first.outcome == "terminal"
+    assert second.outcome == "terminal"
+    assert third.outcome == "terminal"
     assert len(terminal) == 1, captured
-    assert len(critical) == 1, captured
+    assert critical == [], captured
     assert not any(
-        level == "CRITICAL" for level, _message in captured[after_first_round:after_second_round]
+        "Integration ladder terminal state:" in message
+        for _level, message in captured[after_first_round:after_second_round]
     ), captured
-    assert not any(level == "CRITICAL" for level, _message in captured[after_second_round:]), (
-        captured
-    )
-    assert resolver_calls == [], captured
+    assert not any(
+        "Integration ladder terminal state:" in message
+        for _level, message in captured[after_second_round:]
+    ), captured
     assert _evidence(tmp_path)["rung:last_resort_recovery"] == LAST_RESORT_TERMINAL_NO_SIGNATURE
     assert LAST_RESORT_TERMINAL_NO_SIGNATURE in terminal[0]
+    assert "NeedsOperator" not in terminal[0]
+    assert "operator action required" not in terminal[0]

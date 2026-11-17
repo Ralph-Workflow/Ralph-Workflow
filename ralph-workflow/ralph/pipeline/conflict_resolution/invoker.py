@@ -34,7 +34,7 @@ def default_invoker(
     stop: RebaseStop | None,
     root: Path,
     target: str,
-    require_completion_evidence: bool = False,
+    require_completion_evidence: bool = True,
 ) -> ResolutionInvoker:
     del limits, round_cap, clock, stop, root, target
 
@@ -49,7 +49,7 @@ def default_invoker(
             from ralph.pipeline.factory import DefaultPipelineFactory
 
             deps = DefaultPipelineFactory().build(config, display_context or make_display_context())
-        return patched(
+        attempt = patched(
             agent_name=agent_name,
             prompt_path=prompt_path,
             config=config,
@@ -61,6 +61,9 @@ def default_invoker(
             unresolved_paths=session.unresolved_paths,
             session=session,
             require_completion_evidence=require_completion_evidence,
+        )
+        return _driver.stop_outcome_from_attempt_result(
+            session, attempt, agent_name=agent_name
         )
 
     return _invoke

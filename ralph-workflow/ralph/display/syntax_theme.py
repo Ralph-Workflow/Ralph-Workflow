@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Final, Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, cast, runtime_checkable
 
 import pygments.token as pygments_token
 from pygments.style import Style as PygmentsStyle
@@ -16,6 +16,11 @@ from pygments.token import (
     String,
     Text,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from pygments.token import _TokenType
 
 from ralph.display._palette import (
     _CANONICAL_DARK_SURFACE_HEX,
@@ -75,7 +80,7 @@ class _PygmentsTokenModule(Protocol):
 
 class _StyleNamespace(TypedDict):
     default_style: str
-    styles: dict[object, str]
+    styles: Mapping[_TokenType, str]
 
 
 def _require_name_token(value: object) -> _NameToken:
@@ -232,7 +237,7 @@ def _style(colors: dict[str, str]) -> type[PygmentsStyle]:
     }
     namespace: _StyleNamespace = {
         "default_style": foreground,
-        "styles": style_map,
+        "styles": cast("Mapping[_TokenType, str]", style_map),
     }
 
     class RalphSyntaxTheme(PygmentsStyle):

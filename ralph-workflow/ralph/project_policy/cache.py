@@ -44,7 +44,6 @@ def _read_cache(workspace: Workspace) -> dict[str, object] | None:
         raw = workspace.read(markers.CACHE_REL_PATH)
     except FileNotFoundError:
         return None
-    parsed: object
     try:
         parsed = json.loads(raw)
     except (json.JSONDecodeError, ValueError):

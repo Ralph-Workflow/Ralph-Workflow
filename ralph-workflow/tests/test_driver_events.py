@@ -16,9 +16,11 @@ from ralph.pipeline.conflict_resolution._driver_events import (
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.resolution_outcome import (
+    ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
     RetryLaterOutcome,
+    WaitingOutcome,
 )
 
 if TYPE_CHECKING:
@@ -122,12 +124,20 @@ def test_emit_success_merge(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_emit_attempt_outcome_progress_line_reports_done_and_remaining(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    lines: list[str] = []
+    lifecycle: list[tuple[str, str]] = []
+    warn: list[str] = []
 
-    def _hook(_d: ParallelDisplay | None, line: str) -> None:
-        _record(lines, _d, line)
+    def _lifecycle(
+        _d: ParallelDisplay | None, label: str, value: str, style: str = "cyan"
+    ) -> None:
+        del style
+        lifecycle.append((label, value))
 
-    monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _hook)
+    def _warn(_d: ParallelDisplay | None, line: str, **_kwargs: object) -> None:
+        warn.append(line)
+
+    monkeypatch.setattr(driver_module, "emit_agent_lifecycle_status", _lifecycle)
+    monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _warn)
     session = ResolutionSession()
     session.initial_conflicted_count = 4
     session.unresolved_paths = ("file.py",)
@@ -135,8 +145,10 @@ def test_emit_attempt_outcome_progress_line_reports_done_and_remaining(
     session.terminal_reason = None
     outcome = NextStrategyOutcome(strategy="retry_round")
     emit_attempt_outcome(None, outcome, session=session)
-    assert len(lines) == 1
-    assert "done=3; remaining=1" in lines[0]
+    assert len(lifecycle) == 1
+    assert lifecycle[0][0] == "FAILED"
+    assert "done=3; remaining=1" in lifecycle[0][1]
+    assert warn == []
 
 
 def test_emit_attempt_outcome_ignores_success() -> None:
@@ -146,14 +158,37 @@ def test_emit_attempt_outcome_ignores_success() -> None:
     assert display.warnings == []
 
 
-def test_emit_attempt_outcome_emits_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    lines: list[str] = []
+def test_emit_attempt_outcome_waiting_and_failure_use_lifecycle_not_warn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lifecycle: list[tuple[str, str]] = []
+    warn: list[str] = []
 
-    def _hook(_d: ParallelDisplay | None, line: str) -> None:
-        _record(lines, _d, line)
+    def _lifecycle(
+        _d: ParallelDisplay | None, label: str, value: str, style: str = "cyan"
+    ) -> None:
+        del style
+        lifecycle.append((label, value))
 
-    monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _hook)
-    outcome = RetryLaterOutcome(on_change="file.py changed")
-    emit_attempt_outcome(None, outcome)
-    assert len(lines) == 1
-    assert lines == ["retry later: on_change=file.py changed"]
+    def _warn(_d: ParallelDisplay | None, line: str, **_kwargs: object) -> None:
+        warn.append(line)
+
+    monkeypatch.setattr(driver_module, "emit_agent_lifecycle_status", _lifecycle)
+    monkeypatch.setattr(driver_module, "emit_conflict_phase_line", _warn)
+
+    emit_attempt_outcome(
+        None,
+        WaitingOutcome(external_condition="cooldown", resumes_when="eligible"),
+    )
+    emit_attempt_outcome(None, RetryLaterOutcome(on_change="file.py changed"))
+    emit_attempt_outcome(
+        None,
+        ConfigFailureOutcome(file="ralph.toml", parse_error="bad"),
+    )
+    emit_attempt_outcome(None, NextStrategyOutcome(strategy="retry_round"))
+
+    assert ("WAITING", "cooldown; resumes_when=eligible") in lifecycle
+    assert ("WAITING", "retry later: on_change=file.py changed") in lifecycle
+    assert ("FAILED", "configuration failure: ralph.toml: bad") in lifecycle
+    assert ("FAILED", "retry_round: next strategy") in lifecycle
+    assert warn == []

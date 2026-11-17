@@ -130,17 +130,14 @@ def _prepare_effective_resolver(
     ledger: AgentFailureLedger | None,
     candidates: Sequence[str],
 ) -> RebaseStopResolver | None:
+    del prior_state, target, identity
     if rebase_stop_resolver is None:
         return None
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        resolver_allowed as _resolver_allowed,
-    )
-
-    budget_allows = _resolver_allowed(prior_state, target, identity)
-    eligibility_allows = ledger is None or ledger.any_eligible(
-        "rebase_conflict_resolution", candidates
-    )
-    if not budget_allows or not eligibility_allows:
+    if (
+        ledger is not None
+        and candidates
+        and not ledger.any_eligible("rebase_conflict_resolution", candidates)
+    ):
         return None
     return rebase_stop_resolver
 

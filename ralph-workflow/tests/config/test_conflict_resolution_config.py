@@ -10,15 +10,28 @@ from pydantic import ValidationError
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.models import UnifiedConfig
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_default_conflict_resolution_configuration_has_fixed_documented_values": (
+        "resolver-only inactivity_timeout_seconds and status_interval_seconds removed; "
+        "idle/waiting timing is owned by [general]"
+    ),
+    "test_conflict_resolution_configuration_rejects_removed_timing_keys": (
+        "removed timing keys must be rejected with a pointer to [general]"
+    ),
+    "test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator_cap": (
+        "inactivity_timeout_seconds is no longer a conflict_resolution field"
+    ),
+}
+
 
 def test_default_conflict_resolution_configuration_has_fixed_documented_values() -> None:
     config = UnifiedConfig.model_validate({})
     resolution = config.conflict_resolution
-    assert resolution.inactivity_timeout_seconds == 900.0
-    assert resolution.status_interval_seconds == 30.0
     assert resolution.max_rounds_per_stop == 3
     assert resolution.max_rebase_conflict_stops == 10
     assert resolution.max_fallback_agents == 2
+    assert "inactivity_timeout_seconds" not in ConflictResolutionConfig.model_fields
+    assert "status_interval_seconds" not in ConflictResolutionConfig.model_fields
 
 
 def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -> None:
@@ -36,10 +49,17 @@ def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -
 
 
 @pytest.mark.parametrize(
+    "key",
+    ("status_interval_seconds", "inactivity_timeout_seconds"),
+)
+def test_conflict_resolution_configuration_rejects_removed_timing_keys(key: str) -> None:
+    with pytest.raises(ValueError, match=key):
+        ConflictResolutionConfig.model_validate({key: 30.0})
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("inactivity_timeout_seconds", 0.0),
-        ("status_interval_seconds", -1.0),
         ("max_rounds_per_stop", 0),
         ("max_rebase_conflict_stops", 0),
         ("max_fallback_agents", 0),
@@ -75,7 +95,7 @@ def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator
         if any(token in name for token in ("wait", "ceiling", "deadline", "elapsed", "child"))
     }
     assert not elapsed_kills
-    assert "inactivity_timeout_seconds" in names
+    assert "inactivity_timeout_seconds" not in names
 
 
 def test_one_agent_conflict_chain_is_warned_at_policy_load(tmp_path: Path) -> None:

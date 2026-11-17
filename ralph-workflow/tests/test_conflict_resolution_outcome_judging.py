@@ -14,6 +14,10 @@ RALPH_TEST_CHANGE_REASONS = {
         "the resolver-local conflict_chain_max_retries seam was deleted because shared recovery "
         "owns retry eligibility and timing"
     ),
+    "test_invoke_resolution_agent_requires_declare_complete_by_default": (
+        "invoke_resolution_agent defaults require_completion_evidence to True; the prior "
+        "does-not-require assertion pinned the deleted dual-path default"
+    ),
 }
 
 if TYPE_CHECKING:
@@ -21,13 +25,13 @@ if TYPE_CHECKING:
     from ralph.git.subprocess_runner import GitRunOptions
 
 
-def test_invoke_resolution_agent_does_not_require_declare_complete(
+def test_invoke_resolution_agent_requires_declare_complete_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[bool] = []
 
     def _capture_execute(effect: object, *args: object, **kwargs: object) -> object:
-        captured.append(bool(getattr(effect, "requires_completion_evidence", True)))
+        captured.append(bool(getattr(effect, "requires_completion_evidence", False)))
         raise RuntimeError("stop after capturing")
 
     monkeypatch.setattr(
@@ -57,7 +61,7 @@ def test_invoke_resolution_agent_does_not_require_declare_complete(
         display_context=None,
         session=ResolutionSession(recovery_controller=RecoveryController()),
     )
-    assert captured == [False]
+    assert captured == [True]
 
 
 def test_identical_blobs_are_mechanical() -> None:
@@ -141,11 +145,6 @@ def test_a_markerless_decision_demands_declared_completion(
     )
     monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _root, _kinds: ())
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    monkeypatch.setattr(
-        driver_module,
-        "finalize_resolution_attempt_failure",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(driver_module, "invoke_resolution_agent", _capture)
     root = Path("/repo")
     prompt = root / "conflict-prompt.md"

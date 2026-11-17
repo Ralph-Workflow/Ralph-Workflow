@@ -6,7 +6,10 @@ from types import ModuleType
 
 import pytest
 
+import ralph.pipeline.effect_executor as _effect_executor
 from tests.mcp.websearch._brave_backend_helper__explodingresponse import _ExplodingResponse
+
+_ = _effect_executor.clear_agent_effect_dependencies
 
 API_KEY = "brave-secret-key"
 CLIENT_MODULE_NAME = "brave_search_python_client"

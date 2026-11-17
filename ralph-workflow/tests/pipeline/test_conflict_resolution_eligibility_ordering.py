@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,9 +12,9 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_conflict_budget import resolve_failure_ledger
 from ralph.pipeline.conflict_resolution import bind_active_rebase_resolution_session
+from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface,
     session_ledger,
@@ -36,11 +37,39 @@ from ralph.recovery.agent_failure_ledger import (
     AgentStatus,
     AttemptFact,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
+    from ralph.display.context import DisplayContext
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+
+
+def _shared_controller(*, clock: Clock | None = None) -> RecoveryController:
+    active = clock if clock is not None else FakeClock()
+    ledger = AgentFailureLedger(clock=active, consecutive_limit=1, total_limit=1)
+    return RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=active,
+            ledger=ledger,
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
+        )
+    )
+
+
+def _deps_with_controller(
+    config: UnifiedConfig,
+    display_ctx: DisplayContext,
+    controller: RecoveryController,
+) -> PipelineDeps:
+    return dataclasses.replace(
+        build_default_pipeline_deps(config, display_ctx),
+        recovery_controller=controller,
+        ledger=controller.ledger,
+    )
 
 
 def _policy_bundle() -> PolicyBundle:
@@ -64,8 +93,9 @@ class _RecordingLedger(AgentFailureLedger):
 
 def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -> None:
     clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    session = ResolutionSession(ledger=ledger)
+    controller = _shared_controller(clock=clock)
+    ledger = controller.ledger
+    session = ResolutionSession(recovery_controller=controller, ledger=ledger)
 
     assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
 
@@ -85,7 +115,8 @@ def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -
 
 
 def test_skipped_candidates_does_not_bar_on_non_registry_faults() -> None:
-    session = ResolutionSession()
+    controller = _shared_controller()
+    session = ResolutionSession(recovery_controller=controller, ledger=controller.ledger)
 
     assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
 
@@ -105,17 +136,19 @@ def test_skipped_candidates_does_not_bar_on_non_registry_faults() -> None:
 def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+
+    del monkeypatch
     executed: list[str] = []
 
-    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
-        if args and isinstance(args[0], InvokeAgentEffect):
-            executed.append(args[0].agent_name)
+    def _stub_runner(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
+        del args, kwargs
+        if isinstance(effect, InvokeAgentEffect):
+            executed.append(effect.agent_name)
         return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
-        _fake_execute,
-    )
 
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve conflict", encoding="utf-8")
@@ -123,12 +156,12 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
     bundle = _policy_bundle()
     console = Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME)
     display_ctx = make_display_context(console=console)
-    deps = build_default_pipeline_deps(config, display_ctx)
-    scope = WorkspaceScope(tmp_path)
-
     clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    session = ResolutionSession(ledger=ledger)
+    controller = _shared_controller(clock=clock)
+    ledger = controller.ledger
+    deps = _deps_with_controller(config, display_ctx, controller)
+    scope = WorkspaceScope(tmp_path)
+    session = ResolutionSession(recovery_controller=controller, ledger=ledger)
 
     ledger.record(
         AttemptFact(
@@ -139,68 +172,75 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
     )
     assert not ledger.is_available(PHASE_RESOLUTION, "failing_agent")
 
-    result = invoke_resolution_agent(
-        agent_name="failing_agent",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
+    token = install_agent_effect_dependencies(
+        agent_runner=_stub_runner,
+        recovery_controller=controller,
     )
-    assert result.succeeded is False
-    assert executed == []
-    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    assert session.last_failure_cause is ResolutionFailureCause.NONE
-    assert session.charge_conflict_budget is False
+    try:
+        result = invoke_resolution_agent(
+            agent_name="failing_agent",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+        assert result.event != PipelineEvent.AGENT_SUCCESS
+        assert executed == []
+        assert not controller.agent_eligibility(PHASE_RESOLUTION, "failing_agent").is_eligible
 
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "unsupported_agent")
-    result = invoke_resolution_agent(
-        agent_name="unsupported_agent",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
-    )
-    assert result.succeeded is False
-    assert executed == []
+        session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        remember_dead_surface(session, "unsupported_agent")
+        result = invoke_resolution_agent(
+            agent_name="unsupported_agent",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+        assert result.event != PipelineEvent.AGENT_SUCCESS
+        assert executed == []
 
-    result = invoke_resolution_agent(
-        agent_name="healthy_agent",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
-    )
-    assert result.succeeded is True
-    assert executed == ["healthy_agent"]
+        result = invoke_resolution_agent(
+            agent_name="healthy_agent",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+        assert result.event == PipelineEvent.AGENT_SUCCESS
+        assert executed == ["healthy_agent"]
+    finally:
+        reset_agent_effect_dependencies(token)
 
 
 def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+
+    del monkeypatch
     executed: list[str] = []
 
-    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
-        if args and isinstance(args[0], InvokeAgentEffect):
-            executed.append(args[0].agent_name)
+    def _stub_runner(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
+        del args, kwargs
+        if isinstance(effect, InvokeAgentEffect):
+            executed.append(effect.agent_name)
         return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
-        _fake_execute,
-    )
 
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve conflict", encoding="utf-8")
@@ -208,42 +248,50 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
     bundle = _policy_bundle()
     console = Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME)
     display_ctx = make_display_context(console=console)
-    deps = build_default_pipeline_deps(config, display_ctx)
+    controller = _shared_controller()
+    deps = _deps_with_controller(config, display_ctx, controller)
     scope = WorkspaceScope(tmp_path)
 
-    session = ResolutionSession()
+    session = ResolutionSession(recovery_controller=controller, ledger=controller.ledger)
     session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
     remember_dead_surface(session, "agentA")
 
-    result = invoke_resolution_agent(
-        agent_name="agentA",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
+    token = install_agent_effect_dependencies(
+        agent_runner=_stub_runner,
+        recovery_controller=controller,
     )
-    assert result.succeeded is True
-    assert executed == ["agentA"]
+    try:
+        result = invoke_resolution_agent(
+            agent_name="agentA",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+        assert result.event == PipelineEvent.AGENT_SUCCESS
+        assert executed == ["agentA"]
 
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "agentB")
-    result = invoke_resolution_agent(
-        agent_name="agentB",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
-    )
-    assert result.succeeded is False
-    assert executed == ["agentA"]
+        session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        remember_dead_surface(session, "agentB")
+        result = invoke_resolution_agent(
+            agent_name="agentB",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+        assert result.event != PipelineEvent.AGENT_SUCCESS
+        assert executed == ["agentA"]
+    finally:
+        reset_agent_effect_dependencies(token)
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -251,39 +299,67 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "can_continue_rounds refuses further resolution rounds when neither the shared "
         "RecoveryController nor a ledger is bound, matching ensure_session_controller"
     ),
-    "test_session_controller_creation_guarantees_ledger": (
-        "restores the entry-point controller fallback that the gated 91a0ae83d repair "
-        "recorded and 0afc2dac3 reverted; a session without a shared "
-        "RecoveryController builds its conflict-resolution controller instead of "
-        "raising, which the in-gate attribution, round-cap and shared-ledger contracts "
-        "depend on"
+    "test_session_without_shared_controller_fails_closed": (
+        "conflict-resolution sessions no longer build a private RecoveryController; "
+        "ensure_session_controller fails closed when the run's shared controller is unreachable"
     ),
-    "test_without_a_ledger_only_the_registry_capability_exclusion_applies": (
-        "restores the entry-point controller fallback that the gated 91a0ae83d repair "
-        "recorded and 0afc2dac3 reverted; a session without a shared "
-        "RecoveryController builds its conflict-resolution controller instead of "
-        "raising, which the in-gate attribution, round-cap and shared-ledger contracts "
-        "depend on; a ledger-less session again reports no ledger before a controller "
-        "is built"
+    "test_without_shared_controller_dead_surface_fails_closed": (
+        "remember_dead_surface requires the session's bound shared RecoveryController and "
+        "never records into a private ledger fallback"
+    ),
+    "test_session_reuses_run_shared_controller_and_ledger": (
+        "a session adopts the run's RecoveryController through pipeline_deps and shares its ledger"
+    ),
+    "test_invoke_resolution_agent_ledger_takes_precedence_over_registry": (
+        "cooling / unavailable candidates are refused by the shared effect-executor launch "
+        "gate rather than a session pre-launch eligibility fork"
+    ),
+    "test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults": (
+        "dead-surface marks still reach the shared launch gate; non-registry faults do not"
+    ),
+    "test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none": (
+        "when the session ledger is None, shared effect-executor launch still consults the "
+        "bound RecoveryController ledger and refuses a spent agent without a session pre-refuse"
     ),
 }
 
 
-def test_session_controller_creation_guarantees_ledger() -> None:
-    bundle = _policy_bundle()
+def test_session_without_shared_controller_fails_closed() -> None:
     session = ResolutionSession()
-    controller = ensure_session_controller(session, bundle)
+    with pytest.raises(RecoveryControllerUnavailableError):
+        ensure_session_controller(session, _policy_bundle())
+    assert session.recovery_controller is None
+    assert session.ledger is None
+
+
+def test_session_reuses_run_shared_controller_and_ledger() -> None:
+    bundle = _policy_bundle()
+    controller = _shared_controller()
+    session = ResolutionSession()
+    config = _config()
+    display_ctx = make_display_context(
+        console=Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME)
+    )
+    deps = _deps_with_controller(config, display_ctx, controller)
+    bound = ensure_session_controller(session, bundle, pipeline_deps=deps, config=config)
+    assert bound is controller
     assert session.recovery_controller is controller
-    ledger = session.ledger
-    assert ledger is not None
-    assert isinstance(ledger, AgentFailureLedger)
-    assert ledger is controller.ledger
+    assert session.ledger is controller.ledger
+    assert isinstance(session.ledger, AgentFailureLedger)
 
 
 def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces() -> None:
     clock = FakeClock()
     ledger = _RecordingLedger(clock=clock)
-    session = ResolutionSession(ledger=ledger)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            ledger=ledger,
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
+        )
+    )
+    session = ResolutionSession(recovery_controller=controller, ledger=ledger)
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(session, "dead_agent")
@@ -317,8 +393,7 @@ def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces()
 
 
 def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -> None:
-    bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
+    controller = _shared_controller()
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     assert session_ledger(session) is controller.ledger
@@ -344,8 +419,14 @@ def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -
 def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+
+    del monkeypatch
     bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
+    controller = _shared_controller()
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     ledger = controller.ledger
@@ -363,46 +444,46 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
 
     executed: list[str] = []
 
-    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
-        if args and isinstance(args[0], InvokeAgentEffect):
-            executed.append(args[0].agent_name)
+    def _stub_runner(effect: object, *args: object, **kwargs: object) -> PipelineEvent:
+        del args, kwargs
+        if isinstance(effect, InvokeAgentEffect):
+            executed.append(effect.agent_name)
         return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.session._effect_executor_module.execute_agent_effect",
-        _fake_execute,
-    )
 
     prompt = tmp_path / "prompt.md"
     prompt.write_text("resolve conflict", encoding="utf-8")
     config = _config()
     console = Console(file=StringIO(), force_terminal=False, color_system=None, theme=RALPH_THEME)
     display_ctx = make_display_context(console=console)
-    deps = build_default_pipeline_deps(config, display_ctx)
+    deps = _deps_with_controller(config, display_ctx, controller)
     scope = WorkspaceScope(tmp_path)
 
-    result = invoke_resolution_agent(
-        agent_name="benched_agent",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
+    token = install_agent_effect_dependencies(
+        agent_runner=_stub_runner,
+        recovery_controller=controller,
     )
+    try:
+        result = invoke_resolution_agent(
+            agent_name="benched_agent",
+            prompt_path=prompt,
+            config=config,
+            pipeline_deps=deps,
+            workspace_scope=scope,
+            policy_bundle=bundle,
+            display=None,
+            display_context=display_ctx,
+            session=session,
+        )
+    finally:
+        reset_agent_effect_dependencies(token)
 
-    assert result.succeeded is False
+    assert result.event != PipelineEvent.AGENT_SUCCESS
     assert executed == []
-    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    assert session.last_failure_cause is ResolutionFailureCause.NONE
-    assert session.charge_conflict_budget is False
+    assert not controller.agent_eligibility(PHASE_RESOLUTION, "benched_agent").is_eligible
 
 
 def test_integration_seam_resolves_the_controller_ledger_for_the_active_session() -> None:
-    bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
+    controller = _shared_controller()
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     with bind_active_rebase_resolution_session(session):
@@ -429,13 +510,21 @@ def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> No
 
     without_ledger = ResolutionSession()
     assert session_ledger(without_ledger) is None
-    without_ledger.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(without_ledger, "unavailable_agent")
-    assert skipped_candidates(
-        without_ledger,
-        ("unhealthy_agent", "unavailable_agent"),
-    ) == frozenset({"unavailable_agent"})
+    assert (
+        skipped_candidates(
+            without_ledger,
+            ("unhealthy_agent", "unavailable_agent"),
+        )
+        == frozenset()
+    )
 
+
+def test_without_shared_controller_dead_surface_fails_closed() -> None:
+    without_controller = ResolutionSession()
+    without_controller.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    with pytest.raises(RecoveryControllerUnavailableError):
+        remember_dead_surface(without_controller, "unavailable_agent")
+    assert session_ledger(without_controller) is None
 
 def test_continue_rounds_without_controller_or_ledger_fails_closed() -> None:
     session = ResolutionSession()

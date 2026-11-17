@@ -301,13 +301,14 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
 
     if not (
         isinstance(node.func, ast.Name)
-        and node.func.id == "getattr"
+        and node.func.id in {"getattr", "read_attr"}
         and len(node.args) >= _GETATTR_MIN_ARGS
         and isinstance(node.args[1], ast.Constant)
         and isinstance(node.args[1].value, str)
     ):
         return violations
 
+    probe = node.func.id
     arg_val = node.args[1].value
     if arg_val in ("consecutive_unproductive", "total_unproductive") and not (
         is_test_counter_read_allowed(rel_path, arg_val)
@@ -317,7 +318,7 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                 path=rel_path,
                 line=node.lineno,
                 rule="test_counter_access",
-                detail=f"Test accesses ledger counter attribute '{arg_val}' via getattr.",
+                detail=f"Test accesses ledger counter attribute '{arg_val}' via {probe}.",
             )
         )
     elif _is_forbidden_target_name(arg_val) and not is_transitional_allowed(rel_path, arg_val):
@@ -326,7 +327,7 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                 path=rel_path,
                 line=node.lineno,
                 rule="test_deleted_tracker_access",
-                detail=f"Test accesses deleted tracker/counter attribute '{arg_val}' via getattr.",
+                detail=f"Test accesses deleted tracker/counter attribute '{arg_val}' via {probe}.",
             )
         )
 
@@ -341,7 +342,7 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                 line=node.lineno,
                 rule="test_private_ledger_access",
                 detail=(
-                    f"Test accesses private attribute '{arg_val}' on ledger object via getattr; "
+                    f"Test accesses private attribute '{arg_val}' on ledger object via {probe}; "
                     "tests must use the public seam only."
                 ),
             )
@@ -433,6 +434,19 @@ def _violation_sort_key(violation: SingleOwnerViolation) -> tuple[str, int]:
 
 
 def verify_counter_access_detection() -> None:
+    src_cooldown_construction = """
+def build_private_ledger(clock):
+    return AgentFailureLedger(clock=clock)
+"""
+    v_cooldown = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_scratch_private_ledger.py",
+        src_cooldown_construction,
+    )
+    require(
+        any(v.rule == "production_cooldown_state_construction_outside_owner" for v in v_cooldown),
+        f"Expected cooldown-state construction violation, got: {v_cooldown}",
+    )
+
     src_test_attr = """
 def test_sample(ledger, fact):
     outcome = ledger.record(fact)

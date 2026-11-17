@@ -10,6 +10,7 @@ from loguru import logger
 from ralph.agents.invoke import AgentInvocationError
 from ralph.git.errors import GitOperationError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_attempt_outcome as _emit_attempt_outcome,
 )
@@ -35,6 +36,7 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -46,7 +48,6 @@ from ralph.pipeline.resolution_outcome import (
     assert_never,
 )
 from ralph.recovery.attempt_facts import AttemptFacts
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -203,39 +204,82 @@ def _handle_candidate_failure(
     *,
     workspace_changed: bool = False,
 ) -> None:
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-    del invoker_result
+    del invoker_result, policy_bundle
     fault = classify_attempt_fault(session.terminal_reason)
     _remember_dead_surface(session, agent_name)
     if session.terminal_reason is None:
         session.terminal_reason = (
             attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
         )
-    if isinstance(session.last_attempt_failure, BaseException):
-        typed_outcome = ConflictAttemptOutcome.RAW
-        exc: BaseException | None = session.last_attempt_failure
-    else:
-        typed_outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
-        exc = None
-    _driver_mod.finalize_resolution_attempt_failure(
-        session,
-        agent_name,
-        facts=AttemptFacts(
-            artifact_valid=False,
+    from ralph.recovery.controller import RecoveryController
+
+    already_finalized = session.last_attempt_result is not None
+    controller = session.recovery_controller
+    if not already_finalized and isinstance(controller, RecoveryController):
+        _finalize_mock_path_failure(
+            session,
+            controller,
+            agent_name,
+            candidates=candidates,
+            offset=offset,
             workspace_changed=workspace_changed,
-            unresolved_count=len(session.unresolved_paths),
-        ),
-        exc=exc,
-        outcome=typed_outcome,
-        candidates=candidates,
-        failed_index=offset,
-        policy_bundle=policy_bundle,
-    )
+        )
     if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     else:
         session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+
+def _finalize_mock_path_failure(
+    session: ResolutionSession,
+    controller: object,
+    agent_name: str,
+    *,
+    candidates: tuple[str, ...],
+    offset: int,
+    workspace_changed: bool,
+) -> None:
+    from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
+    from ralph.recovery.controller import RecoveryController
+
+    if not isinstance(controller, RecoveryController):
+        raise RecoveryControllerUnavailableError(
+            "conflict resolution requires the run's shared RecoveryController; none is bound"
+        )
+    facts = AttemptFacts(
+        artifact_valid=False,
+        workspace_changed=workspace_changed,
+        unresolved_count=len(session.unresolved_paths),
+    )
+    exc = (
+        session.last_attempt_failure
+        if isinstance(session.last_attempt_failure, BaseException)
+        else None
+    )
+    outcome = controller.finalize_attempt(
+        PHASE_RESOLUTION,
+        agent_name,
+        facts=facts,
+        attempt_failed=True,
+        exc=exc,
+    )
+    session.last_attempt_result = AttemptResult(
+        event=PipelineEvent.AGENT_FAILURE,
+        facts=facts,
+        outcome=outcome,
+        attempt_outcomes=((1, outcome),),
+    )
+    if outcome.reason:
+        session.last_recovery_reason = outcome.reason
+        session.last_attempt_evidence = outcome.reason
+    selection = controller.preferred_agent_index(
+        PHASE_RESOLUTION,
+        list(candidates) if candidates else [agent_name],
+        current_index=offset,
+        exclude_current=True,
+    )
+    if selection.index is not None:
+        session.chain_cursor = selection.index
 
 
 def _execute_single_candidate(
@@ -264,7 +308,14 @@ def _execute_single_candidate(
     succeeded = False
     try:
         raw_result = runner(agent_name, prompt_path, round_index)
-        if isinstance(raw_result, bool):
+        if isinstance(raw_result, AttemptResult):
+            session.last_attempt_result = raw_result
+            from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+            invoker_result = _driver_mod.stop_outcome_from_attempt_result(
+                session, raw_result, agent_name=agent_name
+            )
+        elif isinstance(raw_result, bool):
             invoker_result = (
                 ResolvedOutcome()
                 if raw_result
@@ -392,7 +443,7 @@ def _run_one_round(
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
             if revived or not _revive_cooling_candidates(
-                session, candidates, visited, skipped, cohort_wait_ms
+                session, candidates, visited, skipped, cohort_wait_ms, display=display
             ):
                 return RoundAttempt(
                     succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran
@@ -400,8 +451,11 @@ def _run_one_round(
             revived = True
             continue
         agent_name = candidates[selected]
-        _driver_mod.emit_conflict_phase_line(
-            display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
+        _driver_mod.emit_agent_lifecycle_status(
+            display,
+            "INVOKING",
+            f"round {round_index}: {agent_name} to resolve the conflicts",
+            "cyan",
         )
         succeeded, invoker_result, progress = _execute_single_candidate(
             runner,
@@ -456,9 +510,9 @@ def _revive_cooling_candidates(
     visited: set[int],
     skipped: frozenset[str],
     cohort_wait_ms: int,
+    display: ParallelDisplay | None = None,
 ) -> bool:
-    from ralph.pipeline import run_loop
-    from ralph.pipeline.state import PipelineState
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
     from ralph.recovery.controller import RecoveryController
 
     controller = session.recovery_controller
@@ -479,19 +533,12 @@ def _revive_cooling_candidates(
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, cohort)
     if wait_ms <= 0:
         return False
-    state = (
-        session.recovery_state
-        if isinstance(session.recovery_state, PipelineState)
-        else PipelineState(phase=PHASE_RESOLUTION)
+    _driver_mod._enter_unavailable_wait_and_sleep(
+        session,
+        wait_ms,
+        display,
+        sleep=controller.clock.sleep,
     )
-    state = state.copy_with(last_retry_delay_ms=wait_ms)
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-    run_loop.handle_cooldown_delay(
-        state,
-        run_loop.CooldownWaitContext(sleep=_driver_mod._sleep_seconds, controller=controller),
-    )
-    controller.prune_expired()
     return any(
         status.is_eligible
         for _agent, status in controller.chain_eligibility(PHASE_RESOLUTION, cohort)

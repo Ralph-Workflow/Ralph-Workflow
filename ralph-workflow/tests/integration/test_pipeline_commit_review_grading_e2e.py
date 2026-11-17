@@ -27,6 +27,7 @@ from ralph.git.operations import (
 from ralph.git.proposal_seal import seal_pending
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.mcp.server import append_wire_record
+from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.mcp.tools.coordination import handle_declare_complete
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from ralph.phases.required_artifacts import (
@@ -311,6 +312,40 @@ def _selected_agent_for_phase(policy_bundle: PolicyBundle, phase: str) -> str:
     return chain_config.agents[0]
 
 
+class _FakeInner:
+    endpoint = "http://127.0.0.1:12345/mcp"
+    process = None
+
+
+class _FakeBridge(RestartAwareMcpBridge):
+    def __init__(self) -> None:
+        self._run_id = "test-run-id"
+        self._restart_count = 0
+        self._inner = _FakeInner()
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    def start(self) -> None:
+        pass
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+    def endpoint_uri(self) -> str:
+        return self.agent_endpoint_uri()
+
+    def shutdown(self) -> None:
+        pass
+
+    def reset_tool_registry(self) -> None:
+        pass
+
+    def reset_session_budget(self) -> None:
+        pass
+
+
 def _build_pipeline_deps(
     *,
     repo: Path,
@@ -321,6 +356,7 @@ def _build_pipeline_deps(
 ) -> PipelineDeps:
     deps = make_test_pipeline_deps(
         display_context,
+        bridge=_FakeBridge(),
         phase_prompt_materializer=materialize_prompt_for_phase,
         artifact_requirements_resolver=resolve_phase_required_artifact,
         policy_bundle=policy_bundle,

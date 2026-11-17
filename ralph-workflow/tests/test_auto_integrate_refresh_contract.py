@@ -58,7 +58,7 @@ def _inject_integration_runner(
     )
     monkeypatch.setattr(
         auto_integrate,
-        "resolver_allowed",
+        "_configured_resolver_allowed",
         lambda _state, _target, _identity, **_kwargs: True,
     )
 

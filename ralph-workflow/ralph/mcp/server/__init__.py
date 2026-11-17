@@ -109,7 +109,6 @@ _LAZY_MODULES = {
     "create_handover_socketpair": "ralph.mcp.server._handover_protocol",
     "describe_tool_set_diff": "ralph.mcp.server._handover_protocol",
     "exit_handler_override": "ralph.mcp.server._pre_serve_overrun",
-    "factory_impl": "ralph.mcp.server.factory_impl",
     "failure_signature": "ralph.mcp.server._transport_repetition_tracker",
     "get_default_metrics": "ralph.mcp.server._metrics",
     "overrun_handler_override": "ralph.mcp.server._pre_serve_overrun",
@@ -134,11 +133,17 @@ _LAZY_MODULES = {
     "wire_evidence_for": "ralph.mcp.server._wire_ledger",
 }
 
+_LAZY_MODULE_ATTRIBUTES: dict[str, str] = {
+    "reset_saturated_dispatch": "reset_default",
+    "submit_saturated_dispatch": "submit",
+}
+
 
 def __getattr__(name: str) -> object:
     target = _LAZY_MODULES.get(name)
     if target is not None:
-        return cast("object", getattr(import_module(target), name))
+        module = import_module(target)
+        return cast("object", getattr(module, _LAZY_MODULE_ATTRIBUTES.get(name, name)))
     submodule = f"{__name__}.{name}"
     try:
         return import_module(submodule)

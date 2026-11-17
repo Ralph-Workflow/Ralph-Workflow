@@ -358,6 +358,18 @@ class RebaseState(RalphBaseModel):
             update={"last_outcome": RebaseOutcomeKind.LADDER_ESCALATION, "last_reason": reason}
         )
 
+    def with_complete_in_place_decision(self, reason: str | None = None) -> Self:
+        from ralph.pipeline._integration_strategy import IntegrationStrategy
+
+        return self.model_copy(
+            update={
+                "last_decision": IntegrationStrategy.COMPLETE_IN_PLACE.value,
+                "last_reason": reason
+                or self.last_reason
+                or "conflict resolution strategies exhausted; completing in place",
+            }
+        )
+
     def is_terminal_action(self) -> bool:
         return self.last_outcome is not None and self.last_outcome.is_terminal()
 

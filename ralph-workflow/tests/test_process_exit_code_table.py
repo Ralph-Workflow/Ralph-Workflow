@@ -83,7 +83,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "1cdac078d9d6eebe691c2a5f47b6c92663ac254fdb33828b0dffc6902cd834ca"
+    "f77426bb9a2f58e48dfd24c3d1a1085825cc6fb71cfcc427f43f17d6f7893b91"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds recovery:feature-tip-exists (cat-file -e of a recorded "

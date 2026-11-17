@@ -3,8 +3,9 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast, runtime_checkable
 
+from ralph._typed_attrs import attr_or_none
 from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.execution_state import GenericExecutionStrategy
@@ -28,6 +29,7 @@ from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
     _agent_process_label,
+    _as_idle_diagnostic,
     _has_meaningful_output_from_reader,
     _is_resumable_fire_reason,
     _subprocess_env,
@@ -101,7 +103,7 @@ def _terminate_pty_tree(supervisor: AttemptSupervisor) -> None:
 
 
 def _process_teardown(ctx: AgentRunCtx) -> ProcessTeardown | None:
-    return ctx.process_teardown if hasattr(ctx, "process_teardown") else None
+    return cast("ProcessTeardown | None", attr_or_none(ctx, "process_teardown"))
 
 
 def _spawn_pty_with_agy_log_offset(
@@ -223,7 +225,9 @@ def run_pty_and_read_lines(
                         or pty_reader.discover_captured_session_id()
                         or expected_session_id
                     ),
-                    diagnostic=exc.diagnostic,
+                    diagnostic=(
+                        _as_idle_diagnostic(exc.diagnostic) if exc.diagnostic is not None else None
+                    ),
                 ),
             )
             publish_attempt_facts(timeout_error, termination)

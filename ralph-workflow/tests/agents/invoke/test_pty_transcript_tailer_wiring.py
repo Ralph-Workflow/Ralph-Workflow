@@ -207,6 +207,9 @@ def test_transcript_thread_wires_parent_record_to_tailer_dispatch_and_completion
     reader._lines_event = threading.Event()
     reader._captured_session_id = None
     reader._subagent_tails = None
+    reader._watchdog = None
+    reader._subagent_sink_holder = {}
+    reader._pre_existing_transcript_names = frozenset()
     reader._clock = _MonotonicClock()
     tailer_started = _install_tailer_start_signal(monkeypatch, _pty_module)
 
@@ -289,15 +292,17 @@ def test_transcript_tailer_regression_completion_does_not_resurrect_prepopulated
     assert str(child_path) in tailer._tails
 
     def block_forward(
+        _self: ClaudeSubagentTranscriptTails,
         _parser: ClaudeInteractiveTranscriptParser,
         _chunk: str,
         _transcript_path: Path,
         _meta_dict: dict[str, object] | None,
     ) -> None:
+        del _self
         advance_started.set()
         assert allow_advance_to_finish.wait(timeout=1.0)
 
-    monkeypatch.setattr(tailer, "_forward_chunk", block_forward)
+    monkeypatch.setattr(ClaudeSubagentTranscriptTails, "_forward_chunk", block_forward)
     advance_thread = threading.Thread(target=tailer._advance_all_tails)
     advance_thread.start()
     assert advance_started.wait(timeout=1.0)
