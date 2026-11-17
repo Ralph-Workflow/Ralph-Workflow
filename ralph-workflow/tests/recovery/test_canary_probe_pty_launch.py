@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 import subprocess
 import sys
@@ -130,6 +131,29 @@ def test_trusted_parent_cwd_writes_marker_and_passes(
     assert probe_area.exists()
     assert list(probe_area.glob("canary-probe-*")) == []
     assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
+
+
+@pytest.mark.timeout_seconds(8)
+def test_production_probe_launch_is_non_interactive_and_pre_trusted(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    argv_record = tmp_path / "stub-argv.json"
+    result = run_canary_probe(
+        stub_agent_config,
+        timeout_s=3,
+        trusted_parent=trusted_root,
+        extra_env=_probe_env(trusted_root, STUB_ARGV_RECORD=str(argv_record)),
+    )
+    assert result.outcome is ProbeOutcome.PASSED
+    assert result.detail == "marker_written"
+    argv = json.loads(argv_record.read_text(encoding="utf-8"))
+    assert "-p" in argv, (
+        "the production probe launch must run the CLI non-interactively; "
+        f"the spawned argv was: {argv!r}"
+    )
 
 
 def test_stub_refuses_pipe_route(tmp_path: Path) -> None:

@@ -147,24 +147,6 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
         1680,
         "effect executor dispatch owned by the registered effect route",
     ),
-    (
-        "ralph/pipeline/plumbing/commit_plumbing.py",
-        "_attempt_deps",
-        198,
-        "commit attempt invoke seam reached only through the registered commit route",
-    ),
-    (
-        "ralph/pipeline/plumbing/commit_plumbing.py",
-        "_attempt_deps",
-        206,
-        "commit attempt invoke seam reached only through the registered commit route",
-    ),
-    (
-        "ralph/pipeline/plumbing/commit_plumbing.py",
-        "invoke_commit_agent_attempt",
-        974,
-        "commit module agent invocation owned by the registered commit route",
-    ),
 )
 _BOUNDARY_TRIGGERS: Final[tuple[str, ...]] = (
     "RecoveryController",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -674,6 +675,29 @@ def _b11_nested_dispatch_source(function_name: str, call_line: int) -> str:
         + f"def {function_name}(target: AgentConfig):\n"
         + "    def dispatch():\n"
         + "        return invoke_agent(target)\n"
+    )
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    ("path", "function_name", "call_line", "_justification"),
+    B11_ALLOWLIST,
+)
+def test_b11_allowlist_entries_pin_real_dispatch_sites(
+    path: str,
+    function_name: str,
+    call_line: int,
+    _justification: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = (_REPO_ROOT / path).read_text(encoding="utf-8")
+    monkeypatch.setattr(boundary_rules, "b11_allowlist_justification", lambda *_args: None)
+    violations = collect_boundary_violations(path, source)
+
+    assert any(item.startswith(f"{path}:{call_line} B11 ") for item in violations), (
+        f"stale B11 allowlist entry: {path}:{call_line} in {function_name}"
     )
 
 

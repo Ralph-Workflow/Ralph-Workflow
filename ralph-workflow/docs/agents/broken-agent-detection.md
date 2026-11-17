@@ -4,7 +4,7 @@ Ralph treats an agent as broken when circumstantial evidence shows that it canno
 
 ## Detection
 
-`BROKEN_AGENT_OUTPUT_GRACE_SECONDS` is 12 seconds. It is intentionally shorter than the 120-second `NO_OUTPUT_AT_START_SECONDS` watchdog threshold.
+`BROKEN_AGENT_OUTPUT_GRACE_SECONDS` is 12 seconds. It is intentionally shorter than the 360-second `NO_OUTPUT_AT_START_SECONDS` watchdog threshold.
 
 Both subprocess and PTY line readers enforce the grace window while the process is still alive. If no meaningful output appears by the deadline, the reader terminates the process tree and raises `BrokenAgentExitError` with `reason="no_output"`.
 

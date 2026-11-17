@@ -128,13 +128,13 @@ def test_no_negative_is_ever_marked_spent_or_left_unavailable() -> None:
     assert offenders == []
 
 
-def test_the_genuine_agy_case_is_cleared_by_a_passing_probe() -> None:
+def test_the_genuine_positive_case_is_cleared_by_a_passing_probe() -> None:
     agy = next(case for case in load_corpus() if case.label == "positive")
 
     assert _replay(agy, ProbeOutcome.PASSED).benched is False
 
 
-def test_the_genuine_agy_case_benches_on_the_first_attempt_when_the_probe_fails() -> None:
+def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails() -> None:
     positives = [case for case in load_corpus() if case.label == "positive"]
 
     assert [case.id for case in positives] == ["agy_quota_error_step"]
@@ -146,7 +146,7 @@ def test_the_genuine_agy_case_benches_on_the_first_attempt_when_the_probe_fails(
 
 
 @pytest.mark.parametrize("outcome", [ProbeOutcome.INCONCLUSIVE, None])
-def test_the_genuine_agy_case_stays_unknown_when_the_probe_cannot_decide(
+def test_the_genuine_positive_case_stays_unknown_when_the_probe_cannot_decide(
     outcome: ProbeOutcome | None,
 ) -> None:
     agy = next(case for case in load_corpus() if case.label == "positive")
