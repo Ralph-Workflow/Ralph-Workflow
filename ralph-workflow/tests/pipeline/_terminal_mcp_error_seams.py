@@ -248,15 +248,22 @@ def _deps_with_terminal_supervisor(
     *,
     bridge: RestartAwareMcpBridge | None = None,
 ) -> tuple[PipelineDeps, _TerminalSupervisorFactory]:
+    import dataclasses
+
+    from tests._resolver_controller import make_resolver_controller
+
     factory = _TerminalSupervisorFactory()
-    deps = make_test_pipeline_deps(
-        display_context=make_display_context(),
-        bridge=bridge if bridge is not None else _TerminalBridge(),
-        master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
-        registry_factory=_RegistryForAnyAgentFactory(),
-        check_mcp_bridge_health_fn=_no_bridge_health_check,
-        mcp_supervisor_factory=factory,
-        heartbeat_policy_from_env_fn=_fast_heartbeat,
+    deps = dataclasses.replace(
+        make_test_pipeline_deps(
+            display_context=make_display_context(),
+            bridge=bridge if bridge is not None else _TerminalBridge(),
+            master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
+            registry_factory=_RegistryForAnyAgentFactory(),
+            check_mcp_bridge_health_fn=_no_bridge_health_check,
+            mcp_supervisor_factory=factory,
+            heartbeat_policy_from_env_fn=_fast_heartbeat,
+        ),
+        recovery_controller=make_resolver_controller(),
     )
     return deps, factory
 

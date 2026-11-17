@@ -26,7 +26,8 @@ from tests._conflict_resolution_phase_parity_seams import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_the_executor_names_a_missing_agent_instead_of_failing_anonymously": (
-        "agent-not-found naming lives in _agent_not_found_failure; the branch delegates to that helper"
+        "the agent-not-found branch names the cause and the missing agent inline; "
+        "the retired helper it used to delegate to is gone"
     ),
     "test_work_that_ran_and_did_not_finish_is_incomplete_not_refused": (
         "FakeClock advances shared cooldown waits so incomplete-success cannot wall-hang"
@@ -250,7 +251,7 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     clock = FakeClock()
     monkeypatch.setattr(
-        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 0.0))
+        driver_module, "_sleep_seconds", lambda seconds: clock.advance(max(seconds, 65.0))
     )
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     lines: list[str] = []
@@ -358,15 +359,12 @@ def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously() -> 
     marker = "if agent_config is None:"
     assert marker in source
     branch = source[source.index(marker) : source.index(marker) + 900]
-    assert "_agent_not_found_failure" in branch, (
-        "the agent-not-found branch must route through the named failure helper"
+    assert "AGENT_NOT_FOUND_REASON" in branch, (
+        "the agent-not-found branch must name the cause on the retry intent"
     )
-    helper_marker = "def _agent_not_found_failure"
-    assert helper_marker in source
-    helper = source[source.index(helper_marker) : source.index(helper_marker) + 500]
-    assert "AGENT_NOT_FOUND_REASON" in helper, (
-        "the agent-not-found helper must name the cause on the retry intent"
-    )
-    assert "skip_same_agent_retries=True" in helper, (
+    assert "skip_same_agent_retries=True" in branch, (
         "retrying a name the registry cannot produce is futile"
+    )
+    assert "failed_agent_name=effect.agent_name" in branch, (
+        "the agent-not-found branch must name the missing agent"
     )

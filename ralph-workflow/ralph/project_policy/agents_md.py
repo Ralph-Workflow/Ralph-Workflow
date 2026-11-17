@@ -76,6 +76,9 @@ class _AgentsReadyTemplate(str):
         values.update(kwargs)
         return str.format(self, *args, **values)
 
+    def render(self, *args: object, **kwargs: object) -> str:
+        return self.format(*args, **kwargs)
+
 
 _AGENTS_READY_TEMPLATE = _AgentsReadyTemplate(
     """{begin}

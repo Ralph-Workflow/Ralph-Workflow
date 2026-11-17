@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Protocol, TypedDict
 
+import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
@@ -19,6 +20,8 @@ from ralph.pipeline.auto_integrate_recovery_record import (
 )
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "_clean_gate_state": (

@@ -194,7 +194,7 @@ def run_attempt_loop(
         identity,
         ledger=effective_ledger,
         candidates=candidates,
-    )
+    ) and not state.resolution_exhausted
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:

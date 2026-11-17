@@ -4,9 +4,9 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.explore._bench_product_baseline import nearest_rank_p95
-from ralph.mcp.tools.coordination import CoordinationSessionLike
 
 if TYPE_CHECKING:
+    from ralph.mcp.tools.coordination import CoordinationSessionLike
     from ralph.workspace import Workspace
 
 if TYPE_CHECKING:

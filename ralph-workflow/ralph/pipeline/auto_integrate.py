@@ -375,15 +375,18 @@ def _auto_integrate_after_commit_entry(
     identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
     effective_ledger = resolve_failure_ledger(ledger)
     allowed = (
-        _configured_resolver_allowed(
-            state,
-            target,
-            identity,
-            ledger=effective_ledger,
-            candidates=candidates,
+        (
+            _configured_resolver_allowed(
+                state,
+                target,
+                identity,
+                ledger=effective_ledger,
+                candidates=candidates,
+            )
+            if target
+            else True
         )
-        if target
-        else True
+        and not state.resolution_exhausted
     )
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed

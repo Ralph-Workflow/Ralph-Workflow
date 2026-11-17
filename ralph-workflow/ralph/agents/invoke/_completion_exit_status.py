@@ -110,3 +110,7 @@ def read_bounded_stderr(handle: object) -> str:
         return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""
     except (OSError, RuntimeError, ValueError, AttributeError, UnicodeDecodeError):
         return ""
+
+
+def stderr_pipe_available(handle: object) -> bool:
+    return isinstance(handle, _StderrHandle) and handle.stderr is not None

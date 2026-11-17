@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
 from ralph.pipeline.auto_integrate import (
@@ -13,6 +14,7 @@ from ralph.pipeline.auto_integrate import (
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -22,6 +24,27 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 _TEST_RESOLVER_ATTEMPTS = 2
+_RESOLUTION_PHASE = "rebase_conflict_resolution"
+_RESOLVER_CANDIDATES = ("resolver",)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically": (
+        "launch veto is shared ledger eligibility, not resolution_exhausted; a cooling "
+        "ledger aborts the endpoint merge bit without invoking the resolver"
+    ),
+    "test_new_feature_commit_gets_a_fresh_resolver_budget": (
+        "after cooldown expiry a changed feature tip inherits a fresh consecutive_conflicts "
+        "count; launch permission still follows shared eligibility"
+    ),
+    "test_moved_mainline_tip_gets_a_fresh_resolver_budget": (
+        "after cooldown expiry a moved target tip inherits a fresh consecutive_conflicts "
+        "count; launch permission still follows shared eligibility"
+    ),
+    "test_unchanged_conflict_after_a_skip_stays_suppressed": (
+        "an unchanged conflict identity with a still-cooling ledger stays suppressed after "
+        "a dirty-tree skip"
+    ),
+}
 
 
 def auto_integrate_after_commit(
@@ -40,6 +63,48 @@ def auto_integrate_after_commit(
         if rec is not None and rec.resolution_gate_key is not None:
             write_record(repo_root, rec.with_resolution_gate_key(None))
     return _auto_integrate_after_commit(config, workspace_scope, state, **kwargs)
+
+
+def _budget_ledger(
+    *,
+    consecutive_limit: int = _TEST_RESOLVER_ATTEMPTS,
+    base_cooldown_seconds: float = 10.0,
+) -> tuple[FakeClock, AgentFailureLedger]:
+    clock = FakeClock()
+    ledger = AgentFailureLedger(
+        clock=clock,
+        consecutive_limit=consecutive_limit,
+        base_cooldown_seconds=base_cooldown_seconds,
+    )
+    return clock, ledger
+
+
+def _record_resolver_failure(ledger: AgentFailureLedger) -> None:
+    ledger.record(
+        AttemptFact(
+            phase=_RESOLUTION_PHASE,
+            agent="resolver",
+            artifact_valid=False,
+        )
+    )
+
+
+def _clear_resolution_gate(tmp_git_repo: Path) -> None:
+    from ralph.pipeline.auto_integrate_record import read_record, write_record
+
+    rec = read_record(tmp_git_repo)
+    if rec is not None and rec.resolution_gate_key is not None:
+        write_record(tmp_git_repo, rec.with_resolution_gate_key(None))
+
+
+def _abort_retained_merge(tmp_git_repo: Path) -> None:
+    from ralph.git.merge import abort_merge
+    from ralph.pipeline.auto_integrate_record import clear_record
+
+    abort_merge(tmp_git_repo)
+    _run(tmp_git_repo, "rebase", "--abort")
+    clear_record(tmp_git_repo)
+    _clear_resolution_gate(tmp_git_repo)
 
 
 def _run(repo_root: Path, *args: str, timeout: float = 10.0) -> subprocess.CompletedProcess[str]:
@@ -97,30 +162,35 @@ def _diverged_conflicting_repo(tmp_git_repo: Path) -> str:
 
 
 def _exhaust_budget(
-    tmp_git_repo: Path, config: UnifiedConfig, resolver: ConflictResolver
+    tmp_git_repo: Path,
+    config: UnifiedConfig,
+    resolver: ConflictResolver,
+    *,
+    ledger: AgentFailureLedger,
 ) -> RebaseState:
-    from ralph.pipeline.auto_integrate_record import read_record, write_record
-
     state = RebaseState()
     for _ in range(_TEST_RESOLVER_ATTEMPTS):
-        rec = read_record(tmp_git_repo)
-        if rec is not None and rec.resolution_gate_key is not None:
-            write_record(tmp_git_repo, rec.with_resolution_gate_key(None))
+        _clear_resolution_gate(tmp_git_repo)
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
             state,
             conflict_resolver=resolver,
+            ledger=ledger,
+            candidates=_RESOLVER_CANDIDATES,
         )
         assert result is not None
         assert result.last_action == "conflict"
+        _record_resolver_failure(ledger)
         state = result
-    exhausted_state = state.model_copy(update={"resolution_exhausted": True})
+    assert not ledger.any_eligible(_RESOLUTION_PHASE, _RESOLVER_CANDIDATES)
     suppressed_result = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
-        exhausted_state,
+        state,
         conflict_resolver=resolver,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
     assert suppressed_result is not None
     assert suppressed_result.last_action == "conflict"
@@ -285,6 +355,10 @@ def test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically(
 ) -> None:
     base = _diverged_conflicting_repo(tmp_git_repo)
     invocations: list[str] = []
+    _clock, ledger = _budget_ledger()
+    for _ in range(_TEST_RESOLVER_ATTEMPTS):
+        _record_resolver_failure(ledger)
+    assert not ledger.any_eligible(_RESOLUTION_PHASE, _RESOLVER_CANDIDATES)
 
     def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
@@ -295,13 +369,10 @@ def test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically(
     result = auto_integrate_after_commit(
         _build_config(base),
         WorkspaceScope(tmp_git_repo),
-        RebaseState(
-            last_action="conflict",
-            last_target=base,
-            consecutive_conflicts=_TEST_RESOLVER_ATTEMPTS,
-            resolution_exhausted=True,
-        ),
+        RebaseState(),
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
 
     assert invocations == []
@@ -317,23 +388,29 @@ def test_new_feature_commit_gets_a_fresh_resolver_budget(
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     invocations: list[str] = []
+    clock, ledger = _budget_ledger()
 
     def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
         return RetryLaterOutcome(on_change="conflict state changes")
 
-    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
+    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves, ledger=ledger)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
     assert spent.last_conflict_feature_sha is not None
     assert spent.last_conflict_target_sha is not None
 
+    _abort_retained_merge(tmp_git_repo)
     new_feature_sha = _commit(tmp_git_repo, "shared.txt", "feature version 2\n", "feature shared 2")
+    clock.advance(ledger.base_cooldown_seconds + 1.0)
+    assert ledger.any_eligible(_RESOLUTION_PHASE, _RESOLVER_CANDIDATES)
 
     result = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
         spent,
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
 
     assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 1)
@@ -351,24 +428,30 @@ def test_moved_mainline_tip_gets_a_fresh_resolver_budget(
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     invocations: list[str] = []
+    clock, ledger = _budget_ledger()
 
     def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
         return RetryLaterOutcome(on_change="conflict state changes")
 
-    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
+    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves, ledger=ledger)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
 
+    _abort_retained_merge(tmp_git_repo)
     _run(tmp_git_repo, "checkout", base)
     _commit(tmp_git_repo, "shared.txt", "base version 2\n", "base shared 2")
     moved_target_sha = _run(tmp_git_repo, "rev-parse", f"refs/heads/{base}").stdout.strip()
     _run(tmp_git_repo, "checkout", "feature")
+    clock.advance(ledger.base_cooldown_seconds + 1.0)
+    assert ledger.any_eligible(_RESOLUTION_PHASE, _RESOLVER_CANDIDATES)
 
     result = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
         spent,
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
 
     assert invocations == [base] * (_TEST_RESOLVER_ATTEMPTS + 1)
@@ -384,20 +467,24 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     invocations: list[str] = []
+    _clock, ledger = _budget_ledger()
 
     def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         invocations.append(target)
         return RetryLaterOutcome(on_change="conflict state changes")
 
-    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
+    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves, ledger=ledger)
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
 
+    _abort_retained_merge(tmp_git_repo)
     (tmp_git_repo / "base_seed.txt").write_text("dirty\n", encoding="utf-8")
     skipped = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
         spent,
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
     assert skipped is not None
     assert skipped.last_action == "skipped"
@@ -411,12 +498,14 @@ def test_unchanged_conflict_after_a_skip_stays_suppressed(
         WorkspaceScope(tmp_git_repo),
         skipped,
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
 
     assert invocations == [base] * _TEST_RESOLVER_ATTEMPTS
     assert result is not None
     assert result.last_reason is not None
-    assert "budget" in result.last_reason
+    assert "budget" in result.last_reason or "pending" in result.last_reason
 
 
 def test_auto_integrate_regression_resolver_invocation_failure_preserves_rebase_budget(
@@ -458,17 +547,20 @@ def test_unexpected_failure_mid_attempt_does_not_refund_the_budget(
 ) -> None:
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
+    _clock, ledger = _budget_ledger()
 
     def _never_resolves(repo_root: Path, target: str) -> RetryLaterOutcome:
         return RetryLaterOutcome(on_change="conflict state changes")
 
-    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves)
+    spent = _exhaust_budget(tmp_git_repo, config, _never_resolves, ledger=ledger)
 
     retained = auto_integrate_after_commit(
         config,
         WorkspaceScope(tmp_git_repo),
         spent,
         conflict_resolver=_never_resolves,
+        ledger=ledger,
+        candidates=_RESOLVER_CANDIDATES,
     )
 
     assert retained is not None

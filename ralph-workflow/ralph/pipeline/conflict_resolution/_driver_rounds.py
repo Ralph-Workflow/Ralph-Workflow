@@ -457,6 +457,10 @@ def _revive_cooling_candidates(
     skipped: frozenset[str],
     cohort_wait_ms: int,
 ) -> bool:
+    from types import SimpleNamespace
+
+    from ralph.pipeline import run_loop
+    from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
 
     controller = session.recovery_controller
@@ -477,11 +481,25 @@ def _revive_cooling_candidates(
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, cohort)
     if wait_ms <= 0:
         return False
-    wait_s = wait_ms / 1000.0
-    if hasattr(controller._clock, "advance"):
-        controller._clock.advance(wait_s)
-    else:
-        controller.clock.sleep(wait_s)
+    state = (
+        session.recovery_state
+        if isinstance(session.recovery_state, PipelineState)
+        else PipelineState(phase=PHASE_RESOLUTION)
+    )
+    state = state.copy_with(last_retry_delay_ms=wait_ms)
+    state = run_loop.handle_cooldown_delay(
+        state,
+        cast(
+            "run_loop.LoopContext",
+            SimpleNamespace(
+                sleep=controller.clock.sleep,
+                active_display=None,
+                last_waiting_state_phase=None,
+                last_waiting_state_sig=None,
+                controller=controller,
+            ),
+        ),
+    )
     controller.prune_expired()
     return any(
         status.is_eligible

@@ -29,6 +29,17 @@ def _make_controller(clock: FakeClock, **kwargs: object) -> RecoveryController:
     return RecoveryController(options=RecoveryControllerOptions(clock=clock, **kwargs))
 
 
+def _session_with_controller(
+    clock: object,
+    ledger: AgentFailureLedger,
+    **kwargs: object,
+) -> ResolutionSession:
+    controller = RecoveryController(
+        ledger=ledger, options=RecoveryControllerOptions(clock=clock)
+    )
+    return ResolutionSession(ledger=ledger, recovery_controller=controller, **kwargs)
+
+
 def test_resolver_falls_over_after_three_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -54,7 +65,7 @@ def test_resolver_falls_over_after_three_failures(
     token = install_executors(clock=clock)
     try:
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -161,7 +172,7 @@ def test_all_cooling_pending_state_preserves_rebase_state_then_resumes(
             consecutive_limit=1,
             base_cooldown_seconds=30.0,
         )
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
 
         def _resolve() -> bool:
             return driver_module.run_conflict_resolution_pipeline(
@@ -214,7 +225,7 @@ def test_all_demoted_candidates_preserve_pending_rebase_state(
             consecutive_limit=1,
             total_limit=1,
         )
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -277,7 +288,7 @@ def test_phase_isolation_through_public_integration_flow(
             resolved = True
             return True
 
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
@@ -297,7 +308,7 @@ def test_phase_isolation_through_public_integration_flow(
         assert not ledger.is_available("development", "agentA")
 
         resolved = False
-        session2 = ResolutionSession(ledger=ledger)
+        session2 = _session_with_controller(clock, ledger)
         invocations2: list[str] = []
 
         def _invoke_b(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -435,8 +446,9 @@ def test_changing_resolver_reaches_total_limit_instead_of_consecutive(
             consecutive_limit=3,
             total_limit=5,
         )
-        session = ResolutionSession(
-            ledger=ledger,
+        session = _session_with_controller(
+            clock,
+            ledger,
             workspace=workspace,
             workspace_probe=probe,
         )
@@ -524,7 +536,7 @@ def test_fake_clock_shows_no_invocation_before_eligibility(
             consecutive_limit=1,
             base_cooldown_seconds=100.0,
         )
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(frozen_clock, ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -573,7 +585,7 @@ def test_false_positive_resolver_success_remains_unproductive_and_demotes(
     token = install_executors(clock=clock)
     try:
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
@@ -642,7 +654,7 @@ def test_resolver_restart_mid_streak_honors_configured_limit(
             agent_b_attempts += 1
             return True
 
-        session_2 = ResolutionSession(ledger=ledger_2)
+        session_2 = _session_with_controller(fresh_clock, ledger_2)
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,
             target="main",
@@ -694,7 +706,7 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
             consecutive_limit=1,
             base_cooldown_seconds=60.0,
         )
-        session = ResolutionSession(ledger=ledger)
+        session = _session_with_controller(clock, ledger)
 
         succeeded = driver_module.run_conflict_resolution_pipeline(
             root=tmp_path,

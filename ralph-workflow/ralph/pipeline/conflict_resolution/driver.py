@@ -1086,23 +1086,6 @@ def _execute_round_loop(
     return False
 
 
-def _wait_for_candidates_if_cooling_down(
-    session: ResolutionSession, candidates: Sequence[str]
-) -> None:
-    controller = session.recovery_controller
-    if controller is not None:
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-        if wait_ms > 0:
-            wait_s = wait_ms / 1000.0
-            if hasattr(controller._clock, "advance"):
-                controller._clock.advance(wait_s)
-            else:
-                _sleep_seconds(wait_s)
-            controller.prune_expired()
-            if isinstance(session.recovery_state, PipelineState):
-                session.recovery_state = session.recovery_state.clear_waiting()
-
-
 def _can_continue_controller_rounds(
     session: ResolutionSession,
     controller: RecoveryController,
@@ -1176,12 +1159,44 @@ def _wait_for_eligible_agent(
     session: ResolutionSession,
     candidates: Sequence[str],
 ) -> int:
+    from types import SimpleNamespace
+
+    from ralph.pipeline import run_loop
+
     controller = session.recovery_controller
     if controller is None:
         return 0
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-    _wait_for_candidates_if_cooling_down(session, candidates)
-    return max(wait_ms, 0)
+    if wait_ms <= 0:
+        return 0
+    state = (
+        session.recovery_state
+        if isinstance(session.recovery_state, PipelineState)
+        else PipelineState(phase=PHASE_RESOLUTION)
+    )
+    state = state.copy_with(last_retry_delay_ms=wait_ms)
+
+    def _shared_sleep(seconds: float) -> None:
+        _sleep_seconds(seconds)
+
+    state = run_loop.handle_cooldown_delay(
+        state,
+        cast(
+            "run_loop.LoopContext",
+            SimpleNamespace(
+                sleep=_shared_sleep,
+                active_display=None,
+                last_waiting_state_phase=None,
+                last_waiting_state_sig=None,
+                controller=controller,
+            ),
+        ),
+    )
+    controller.prune_expired()
+    if state.is_waiting_state:
+        state = state.clear_waiting()
+    session.recovery_state = state
+    return wait_ms
 
 
 def _record_unconfigured_resolver(

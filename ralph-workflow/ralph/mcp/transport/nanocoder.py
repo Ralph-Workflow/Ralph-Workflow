@@ -119,11 +119,10 @@ def _parse_nanocoder_mcp_servers(existing: str | None) -> dict[str, object]:
             item = as_object_dict(item_obj)
             if item is None:
                 continue
-            item_map = item
-            name = item_map.get("name")
+            name = item.get("name")
             if not isinstance(name, str) or not name:
                 continue
-            mapped[name] = {key: value for key, value in item_map.items() if key != "name"}
+            mapped[name] = {key: value for key, value in item.items() if key != "name"}
         return mapped
 
     decoded_map = as_object_dict(decoded)

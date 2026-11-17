@@ -722,11 +722,10 @@ def _collect_git_diff_capped(
 def _start_pipe_drain(pipe: object) -> threading.Thread | None:
     if pipe is None or not isinstance(pipe, _ReadablePipe):
         return None
-    readable = pipe
 
     def _drain() -> None:
         with contextlib.suppress(Exception):
-            while readable.read(_PIPE_READ_CHUNK_BYTES):
+            while pipe.read(_PIPE_READ_CHUNK_BYTES):
                 pass
 
     drain = threading.Thread(target=_drain, name="git-diff-stderr", daemon=True)

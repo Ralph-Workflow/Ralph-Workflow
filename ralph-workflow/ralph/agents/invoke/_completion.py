@@ -17,6 +17,7 @@ from ralph.agents.invoke._completion_exit_status import (
     _MAX_STDERR_CAPTURE_BYTES,
     _truncation_marker,
     read_bounded_stderr,
+    stderr_pipe_available,
     terminal_returncode,
 )
 from ralph.agents.invoke._completion_failures import (
@@ -122,8 +123,7 @@ def _check_process_result(
 
     returncode = terminal_returncode(handle, agent_name=agent_name)
     stderr_text = read_bounded_stderr(handle)
-    stderr_attr: object = getattr(handle, "stderr", None)
-    stderr_available = stderr_attr is not None
+    stderr_available = stderr_pipe_available(handle)
     if returncode != 0:
         _handle_non_zero_returncode(
             handle,

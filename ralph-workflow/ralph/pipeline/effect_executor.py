@@ -278,18 +278,6 @@ def _controller_and_ledger_from_deps(
     return controller, ledger
 
 
-def _agent_not_found_failure(agent_name: str) -> PipelineEvent:
-    logger.error("Agent not found: {}", agent_name)
-    _set_last_captured_retry_intent(
-        AgentRetryIntent(
-            failure_reason=AGENT_NOT_FOUND_REASON,
-            skip_same_agent_retries=True,
-            failed_agent_name=agent_name,
-        )
-    )
-    return PipelineEvent.AGENT_FAILURE
-
-
 def _agent_unavailable_failure(agent_name: str) -> PipelineEvent:
     logger.error(
         "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
@@ -460,7 +448,15 @@ def execute_agent_effect(
     registry = _registry_from_pipeline_deps(pipeline_deps, config)
     agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
     if agent_config is None:
-        return _agent_not_found_failure(effect.agent_name)
+        logger.error("Agent not found: {}", effect.agent_name)
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason=AGENT_NOT_FOUND_REASON,
+                skip_same_agent_retries=True,
+                failed_agent_name=effect.agent_name,
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
 
     active_rec = _extract_recovery_controller(opts) or injected.recovery_controller
     if active_rec is None:
@@ -2494,7 +2490,6 @@ def _handle_terminal_agent_invocation_error(
         _set_last_captured_retry_intent(
             AgentRetryIntent(
                 failure_reason="McpServerError",
-                chain_cap_decision="reset",
             )
         )
     facts = observation.facts if observation is not None and observation.facts is not None else None

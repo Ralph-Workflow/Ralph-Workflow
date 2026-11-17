@@ -19,6 +19,7 @@ from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._resolver_controller import make_resolver_controller
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
@@ -122,7 +123,10 @@ def test_auto_integrate_regression_live_agent_resolves_conflict_through_mcp(
         registry=registry,
         display=display,
         config=config,
-        pipeline_deps=PipelineDeps(display_context=display_context),
+        pipeline_deps=PipelineDeps(
+            display_context=display_context,
+            recovery_controller=make_resolver_controller(),
+        ),
         workspace_scope=scope,
         display_context=display_context,
     )

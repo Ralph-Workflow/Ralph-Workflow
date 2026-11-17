@@ -104,12 +104,19 @@ def _registry_factory(config: object) -> object:
 
 
 def _make_deps(tmp_path: Path) -> PipelineDeps:
-    return make_test_pipeline_deps(
-        display_context=make_display_context(),
-        bridge=_FakeBridge(),
-        master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
-        registry_factory=_registry_factory,
-        check_mcp_bridge_health_fn=_no_bridge_health_check,
+    import dataclasses
+
+    from tests._resolver_controller import make_resolver_controller
+
+    return dataclasses.replace(
+        make_test_pipeline_deps(
+            display_context=make_display_context(),
+            bridge=_FakeBridge(),
+            master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
+            registry_factory=_registry_factory,
+            check_mcp_bridge_health_fn=_no_bridge_health_check,
+        ),
+        recovery_controller=make_resolver_controller(),
     )
 
 

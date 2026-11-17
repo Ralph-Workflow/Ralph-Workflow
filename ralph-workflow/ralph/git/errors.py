@@ -13,4 +13,9 @@ class GitOperationError(GitCommandError):
         return f"Git {self.operation} failed: {self.message}"
 
 
-__all__ = ["GitOperationError"]
+class CommitTreeMismatchError(GitOperationError):
+    def __init__(self, message: str) -> None:
+        super().__init__("create_commit", message)
+
+
+__all__ = ["CommitTreeMismatchError", "GitOperationError"]

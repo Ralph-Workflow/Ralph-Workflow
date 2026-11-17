@@ -207,9 +207,9 @@ def _as_read_commit_artifact(value: object) -> _ReadCommitArtifact:
 
 
 def _as_materialize_master_prompt(value: object) -> MaterializeMasterPromptFn:
-    if not isinstance(value, MaterializeMasterPromptFn):
+    if not callable(value):
         raise TypeError("materialize_master_prompt must be callable")
-    return value
+    return cast("MaterializeMasterPromptFn", value)
 
 
 def _run_commit_generation_attempt(

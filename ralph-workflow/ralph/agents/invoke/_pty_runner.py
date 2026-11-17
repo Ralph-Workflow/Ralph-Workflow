@@ -113,8 +113,13 @@ def _spawn_pty_with_agy_log_offset(
     cmd: list[str],
     ctx: AgentRunCtx,
 ) -> tuple[ManagedPtyProcess, tuple[Path, int] | None]:
-    transport: object = getattr(ctx.config, "transport", None)
-    agy_cli_log = agy_cli_log_start_offset() if transport == AgentTransport.AGY else None
+    config: object = ctx.config
+    transport: object = getattr(config, "transport", None)
+    agy_cli_log = (
+        agy_cli_log_start_offset()
+        if isinstance(transport, AgentTransport) and transport is AgentTransport.AGY
+        else None
+    )
     handle = get_process_manager().spawn_pty(
         cmd,
         PtySpawnOptions(
