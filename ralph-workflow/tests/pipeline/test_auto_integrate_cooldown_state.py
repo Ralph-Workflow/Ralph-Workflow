@@ -26,8 +26,10 @@ _PHASE = "rebase_conflict_resolution"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_eligible_agent_launches_after_rung_budget_spend_advances": (
-        "launch permission is the shared eligibility answer; a rung budget spend advances "
-        "the strategy in the same step so an Eligible agent still runs"
+        "4959fb143 expected apply_conflict_budget to advance conflict_strategy_index in the "
+        "same step; the gated revert keeps budget spend and strategy advance separate, so "
+        "the setup spends the budget then advances through RebaseState.advance_conflict_strategy "
+        "before asserting an Eligible agent still launches"
     ),
     "test_cooling_agent_is_not_launched_before_fake_clock_elapses": (
         "launch permission is cooldown-strict any_eligible; a CoolingDown agent must not "
@@ -151,8 +153,11 @@ def test_eligible_agent_launches_after_rung_budget_spend_advances(tmp_path: Path
         identity=identity,
         attempts=1,
     )
-    assert spent.conflict_strategy_index == 1
     assert spent.consecutive_conflicts == 1
+    spent = spent.advance_conflict_strategy(
+        "conflict resolution budget exhausted; escalating to the next resolution strategy"
+    )
+    assert spent.conflict_strategy_index == 1
 
     ran_at: list[float] = []
 

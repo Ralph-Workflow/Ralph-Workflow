@@ -20,6 +20,7 @@ from ralph.mcp.protocol._startup_timeouts import (
     _check_cumulative_startup_deadline,
     _check_real_startup_deadline,
     mcp_preflight_timeout_from_env,
+    mcp_probe_budget_share,
     mcp_whole_startup_budget_from_env,
 )
 from ralph.mcp.protocol.capability_mapping import Capability
@@ -59,6 +60,9 @@ def test_real_deadline_is_preflight_minus_safety() -> None:
 
 _EXPECTED_SESSION_OVERRUN_EXIT_CODE = 33
 _EXPECTED_PRE_SERVE_OVERRUN_EXIT_CODE = 32
+_MIN_VALID_PREFLIGHT_MS = str(int(_PROBE_SAFETY_S / mcp_probe_budget_share() * 1000) + 1)
+_STAGE_POLL_S = 0.01
+_DEADLINE_SLACK_S = 0.05
 
 
 def _setup_session(tmp_path: Path) -> dict[str, str]:
@@ -157,7 +161,8 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
     child_env[MCP_TEST_PRE_SERVE_GATE_ENV] = str(sentinel)
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4300"
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = _MIN_VALID_PREFLIGHT_MS
+    child_env["RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS"] = "50"
     real_deadline_s = mcp_preflight_timeout_from_env(child_env).total_seconds() - _PROBE_SAFETY_S
 
     proc = get_process_manager().spawn(
@@ -187,14 +192,14 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
             stage = read_last_stage(tmp_path, spawn_id=spawn_id)
             if stage == "registry_built":
                 break
-            time.sleep(0.05)
+            time.sleep(_STAGE_POLL_S)
 
         assert read_last_stage(tmp_path, spawn_id=spawn_id) == "registry_built"
 
         client_sock = socket.create_connection((host, port), timeout=5.0)
         assert client_sock is not None
 
-        time.sleep(real_deadline_s + 0.2)
+        time.sleep(real_deadline_s + _DEADLINE_SLACK_S)
 
         sentinel.touch()
 
@@ -253,13 +258,14 @@ def test_black_box_real_child_blocked_session_fifo_fails_closed(tmp_path: Path) 
     addr: tuple[str, int] = parent_sock.getsockname()[:2]
     host, port = addr
 
-    pre_serve_budget_ms = "300"
-    preflight_timeout_ms = "4100"
+    pre_serve_budget_ms = "50"
+    preflight_timeout_ms = _MIN_VALID_PREFLIGHT_MS
 
     child_env = dict(os.environ)
     child_env["RALPH_MCP_SESSION_FILE"] = str(session_file)
     child_env["RALPH_MCP_PRE_SERVE_TIMEOUT_MS"] = pre_serve_budget_ms
     child_env["RALPH_MCP_PREFLIGHT_TIMEOUT_MS"] = preflight_timeout_ms
+    child_env["RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS"] = "50"
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
     child_env.pop(MCP_TEST_PRE_SERVE_GATE_ENV, None)

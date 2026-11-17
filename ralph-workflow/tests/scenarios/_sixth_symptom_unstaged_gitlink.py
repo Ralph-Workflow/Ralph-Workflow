@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
+from git import Repo
 
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
 from tests._scenario_git import commit_file, git
+from tests.scenarios._integration_scenario_fixtures import replace_with_repo_template
 
 pytestmark = pytest.mark.subprocess_e2e
 
 _GITLINK_PATH: str = "vendor/Ralph-Workflow"
+_SIXTH_PAUSED_CACHE: list[tuple[Path, tuple[str, str, str]]] = []
 
 
 def _gitlink_stage_shas(root: Path, path: str = _GITLINK_PATH) -> tuple[str, str, str]:
@@ -26,9 +31,7 @@ def _gitlink_stage_shas(root: Path, path: str = _GITLINK_PATH) -> tuple[str, str
     return (s1, s2, s3)
 
 
-def paused_sixth_symptom_unstaged_gitlink_rebase(root: Path) -> tuple[str, str, str]:
-    git(root, "config", "user.name", "Test User")
-    git(root, "config", "user.email", "test@example.com")
+def _build_sixth_symptom_paused(root: Path) -> tuple[str, str, str]:
     commit_file(
         root,
         "docs/product-spec.md",
@@ -102,7 +105,18 @@ def paused_sixth_symptom_unstaged_gitlink_rebase(root: Path) -> tuple[str, str, 
 
     if not rebase_in_progress(root):
         raise AssertionError("fixture did not pause in a conflicted rebase")
-    from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
-
-    adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, _GITLINK_PATH)
+
+
+def paused_sixth_symptom_unstaged_gitlink_rebase(root: Path) -> tuple[str, str, str]:
+    if not _SIXTH_PAUSED_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="sixth-symptom-"))
+        seeded.mkdir(parents=True, exist_ok=True)
+        Repo.init(seeded, initial_branch="main")
+        git(seeded, "config", "user.name", "Test User")
+        git(seeded, "config", "user.email", "test@example.com")
+        _SIXTH_PAUSED_CACHE.append((seeded, _build_sixth_symptom_paused(seeded)))
+    template, stage_shas = _SIXTH_PAUSED_CACHE[0]
+    replace_with_repo_template(template, root)
+    adopt_active_rebase_record(root, "main")
+    return stage_shas

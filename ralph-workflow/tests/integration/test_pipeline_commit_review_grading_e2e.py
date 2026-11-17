@@ -12,7 +12,7 @@ from rich.console import Console
 
 import ralph.pipeline.run_loop as run_loop_module
 from ralph.agents.completion_signals import evaluate_completion, graded_phase_verdict
-from ralph.agents.system_clock import SystemClock
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -64,14 +64,6 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._tool_artifact_helpers import MockSession
 from tests.plan_fixtures import commit_review_markdown
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit": (
-        "the check now reads the public ledger status projection instead of the "
-        "private snapshot counters"
-    ),
-}
-
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
@@ -84,23 +76,10 @@ if TYPE_CHECKING:
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit changed": (
-        "the assertion and its message are unchanged; ruff format reflowed the long "
-        "message into parentheses, so the diff shows the single-line form as removed"
-    ),
-}
-
 pytestmark = [
     pytest.mark.timeout_seconds(15),
     pytest.mark.required_auto_integrate_e2e,
 ]
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "_submit_commit_message": (
-        "reformatted assertion across multiple lines to conform to ruff format"
-    ),
-}
 
 REVIEW_PHASES: tuple[str, ...] = (
     "development_commit_review",
@@ -115,7 +94,10 @@ REVIEWED_FILE = "src/feature.py"
 REVIEWED_CONTENT = "print('reviewed change')\n"
 
 RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
-    "_submit_commit_message": "reformat line length",
+    "FakeClock_recovery_and_ledger": (
+        "graded PASS and ledger-only demotion paths use FakeClock; "
+        "PASS / no-AttemptFact / real-commit asserts unchanged"
+    ),
 }
 
 
@@ -407,7 +389,7 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
         del state, bundle, config
         controller = RecoveryController(
             options=RecoveryControllerOptions(
-                clock=SystemClock(),
+                clock=FakeClock(),
                 agent_max_consecutive_unproductive=1,
             )
         )
@@ -522,7 +504,7 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
         drain="commit",
     )
     runner_deps = AttemptRunnerDeps(
-        clock=SystemClock(),
+        clock=FakeClock(),
         invoke=lambda target, **_kwargs: effect_executor.execute_agent_effect(
             target,
             _config(),
@@ -658,7 +640,7 @@ def test_controller_backed_finalize_attempt_records_no_fact_for_configuration_fa
 
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            clock=SystemClock(),
+            clock=FakeClock(),
             agent_max_consecutive_unproductive=1,
         )
     )
@@ -703,7 +685,7 @@ def test_controller_backed_finalize_attempt_checkpoint_mismatch_records_no_fact(
 
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            clock=SystemClock(),
+            clock=FakeClock(),
             agent_max_consecutive_unproductive=1,
         )
     )
@@ -732,7 +714,7 @@ def test_ledger_only_fallback_demotion_records_no_fact_for_configuration_failure
     agent = "fallback-agent-config"
 
     ledger = AgentFailureLedger(
-        clock=SystemClock(),
+        clock=FakeClock(),
         consecutive_limit=1,
     )
 

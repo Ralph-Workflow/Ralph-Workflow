@@ -54,6 +54,10 @@ B5_ALLOWLIST: Final[Mapping[str, str]] = MappingProxyType(
             "conflict-resolution session dispatches agent effects through the canonical "
             "effect-attempt adapter from the registered conflict-resolution entry point"
         ),
+        "ralph/project_policy/cli_integration.py": (
+            "project-policy CLI integration late-binds execute_agent_effect through the "
+            "effect_executor module alias from the registered project-policy entry point"
+        ),
         "ralph/agents/__init__.py": "public re-export shim",
         "ralph/cli/commands/commit.py": "compatibility re-export shim",
     }

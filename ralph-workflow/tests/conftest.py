@@ -59,6 +59,8 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     set_last_captured_retry_intent,
 )
+from ralph.pipeline.effect_executor import clear_agent_effect_dependencies
+from ralph.pipeline.integration_actions import clear_executors
 from ralph.process import reset_process_manager
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
@@ -447,9 +449,6 @@ def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
 
 
 def _apply_isolate_pipeline_thread_locals() -> None:
-    from ralph.pipeline.effect_executor import clear_agent_effect_dependencies
-    from ralph.pipeline.integration_actions import clear_executors
-
     set_last_captured_session_id(None)
     set_last_captured_retry_intent(cleared_agent_retry_intent())
     clear_agent_effect_dependencies()

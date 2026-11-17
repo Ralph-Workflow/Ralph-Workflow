@@ -10,6 +10,7 @@ from git import Repo
 from loguru import logger
 
 from ralph.config import bootstrap
+from ralph.git.commit_review import untrack_engine_internal_files
 from ralph.git.proposal_seal import seal_pending
 from ralph.mcp.artifacts._commit_review import CommitReview
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
@@ -24,6 +25,7 @@ from ralph.phases.commit_review import (
     CommitReviewRejected,
     _apply_commit_review_actions,
     handle_commit_review_phase,
+    is_agent_internal_path,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -36,6 +38,120 @@ if TYPE_CHECKING:
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_delete_source_code_extensions_rejected": (
+        "MERGE: catalog frozenset equality stays; per-extension refusal moves to "
+        "_apply_commit_review_actions plus decide_commit_review_outcome so the "
+        "same declined-path and loopback observables are pinned without a "
+        "full-phase seal of seventy untracked files"
+    ),
+    "test_delete_lock_files_rejected": (
+        "MERGE: lockfile basename frozenset equality stays; refusal moves to the "
+        "apply-layer classifier plus decide_commit_review_outcome, matching the "
+        "extensions consolidation"
+    ),
+    "test_untracked_temporary_source_code_is_deleted": (
+        "MERGE: the nine parametrized phase invocations collapse into "
+        "test_untracked_safe_delete_batch_succeeds, which still deletes every "
+        "former path via _apply_commit_review_actions"
+    ),
+    "test_delete_file_action_removes_file": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds; binary.exe delete "
+        "remains asserted there; phase approve+delete stays covered by "
+        "test_duplicate_delete_file_actions_idempotent and "
+        "test_safe_actions_application_and_resealing"
+    ),
+    "test_delete_checkpoint_json_removes_file": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_verify_output_text_file_removes_file": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_backup_bak_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_tmp_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_log_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_rej_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_session_txt_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_in_tmp_directory": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_coverage_untracked_succeeds": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_coverage_xml_untracked_succeeds": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_untracked_checkpoint_json": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_untracked_log_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_untracked_binary_file": ("MERGE into test_untracked_safe_delete_batch_succeeds"),
+    "test_delete_untracked_in_artifacts_directory": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_untracked_file_in_generated_directory": (
+        "MERGE into test_untracked_safe_delete_batch_succeeds"
+    ),
+    "test_delete_untracked_repository_content_rejected": (
+        "MERGE: category-path refusal moves to _apply_commit_review_actions plus "
+        "decide_commit_review_outcome; phase loopback for unsafe deletes remains "
+        "in test_all_unsafe_deletes_with_no_safe_work_returns_failure_event"
+    ),
+    "test_delete_tracked_agent_internal_files_succeeds": (
+        "MERGE: tracked engine-path deletions move to apply-layer; phase coverage "
+        "of tracked engine cleanup remains in "
+        "test_delete_tracked_agent_internal_files_best_effort_no_phase_failure"
+    ),
+    "test_delete_tracked_non_engine_files_rejected": (
+        "MERGE: tracked non-engine refusal moves to apply-layer classifier plus "
+        "loopback outcome; phase loopback remains covered elsewhere"
+    ),
+    "test_phase_loopback_when_has_actions": (
+        "REMOVE: duplicate of test_cleanup_actions_applied_when_verdict_approves "
+        "(same *.exe gitignore approve observable)"
+    ),
+    "test_missing_markdown_artifact_fails_closed": (
+        "REMOVE: duplicate of test_missing_artifact_returns_failure_event, which "
+        "keeps the PhaseFailureEvent recoverable contract"
+    ),
+    "test_agent_success_when_verdict_approves": (
+        "REMOVE: duplicate of test_agent_approval_with_matching_tree_sha, which "
+        "keeps the approve plus 40-hex tree_sha observables"
+    ),
+    "test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content": (
+        "REPLACE fixture: bootstrap byte-preservation proofs use a light tmp_path "
+        "seed target instead of a full git worktree copy"
+    ),
+    "test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content": (
+        "REPLACE fixture: bootstrap byte-preservation proofs use a light tmp_path "
+        "seed target instead of a full git worktree copy"
+    ),
+    "test_auto_seed_atomic_append_preserves_trailing_whitespace": (
+        "REPLACE fixture: bootstrap byte-preservation proofs use a light tmp_path "
+        "seed target instead of a full git worktree copy"
+    ),
+    "test_auto_seed_atomic_append_handles_symlinked_target": (
+        "REPLACE fixture: bootstrap byte-preservation proofs use a light tmp_path "
+        "seed target instead of a full git worktree copy"
+    ),
+    "test_empty_path_in_delete_action_is_skipped_with_debug_log": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+    "test_empty_pattern_in_gitignore_action_is_skipped": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+    "test_unsafe_delete_with_whitespace_only_gitignore_loops_back": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+    "test_unsafe_delete_with_whitespace_only_git_exclude_loops_back": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+    "test_whitespace_only_delete_path_with_safe_gitignore_succeeds": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+    "test_apply_commit_review_actions_returns_separate_skipped_and_failed_lists": (
+        "REPLACE fixture: apply-layer proof uses tmp_path instead of a full git copy"
+    ),
+}
 
 _REPO_CACHE: dict[Path, Repo] = {}
 
@@ -90,25 +206,12 @@ def _pending_tree_sha(repo_path: Path) -> str:
 def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
     if (repo_path / ".git").exists():
         try:
-            from ralph.config.bootstrap import (
-                auto_seed_default_git_exclude,
-                auto_seed_default_gitignore,
-            )
-            from ralph.git.commit_review import untrack_engine_internal_files
-            from ralph.phases.commit_review import is_agent_internal_path
-
             untrack_engine_internal_files(repo_path, is_agent_internal_path)
-            auto_seed_default_gitignore(repo_path)
-            auto_seed_default_git_exclude(repo_path)
             return _pending_tree_sha(repo_path)
         except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
             return None
 
     try:
-        from ralph.config.bootstrap import (
-            auto_seed_default_git_exclude,
-            auto_seed_default_gitignore,
-        )
         from ralph.git.commit_review import ensure_git_initialized
 
         with tempfile.TemporaryDirectory() as td:
@@ -121,8 +224,8 @@ def _resolve_artifact_tree_sha(repo_path: Path) -> str | None:
                 else:
                     shutil.copy2(item, temp_repo / item.name)
             ensure_git_initialized(str(temp_repo))
-            auto_seed_default_gitignore(temp_repo)
-            auto_seed_default_git_exclude(temp_repo)
+            bootstrap.auto_seed_default_gitignore(temp_repo)
+            bootstrap.auto_seed_default_git_exclude(temp_repo)
             return _pending_tree_sha(temp_repo)
     except (OSError, ValueError, KeyError, AttributeError, RuntimeError):
         return None
@@ -175,26 +278,6 @@ def _write_commit_review_artifact(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def test_agent_success_when_verdict_approves(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    _write_commit_review_artifact(workspace, {"actions": []})
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-
-
 def _write_raw_commit_review_artifact(workspace: FsWorkspace, frontmatter: list[str]) -> None:
     path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -242,148 +325,6 @@ def test_artifact_without_verdict_is_never_an_approval(tmp_git_repo: Path) -> No
     assert len(result2) == 1
     assert isinstance(result2[0], CommitReviewGateFailed)
     assert not isinstance(result2[0], CommitReviewApproved)
-
-
-def test_missing_markdown_artifact_fails_closed(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-
-    result = handle_commit_review_phase(effect, ctx)
-
-    assert len(result) == 1
-    assert isinstance(result[0], PhaseFailureEvent)
-
-
-def test_phase_loopback_when_has_actions(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "add_to_gitignore", "pattern": "*.exe"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    gitignore = tmp_git_repo / ".gitignore"
-    assert gitignore.exists()
-    assert "*.exe" in gitignore.read_text()
-
-
-def test_delete_file_action_removes_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    binary = tmp_git_repo / "binary.exe"
-    binary.write_text("binary content")
-    assert binary.exists()
-
-    _write_commit_review_artifact(
-        workspace,
-        {"actions": [{"action": "delete_file", "path": "binary.exe"}]},
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not binary.exists()
-
-
-def test_delete_checkpoint_json_removes_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    checkpoint = tmp_git_repo / "checkpoint.json"
-    checkpoint.write_text('{"phase": "development"}')
-    assert checkpoint.exists()
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-
-    result = handle_commit_review_phase(effect, ctx)
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not checkpoint.exists()
-
-
-def test_delete_verify_output_text_file_removes_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    verify_output = tmp_git_repo / "verify-output.txt"
-    verify_output.write_text("captured verify output")
-    assert verify_output.exists()
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "verify-output.txt"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev",
-        phase="development_commit_review",
-        prompt_file="cleanup.txt",
-    )
-
-    result = handle_commit_review_phase(effect, ctx)
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not verify_output.exists()
 
 
 EXPECTED_UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
@@ -464,39 +405,44 @@ EXPECTED_UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 
-def test_delete_source_code_extensions_rejected(tmp_git_repo: Path) -> None:
-    assert frozenset(UNSAFE_EXTENSIONS) == EXPECTED_UNSAFE_EXTENSIONS
-    workspace = FsWorkspace(tmp_git_repo)
-    extensions = sorted(EXPECTED_UNSAFE_EXTENSIONS)
-    files = []
-    for ext in extensions:
-        src = tmp_git_repo / f"App{ext}"
-        src.write_text("source code")
-        files.append(src)
+def _assert_declined_delete_batch_loops_back(
+    repo_root: Path,
+    relative_paths: list[str],
+) -> None:
+    for rel_path in relative_paths:
+        target = repo_root / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            target.write_text("protected content")
 
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": f"App{ext}"} for ext in extensions],
-        },
+    cleanup = CommitReview.model_construct(
+        verdict="approve",
+        actions=[
+            CommitReviewAction.model_construct(action="delete_file", path=rel_path)
+            for rel_path in relative_paths
+        ],
     )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
+    skipped, failed = _apply_commit_review_actions(repo_root, cleanup)
+    assert failed == []
+    assert set(skipped) == set(relative_paths)
+    for rel_path in relative_paths:
+        assert (repo_root / rel_path).exists()
+
+    report = CommitReviewApplyReport(declined_delete_paths=list(skipped))
+    outcome = decide_commit_review_outcome("development_commit_review", report)
+    assert outcome is not None and isinstance(outcome, CommitReviewLoopback)
+    assert not isinstance(outcome, PhaseFailureEvent)
+    for rel_path in relative_paths:
+        assert rel_path in outcome.hint
+
+
+def test_delete_source_code_extensions_rejected(tmp_path: Path) -> None:
+    assert frozenset(UNSAFE_EXTENSIONS) == EXPECTED_UNSAFE_EXTENSIONS
+    extensions = sorted(EXPECTED_UNSAFE_EXTENSIONS)
+    _assert_declined_delete_batch_loops_back(
+        tmp_path,
+        [f"App{ext}" for ext in extensions],
     )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1
-    assert isinstance(result[0], CommitReviewLoopback)
-    assert not isinstance(result[0], PhaseFailureEvent)
-    for src in files:
-        assert src.exists()
 
 
 EXPECTED_LOCKFILE_BASENAMES: frozenset[str] = frozenset(
@@ -514,39 +460,10 @@ EXPECTED_LOCKFILE_BASENAMES: frozenset[str] = frozenset(
 )
 
 
-def test_delete_lock_files_rejected(tmp_git_repo: Path) -> None:
+def test_delete_lock_files_rejected(tmp_path: Path) -> None:
     assert frozenset(LOCKFILE_BASENAMES) == EXPECTED_LOCKFILE_BASENAMES
-    workspace = FsWorkspace(tmp_git_repo)
     lockfiles = sorted(EXPECTED_LOCKFILE_BASENAMES)
-    files = []
-    for lock_file in lockfiles:
-        lock = tmp_git_repo / lock_file
-        lock.write_text("lock content")
-        files.append(lock)
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": lock_file} for lock_file in lockfiles],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1
-    assert isinstance(result[0], CommitReviewLoopback)
-    assert not isinstance(result[0], PhaseFailureEvent)
-    for lock in files:
-        assert lock.exists()
+    _assert_declined_delete_batch_loops_back(tmp_path, lockfiles)
 
 
 def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
@@ -750,7 +667,7 @@ def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
     assert (non_repo / ".git").exists()
 
 
-def test_delete_untracked_repository_content_rejected(tmp_git_repo: Path) -> None:
+def test_delete_untracked_repository_content_rejected(tmp_path: Path) -> None:
     paths_by_category = {
         "source-test-doc-config": (
             "ralph/models.py",
@@ -781,23 +698,11 @@ def test_delete_untracked_repository_content_rejected(tmp_git_repo: Path) -> Non
         "protected-basename": ("Dockerfile", "Makefile", "LICENSE.txt"),
         "ordinary-source": ("helper.py",),
     }
-    paths = tuple(path for category in paths_by_category.values() for path in category)
-    for rel_path in paths:
-        target = tmp_git_repo / rel_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("repository content")
-
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewLoopback)
+    paths = [path for category in paths_by_category.values() for path in category]
+    _assert_declined_delete_batch_loops_back(tmp_path, paths)
     for category, category_paths in paths_by_category.items():
         for rel_path in category_paths:
-            assert (tmp_git_repo / rel_path).exists(), f"{category} path was deleted: {rel_path}"
+            assert (tmp_path / rel_path).exists(), f"{category} path was deleted: {rel_path}"
 
 
 def test_delete_file_with_parent_traversal_returns_failure_event(
@@ -864,166 +769,6 @@ def test_delete_file_with_absolute_path_returns_failure_event(
     assert outside.exists()
 
 
-def test_delete_backup_bak_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    backup = tmp_git_repo / "important.py.bak"
-    backup.write_text("old version")
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "important.py.bak"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not backup.exists()
-
-
-def test_delete_tmp_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    tmp = tmp_git_repo / "scratch.tmp"
-    tmp.write_text("temporary data")
-
-    _write_commit_review_artifact(
-        workspace,
-        {"actions": [{"action": "delete_file", "path": "scratch.tmp"}]},
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not tmp.exists()
-
-
-def test_delete_log_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    log = tmp_git_repo / "debug.log"
-    log.write_text("debug output")
-
-    _write_commit_review_artifact(
-        workspace,
-        {"actions": [{"action": "delete_file", "path": "debug.log"}]},
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not log.exists()
-
-
-def test_delete_rej_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    rej = tmp_git_repo / "fix.patch.rej"
-    rej.write_text("patch reject hunk")
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "fix.patch.rej"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not rej.exists()
-
-
-def test_delete_session_txt_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    session = tmp_git_repo / "session-transcript.txt"
-    session.write_text("agent conversation")
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "session-transcript.txt"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not session.exists()
-
-
-def test_delete_in_tmp_directory(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    tmp_dir = tmp_git_repo / "tmp"
-    tmp_dir.mkdir()
-    artifact = tmp_dir / "scratch.txt"
-    artifact.write_text("temp content")
-
-    _write_commit_review_artifact(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "tmp/scratch.txt"}],
-        },
-    )
-    ctx = PhaseContext.construct(
-        workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        artifacts_policy=object(),
-        agents_policy=object(),
-    )
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
-    )
-    result = handle_commit_review_phase(effect, ctx)
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not artifact.exists()
-
-
 def _make_cleanup_ctx(workspace: FsWorkspace) -> PhaseContext:
     return PhaseContext.construct(
         workspace=workspace,
@@ -1051,162 +796,55 @@ def _assert_declined_completes(result: list[object]) -> None:
     assert not isinstance(result[0], PhaseFailureEvent)
 
 
-@pytest.mark.parametrize(
-    "file_path",
-    [
-        "temp_script.py",
-        "scratch_script.go",
-        "generated_utils.js",
-        "dump_helper.rs",
-        "tmp_helper.ts",
-        "throwaway.java",
-        "dump.cpp",
-        "tmp/scratch.py",
-        "temp/App.java",
-    ],
+_SAFE_UNTRACKED_DELETE_SPECS: tuple[tuple[str, str | bytes], ...] = (
+    ("binary.exe", "binary content"),
+    ("checkpoint.json", '{"phase": "development"}'),
+    ("verify-output.txt", "captured verify output"),
+    ("important.py.bak", "old version"),
+    ("scratch.tmp", "temporary data"),
+    ("debug.log", "debug output"),
+    ("fix.patch.rej", "patch reject hunk"),
+    ("session-transcript.txt", "agent conversation"),
+    ("tmp/scratch.txt", "temp content"),
+    ("temp_script.py", "temp source code"),
+    ("scratch_script.go", "temp source code"),
+    ("generated_utils.js", "temp source code"),
+    ("dump_helper.rs", "temp source code"),
+    ("tmp_helper.ts", "temp source code"),
+    ("throwaway.java", "temp source code"),
+    ("dump.cpp", "temp source code"),
+    ("tmp/scratch.py", "temp source code"),
+    ("temp/App.java", "temp source code"),
+    (".coverage", "coverage data"),
+    ("coverage.xml", "<coverage></coverage>"),
+    ("accidental_binary.exe", b"\x00MZ"),
+    ("artifacts/scratch.txt", "scratch"),
+    (".output/bundle.js", "// generated"),
 )
-def test_untracked_temporary_source_code_is_deleted(
-    tmp_git_repo: Path,
-    file_path: str,
-) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    target = tmp_git_repo / file_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("temp source code")
-    assert target.exists()
 
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": file_path}],
-        },
+
+def test_untracked_safe_delete_batch_succeeds(tmp_path: Path) -> None:
+    for rel_path, content in _SAFE_UNTRACKED_DELETE_SPECS:
+        target = tmp_path / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            target.write_bytes(content)
+        else:
+            target.write_text(content)
+        assert target.exists()
+
+    cleanup = CommitReview.model_construct(
+        verdict="approve",
+        actions=[
+            CommitReviewAction.model_construct(action="delete_file", path=rel_path)
+            for rel_path, _content in _SAFE_UNTRACKED_DELETE_SPECS
+        ],
     )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not target.exists()
-
-
-def test_delete_coverage_untracked_succeeds(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    coverage = tmp_git_repo / ".coverage"
-    coverage.write_text("coverage data")
-    assert coverage.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": ".coverage"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not coverage.exists()
-
-
-def test_delete_coverage_xml_untracked_succeeds(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    coverage_xml = tmp_git_repo / "coverage.xml"
-    coverage_xml.write_text("<coverage></coverage>")
-    assert coverage_xml.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "coverage.xml"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not coverage_xml.exists()
-
-
-def test_delete_untracked_checkpoint_json(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    checkpoint = tmp_git_repo / "checkpoint.json"
-    checkpoint.write_text('{"phase": "development"}')
-    assert checkpoint.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not checkpoint.exists()
-
-
-def test_delete_untracked_log_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    log = tmp_git_repo / "debug.log"
-    log.write_text("debug output")
-    assert log.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "debug.log"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not log.exists()
-
-
-def test_delete_untracked_binary_file(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    binary = tmp_git_repo / "accidental_binary.exe"
-    binary.write_bytes(b"\x00MZ")
-    assert binary.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "accidental_binary.exe"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not binary.exists()
-
-
-def test_delete_untracked_in_artifacts_directory(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    artifacts_dir = tmp_git_repo / "artifacts"
-    artifacts_dir.mkdir()
-    scratch = artifacts_dir / "scratch.txt"
-    scratch.write_text("scratch")
-    assert scratch.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": "artifacts/scratch.txt"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not scratch.exists()
-
-
-def test_delete_untracked_file_in_generated_directory(tmp_git_repo: Path) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    output_dir = tmp_git_repo / ".output"
-    output_dir.mkdir()
-    bundle = output_dir / "bundle.js"
-    bundle.write_text("// generated")
-    assert bundle.exists()
-
-    result = _invoke_cleanup(
-        workspace,
-        {
-            "actions": [{"action": "delete_file", "path": ".output/bundle.js"}],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
-    assert not bundle.exists()
+    skipped, failed = _apply_commit_review_actions(tmp_path, cleanup)
+    assert skipped == []
+    assert failed == []
+    for rel_path, _content in _SAFE_UNTRACKED_DELETE_SPECS:
+        assert not (tmp_path / rel_path).exists(), f"safe path survived: {rel_path}"
 
 
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
@@ -1240,17 +878,16 @@ def test_delete_tracked_agent_internal_files_succeeds(tmp_git_repo: Path) -> Non
     repo.index.add([rel_path for rel_path, _content in tracked_artifacts])
     repo.index.commit("track canonical engine artifacts")
 
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "actions": [
-                {"action": "delete_file", "path": rel_path}
-                for rel_path, _content in tracked_artifacts
-            ],
-        },
+    cleanup = CommitReview.model_construct(
+        verdict="approve",
+        actions=[
+            CommitReviewAction.model_construct(action="delete_file", path=rel_path)
+            for rel_path, _content in tracked_artifacts
+        ],
     )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
+    skipped, failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
+    assert skipped == []
+    assert failed == []
     for rel_path, _content in tracked_artifacts:
         assert not (tmp_git_repo / rel_path).exists(), f"engine artifact survived: {rel_path}"
 
@@ -1301,7 +938,7 @@ def test_delete_tracked_non_engine_files_rejected(tmp_git_repo: Path) -> None:
             ".agent/workers/unit-a/sub/dir/foo.rs",
         ),
     }
-    paths = tuple(path for category in paths_by_category.values() for path in category)
+    paths = [path for category in paths_by_category.values() for path in category]
     for rel_path in paths:
         target = tmp_git_repo / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1311,14 +948,7 @@ def test_delete_tracked_non_engine_files_rejected(tmp_git_repo: Path) -> None:
     repo.index.add(list(paths))
     repo.index.commit("track protected project content")
 
-    result = _invoke_cleanup(
-        FsWorkspace(tmp_git_repo),
-        {
-            "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
-        },
-    )
-
-    assert len(result) == 1 and isinstance(result[0], CommitReviewLoopback)
+    _assert_declined_delete_batch_loops_back(tmp_git_repo, paths)
     for category, category_paths in paths_by_category.items():
         for rel_path in category_paths:
             assert (tmp_git_repo / rel_path).exists(), f"{category} path was deleted: {rel_path}"
@@ -1440,8 +1070,8 @@ def test_duplicate_delete_file_actions_idempotent(tmp_git_repo: Path) -> None:
     assert not binary.exists()
 
 
-def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Path) -> None:
-    binary = tmp_git_repo / "binary.exe"
+def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_path: Path) -> None:
+    binary = tmp_path / "binary.exe"
     binary.write_bytes(b"\x00MZ")
 
     whitespace_action = CommitReviewAction.model_construct(action="delete_file", path="   ")
@@ -1451,12 +1081,12 @@ def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Pat
         actions=[whitespace_action, real_action],
     )
 
-    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_path, cleanup)
     assert skipped == []
     assert not binary.exists()
 
 
-def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> None:
+def test_empty_pattern_in_gitignore_action_is_skipped(tmp_path: Path) -> None:
     whitespace_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="   ")
     real_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="*.real")
     cleanup = CommitReview.model_construct(
@@ -1464,8 +1094,8 @@ def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> Non
         actions=[whitespace_action, real_action],
     )
 
-    _apply_commit_review_actions(tmp_git_repo, cleanup)
-    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    _apply_commit_review_actions(tmp_path, cleanup)
+    gitignore_text = (tmp_path / ".gitignore").read_text()
     assert "*.real" in gitignore_text
 
 
@@ -1509,9 +1139,9 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
 
 
 def test_unsafe_delete_with_whitespace_only_gitignore_loops_back(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    source = tmp_git_repo / "module.py"
+    source = tmp_path / "module.py"
     source.write_text("source code")
 
     whitespace_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="   ")
@@ -1521,9 +1151,9 @@ def test_unsafe_delete_with_whitespace_only_gitignore_loops_back(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_path, cleanup)
     assert "module.py" in skipped
-    gitignore_path = tmp_git_repo / ".gitignore"
+    gitignore_path = tmp_path / ".gitignore"
     gitignore_text = gitignore_path.read_text() if gitignore_path.exists() else ""
     applied_gitignore = ["   "] if "   " in gitignore_text else []
     report = CommitReviewApplyReport(
@@ -1542,10 +1172,11 @@ def test_unsafe_delete_with_whitespace_only_gitignore_loops_back(
 
 
 def test_unsafe_delete_with_whitespace_only_git_exclude_loops_back(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
-    source = tmp_git_repo / "module.py"
+    source = tmp_path / "module.py"
     source.write_text("source code")
+    (tmp_path / ".git" / "info").mkdir(parents=True, exist_ok=True)
 
     whitespace_action = CommitReviewAction.model_construct(
         action="add_to_git_exclude", pattern="   "
@@ -1556,9 +1187,9 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_loops_back(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_path, cleanup)
     assert "module.py" in skipped
-    exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
+    exclude_path = tmp_path / ".git" / "info" / "exclude"
     exclude_text = exclude_path.read_text() if exclude_path.exists() else ""
     applied_exclude = ["   "] if "   " in exclude_text else []
     report = CommitReviewApplyReport(
@@ -1577,7 +1208,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_loops_back(
 
 
 def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
-    tmp_git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     whitespace_action = CommitReviewAction.model_construct(action="delete_file", path="   ")
     real_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="*.scratch")
@@ -1586,8 +1217,8 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
         actions=[whitespace_action, real_action],
     )
 
-    _apply_commit_review_actions(tmp_git_repo, cleanup)
-    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    _apply_commit_review_actions(tmp_path, cleanup)
+    gitignore_text = (tmp_path / ".gitignore").read_text()
     assert "*.scratch" in gitignore_text
     applied_gitignore = ["*.scratch"] if "*.scratch" in gitignore_text else []
     report = CommitReviewApplyReport(
@@ -1758,14 +1389,12 @@ def test_apply_time_delete_failure_with_safe_gitignore_loops_back(
 
 @pytest.mark.timeout_seconds(5)
 def test_apply_commit_review_actions_returns_separate_skipped_and_failed_lists(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    workspace = FsWorkspace(tmp_git_repo)
-    _ = workspace
-    safe_binary = tmp_git_repo / "binary.exe"
+    safe_binary = tmp_path / "binary.exe"
     safe_binary.write_bytes(b"\x00MZ")
-    unsafe_source = tmp_git_repo / "module.py"
+    unsafe_source = tmp_path / "module.py"
     unsafe_source.write_text("source code")
 
     cleanup = CommitReview.model_construct(
@@ -1784,7 +1413,7 @@ def test_apply_commit_review_actions_returns_separate_skipped_and_failed_lists(
         _raise_on_delete,
     )
 
-    skipped, failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
+    skipped, failed = _apply_commit_review_actions(tmp_path, cleanup)
 
     assert "module.py" in skipped, f"Unsafe path module.py must be in skipped; got: {skipped!r}"
     assert "binary.exe" in failed, (
@@ -1898,15 +1527,15 @@ def test_pre_emptive_untrack_succeeds_when_git_state_is_broken(tmp_path: Path) -
 
 
 def _drive_auto_seed(
-    tmp_git_repo: Path,
+    seed_root: Path,
     helper_name: str,
     pre_existing_bytes: bytes,
     symlink_target: Path | None,
 ) -> bytes:
     if helper_name == "auto_seed_default_gitignore":
-        target = tmp_git_repo / ".gitignore"
+        target = seed_root / ".gitignore"
     elif helper_name == "auto_seed_default_git_exclude":
-        target = tmp_git_repo / ".git" / "info" / "exclude"
+        target = seed_root / ".git" / "info" / "exclude"
     else:
         raise ValueError(f"unknown helper: {helper_name}")
 
@@ -1923,8 +1552,8 @@ def _drive_auto_seed(
             target.unlink()
         target.write_bytes(pre_existing_bytes)
 
-    getattr(bootstrap, helper_name)(tmp_git_repo)
-    getattr(bootstrap, helper_name)(tmp_git_repo)
+    getattr(bootstrap, helper_name)(seed_root)
+    getattr(bootstrap, helper_name)(seed_root)
 
     return target.read_bytes()
 
@@ -1938,11 +1567,11 @@ def _drive_auto_seed(
 )
 @pytest.mark.timeout_seconds(5)
 def test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content(
-    tmp_git_repo: Path, helper_name: str, target_relpath: str
+    tmp_path: Path, helper_name: str, target_relpath: str
 ) -> None:
     pre_existing = "\ufeffexisting-bom-line\n"
 
-    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing.encode("utf-8"), None)
+    resulting = _drive_auto_seed(tmp_path, helper_name, pre_existing.encode("utf-8"), None)
 
     assert resulting.startswith("\ufeff".encode("utf-8")), (
         f"BOM prefix MUST be preserved through the round trip; got first bytes: {resulting[:8]!r}"
@@ -1965,11 +1594,11 @@ def test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content(
 )
 @pytest.mark.timeout_seconds(5)
 def test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content(
-    tmp_git_repo: Path, helper_name: str, target_relpath: str
+    tmp_path: Path, helper_name: str, target_relpath: str
 ) -> None:
     pre_existing = b"existing-crlf-line\r\n"
 
-    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing, None)
+    resulting = _drive_auto_seed(tmp_path, helper_name, pre_existing, None)
 
     assert b"existing-crlf-line\r\n" in resulting, (
         f"CRLF-terminated pre-existing line MUST be preserved byte-for-byte; got: {resulting!r}"
@@ -1988,11 +1617,11 @@ def test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content(
 )
 @pytest.mark.timeout_seconds(5)
 def test_auto_seed_atomic_append_preserves_trailing_whitespace(
-    tmp_git_repo: Path, helper_name: str, target_relpath: str
+    tmp_path: Path, helper_name: str, target_relpath: str
 ) -> None:
     pre_existing = b"existing-trailing-whitespace-line   \n"
 
-    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing, None)
+    resulting = _drive_auto_seed(tmp_path, helper_name, pre_existing, None)
 
     assert b"existing-trailing-whitespace-line   \n" in resulting, (
         f"Trailing whitespace MUST be preserved byte-for-byte; got: {resulting!r}"
@@ -2012,12 +1641,12 @@ def test_auto_seed_atomic_append_preserves_trailing_whitespace(
 )
 @pytest.mark.timeout_seconds(5)
 def test_auto_seed_atomic_append_handles_symlinked_target(
-    tmp_git_repo: Path, helper_name: str, target_relpath: str
+    tmp_path: Path, helper_name: str, target_relpath: str
 ) -> None:
-    target = tmp_git_repo / target_relpath
-    symlink_target = tmp_git_repo / f"_symlink_target_for_{target.name}"
+    target = tmp_path / target_relpath
+    symlink_target = tmp_path / f"_symlink_target_for_{target.name}"
 
-    resulting = _drive_auto_seed(tmp_git_repo, helper_name, b"", symlink_target)
+    resulting = _drive_auto_seed(tmp_path, helper_name, b"", symlink_target)
 
     assert len(resulting) >= 0, (
         f"Helper must produce SOME bytes (either replaced target or via the "

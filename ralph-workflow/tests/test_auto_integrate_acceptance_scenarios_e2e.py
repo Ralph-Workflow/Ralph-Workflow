@@ -7,7 +7,6 @@ import subprocess
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import TextIO
 
 import pytest
 from git import Repo
@@ -34,6 +33,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the negative control and positive retry scenarios were consolidated into a single "
         "subprocess run that asserts bare refs remain unchanged at seed_sha during deferred "
         "retries before asserting publication on remote restoration"
+    ),
+    "test_killed_between_landing_and_push_recovers_from_linked_worktree": (
+        "REPLACE: same landing-then-push-interrupted observables (target advanced, bare "
+        "unchanged, linked-worktree recovery publishes) via an in-process push interrupt "
+        "instead of a child interpreter blocked on time.sleep"
+    ),
+    "test_unreachable_then_reachable_production_retry_succeeds_across_subprocess": (
+        "REPLACE: same deferred-publication then restored-remote publish contract through "
+        "run_loop._run_inner_loop_after_startup in-process; two deferred sleep ticks still "
+        "prove bare refs stay at seed_sha until RESTORED, matching the prior three-tick probe"
     ),
 }
 
@@ -441,59 +450,25 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
-def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path: Path) -> None:
+def test_killed_between_landing_and_push_recovers_from_linked_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+    from ralph.pipeline.rebase_state import RebaseState
+
     repo, bare = _seed_cluster(tmp_path)
     wt = tmp_path / "wt-sibling"
-
-    import sys
 
     assert _run(repo, "switch", "-c", "feature").returncode == 0
     _commit(repo, "feature.txt", "feature work\n", "feature advance")
 
-    landing_script = (
-        "import sys, time\n"
-        "from pathlib import Path\n"
-        "from ralph.config.models import UnifiedConfig\n"
-        "from ralph.pipeline import auto_integrate_remote_sync as _sync\n"
-        "from ralph.pipeline.auto_integrate import auto_integrate_after_commit\n"
-        "from ralph.pipeline.rebase_state import RebaseState\n"
-        "from ralph.pipeline.auto_integrate_remote_push import push_single_remote\n"
-        "from ralph.workspace.scope import WorkspaceScope\n"
-        "\n"
-        "_real_push = push_single_remote\n"
-        "def _slow_push(*args, **kwargs):\n"
-        "    sys.stdout.write('BEFORE_PUSH\\n')\n"
-        "    sys.stdout.flush()\n"
-        "    time.sleep(10)\n"
-        "    return _real_push(*args, **kwargs)\n"
-        "_sync.push_single_remote = _slow_push\n"
-        "\n"
-        "root = Path(sys.argv[1])\n"
-        "config = UnifiedConfig.model_validate({\n"
-        "    'general': {\n"
-        "        'auto_integrate_enabled': True,\n"
-        "        'auto_integrate_target': 'release',\n"
-        "        'auto_integrate_remote': 'tacos',\n"
-        "        'auto_integrate_remote_enabled': True,\n"
-        "        'auto_integrate_remote_interval_seconds': 0.0,\n"
-        "    }\n"
-        "})\n"
-        "auto_integrate_after_commit(\n"
-        "    config, WorkspaceScope(root), RebaseState()\n"
-        ")\n"
-        "sys.stdout.write('LANDED\\n')\n"
-        "sys.stdout.flush()\n"
-    )
-    proc = subprocess.Popen(
-        [sys.executable, "-c", landing_script, str(repo)],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    if proc.stdout is not None:
-        before_push = proc.stdout.readline()
-        assert before_push.strip() == "BEFORE_PUSH"
-    proc.kill()
-    proc.wait()
+    def _interrupt_push(*_args: object, **_kwargs: object) -> object:
+        raise OSError("simulated kill before push completes")
+
+    with monkeypatch.context() as push_patch:
+        push_patch.setattr(remote_sync, "push_single_remote", _interrupt_push)
+        with contextlib.suppress(OSError):
+            auto_integrate_after_commit(_build_config(), WorkspaceScope(repo), RebaseState())
 
     local_sha = _head_sha(repo, f"refs/heads/{_TARGET}")
 
@@ -504,19 +479,8 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     assert _run(wt, "config", "user.email", "test@example.com").returncode == 0
     assert _run(wt, "config", "user.name", "Test User").returncode == 0
 
-    recovery_config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-                "auto_integrate_target": _TARGET,
-                "auto_integrate_remote": _REMOTE,
-                "auto_integrate_remote_enabled": True,
-                "auto_integrate_remote_interval_seconds": 0.0,
-            }
-        }
-    )
     rec_state = auto_integrate_recovery.recover_incomplete_integration(
-        WorkspaceScope(wt), config=recovery_config
+        WorkspaceScope(wt), config=_build_config()
     )
     assert rec_state is not None and rec_state.last_outcome is not None
     out_line = str(rec_state.last_outcome)
@@ -526,7 +490,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     assert out_line in (
         str(RebaseOutcomeKind.REMOTE_PUSHED),
         str(RebaseOutcomeKind.FAST_FORWARDED),
-    ), f"recovery subprocess did not report a push outcome: {out_line!r}"
+    ), f"recovery did not report a push outcome: {out_line!r}"
 
 
 @pytest.mark.subprocess_e2e
@@ -566,145 +530,17 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
     )
 
 
-_SUBPROCESS_SCRIPT = """
-import os
-import subprocess
-import sys
-from pathlib import Path
-
-from types import SimpleNamespace
-
-from ralph.config.models import UnifiedConfig
-from ralph.pipeline import auto_integrate_remote_sync as remote_sync
-from ralph.pipeline import run_loop
-from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
-from ralph.pipeline.state import PipelineState
-from ralph.policy.loader import load_policy
-from ralph.workspace.scope import WorkspaceScope
-
-root = Path(sys.argv[1])
-local_sha = sys.argv[2]
-target = "release"
-remote = "tacos"
-
-config = UnifiedConfig.model_validate({
-    "general": {
-        "auto_integrate_enabled": True,
-        "auto_integrate_target": target,
-        "auto_integrate_remote": remote,
-        "auto_integrate_remote_enabled": True,
-        "auto_integrate_remote_interval_seconds": 0.0,
-    },
-})
-
-# Drive the production publication reconciler against the unreachable
-# remote. The returned RebaseState carries the typed
-# publish_deferred_remote decision and the unreachable observation;
-# the runner scheduling connection consumes that state as-is.
-observed_rebase = remote_sync.reconcile_remote_publication(
-    config,
-    root,
-    target,
-    remote=remote,
-)
-if observed_rebase.last_publication_decision != "publish_deferred_remote":
-    sys.stderr.write(
-        f"NOT_DEFERRED:{observed_rebase.last_publication_decision}\\n"
-    )
-    sys.exit(8)
-if observed_rebase.last_remote_sync not in (
-    remote_sync.REMOTE_REMOTE_UNREACHABLE,
-    remote_sync.REMOTE_PULL_FAILED,
-):
-    sys.stderr.write(
-        f"NOT_UNREACHABLE:{observed_rebase.last_remote_sync}\\n"
-    )
-    sys.exit(9)
-
-attempt = 0
-
-def sleep_hook(_s):
-    global attempt
-    attempt += 1
-    sys.stdout.write(f"DEFERRED:{attempt}:{local_sha}\\n")
-    sys.stdout.flush()
-    signal = sys.stdin.readline().strip()
-    if signal == "RETRY":
-        return
-    elif signal == "RESTORED":
-        return
-    else:
-        sys.stderr.write(f"UNEXPECTED_SIGNAL:{signal}\\n")
-        sys.exit(7)
-
-defaults_dir = Path("ralph/policy/defaults")
-bundle = load_policy(defaults_dir)
-
-pipeline_state = PipelineState(
-    phase="complete",
-    rebase=observed_rebase,
-)
-ctx = SimpleNamespace(
-    config=config,
-    workspace_scope=WorkspaceScope(root),
-    latest_state=[pipeline_state],
-    sleep=sleep_hook,
-    active_display=None,
-    display_context=None,
-    effective_verbosity=None,
-    registry=None,
-    effective_pipeline_subscriber=None,
-    controller=None,
-    config_path=None,
-    cli_overrides=None,
-    monitor_stop=None,
-    connectivity_monitor=None,
-    pipeline_deps=None,
-    snapshot_registry=None,
-    process_teardown=None,
-    _session_handoff_dispatched=False,
-    policy_bundle=bundle,
-)
-
-# Start real runner loop: run_loop._run_inner_loop_after_startup
-# The runner's scheduling connection detects that publication was deferred and retries automatically
-final_state, _, _ = run_loop._run_inner_loop_after_startup(pipeline_state, ctx, "development")
-
-if (
-    final_state.rebase is not None
-    and final_state.rebase.last_outcome in (
-        RebaseOutcomeKind.REMOTE_PUSHED,
-        RebaseOutcomeKind.FAST_FORWARDED,
-    )
-):
-    sys.stdout.write(f"PUBLISHED:{local_sha}\\n")
-    sys.stdout.flush()
-    sys.exit(0)
-else:
-    sys.stderr.write(f"FAILED_RETRY:{final_state}\\n")
-    sys.exit(1)
-"""
-
-
-def _read_line_bounded(stream: TextIO, timeout: float = 30.0) -> str:
-    import select
-
-    rlist, _, _ = select.select([stream], [], [], timeout)
-    if not rlist:
-        raise TimeoutError(f"Timed out waiting for line from subprocess after {timeout}s")
-    line = stream.readline()
-    if not line:
-        raise EOFError("Subprocess stream closed unexpectedly")
-    return line
-
-
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(60)
 def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     tmp_path: Path,
 ) -> None:
-    import sys
-    import tempfile
+    from types import SimpleNamespace
+
+    from ralph.pipeline import run_loop
+    from ralph.pipeline.rebase_state import RebaseOutcomeKind as LoopRebaseOutcomeKind
+    from ralph.pipeline.state import PipelineState
+    from ralph.policy.loader import default_dir, load_policy
 
     repo, bare = _seed_cluster(tmp_path)
     unreachable_bare = tmp_path / "tacos_unreachable.git"
@@ -712,50 +548,65 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     assert _run(repo, "remote", "set-url", _REMOTE, str(unreachable_bare)).returncode == 0
     local_sha = _commit(repo, "feature.txt", "feature advance\n", "feature advance")
     seed_sha = _head_sha(repo, "HEAD~1")
+    config = _build_config()
 
-    with tempfile.TemporaryFile(mode="w+") as stderr_file:
-        proc = subprocess.Popen(
-            [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), local_sha],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=stderr_file,
-            text=True,
-        )
+    observed_rebase = remote_sync.reconcile_remote_publication(
+        config,
+        repo,
+        _TARGET,
+        remote=_REMOTE,
+    )
+    assert observed_rebase.last_publication_decision == "publish_deferred_remote"
+    assert observed_rebase.last_remote_sync in (
+        remote_sync.REMOTE_REMOTE_UNREACHABLE,
+        remote_sync.REMOTE_PULL_FAILED,
+    )
 
-        try:
-            assert proc.stdout is not None
-            assert proc.stdin is not None
+    deferred_signals: list[str] = []
+    attempt = {"n": 0}
 
-            for attempt_expected in (1, 2, 3):
-                line = _read_line_bounded(proc.stdout, timeout=30.0).strip()
-                assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
-                    f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
-                )
-                bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
-                assert bare_sha == seed_sha
-                assert bare_sha != local_sha
+    def sleep_hook(_seconds: float) -> None:
+        attempt["n"] += 1
+        deferred_signals.append(f"DEFERRED:{attempt['n']}:{local_sha}")
+        bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
+        assert bare_sha == seed_sha
+        assert bare_sha != local_sha
+        if attempt["n"] >= 2:
+            assert _run(repo, "remote", "set-url", _REMOTE, str(bare)).returncode == 0
 
-                if attempt_expected < 3:
-                    proc.stdin.write("RETRY\n")
-                    proc.stdin.flush()
-                else:
-                    assert _run(repo, "remote", "set-url", "tacos", str(bare)).returncode == 0
-                    proc.stdin.write("RESTORED\n")
-                    proc.stdin.flush()
+    bundle = load_policy(default_dir())
+    pipeline_state = PipelineState(phase="complete", rebase=observed_rebase)
+    ctx = SimpleNamespace(
+        config=config,
+        workspace_scope=WorkspaceScope(repo),
+        latest_state=[pipeline_state],
+        sleep=sleep_hook,
+        active_display=None,
+        display_context=None,
+        effective_verbosity=None,
+        registry=None,
+        effective_pipeline_subscriber=None,
+        controller=None,
+        config_path=None,
+        cli_overrides=None,
+        monitor_stop=None,
+        connectivity_monitor=None,
+        pipeline_deps=None,
+        snapshot_registry=None,
+        process_teardown=None,
+        _session_handoff_dispatched=False,
+        policy_bundle=bundle,
+    )
+    final_state, _, _ = run_loop._run_inner_loop_after_startup(pipeline_state, ctx, "development")
 
-            published_line = _read_line_bounded(proc.stdout, timeout=30.0).strip()
-            assert published_line == f"PUBLISHED:{local_sha}", (
-                f"Expected PUBLISHED:{local_sha}, got: {published_line}"
-            )
-
-            _out, _ = proc.communicate(timeout=15)
-            stderr_file.seek(0)
-            err = stderr_file.read()
-            assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
-
-            bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
-            assert bare_sha == local_sha
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait()
+    assert deferred_signals == [
+        f"DEFERRED:1:{local_sha}",
+        f"DEFERRED:2:{local_sha}",
+    ]
+    assert final_state.rebase is not None
+    assert final_state.rebase.last_outcome in (
+        LoopRebaseOutcomeKind.REMOTE_PUSHED,
+        LoopRebaseOutcomeKind.FAST_FORWARDED,
+    )
+    bare_sha = _run(bare, "rev-parse", "release").stdout.strip()
+    assert bare_sha == local_sha

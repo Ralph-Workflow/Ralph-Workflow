@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline import IntegrationAction
@@ -21,6 +22,7 @@ from ralph.pipeline._integration_record_facts import (
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_owner import (
     RecordFactOutcome,
@@ -35,12 +37,41 @@ from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._resolver_controller import make_resolver_controller
 
 if TYPE_CHECKING:
     from ralph.git.git_run_result import GitRunResult
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "FakeClock_recovery_controller": (
+        "acceptance recoveries install FakeClock via make_resolver_controller and "
+        "install_executors; landing and dispatch asserts unchanged"
+    ),
+}
+
+
+def _recover(
+    root: Path,
+    *,
+    config: UnifiedConfig | None = None,
+    conflict_resolver: object | None = None,
+    rebase_stop_resolver: object | None = None,
+) -> RebaseState | None:
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        return recover_incomplete_integration(
+            WorkspaceScope(root),
+            config=config,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            recovery_controller=make_resolver_controller(clock),
+        )
+    finally:
+        reset_executors(token)
 
 
 def _git(root: Path, *args: str) -> GitRunResult:
@@ -117,7 +148,7 @@ def test_acceptance_scenario_1_linked_worktree_unrelated_branch_advance(
         }
     )
 
-    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+    outcome = _recover(root, config=config)
     assert outcome is not None
     assert outcome.fast_forwarded is True
     assert outcome.recovery_record_retained is False
@@ -172,8 +203,8 @@ def test_acceptance_scenario_2_target_moved_during_integration(
         }
     )
 
-    declined = recover_incomplete_integration(
-        WorkspaceScope(root),
+    declined = _recover(
+        root,
         config=config,
         rebase_stop_resolver=lambda _root, _target, _stop: False,
         conflict_resolver=lambda _root, _target: False,
@@ -186,11 +217,7 @@ def test_acceptance_scenario_2_target_moved_during_integration(
         (repo / "shared.txt").write_text("feature and target\n", encoding="utf-8")
         return True
 
-    outcome = recover_incomplete_integration(
-        WorkspaceScope(root),
-        config=config,
-        rebase_stop_resolver=resolve,
-    )
+    outcome = _recover(root, config=config, rebase_stop_resolver=resolve)
     assert outcome is not None and outcome.fast_forwarded is True
     assert read_record(root) is None
 
@@ -236,7 +263,7 @@ def test_acceptance_scenario_5_conflict_resolved_landing_pending(
             }
         }
     )
-    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+    outcome = _recover(root, config=config)
     assert outcome is not None and outcome.fast_forwarded is True
     assert read_record(root) is None
     assert (

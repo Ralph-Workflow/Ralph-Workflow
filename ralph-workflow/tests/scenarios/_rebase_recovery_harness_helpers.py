@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 from loguru import logger
 
 from tests._scenario_git import commit_file, git
 from tests._scenario_operator_line import OperatorLine
 from tests.scenarios._fake_agent_runner import FakeAgentRunner
+from tests.scenarios._integration_scenario_fixtures import replace_with_repo_template
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -34,6 +37,21 @@ __all__ = [
     "shared_executor_seam",
     "supervisor_restart",
 ]
+
+_THREE_COMMIT_PAUSED_CACHE: list[Path] = []
+_EMPTY_RESOLUTION_PAUSED_CACHE: list[tuple[Path, tuple[str, str, str]]] = []
+_PARTIAL_OUT_OF_REACH_CACHE: list[tuple[Path, tuple[str, str, str]]] = []
+
+
+def _init_identity_repo(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    Repo.init(root, initial_branch="main")
+    git(root, "config", "user.name", "Test User")
+    git(root, "config", "user.email", "test@example.com")
+    readme = root / "README.md"
+    readme.write_text("test\n", encoding="utf-8")
+    git(root, "add", "README.md")
+    git(root, "commit", "-q", "-m", "initial commit")
 
 
 @contextmanager
@@ -120,9 +138,8 @@ def corrupted_config(root: Path) -> Path:
     return config
 
 
-def paused_partial_out_of_reach_rebase(root: Path) -> tuple[str, str, str]:
+def _build_partial_out_of_reach_paused(root: Path) -> tuple[str, str, str]:
     from ralph.git.rebase.rebase import rebase_in_progress
-    from tests._scenario_git import commit_file
 
     commit_file(root, "init.txt", "init\n", "init")
     base_oid = git(root, "rev-parse", "HEAD")
@@ -174,10 +191,20 @@ def paused_partial_out_of_reach_rebase(root: Path) -> tuple[str, str, str]:
     s1, s2, s3 = entries.get(1, ""), entries.get(2, ""), entries.get(3, "")
     if not (s1 and s2 and s3):
         raise AssertionError(f"expected three gitlink stages for vendor/link, got {(s1, s2, s3)}")
+    return (s1, s2, s3)
+
+
+def paused_partial_out_of_reach_rebase(root: Path) -> tuple[str, str, str]:
     from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
 
+    if not _PARTIAL_OUT_OF_REACH_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="partial-oor-"))
+        _init_identity_repo(seeded)
+        _PARTIAL_OUT_OF_REACH_CACHE.append((seeded, _build_partial_out_of_reach_paused(seeded)))
+    template, stage_shas = _PARTIAL_OUT_OF_REACH_CACHE[0]
+    replace_with_repo_template(template, root)
     adopt_active_rebase_record(root, "main")
-    return (s1, s2, s3)
+    return stage_shas
 
 
 def supervisor_restart(root: Path) -> dict[str, object]:
@@ -208,7 +235,7 @@ def supervisor_restart(root: Path) -> dict[str, object]:
     return payload
 
 
-def paused_three_commit_first_stop_rebase(root: Path) -> None:
+def _build_three_commit_paused(root: Path) -> None:
     from ralph.git.rebase.rebase import rebase_in_progress
 
     commit_file(root, "shared.txt", "base\n", "scenario base")
@@ -224,7 +251,16 @@ def paused_three_commit_first_stop_rebase(root: Path) -> None:
         raise AssertionError("three-commit fixture did not pause at the first stop")
 
 
-def empty_resolution_stop_snapshot(root: Path) -> tuple[str, str, str]:
+def paused_three_commit_first_stop_rebase(root: Path) -> None:
+    if not _THREE_COMMIT_PAUSED_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="three-commit-"))
+        _init_identity_repo(seeded)
+        _build_three_commit_paused(seeded)
+        _THREE_COMMIT_PAUSED_CACHE.append(seeded)
+    replace_with_repo_template(_THREE_COMMIT_PAUSED_CACHE[0], root)
+
+
+def _build_empty_resolution_paused(root: Path) -> tuple[str, str, str]:
     from ralph.git.rebase.rebase import rebase_in_progress
 
     commit_file(root, "shared.txt", "base\n", "base")
@@ -239,3 +275,13 @@ def empty_resolution_stop_snapshot(root: Path) -> tuple[str, str, str]:
         raise AssertionError("empty-resolution fixture did not pause")
     resolved_tree = git(root, "rev-parse", "HEAD^{tree}")
     return (resolved_tree, git(root, "rev-parse", "HEAD"), pre_rebase_head)
+
+
+def empty_resolution_stop_snapshot(root: Path) -> tuple[str, str, str]:
+    if not _EMPTY_RESOLUTION_PAUSED_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="empty-resolution-"))
+        _init_identity_repo(seeded)
+        _EMPTY_RESOLUTION_PAUSED_CACHE.append((seeded, _build_empty_resolution_paused(seeded)))
+    template, meta = _EMPTY_RESOLUTION_PAUSED_CACHE[0]
+    replace_with_repo_template(template, root)
+    return meta

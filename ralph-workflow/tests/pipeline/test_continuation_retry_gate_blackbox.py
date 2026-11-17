@@ -6,10 +6,8 @@ from typing import Protocol, TypedDict
 
 import pytest
 from loguru import logger
-from typer.testing import CliRunner
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.cli import main as main_module
 from ralph.config.loader import load_config
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
@@ -35,6 +33,26 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
         "hook and every caller are removed as dead code"
     ),
+    "test_blackbox_retained_rebase_retry_invokes_resolver_and_gates_repeat": (
+        "REPLACE: force_retry through run_auto_integrate_recovery_preamble; CLI --retry "
+        "wiring stays covered by test_cli_retry_integration_invokes_recovery_with_force_retry"
+    ),
+    "test_blackbox_retained_merge_retry_invokes_resolver_and_gates_repeat": (
+        "REPLACE: force_retry through run_auto_integrate_recovery_preamble; CLI --retry "
+        "wiring stays covered by test_cli_retry_integration_invokes_recovery_with_force_retry"
+    ),
+    "test_blackbox_retained_rebase_optional_config_repair": (
+        "MERGE: folded into test_blackbox_retained_rebase_global_config_repair_and_legacy_"
+        "ungated so optional agents.toml and global XDG repair share one retained rebase"
+    ),
+    "test_blackbox_retained_rebase_global_config_repair_and_legacy_ungated": (
+        "absorbs optional agents.toml repair before global XDG repair and legacy ungated "
+        "retry on one retained rebase fixture"
+    ),
+    "remote-disabled workspace toml": (
+        "workspace configs set auto_integrate_remote_enabled=false so preamble ticks skip "
+        "unreachable-origin probes; gate and repair observables are unchanged"
+    ),
 }
 
 
@@ -48,6 +66,19 @@ class _LogRecord(TypedDict):
 
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+_BASE_TOML = (
+    "[general]\nmodel = 'test'\nauto_integrate_remote_enabled = false\n"
+    "auto_integrate_target = 'main'\n"
+)
+_REPAIRED_TOML = (
+    "[general]\nmodel = 'repaired'\nauto_integrate_remote_enabled = false\n"
+    "auto_integrate_target = 'main'\n"
+)
+_GLOBAL_TOML = (
+    "[general]\nmodel = 'global-test'\nauto_integrate_remote_enabled = false\n"
+    "auto_integrate_target = 'main'\n"
+)
 
 
 def _capture_loguru_records() -> tuple[list[_LogRecord], int]:
@@ -66,7 +97,7 @@ def _setup_repo_and_config(tmp_path: Path) -> tuple[Path, Path]:
     cfg_dir = tmp_path / ".agent"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     cfg_file = cfg_dir / "ralph-workflow.toml"
-    cfg_file.write_text("[general]\nmodel = 'test'\n", encoding="utf-8")
+    cfg_file.write_text(_BASE_TOML, encoding="utf-8")
     git_dir = tmp_path / ".git"
     git_dir.mkdir(parents=True, exist_ok=True)
     (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
@@ -116,14 +147,16 @@ def test_blackbox_retained_rebase_retry_invokes_resolver_and_gates_repeat(
     root, _cfg_file = _setup_repo_and_config(tmp_path)
     _setup_rebase_state(root, "feat1", "target1", "stop1")
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="feat1",
-        pre_target_sha="target1",
-        resolving_rebase=True,
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat1",
+            pre_target_sha="target1",
+            resolving_rebase=True,
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -134,10 +167,11 @@ def test_blackbox_retained_rebase_retry_invokes_resolver_and_gates_repeat(
     monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", fake_resolve)
     monkeypatch.chdir(root)
 
-    runner = CliRunner()
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
 
-    res = runner.invoke(main_module.app, ["--retry"])
-    assert res.exit_code != 0
+    res = run_auto_integrate_recovery_preamble(scope, config=cfg, force_retry=True)
+    assert res is not None
     assert resolve_calls[0] == 1
 
     rec_after_retry = read_record(root)
@@ -145,9 +179,6 @@ def test_blackbox_retained_rebase_retry_invokes_resolver_and_gates_repeat(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        scope = WorkspaceScope(root)
-        cfg = load_config(workspace_scope=scope)
-
         outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg)
         assert resolve_calls[0] == 1
         assert outcome2 is not None and "WAITING" in outcome2.last_reason
@@ -165,14 +196,16 @@ def test_blackbox_retained_rebase_config_repair_and_eligibility(
     root, cfg_file = _setup_repo_and_config(tmp_path)
     _setup_rebase_state(root, "feat1", "target1", "stop1")
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="feat1",
-        pre_target_sha="target1",
-        resolving_rebase=True,
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat1",
+            pre_target_sha="target1",
+            resolving_rebase=True,
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -192,7 +225,7 @@ def test_blackbox_retained_rebase_config_repair_and_eligibility(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        cfg_file.write_text("[general]\nmodel = 'repaired'\n", encoding="utf-8")
+        cfg_file.write_text(_REPAIRED_TOML, encoding="utf-8")
         cfg_repaired = load_config(workspace_scope=scope)
         outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg_repaired)
         assert resolve_calls[0] == 2
@@ -238,15 +271,17 @@ def test_blackbox_retained_merge_retry_invokes_resolver_and_gates_repeat(
     target_sha = "a" * 40
     _setup_merge_state(root, feat_sha, target_sha)
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha=feat_sha,
-        pre_target_sha=target_sha,
-        resolving_merge=True,
-        conflicted_files=("f.py",),
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha=feat_sha,
+            pre_target_sha=target_sha,
+            resolving_merge=True,
+            conflicted_files=("f.py",),
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -261,10 +296,11 @@ def test_blackbox_retained_merge_retry_invokes_resolver_and_gates_repeat(
     monkeypatch.setattr(air_mod, "resolve_and_commit_with_reason", fake_merge_resolve)
     monkeypatch.chdir(root)
 
-    runner = CliRunner()
+    scope = WorkspaceScope(root)
+    cfg = load_config(workspace_scope=scope)
 
-    res = runner.invoke(main_module.app, ["--retry"])
-    assert res.exit_code != 0
+    res = run_auto_integrate_recovery_preamble(scope, config=cfg, force_retry=True)
+    assert res is not None
     assert resolve_calls[0] == 1
 
     rec_after_retry = read_record(root)
@@ -272,9 +308,6 @@ def test_blackbox_retained_merge_retry_invokes_resolver_and_gates_repeat(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        scope = WorkspaceScope(root)
-        cfg = load_config(workspace_scope=scope)
-
         outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg)
         assert resolve_calls[0] == 1
         assert outcome2 is not None and "WAITING" in outcome2.last_reason
@@ -294,15 +327,17 @@ def test_blackbox_retained_merge_config_repair_and_eligibility(
     target_sha = "a" * 40
     _setup_merge_state(root, feat_sha, target_sha)
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha=feat_sha,
-        pre_target_sha=target_sha,
-        resolving_merge=True,
-        conflicted_files=("f.py",),
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha=feat_sha,
+            pre_target_sha=target_sha,
+            resolving_merge=True,
+            conflicted_files=("f.py",),
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -326,7 +361,7 @@ def test_blackbox_retained_merge_config_repair_and_eligibility(
 
     captured, sink_id = _capture_loguru_records()
     try:
-        cfg_file.write_text("[general]\nmodel = 'repaired'\n", encoding="utf-8")
+        cfg_file.write_text(_REPAIRED_TOML, encoding="utf-8")
         cfg_repaired = load_config(workspace_scope=scope)
         outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg_repaired)
         assert resolve_calls[0] == 2
@@ -363,20 +398,26 @@ def test_blackbox_retained_merge_config_repair_and_eligibility(
             logger.remove(sink_id)
 
 
-def test_blackbox_retained_rebase_optional_config_repair(
+def test_blackbox_retained_rebase_global_config_repair_and_legacy_ungated(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root, _cfg_file = _setup_repo_and_config(tmp_path)
     _setup_rebase_state(root, "feat1", "target1", "stop1")
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="feat1",
-        pre_target_sha="target1",
-        resolving_rebase=True,
+    global_dir = tmp_path / "global_config"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat1",
+            pre_target_sha="target1",
+            resolving_rebase=True,
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -401,71 +442,29 @@ def test_blackbox_retained_rebase_optional_config_repair(
     (root / ".agent" / "agents.toml").write_text(
         "[agents.test]\nmodel = 'test-opt'\n", encoding="utf-8"
     )
-    outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    outcome_opt = run_auto_integrate_recovery_preamble(scope, config=cfg)
     assert resolve_calls[0] == 2
-    assert outcome2 is not None and outcome2.recovery_record_retained is True
+    assert outcome_opt is not None and outcome_opt.recovery_record_retained is True
 
-    outcome2_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
+    outcome_opt_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
     assert resolve_calls[0] == 2
-    assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
+    assert outcome_opt_repeat is not None and "WAITING" in outcome_opt_repeat.last_reason
 
-
-def test_blackbox_retained_rebase_global_config_repair_and_legacy_ungated(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    root, _cfg_file = _setup_repo_and_config(tmp_path)
-    _setup_rebase_state(root, "feat1", "target1", "stop1")
-
-    global_dir = tmp_path / "global_config"
-    global_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
-
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="feat1",
-        pre_target_sha="target1",
-        resolving_rebase=True,
-    )
-    write_record(root, rec)
-
-    resolve_calls = [0]
-
-    def fake_resolve(root: Path, target: str, resolver: object, session: object = None) -> bool:
-        resolve_calls[0] += 1
-        return False
-
-    monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", fake_resolve)
-    monkeypatch.chdir(root)
-
-    scope = WorkspaceScope(root)
-    cfg = load_config(workspace_scope=scope)
-
-    outcome1 = run_auto_integrate_recovery_preamble(scope, config=cfg)
-    assert resolve_calls[0] == 1
-    assert outcome1 is not None and outcome1.recovery_record_retained is True
-
-    outcome1_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg)
-    assert resolve_calls[0] == 1
-    assert outcome1_repeat is not None and "WAITING" in outcome1_repeat.last_reason
-
-    (global_dir / "ralph-workflow.toml").write_text(
-        "[general]\nmodel = 'global-test'\n", encoding="utf-8"
-    )
+    (global_dir / "ralph-workflow.toml").write_text(_GLOBAL_TOML, encoding="utf-8")
     cfg_global = load_config(workspace_scope=scope)
     outcome2 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
-    assert resolve_calls[0] == 2
+    assert resolve_calls[0] == 3
     assert outcome2 is not None and outcome2.recovery_record_retained is True
 
     outcome2_repeat = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
-    assert resolve_calls[0] == 2
+    assert resolve_calls[0] == 3
     assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
 
     rec_disk = read_record(root)
     assert rec_disk is not None and rec_disk.resolution_gate_key is not None
     write_record(root, rec_disk.with_resolution_gate_key(None))
     outcome3 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
-    assert resolve_calls[0] == 3
+    assert resolve_calls[0] == 4
     assert outcome3 is not None and outcome3.recovery_record_retained is True
 
 
@@ -481,15 +480,17 @@ def test_blackbox_retained_merge_optional_and_global_config_repair(
     global_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha=feat_sha,
-        pre_target_sha=target_sha,
-        resolving_merge=True,
-        conflicted_files=("f.py",),
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha=feat_sha,
+            pre_target_sha=target_sha,
+            resolving_merge=True,
+            conflicted_files=("f.py",),
+        ),
     )
-    write_record(root, rec)
 
     resolve_calls = [0]
 
@@ -526,9 +527,7 @@ def test_blackbox_retained_merge_optional_and_global_config_repair(
     assert resolve_calls[0] == 2
     assert outcome2_repeat is not None and "WAITING" in outcome2_repeat.last_reason
 
-    (global_dir / "ralph-workflow.toml").write_text(
-        "[general]\nmodel = 'global-test'\n", encoding="utf-8"
-    )
+    (global_dir / "ralph-workflow.toml").write_text(_GLOBAL_TOML, encoding="utf-8")
     cfg_global = load_config(workspace_scope=scope)
     outcome3 = run_auto_integrate_recovery_preamble(scope, config=cfg_global)
     assert resolve_calls[0] == 3
@@ -545,14 +544,16 @@ def test_blackbox_eligibility_return_retries_exactly_once(
     root, _cfg_file = _setup_repo_and_config(tmp_path)
     _setup_rebase_state(root, "feat1", "target1", "stop1")
 
-    rec = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="feat1",
-        pre_target_sha="target1",
-        resolving_rebase=True,
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="feat1",
+            pre_target_sha="target1",
+            resolving_rebase=True,
+        ),
     )
-    write_record(root, rec)
 
     ctrl, clock = _setup_controller()
     ctrl.unavailability_store.mark_unavailable(

@@ -2,15 +2,29 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
+from git import Repo
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
 from tests._scenario_git import commit_file, git
+from tests.scenarios._integration_scenario_fixtures import replace_with_repo_template
 
 pytestmark = pytest.mark.subprocess_e2e
+
+_WT02_PAUSED_CACHE: list[tuple[Path, tuple[str, str, str]]] = []
+_WT04_PAUSED_CACHE: list[tuple[Path, tuple[str, str, str]]] = []
+
+
+def _init_identity_repo(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    Repo.init(root, initial_branch="main")
+    git(root, "config", "user.name", "Test User")
+    git(root, "config", "user.email", "test@example.com")
+
 
 RALPHSITE_VENDOR_PATH: str = "vendor/Ralph-Workflow"
 RALPHSITE_STAGE_1_SHA: str = "27c3d76f5e59dcf73e5abe2fc08eb98ad3fe78a8"
@@ -89,9 +103,7 @@ def seed_ralphsite_ledger(root: Path, variant: str = "wt-02") -> Path:
     return ledger_path
 
 
-def setup_ralphsite_wt02_worktree(root: Path, *, seed_ledger: bool = True) -> tuple[str, str, str]:
-    git(root, "config", "user.name", "Test User")
-    git(root, "config", "user.email", "test@example.com")
+def _build_ralphsite_wt02_paused(root: Path) -> tuple[str, str, str]:
     commit_file(
         root,
         "docs/product-spec.md",
@@ -193,18 +205,12 @@ def setup_ralphsite_wt02_worktree(root: Path, *, seed_ledger: bool = True) -> tu
         encoding="utf-8",
     )
 
-    if seed_ledger:
-        seed_ralphsite_ledger(root, variant="wt-02")
-
     if not rebase_in_progress(root):
         raise AssertionError("wt-02 fixture did not pause in a conflicted rebase")
-    adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, RALPHSITE_VENDOR_PATH)
 
 
-def setup_ralphsite_wt04_worktree(root: Path, *, seed_ledger: bool = True) -> tuple[str, str, str]:
-    git(root, "config", "user.name", "Test User")
-    git(root, "config", "user.email", "test@example.com")
+def _build_ralphsite_wt04_paused(root: Path) -> tuple[str, str, str]:
     commit_file(
         root,
         "docs/product-spec.md",
@@ -276,13 +282,35 @@ def setup_ralphsite_wt04_worktree(root: Path, *, seed_ledger: bool = True) -> tu
         encoding="utf-8",
     )
 
-    if seed_ledger:
-        seed_ralphsite_ledger(root, variant="wt-04")
-
     if not rebase_in_progress(root):
         raise AssertionError("wt-04 fixture did not pause in a conflicted rebase")
-    adopt_active_rebase_record(root, "main")
     return _gitlink_stage_shas(root, RALPHSITE_VENDOR_PATH)
+
+
+def setup_ralphsite_wt02_worktree(root: Path, *, seed_ledger: bool = True) -> tuple[str, str, str]:
+    if not _WT02_PAUSED_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="ralphsite-wt02-"))
+        _init_identity_repo(seeded)
+        _WT02_PAUSED_CACHE.append((seeded, _build_ralphsite_wt02_paused(seeded)))
+    template, stage_shas = _WT02_PAUSED_CACHE[0]
+    replace_with_repo_template(template, root)
+    if seed_ledger:
+        seed_ralphsite_ledger(root, variant="wt-02")
+    adopt_active_rebase_record(root, "main")
+    return stage_shas
+
+
+def setup_ralphsite_wt04_worktree(root: Path, *, seed_ledger: bool = True) -> tuple[str, str, str]:
+    if not _WT04_PAUSED_CACHE:
+        seeded = Path(tempfile.mkdtemp(prefix="ralphsite-wt04-"))
+        _init_identity_repo(seeded)
+        _WT04_PAUSED_CACHE.append((seeded, _build_ralphsite_wt04_paused(seeded)))
+    template, stage_shas = _WT04_PAUSED_CACHE[0]
+    replace_with_repo_template(template, root)
+    if seed_ledger:
+        seed_ralphsite_ledger(root, variant="wt-04")
+    adopt_active_rebase_record(root, "main")
+    return stage_shas
 
 
 def reconstruct_ralphsite_worktree(root: Path, variant: str = "wt-02") -> tuple[str, str, str]:

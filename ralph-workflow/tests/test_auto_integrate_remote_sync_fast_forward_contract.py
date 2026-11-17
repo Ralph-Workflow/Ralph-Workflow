@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import subprocess
 from collections.abc import Generator
@@ -12,8 +13,11 @@ import pytest
 from git import Commit, Repo, Tree
 from git.exc import GitError
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
+)
 from ralph.pipeline.auto_integrate_catchup import (
     AgentPhaseActivity,
     AutoIntegrateCatchupWorker,
@@ -21,10 +25,106 @@ from ralph.pipeline.auto_integrate_catchup import (
 )
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.pipeline.auto_integrate_remote_constants import RemoteSyncStatus
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "session-scoped remote-sync topology templates": (
+        "each real-git case still starts from the same bare origin, feature worktree, "
+        "writer clone, and remote tip; only the immutable template is built once per "
+        "session and copytree'd per scenario"
+    ),
+    "FakeClock recovery controller on auto_integrate_after_commit": (
+        "observable ancestry, porcelain, dirty-owner, and remote-sync outcomes are "
+        "unchanged; only wall-clock sleeps and policy-bundle controller construction "
+        "are replaced"
+    ),
+    "GitPython reads for porcelain, log subject, stash, and ancestry assertions": (
+        "assertions still compare the same clean porcelain, commit subjects, empty "
+        "stash, and ancestor relationships; only the read transport moved off a raw "
+        "subprocess.run"
+    ),
+    "test_post_commit_on_target_branch_fast_forwards_main_to_origin": (
+        "MERGE into test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs; "
+        "first remote advance still fast-forwards main with remote.txt and clean porcelain"
+    ),
+    "test_post_commit_on_target_branch_publishes_and_reconciles_local_commits": (
+        "MERGE into test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs; "
+        "diverged local trunk commit still lands with remote ancestry and published tip"
+    ),
+    "test_ticker_fast_forwards_target_when_run_checkout_is_on_target": (
+        "MERGE into test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs; "
+        "ticker on the target checkout still fast-forwards a later remote advance"
+    ),
+    "test_ticker_fast_forwards_main_checked_out_in_another_worktree": (
+        "MERGE into test_ticker_fast_forwards_across_worktree_and_cadence; "
+        "first tick still fast-forwards main while the feature worktree owns the run"
+    ),
+    "test_ticker_applies_a_remote_advance_inside_the_fetch_cadence": (
+        "MERGE into test_ticker_fast_forwards_across_worktree_and_cadence; "
+        "second remote advance still applies on the next tick inside the cadence"
+    ),
+    "test_ticker_fast_forwards_across_worktree_cadence_and_detached": (
+        "SPLIT detached coverage into test_ticker_syncs_target_even_when_run_checkout_is_detached; "
+        "a detached tick skips post-tick publication, so it cannot refresh inside an armed "
+        "fetch cadence and must keep a fetch-allowed first tick"
+    ),
+    "test_start_catchup_worker_runs_a_ticker_when_remote_sync_is_enabled": (
+        "MERGE into test_ticker_syncs_target_even_when_run_checkout_is_detached; "
+        "start_catchup_worker_if_enabled still returns a running worker before the "
+        "detached sync tick"
+    ),
+    "test_startup_recovery_fast_forwards_main_and_reports_no_failure": (
+        "MERGE into test_startup_recovery_fast_forwards_main_across_cadence; "
+        "first recovery still fast-forwards main and reports no pull failure"
+    ),
+    "test_startup_recovery_fast_forwards_main_inside_ticker_cadence": (
+        "MERGE into test_startup_recovery_fast_forwards_main_across_cadence; "
+        "recovery after a ticker-established cadence still applies the next remote tip"
+    ),
+    "test_post_commit_with_feature_at_target_fast_forwards_main_then_ticker_feature": (
+        "MERGE into test_ticker_leaves_the_agent_checkout_alone_mid_phase_but_syncs_main; "
+        "feature-at-target post-commit still fast-forwards main before the agent-phase ticks"
+    ),
+    "test_post_commit_on_dirty_target_checkout_fails_closed": (
+        "MERGE into test_ticker_refuses_dirty_target_owner_then_retries_once_clean; "
+        "dirty target post-commit still leaves main and the working tree untouched with an "
+        "empty stash before the ticker refuse/retry sequence"
+    ),
+    "test_ticker_never_force_moves_a_conflicting_diverged_target": (
+        "MERGE into test_ticker_fast_forwards_across_worktree_and_cadence; "
+        "after cadence advances, a conflicting local tip still refuses a force-move"
+    ),
+    "hardlink git object bytes during scenario copytree": (
+        "scenario trees still materialize distinct workspaces with the same seed objects; "
+        "only immutable object payloads are hardlinked when the filesystem allows it"
+    ),
+    "test_post_commit_from_feature_worktree_pulls_origin_then_lands_feature": (
+        "MERGE into test_post_commit_uses_the_configured_non_default_remote; "
+        "feature worktree post-commit still pulls the remote tip, lands feature work, "
+        "publishes main, and leaves a clean porcelain tree"
+    ),
+    "test_remote_disabled_never_moves_local_refs_from_origin": (
+        "MERGE into test_post_commit_uses_the_configured_non_default_remote; "
+        "with remote sync disabled, post-commit, ticker, and recovery still leave main on "
+        "feature work and leave the bare tip on the remote advance"
+    ),
+    "test_trunk_agent_phase_defers_main_but_still_fetches": (
+        "MERGE into test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs; "
+        "a trunk agent phase still fetches origin/main while deferring the local tip before "
+        "the post-commit fast-forward and reconcile sequence"
+    ),
+}
+
+
+class _FastClock(FakeClock):
+    def now(self) -> float:
+        return self.monotonic()
+
 
 _TARGET = "main"
 _FEATURE = "feature"
@@ -89,6 +189,10 @@ def _in_process_git(cwd: Path, args: tuple[str, ...]) -> str | None:
                 )
             elif args == ("remote",):
                 value = "\n".join(remote.name for remote in repo.remotes)
+            elif args == ("status", "--porcelain"):
+                value = repo.git.status("--porcelain")
+            elif args == ("stash", "list"):
+                value = repo.git.stash("list")
             else:
                 return None
         except (GitError, OSError, ValueError, KeyError, AttributeError):
@@ -239,6 +343,22 @@ def _ignore_inert_git_samples(directory: str, names: list[str]) -> set[str]:
     return {"hooks"} if name == ".git" or name.endswith(".git") else set()
 
 
+def _link_git_objects_or_copy(src: str, dst: str) -> None:
+    src_path = Path(src)
+    parts = src_path.parts
+    if ".git" in parts:
+        git_index = parts.index(".git")
+        rest = parts[git_index + 1 :]
+        if rest and rest[0] == "objects" and len(rest) >= 2:
+            try:
+                os.link(src, dst)
+            except OSError:
+                pass
+            else:
+                return
+    shutil.copy2(src, dst)
+
+
 def _rebase_paths(source: Path, target: Path) -> None:
     old = str(source).encode()
     new = str(target).encode()
@@ -306,7 +426,12 @@ def _build(
     variant = f"{remote}-{'feature' if feature_commit else 'plain'}"
     template = _TEMPLATES[variant]
     root = tmp_path / f"scenario-{next(_SCENARIO_SEQUENCE)}"
-    shutil.copytree(template, root, ignore=_ignore_inert_git_samples)
+    shutil.copytree(
+        template,
+        root,
+        ignore=_ignore_inert_git_samples,
+        copy_function=_link_git_objects_or_copy,
+    )
     _rebase_paths(template, root)
     return _Topology(
         bare=root / "origin.git",
@@ -331,14 +456,37 @@ def _config(*, remote: str = "origin", remote_enabled: bool = True) -> UnifiedCo
     )
 
 
+def _recovery_controller(clock: FakeClock) -> RecoveryController:
+    return RecoveryController(options=RecoveryControllerOptions(clock=clock))
+
+
 def _post_commit(config: UnifiedConfig, root: Path) -> RebaseState | None:
-    return auto_integrate_after_commit(
-        config,
-        WorkspaceScope(root),
-        RebaseState(),
-        sleep=lambda _seconds: None,
-        jitter=lambda: 0.0,
-    )
+    clock = _FastClock(start=0.0)
+    token = install_executors(clock=clock)
+    try:
+        return _auto_integrate_after_commit(
+            config,
+            WorkspaceScope(root),
+            RebaseState(),
+            sleep=clock.sleep,
+            jitter=lambda: 0.0,
+            recovery_controller=_recovery_controller(clock),
+        )
+    finally:
+        reset_executors(token)
+
+
+def _recover(config: UnifiedConfig, root: Path) -> RebaseState | None:
+    clock = _FastClock(start=0.0)
+    token = install_executors(clock=clock)
+    try:
+        return recover_incomplete_integration(
+            WorkspaceScope(root),
+            config=config,
+            recovery_controller=_recovery_controller(clock),
+        )
+    finally:
+        reset_executors(token)
 
 
 def _run_ticks(
@@ -348,100 +496,119 @@ def _run_ticks(
     *,
     agent_phases: AgentPhaseActivity | None = None,
 ) -> None:
+    clock = _FastClock(start=0.0)
     stops = iter([False] * ticks + [True])
-    worker = AutoIntegrateCatchupWorker(
-        config, root, wait=lambda _interval: next(stops), agent_phases=agent_phases
-    )
-    worker.run()
+    token = install_executors(clock=clock)
+    try:
+        worker = AutoIntegrateCatchupWorker(
+            config,
+            root,
+            wait=lambda _interval: next(stops),
+            agent_phases=agent_phases,
+            clock=clock,
+            jitter=lambda: 0.0,
+        )
+        worker.run()
+    finally:
+        reset_executors(token)
 
 
-def test_post_commit_from_feature_worktree_pulls_origin_then_lands_feature(
+def test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs(
     tmp_path: Path,
 ) -> None:
-    topo = _build(tmp_path)
-    remote_sha = topo.push_remote_advance()
+    topo = _build(tmp_path, feature_commit=False)
+    first_remote = topo.push_remote_advance()
+    before = topo.ref(_TARGET)
+    phases = AgentPhaseActivity()
 
-    outcome = _post_commit(_config(), topo.feature)
+    with phases.agent_phase(topo.clone):
+        _run_ticks(_config(), topo.clone, agent_phases=phases)
+
+        assert _git(topo.clone, "rev-parse", f"refs/remotes/origin/{_TARGET}") == first_remote
+        assert topo.ref(_TARGET) == before
+        assert not (topo.clone / "remote.txt").exists()
+
+    _run_ticks(_config(), topo.clone, agent_phases=phases)
+
+    assert topo.ref(_TARGET) == first_remote
+    assert (topo.clone / "remote.txt").exists()
+
+    second_remote = topo.push_remote_advance("remote2.txt")
+    _post_commit(_config(), topo.clone)
+
+    assert topo.ref(_TARGET) == second_remote
+    assert (topo.clone / "remote2.txt").read_text(encoding="utf-8") == "remote2.txt\n"
+    assert _git(topo.clone, "status", "--porcelain") == ""
+
+    third_remote = topo.push_remote_advance("remote3.txt")
+    local_sha = _commit(topo.clone, "local.txt", "local\n", "local trunk commit")
+
+    _post_commit(_config(), topo.clone)
+
+    main = topo.ref(_TARGET)
+    assert _is_ancestor(topo.clone, third_remote, main)
+    assert "local trunk commit" in _git(topo.clone, "log", "--format=%s", main)
+    assert main != local_sha
+    assert topo.origin_tip() == main
+
+    fourth_remote = topo.push_remote_advance("remote4.txt")
+    _run_ticks(_config(), topo.clone)
+
+    assert topo.ref(_TARGET) == fourth_remote
+    assert (topo.clone / "remote4.txt").exists()
+
+
+def test_post_commit_uses_the_configured_non_default_remote(tmp_path: Path) -> None:
+    topo = _build(tmp_path, remote="tacos")
+    origin_before = topo.push_remote_advance()
+    disabled = _config(remote="tacos", remote_enabled=False)
+
+    _post_commit(disabled, topo.feature)
+    _run_ticks(disabled, topo.feature)
+    _recover(disabled, topo.feature)
+
+    main = topo.ref(_TARGET)
+    assert _git(topo.clone, "log", "-1", "--format=%s", main) == "feature work"
+    assert "remote advance" not in _git(topo.clone, "log", "--format=%s", main)
+    assert topo.origin_tip() == origin_before
+
+    outcome = _post_commit(_config(remote="tacos"), topo.feature)
 
     assert outcome is not None
     main = topo.ref(_TARGET)
-    assert _is_ancestor(topo.clone, remote_sha, main)
+    assert _is_ancestor(topo.clone, origin_before, main)
     assert _git(topo.clone, "log", "-1", "--format=%s", main) == "feature work"
     assert topo.origin_tip() == main
     assert (topo.clone / "remote.txt").exists()
     assert _git(topo.clone, "status", "--porcelain") == ""
 
 
-def test_post_commit_on_target_branch_fast_forwards_main_to_origin(tmp_path: Path) -> None:
-    topo = _build(tmp_path, feature_commit=False)
+def test_ticker_fast_forwards_across_worktree_and_cadence(tmp_path: Path) -> None:
+    topo = _build(tmp_path)
     remote_sha = topo.push_remote_advance()
-
-    _post_commit(_config(), topo.clone)
+    _run_ticks(_config(), topo.feature)
 
     assert topo.ref(_TARGET) == remote_sha
-    assert (topo.clone / "remote.txt").read_text(encoding="utf-8") == "remote.txt\n"
+    assert (topo.clone / "remote.txt").exists()
+    assert _git(topo.clone, "status", "--porcelain") == ""
+
+    second = topo.push_remote_advance("remote2.txt")
+    _run_ticks(_config(), topo.feature)
+
+    assert topo.ref(_TARGET) == second
+    assert (topo.clone / "remote2.txt").exists()
+
+    origin_before = topo.push_remote_advance("conflict-remote.txt")
+    local_sha = _commit(topo.clone, "conflict-remote.txt", "local version\n", "local conflicting")
+    _run_ticks(_config(), topo.feature)
+
+    assert topo.ref(_TARGET) == local_sha
+    assert topo.origin_tip() == origin_before
+    assert not (topo.clone / ".git" / "rebase-merge").exists()
     assert _git(topo.clone, "status", "--porcelain") == ""
 
 
-def test_post_commit_on_target_branch_publishes_and_reconciles_local_commits(
-    tmp_path: Path,
-) -> None:
-    topo = _build(tmp_path, feature_commit=False)
-    remote_sha = topo.push_remote_advance()
-    local_sha = _commit(topo.clone, "local.txt", "local\n", "local trunk commit")
-
-    _post_commit(_config(), topo.clone)
-
-    main = topo.ref(_TARGET)
-    assert _is_ancestor(topo.clone, remote_sha, main)
-    assert "local trunk commit" in _git(topo.clone, "log", "--format=%s", main)
-    assert main != local_sha
-    assert topo.origin_tip() == main
-
-
-def test_post_commit_with_feature_at_target_fast_forwards_main_then_ticker_feature(
-    tmp_path: Path,
-) -> None:
-    topo = _build(tmp_path, feature_commit=False)
-    remote_sha = topo.push_remote_advance()
-
-    _post_commit(_config(), topo.feature)
-
-    assert topo.ref(_TARGET) == remote_sha
-
-    _run_ticks(_config(), topo.feature)
-
-    assert topo.ref(_FEATURE) == remote_sha
-    assert (topo.feature / "remote.txt").exists()
-
-
-def test_post_commit_on_dirty_target_checkout_fails_closed(tmp_path: Path) -> None:
-    topo = _build(tmp_path, feature_commit=False)
-    before = topo.ref(_TARGET)
-    topo.push_remote_advance()
-    (topo.clone / "seed.txt").write_text("uncommitted edit\n", encoding="utf-8")
-
-    _post_commit(_config(), topo.clone)
-
-    assert topo.ref(_TARGET) == before
-    assert (topo.clone / "seed.txt").read_text(encoding="utf-8") == "uncommitted edit\n"
-    assert _git(topo.clone, "stash", "list") == ""
-
-
-def test_post_commit_uses_the_configured_non_default_remote(tmp_path: Path) -> None:
-    topo = _build(tmp_path, remote="tacos")
-    remote_sha = topo.push_remote_advance()
-
-    _post_commit(_config(remote="tacos"), topo.feature)
-
-    main = topo.ref(_TARGET)
-    assert _is_ancestor(topo.clone, remote_sha, main)
-    assert topo.origin_tip() == main
-
-
-def test_start_catchup_worker_runs_a_ticker_when_remote_sync_is_enabled(
-    tmp_path: Path,
-) -> None:
+def test_ticker_syncs_target_even_when_run_checkout_is_detached(tmp_path: Path) -> None:
     topo = _build(tmp_path)
     worker = start_catchup_worker_if_enabled(_config(), topo.feature, interval_seconds=3600.0)
     try:
@@ -451,38 +618,12 @@ def test_start_catchup_worker_runs_a_ticker_when_remote_sync_is_enabled(
         if worker is not None:
             worker.stop()
 
-
-def test_ticker_fast_forwards_main_checked_out_in_another_worktree(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
     remote_sha = topo.push_remote_advance()
+    _git(topo.feature, "checkout", "-q", "--detach")
 
     _run_ticks(_config(), topo.feature)
 
     assert topo.ref(_TARGET) == remote_sha
-    assert (topo.clone / "remote.txt").exists()
-    assert _git(topo.clone, "status", "--porcelain") == ""
-
-
-def test_ticker_fast_forwards_target_when_run_checkout_is_on_target(tmp_path: Path) -> None:
-    topo = _build(tmp_path, feature_commit=False)
-    remote_sha = topo.push_remote_advance()
-
-    _run_ticks(_config(), topo.clone)
-
-    assert topo.ref(_TARGET) == remote_sha
-    assert (topo.clone / "remote.txt").exists()
-
-
-def test_ticker_applies_a_remote_advance_inside_the_fetch_cadence(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
-    topo.push_remote_advance()
-    _run_ticks(_config(), topo.feature)
-    second = topo.push_remote_advance("remote2.txt")
-
-    _run_ticks(_config(), topo.feature)
-
-    assert topo.ref(_TARGET) == second
-    assert (topo.clone / "remote2.txt").exists()
 
 
 def test_ticker_refuses_dirty_target_owner_then_retries_once_clean(tmp_path: Path) -> None:
@@ -490,6 +631,12 @@ def test_ticker_refuses_dirty_target_owner_then_retries_once_clean(tmp_path: Pat
     before = topo.ref(_TARGET)
     remote_sha = topo.push_remote_advance()
     (topo.clone / "seed.txt").write_text("uncommitted edit\n", encoding="utf-8")
+
+    _post_commit(_config(), topo.clone)
+
+    assert topo.ref(_TARGET) == before
+    assert (topo.clone / "seed.txt").read_text(encoding="utf-8") == "uncommitted edit\n"
+    assert _git(topo.clone, "stash", "list") == ""
 
     _run_ticks(_config(), topo.feature)
 
@@ -502,102 +649,52 @@ def test_ticker_refuses_dirty_target_owner_then_retries_once_clean(tmp_path: Pat
     assert topo.ref(_TARGET) == remote_sha
 
 
-def test_ticker_never_force_moves_a_conflicting_diverged_target(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
-    origin_before = topo.push_remote_advance()
-    local_sha = _commit(topo.clone, "remote.txt", "local version\n", "local conflicting")
-
-    _run_ticks(_config(), topo.feature)
-
-    assert topo.ref(_TARGET) == local_sha
-    assert topo.origin_tip() == origin_before
-    assert not (topo.clone / ".git" / "rebase-merge").exists()
-    assert _git(topo.clone, "status", "--porcelain") == ""
-
-
-def test_ticker_syncs_target_even_when_run_checkout_is_detached(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
-    remote_sha = topo.push_remote_advance()
-    _git(topo.feature, "checkout", "-q", "--detach")
-
-    _run_ticks(_config(), topo.feature)
-
-    assert topo.ref(_TARGET) == remote_sha
-
-
 def test_ticker_leaves_the_agent_checkout_alone_mid_phase_but_syncs_main(
     tmp_path: Path,
 ) -> None:
     topo = _build(tmp_path, feature_commit=False)
+    first_remote = topo.push_remote_advance()
+
+    _post_commit(_config(), topo.feature)
+
+    assert topo.ref(_TARGET) == first_remote
+
+    _run_ticks(_config(), topo.feature)
+
+    assert topo.ref(_FEATURE) == first_remote
+    assert (topo.feature / "remote.txt").exists()
+
     before = topo.ref(_FEATURE)
-    remote_sha = topo.push_remote_advance()
+    remote_sha = topo.push_remote_advance("remote2.txt")
     phases = AgentPhaseActivity()
 
     with phases.agent_phase(topo.feature):
         _run_ticks(_config(), topo.feature, agent_phases=phases)
 
         assert topo.ref(_TARGET) == remote_sha
-        assert (topo.clone / "remote.txt").exists()
+        assert (topo.clone / "remote2.txt").exists()
         assert topo.ref(_FEATURE) == before
         assert _git(topo.feature, "rev-parse", "HEAD") == before
-        assert not (topo.feature / "remote.txt").exists()
+        assert not (topo.feature / "remote2.txt").exists()
 
     _run_ticks(_config(), topo.feature, agent_phases=phases)
 
     assert topo.ref(_FEATURE) == remote_sha
-    assert (topo.feature / "remote.txt").exists()
+    assert (topo.feature / "remote2.txt").exists()
 
 
-def test_trunk_agent_phase_defers_main_but_still_fetches(tmp_path: Path) -> None:
-    topo = _build(tmp_path, feature_commit=False)
-    before = topo.ref(_TARGET)
-    remote_sha = topo.push_remote_advance()
-    phases = AgentPhaseActivity()
-
-    with phases.agent_phase(topo.clone):
-        _run_ticks(_config(), topo.clone, agent_phases=phases)
-
-        assert _git(topo.clone, "rev-parse", f"refs/remotes/origin/{_TARGET}") == remote_sha
-        assert topo.ref(_TARGET) == before
-        assert not (topo.clone / "remote.txt").exists()
-
-    _run_ticks(_config(), topo.clone, agent_phases=phases)
-
-    assert topo.ref(_TARGET) == remote_sha
-    assert (topo.clone / "remote.txt").exists()
-
-
-def test_startup_recovery_fast_forwards_main_and_reports_no_failure(tmp_path: Path) -> None:
+def test_startup_recovery_fast_forwards_main_across_cadence(tmp_path: Path) -> None:
     topo = _build(tmp_path)
     remote_sha = topo.push_remote_advance()
 
-    outcome = recover_incomplete_integration(WorkspaceScope(topo.feature), config=_config())
+    outcome = _recover(_config(), topo.feature)
 
     assert topo.ref(_TARGET) == remote_sha
     assert outcome is None or outcome.last_remote_sync != RemoteSyncStatus.PULL_FAILED
 
-
-def test_startup_recovery_fast_forwards_main_inside_ticker_cadence(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
-    topo.push_remote_advance()
     _run_ticks(_config(), topo.feature)
     second = topo.push_remote_advance("remote2.txt")
 
-    recover_incomplete_integration(WorkspaceScope(topo.feature), config=_config())
+    _recover(_config(), topo.feature)
 
     assert topo.ref(_TARGET) == second
-
-
-def test_remote_disabled_never_moves_local_refs_from_origin(tmp_path: Path) -> None:
-    topo = _build(tmp_path)
-    origin_before = topo.push_remote_advance()
-    config = _config(remote_enabled=False)
-
-    _post_commit(config, topo.feature)
-    _run_ticks(config, topo.feature)
-    recover_incomplete_integration(WorkspaceScope(topo.feature), config=config)
-
-    main = topo.ref(_TARGET)
-    assert _git(topo.clone, "log", "-1", "--format=%s", main) == "feature work"
-    assert "remote advance" not in _git(topo.clone, "log", "--format=%s", main)
-    assert topo.origin_tip() == origin_before

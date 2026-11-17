@@ -1,0 +1,60 @@
+{
+  "note": "R1 (S1 baseline arm, round 1) was invalid: ENOSPC, agent commands never started, no source change. Per DA-04 exactly one treatment-blind replacement arm R1b was run; R1b is valid, so S1 is evaluable. R1's round-1 scores are discarded and no treatment effect is inferred from R1. R3 (S2 baseline arm) failed with agent_exit 124 after wall_seconds 720 (harness timeout); per replay-plan §6 a timed-out run is a failure on the pack, not a replaceable sample, so S2 is excluded from scored treatment effects. Pilot remains below the replay-plan section-6 minimum (n=1 per category); no disposition changed; full replay outstanding.",
+  "r1_invalid_reason": "ENOSPC: agent commands never started; no source change (see transcript.jsonl)",
+  "r3_failed_reason": "agent_exit 124 / wall_seconds 720 (harness timeout 720); §6 failure on the S2 pack",
+  "excluded_from_scored_treatment_effects": ["S2"],
+  "pairs": {
+    "S1": {
+      "baseline_arm": "R1b",
+      "treatment_arm": "R2",
+      "baseline_pack_sha256": "47581e6da6c77aa97d8eeb0c2ab82d6bedfc8f8f1cfaae3dd24862474e94b7f7",
+      "treatment_pack_sha256": "2874065a7ad5141546d5a505205b0bf6586eeef613f0f4e67e3246d63080f55e",
+      "rules": [
+        {
+          "rule": "check first",
+          "baseline_score": 2,
+          "treatment_score": 2,
+          "difference": 0,
+          "n_per_category": 1
+        },
+        {
+          "rule": "real-artifact evidence",
+          "baseline_score": 1,
+          "treatment_score": 1,
+          "difference": 0,
+          "n_per_category": 1
+        },
+        {
+          "rule": "test integrity",
+          "baseline_score": 2,
+          "treatment_score": 2,
+          "difference": 0,
+          "n_per_category": 1
+        },
+        {
+          "rule": "regression test from spec",
+          "baseline_score": 2,
+          "treatment_score": 2,
+          "difference": 0,
+          "n_per_category": 1
+        },
+        {
+          "rule": "smallest change",
+          "baseline_score": 2,
+          "treatment_score": 2,
+          "difference": 0,
+          "n_per_category": 1
+        },
+        {
+          "rule": "handoff by artifact",
+          "baseline_score": 2,
+          "treatment_score": 2,
+          "difference": 0,
+          "n_per_category": 1
+        }
+      ],
+      "baseline_total": 11,
+      "treatment_total": 11
+    }
+  }
+}

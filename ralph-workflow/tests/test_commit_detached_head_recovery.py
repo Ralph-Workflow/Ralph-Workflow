@@ -1,27 +1,48 @@
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Actor, Repo
+from rich.console import Console
 
+from ralph.config.enums import Verbosity
+from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.git.git_run_result import GitRunResult
+from ralph.git.subprocess_runner import GitRunOptions
 from ralph.pipeline._commit_reattach_fallback import (
     create_fresh_branch_for_detached,
     fast_forward_reattach,
     occupied_worktree_branches,
 )
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit,
+    auto_integrate_on_phase_transition,
+)
+from ralph.pipeline.auto_integrate_boundary import phase_boundary_outcome
 from ralph.pipeline.commit_executor import execute_commit_effect, set_last_commit_error
 from ralph.pipeline.commit_state import CommitState
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce
+from ralph.pipeline.runner import execute_commit_effect_from_deps
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.policy.models import PipelinePolicy
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -29,6 +50,108 @@ pytestmark = pytest.mark.timeout_seconds(5)
 _MODULE_REPO_TEMPLATE: list[Path] = []
 
 _COPY_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
+
+_SCRUBBED_GIT_ENV_KEYS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+_GIT_BATCH_MODE_ENV = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "GCM_INTERACTIVE": "Never",
+    "GIT_EDITOR": ":",
+    "GIT_SEQUENCE_EDITOR": ":",
+    "GIT_PAGER": "cat",
+    "EDITOR": ":",
+    "VISUAL": ":",
+    "LC_ALL": "C",
+    "GIT_NO_REPLACE_OBJECTS": "1",
+}
+
+_ACTOR = Actor("Test Committer", "test@example.com")
+
+
+def _spawn_env(caller_env: dict[str, str] | None) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for source in (os.environ, _GIT_BATCH_MODE_ENV):
+        for key, value in source.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    if caller_env is not None:
+        for key, value in caller_env.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    return merged
+
+
+def _fast_spawn_git(
+    args: Sequence[str],
+    *,
+    cwd: Path | None,
+    label: str,
+    options: GitRunOptions | None = None,
+) -> GitRunResult:
+    del label
+    effective_options = options or GitRunOptions()
+    effective_timeout = (
+        effective_options.timeout
+        if effective_options.timeout is not None
+        else GIT_SUBPROCESS_TIMEOUT_SECONDS
+    )
+    input_data = (
+        effective_options.input_data
+        if isinstance(effective_options.input_data, bytes)
+        else effective_options.input_data.encode()
+        if isinstance(effective_options.input_data, str)
+        else None
+    )
+    cmd = ("git", *args)
+    completed = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        env=_spawn_env(effective_options.env),
+        input=input_data,
+        capture_output=effective_options.capture_output,
+        timeout=effective_timeout,
+        check=False,
+    )
+    stdout_raw = completed.stdout if effective_options.capture_output else b""
+    stderr_raw = completed.stderr if effective_options.capture_output else b""
+    stdout = (
+        stdout_raw.decode() if isinstance(stdout_raw, (bytes, bytearray)) else (stdout_raw or "")
+    )
+    stderr = (
+        stderr_raw.decode() if isinstance(stderr_raw, (bytes, bytearray)) else (stderr_raw or "")
+    )
+    if effective_options.check and completed.returncode != 0:
+        raise subprocess.CalledProcessError(completed.returncode, list(cmd), stdout, stderr)
+    return GitRunResult(args=cmd, returncode=completed.returncode, stdout=stdout, stderr=stderr)
+
+
+@pytest.fixture(autouse=True)
+def _patch_git_spawn_and_lock_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.git.subprocess_runner._spawn_git", _fast_spawn_git)
+    monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", lambda _s: None)
+    monkeypatch.setattr("ralph.git.operations._sleep_fn", lambda _s: None)
+    monkeypatch.setattr("ralph.git._lock_recovery._PROBE_TIMEOUT_S", 0.001)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_POLL_S", 0.001)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_PATIENCE_S", 0.001)
+    monkeypatch.setattr("ralph.git._lock_recovery._LOCK_BACKOFF_S", ())
+    monkeypatch.setattr("ralph.git._lock_recovery._probe_lsof_fuser", lambda _p, _t: "dead")
+
+
+def _link_git_objects_or_copy(src: str, dst: str, *, follow_symlinks: bool = True) -> None:
+    src_path = Path(src)
+    parts = src_path.parts
+    if ".git" in parts:
+        git_index = parts.index(".git")
+        rest = parts[git_index + 1 :]
+        if rest and rest[0] == "objects" and len(rest) >= 2:
+            try:
+                os.link(src, dst)
+            except OSError:
+                pass
+            else:
+                return
+    shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -43,20 +166,19 @@ def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     writer.set_value("core", "logAllRefUpdates", "false")
     writer.set_value("commit", "gpgSign", "false")
     writer.release()
-    actor = Actor("Test Committer", "test@example.com")
 
     base_file = td / "README.md"
     base_file.write_text("# Test Repo\n", encoding="utf-8")
     gitignore_file = td / ".gitignore"
     gitignore_file.write_text(".agent/\n", encoding="utf-8")
     repo.index.add(["README.md", ".gitignore"])
-    repo.index.commit("initial commit", author=actor, committer=actor)
+    repo.index.commit("initial commit", author=_ACTOR, committer=_ACTOR)
 
     repo.git.checkout("-b", "feature/work")
     feature_file = td / "feature.txt"
     feature_file.write_text("feature base\n", encoding="utf-8")
     repo.index.add(["feature.txt"])
-    repo.index.commit("feature base commit", author=actor, committer=actor)
+    repo.index.commit("feature base commit", author=_ACTOR, committer=_ACTOR)
     repo.close()
 
     _MODULE_REPO_TEMPLATE.append(td)
@@ -67,6 +189,42 @@ def _detach_head_at(repo: Repo, sha: str) -> None:
     head_file.write_text(f"{sha}\n", encoding="utf-8")
 
 
+def _write_branch_ref(repo: Repo, branch: str, sha: str) -> None:
+    ref_path = Path(repo.git_dir) / "refs" / "heads" / branch
+    ref_path.parent.mkdir(parents=True, exist_ok=True)
+    ref_path.write_text(f"{sha}\n", encoding="utf-8")
+
+
+def _rename_branch(repo: Repo, old: str, new: str) -> None:
+    git_dir = Path(repo.git_dir)
+    old_ref = git_dir / "refs" / "heads" / old
+    new_ref = git_dir / "refs" / "heads" / new
+    new_ref.parent.mkdir(parents=True, exist_ok=True)
+    old_ref.rename(new_ref)
+    head = git_dir / "HEAD"
+    head_text = head.read_text(encoding="utf-8")
+    if head_text.strip() == f"ref: refs/heads/{old}":
+        head.write_text(f"ref: refs/heads/{new}\n", encoding="utf-8")
+
+
+def _register_occupied_worktree(repo: Repo, wt_dir: Path, branch: str) -> None:
+    git_dir = Path(repo.git_dir)
+    slot = git_dir / "worktrees" / wt_dir.name
+    slot.mkdir(parents=True, exist_ok=True)
+    wt_dir.mkdir(parents=True, exist_ok=True)
+    (wt_dir / ".git").write_text(f"gitdir: {slot}\n", encoding="utf-8")
+    (slot / "gitdir").write_text(f"{wt_dir / '.git'}\n", encoding="utf-8")
+    (slot / "commondir").write_text("../..\n", encoding="utf-8")
+    (slot / "HEAD").write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
+
+
+def _unregister_occupied_worktree(repo: Repo, wt_dir: Path) -> None:
+    git_dir = Path(repo.git_dir)
+    slot = git_dir / "worktrees" / wt_dir.name
+    shutil.rmtree(wt_dir, ignore_errors=True)
+    shutil.rmtree(slot, ignore_errors=True)
+
+
 def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Repo:
     assert _MODULE_REPO_TEMPLATE, (
         "_make_test_repo depends on the autouse module-scoped fixture "
@@ -74,7 +232,13 @@ def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Re
         "must run before any test in this module calls _make_test_repo."
     )
     repo_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(_MODULE_REPO_TEMPLATE[0], repo_root, dirs_exist_ok=True, ignore=_COPY_IGNORE)
+    shutil.copytree(
+        _MODULE_REPO_TEMPLATE[0],
+        repo_root,
+        dirs_exist_ok=True,
+        ignore=_COPY_IGNORE,
+        copy_function=_link_git_objects_or_copy,
+    )
     repo = Repo(repo_root)
     if feature_branch != "feature/work":
         repo.git.checkout("-B", feature_branch)
@@ -95,6 +259,11 @@ def _make_commit_artifact(repo_root: Path, message: str) -> Path:
 def _load_pipeline_policy() -> PipelinePolicy:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir).pipeline
+
+
+@cache
+def _config_with_integrate_target(target: str) -> UnifiedConfig:
+    return UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}})
 
 
 def test_worktree_on_detached_head_commits_to_feature_branch_without_failed_terminal(
@@ -134,8 +303,6 @@ def test_worktree_on_detached_head_commits_to_feature_branch_without_failed_term
 def test_worktree_on_detached_head_reattaches_without_explicit_branch_arg(
     tmp_path: Path,
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-
     repo = _make_test_repo(tmp_path, "feature/work")
     feature_commit_sha = repo.head.commit.hexsha
 
@@ -147,7 +314,7 @@ def test_worktree_on_detached_head_reattaches_without_explicit_branch_arg(
 
     message_file = _make_commit_artifact(tmp_path, "feat: production seam")
 
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+    config = _config_with_integrate_target("main")
     event = execute_commit_effect(
         CommitEffect(message_file=str(message_file)),
         tmp_path,
@@ -228,11 +395,10 @@ def test_detached_head_descendant_with_dirty_work_reattaches_and_preserves_work(
 
     repo.git.checkout(base_sha)
     assert repo.head.is_detached
-    actor = Actor("Test Committer", "test@example.com")
     feature_file = tmp_path / "feature.txt"
     feature_file.write_text("detached commit content\n", encoding="utf-8")
     repo.index.add(["feature.txt"])
-    repo.index.commit("commit made while detached", author=actor, committer=actor)
+    repo.index.commit("commit made while detached", author=_ACTOR, committer=_ACTOR)
     detached_sha = repo.head.commit.hexsha
     assert detached_sha != base_sha
 
@@ -260,15 +426,13 @@ def test_detached_head_descendant_with_dirty_work_reattaches_and_preserves_work(
 def test_detached_head_equals_integration_target_skips_integration_target(
     tmp_path: Path,
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-
     repo = _make_test_repo(tmp_path, "feature/work")
     main_sha = repo.heads.main.commit.hexsha
 
     _detach_head_at(repo, main_sha)
     assert repo.head.is_detached
 
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+    config = _config_with_integrate_target("main")
 
     work_file = tmp_path / "feature.txt"
     work_file.write_text("feature content on target tip\n", encoding="utf-8")
@@ -291,13 +455,12 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
     tmp_path: Path,
 ) -> None:
     repo = _make_test_repo(tmp_path, "feature/work")
-    actor = Actor("Test Committer", "test@example.com")
 
-    repo.git.branch("branch-in-other-wt", "feature/work")
-    other_sha = repo.heads["branch-in-other-wt"].commit.hexsha
+    other_sha = repo.heads["feature/work"].commit.hexsha
+    _write_branch_ref(repo, "branch-in-other-wt", other_sha)
 
     wt_dir = tmp_path.parent / (tmp_path.name + "-wt2")
-    repo.git.worktree("add", str(wt_dir), "branch-in-other-wt")
+    _register_occupied_worktree(repo, wt_dir, "branch-in-other-wt")
 
     try:
         _detach_head_at(repo, other_sha)
@@ -326,7 +489,7 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
         descendant_file = tmp_path / "descendant.txt"
         descendant_file.write_text("descendant commit\n", encoding="utf-8")
         repo.index.add(["descendant.txt"])
-        repo.index.commit("descendant on detached HEAD", author=actor, committer=actor)
+        repo.index.commit("descendant on detached HEAD", author=_ACTOR, committer=_ACTOR)
         descendant_sha = repo.head.commit.hexsha
         _detach_head_at(repo, descendant_sha)
         assert repo.head.is_detached
@@ -348,7 +511,7 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
         )
         assert repo.heads["branch-in-other-wt"].commit.hexsha == other_sha
     finally:
-        repo.git.worktree("remove", "--force", str(wt_dir))
+        _unregister_occupied_worktree(Repo(tmp_path), wt_dir)
 
 
 def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
@@ -362,11 +525,10 @@ def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
     existing_sha = repo.heads["feature/work"].commit.hexsha
 
     repo.git.checkout("main")
-    actor = Actor("Test Committer", "test@example.com")
     divergent_file = tmp_path / "divergent.txt"
     divergent_file.write_text("divergent branch work\n", encoding="utf-8")
     repo.index.add(["divergent.txt"])
-    repo.index.commit("divergent commit", author=actor, committer=actor)
+    repo.index.commit("divergent commit", author=_ACTOR, committer=_ACTOR)
     divergent_sha = repo.head.commit.hexsha
     _detach_head_at(repo, divergent_sha)
     assert repo.head.is_detached
@@ -409,11 +571,10 @@ def test_failed_worktree_query_blocks_fast_forward_of_possibly_occupied_branch(
     repo_root = tmp_path / "repo"
     repo = _make_test_repo(repo_root, "feature/work")
     feature_sha = repo.heads["feature/work"].commit.hexsha
-    actor = Actor("Test Committer", "test@example.com")
     _detach_head_at(repo, feature_sha)
     (repo_root / "descendant.txt").write_text("descendant\n", encoding="utf-8")
     repo.index.add(["descendant.txt"])
-    repo.index.commit("descendant on detached HEAD", author=actor, committer=actor)
+    repo.index.commit("descendant on detached HEAD", author=_ACTOR, committer=_ACTOR)
     descendant_sha = repo.head.commit.hexsha
 
     not_a_repo = tmp_path / "not-a-repo"
@@ -439,11 +600,6 @@ def test_failed_worktree_query_blocks_fast_forward_of_possibly_occupied_branch(
 def test_committed_feature_work_lands_on_configured_integration_target(
     tmp_path: Path,
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-    from ralph.pipeline.rebase_state import RebaseState
-    from ralph.workspace.scope import WorkspaceScope
-
     repo = _make_test_repo(tmp_path, "feature/work")
     initial_main_sha = repo.heads.main.commit.hexsha
 
@@ -455,7 +611,7 @@ def test_committed_feature_work_lands_on_configured_integration_target(
     work_file.write_text("feature content to be integrated\n", encoding="utf-8")
 
     message_file = _make_commit_artifact(tmp_path, "feat: implement target integration work")
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+    config = _config_with_integrate_target("main")
 
     event = execute_commit_effect(
         CommitEffect(message_file=str(message_file)),
@@ -494,17 +650,8 @@ def test_committed_feature_work_lands_on_configured_integration_target(
 def test_execute_commit_effect_from_deps_detached_dirty_commits_on_feature_branch_not_target(
     tmp_path: Path,
 ) -> None:
-    from rich.console import Console
-
-    from ralph.config.enums import Verbosity
-    from ralph.config.models import UnifiedConfig
-    from ralph.display.context import make_display_context
-    from ralph.pipeline.factory import PipelineDeps
-    from ralph.pipeline.runner import execute_commit_effect_from_deps
-    from ralph.workspace.scope import WorkspaceScope
-
     repo = _make_test_repo(tmp_path, "feature/work")
-    repo.git.branch("-m", "main", "release")
+    _rename_branch(repo, "main", "release")
     initial_release_sha = repo.heads.release.commit.hexsha
 
     feature_sha = repo.heads["feature/work"].commit.hexsha
@@ -515,7 +662,7 @@ def test_execute_commit_effect_from_deps_detached_dirty_commits_on_feature_branc
     work_file.write_text("feature uncommitted changes\n", encoding="utf-8")
 
     message_file = _make_commit_artifact(tmp_path, "feat: implement work from runner deps")
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "release"}})
+    config = _config_with_integrate_target("release")
 
     display_context = make_display_context(
         console=Console(record=True, force_terminal=False, width=120, color_system=None),
@@ -545,12 +692,6 @@ def test_execute_commit_effect_from_deps_detached_dirty_commits_on_feature_branc
 def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_staged_and_dirty_work(
     tmp_path: Path,
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.auto_integrate import auto_integrate_on_phase_transition
-    from ralph.pipeline.auto_integrate_boundary import phase_boundary_outcome
-    from ralph.pipeline.rebase_state import RebaseState
-    from ralph.workspace.scope import WorkspaceScope
-
     repo = _make_test_repo(tmp_path, "feature/work")
     feature_sha = repo.heads["feature/work"].commit.hexsha
 
@@ -564,7 +705,7 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
     dirty_file = tmp_path / "feature.txt"
     dirty_file.write_text("dirty unstaged content\n", encoding="utf-8")
 
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+    config = _config_with_integrate_target("main")
 
     handled, _outcome = phase_boundary_outcome(
         config, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
@@ -599,11 +740,6 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
 def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integrates(
     tmp_path: Path,
 ) -> None:
-    from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-    from ralph.pipeline.rebase_state import RebaseState
-    from ralph.workspace.scope import WorkspaceScope
-
     repo = _make_test_repo(tmp_path, "feature/work")
     feature_sha = repo.heads["feature/work"].commit.hexsha
 
@@ -618,7 +754,7 @@ def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integra
     tracked_file.write_text("feature modified content\n", encoding="utf-8")
 
     message_file = _make_commit_artifact(tmp_path, "feat: commit staged and tracked changes")
-    config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
+    config = _config_with_integrate_target("main")
 
     event = execute_commit_effect(
         CommitEffect(message_file=str(message_file)),
@@ -751,8 +887,6 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
 
 
 def test_persistent_repairable_failure_stops_even_with_workflow_fallback() -> None:
-    from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
-
     base_policy = _load_pipeline_policy()
     phases = {
         name: defn

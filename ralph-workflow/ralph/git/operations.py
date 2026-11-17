@@ -45,7 +45,8 @@ from ralph.git._lock_recovery import (
     _sleep_fn as _base_sleep_fn,
 )
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
-from ralph.git.errors import CommitTreeMismatchError, GitOperationError
+from ralph.git.commit_tree_mismatch_error import CommitTreeMismatchError
+from ralph.git.errors import GitOperationError
 from ralph.git.git_command_queue import (
     _classify_exception as _queue_outcome_kind,
 )

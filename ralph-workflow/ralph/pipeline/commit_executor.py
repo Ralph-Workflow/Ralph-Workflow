@@ -22,7 +22,7 @@ from ralph.git.commit_review import (
     add_to_git_exclude,
     is_recognized_secret_path,
 )
-from ralph.git.errors import CommitTreeMismatchError
+from ralph.git.commit_tree_mismatch_error import CommitTreeMismatchError
 from ralph.git.operations import (
     create_commit,
     create_commit_with_hooks,

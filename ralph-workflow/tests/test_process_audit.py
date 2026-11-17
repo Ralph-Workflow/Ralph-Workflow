@@ -8,7 +8,10 @@ import pytest
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "TESTS_ALLOWLIST": (
         "test_audit_sast.py and test_audit_banned_constructs.py subprocess-run "
-        "their respective CLI audits as black-box regressions, so they join the allowlist"
+        "their respective CLI audits as black-box regressions, so they join the allowlist; "
+        "test_commit_detached_head_recovery.py joins for its _fast_spawn_git transport that "
+        "still executes the same git argv via subprocess.run while dropping ManagedProcess "
+        "bookkeeping"
     ),
     "test_no_direct_subprocess_calls_in_tests": (
         "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
@@ -186,6 +189,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_explore_crash_safety.py",
     "test_explore_concurrency.py",
     "test_explore_resource_lifecycle.py",
+    "test_commit_detached_head_recovery.py",
     "test_commit_review_real_diff_proofs.py",
 }
 

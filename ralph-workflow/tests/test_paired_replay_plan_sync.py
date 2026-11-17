@@ -6,6 +6,8 @@ import pytest
 
 from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 RALPH_TEST_CHANGE_REASONS = {
     "test_plan_copies_bound_deterministic_status_to_strong_or_moderate_evidence": (
         "PRODUCT_CRITERIA ground rule 3 allows `deterministic` only for `strong` or "
@@ -78,9 +80,10 @@ _CITED_POLICY_SCHEMA_SYMBOLS = (
     "VERSION_SPECS",
 )
 
-_PILOT_LEDGER_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "ledger.jsonl"
-_PILOT_UNBLINDED_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "unblinded.json"
-_PILOT_R3_AGENT_EXIT_PATH = PACKAGE_ROOT / "tmp" / "policy-v6-replay-runs" / "R3" / "agent_exit"
+_PILOT_FIXTURE_ROOT = PACKAGE_ROOT / "tests" / "fixtures" / "policy_v6_replay_runs"
+_PILOT_LEDGER_PATH = _PILOT_FIXTURE_ROOT / "ledger.jsonl"
+_PILOT_UNBLINDED_PATH = _PILOT_FIXTURE_ROOT / "unblinded.json"
+_PILOT_R3_AGENT_EXIT_PATH = _PILOT_FIXTURE_ROOT / "R3" / "agent_exit"
 _LEDGER_FIELDS = (
     "run_id",
     "arm",

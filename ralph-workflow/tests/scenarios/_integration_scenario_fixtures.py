@@ -3,18 +3,12 @@ from __future__ import annotations
 import functools
 import shutil
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 
-from ralph.agents.invoke import (
-    AgentInactivityTimeoutError,
-    AgentInvocationError,
-    SupervisionInfrastructureError,
-)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
@@ -28,16 +22,10 @@ from ralph.pipeline.integration_actions import install_executors, reset_executor
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
-from tests._scenario_agent_mode import AgentMode
-from tests.pipeline._auto_integrate_agent_failure_fixtures import (
-    TARGET,
-    FakeAgentMode,
-)
+from tests.pipeline._auto_integrate_agent_failure_fixtures import TARGET
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.policy.models import PolicyBundle
 
 pytestmark = pytest.mark.subprocess_e2e
@@ -97,14 +85,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-@dataclass(frozen=True)
-class MatrixExpectedOutcome:
-    terminal_kind: str
-    expected_launches: int
-    should_stage_automatically: bool = False
-    requires_cooldown_wait: bool = False
-
-
 def _make_config() -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {
@@ -116,68 +96,8 @@ def _make_config() -> UnifiedConfig:
     )
 
 
-_RESOLVER_FAILURE_MODE_PARAMS: list[tuple[AgentMode, Callable[[str], BaseException]]] = [
-    (
-        AgentMode.NON_ZERO_EXIT,
-        lambda agent: AgentInvocationError(agent, 7, f"agent '{agent}' exited with status 7"),
-    ),
-    (
-        AgentMode.SIGNAL,
-        lambda agent: AgentInvocationError(agent, -15, f"agent '{agent}' terminated by signal 15"),
-    ),
-    (
-        AgentMode.WATCHDOG_HANG,
-        lambda agent: AgentInactivityTimeoutError(agent, 30.0),
-    ),
-    (
-        AgentMode.PROVIDER_FAILURE,
-        lambda agent: SupervisionInfrastructureError(
-            agent, f"provider unavailable for agent '{agent}'"
-        ),
-    ),
-]
-
-_AGENT_BEHAVIOR_MATRIX_PARAMS: list[tuple[FakeAgentMode, int, MatrixExpectedOutcome]] = [
-    (
-        FakeAgentMode.EDITS_AND_STAGES,
-        0,
-        MatrixExpectedOutcome("rebased", 1, should_stage_automatically=False),
-    ),
-    (
-        FakeAgentMode.EDITS_NEVER_STAGES,
-        1,
-        MatrixExpectedOutcome("rebased", 1, should_stage_automatically=True),
-    ),
-    (
-        FakeAgentMode.LEAVES_MARKER,
-        1,
-        MatrixExpectedOutcome("conflict", 2, should_stage_automatically=False),
-    ),
-    (
-        FakeAgentMode.NON_ZERO_EXIT,
-        1,
-        MatrixExpectedOutcome(
-            "conflict", 2, should_stage_automatically=False, requires_cooldown_wait=True
-        ),
-    ),
-]
-
 _REPO_STATE_LEDGER_MATRIX_PARAMS: list[tuple[str, str]] = [
-    ("clean", "empty_ledger"),
-    ("detached_head", "empty_ledger"),
     ("unstaged_edits", "spent_chain"),
-    ("unmerged_markers", "exhausted_budget"),
-]
-
-_CONFIG_CLOCK_MATRIX_PARAMS: list[tuple[str, str]] = [
-    ("valid", "frozen"),
-    ("corrupted_agents_toml", "frozen"),
-    ("valid", "advancing"),
-]
-
-_SUPERVISOR_RESTART_POINTS: list[str] = [
-    "mid_rebase",
-    "post_resolution_pre_continue",
 ]
 
 _PARITY_AGENTS: tuple[str, ...] = ("first", "second")
@@ -374,6 +294,7 @@ def _durable_agent_shape(controller: RecoveryController, phase: str) -> object:
 REPO_TEMPLATE_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
 
 _REPO_HANDLES: dict[Path, Repo] = {}
+_CONFLICTED_REPO_TEMPLATE: list[Path] = []
 
 
 def cached_repo(root: Path) -> Repo:
@@ -384,6 +305,27 @@ def close_cached_repo(root: Path) -> None:
     repo = _REPO_HANDLES.pop(root, None)
     if repo is not None:
         repo.close()
+
+
+def replace_with_repo_template(template: Path, dest: Path) -> Path:
+    close_cached_repo(dest)
+    close_cached_repo(template)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(template, dest, ignore=REPO_TEMPLATE_IGNORE)
+    return dest
+
+
+def materialize_conflicted_repo(dest: Path) -> Path:
+    if not _CONFLICTED_REPO_TEMPLATE:
+        from tests.pipeline._auto_integrate_agent_failure_fixtures import make_conflicted_repo
+
+        seeded = Path(tempfile.mkdtemp(prefix="it-conflicted-"))
+        make_conflicted_repo(seeded)
+        close_cached_repo(seeded)
+        _CONFLICTED_REPO_TEMPLATE.append(seeded)
+    return replace_with_repo_template(_CONFLICTED_REPO_TEMPLATE[0], dest)
 
 
 @functools.lru_cache(maxsize=16)

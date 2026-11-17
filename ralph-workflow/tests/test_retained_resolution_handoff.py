@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import inspect
+import os
 import shutil
+import subprocess
 import tempfile
 from io import StringIO
 from pathlib import Path
@@ -11,9 +14,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.timeout_clock import FakeClock
 from ralph.cli.commands.commit import CommitChainConfig, CommitPlumbingOptions, commit_plumbing
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.git.git_run_result import GitRunResult
+from ralph.git.subprocess_runner import GitRunOptions
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit,
 )
@@ -23,7 +29,8 @@ from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integratio
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.plumbing.commit_plumbing import run_commit_plumbing
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.policy.loader import load_agents_policy_for_workspace_scope, load_policy
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
@@ -39,14 +46,15 @@ from tests.test_cli_commit_command import _write_commit_message_doc
 from tests.test_pending_merge_commit_recovery import _commit, _fast_rev_parse, _git
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.conflict_resolution import RebaseStop
+    from ralph.policy.models import PolicyBundle
     from ralph.prompts.commit_evidence import CommitEvidenceSource
 
-pytestmark = [pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "retained-resolution git assertions use equivalent GitPython object reads": (
@@ -56,7 +64,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "retained-resolution index setup uses GitPython": (
         "the setup still stages the same path and the following write-tree assertion still "
-        "checks the resulting index exactly"
+        "checks the resulting index exactly; unmerged stage entries are cleared before add "
+        "so GitPython write_tree matches git add + write-tree on a conflicted path"
     ),
     'assert _git(d, "switch", "-c", "feature").returncode == 0': (
         "the same feature creation and switches to main and back to feature remain asserted "
@@ -119,7 +128,121 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "switching to target is asserted once while constructing the shared foreign "
         "reconciliation template instead of per test run"
     ),
+    "autouse real-git spawn bypasses process-manager bookkeeping": (
+        "every git argv, cwd, env, timeout, capture, and returncode observable is unchanged; "
+        "only the spawn transport drops ManagedProcess accounting while still executing the "
+        "same git binary via subprocess.run"
+    ),
+    "completed owned and landing setups use shared immutable templates": (
+        "the same merge or rebase completion, receipt fields, staged resolution, and blob "
+        "contents remain asserted; branch construction and the operation itself run once while "
+        "building the shared template instead of once per parametrized case"
+    ),
+    "test_stale_resolution_replay_clears_intent_and_retries_auto_rebase": (
+        "the same replay observables remain: cleared resolving flags, snapshot then record "
+        "ordering, and reintegrate_pending handoff; the private _has_user_work patch was "
+        "replaced by a public run_git seam returning a clean porcelain status"
+    ),
 }
+
+
+_SCRUBBED_GIT_ENV_KEYS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+_GIT_BATCH_MODE_ENV = {
+    "GIT_TERMINAL_PROMPT": "0",
+    "GCM_INTERACTIVE": "Never",
+    "GIT_EDITOR": ":",
+    "GIT_SEQUENCE_EDITOR": ":",
+    "GIT_PAGER": "cat",
+    "EDITOR": ":",
+    "VISUAL": ":",
+    "LC_ALL": "C",
+    "GIT_NO_REPLACE_OBJECTS": "1",
+}
+
+
+def _spawn_env(caller_env: dict[str, str] | None) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for source in (os.environ, _GIT_BATCH_MODE_ENV):
+        for key, value in source.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    if caller_env is not None:
+        for key, value in caller_env.items():
+            if key in _SCRUBBED_GIT_ENV_KEYS:
+                continue
+            merged[key] = value
+    return merged
+
+
+def _fast_spawn_git(
+    args: Sequence[str],
+    *,
+    cwd: Path | None,
+    label: str,
+    options: GitRunOptions | None = None,
+) -> GitRunResult:
+    del label
+    effective_options = options or GitRunOptions()
+    effective_timeout = (
+        effective_options.timeout
+        if effective_options.timeout is not None
+        else GIT_SUBPROCESS_TIMEOUT_SECONDS
+    )
+    input_data = (
+        effective_options.input_data
+        if isinstance(effective_options.input_data, bytes)
+        else effective_options.input_data.encode()
+        if isinstance(effective_options.input_data, str)
+        else None
+    )
+    cmd = ("git", *args)
+    completed = subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        env=_spawn_env(effective_options.env),
+        input=input_data,
+        capture_output=effective_options.capture_output,
+        timeout=effective_timeout,
+        check=False,
+    )
+    stdout_raw = completed.stdout if effective_options.capture_output else b""
+    stderr_raw = completed.stderr if effective_options.capture_output else b""
+    stdout = (
+        stdout_raw.decode() if isinstance(stdout_raw, (bytes, bytearray)) else (stdout_raw or "")
+    )
+    stderr = (
+        stderr_raw.decode() if isinstance(stderr_raw, (bytes, bytearray)) else (stderr_raw or "")
+    )
+    if effective_options.check and completed.returncode != 0:
+        raise subprocess.CalledProcessError(completed.returncode, list(cmd), stdout, stderr)
+    return GitRunResult(args=cmd, returncode=completed.returncode, stdout=stdout, stderr=stderr)
+
+
+@pytest.fixture(autouse=True)
+def _patch_git_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.git.subprocess_runner._spawn_git", _fast_spawn_git)
+
+
+def _link_or_copy(src: str, dst: str, *, follow_symlinks: bool = True) -> None:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+
+
+def _clone_template(template: Path, dest: Path) -> Path:
+    close_cached_repo(template)
+    close_cached_repo(dest)
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(
+        template,
+        dest,
+        ignore=REPO_TEMPLATE_IGNORE,
+        copy_function=_link_or_copy,
+    )
+    return dest
 
 
 def _sha(root: Path, ref: str = "HEAD") -> str:
@@ -136,7 +259,22 @@ def _blob(root: Path, ref: str, path: str) -> str:
 
 
 def _stage(root: Path, *paths: str) -> None:
-    cached_repo(root).index.add(list(paths))
+    index = cached_repo(root).index
+    path_set = frozenset(paths)
+    for key in tuple(index.entries):
+        if key[0] in path_set and key[1] != 0:
+            del index.entries[key]
+    index.add(list(paths))
+
+
+def _write_tree(root: Path) -> str:
+    close_cached_repo(root)
+    return str(cached_repo(root).index.write_tree())
+
+
+@functools.lru_cache(maxsize=1)
+def _default_policy() -> PolicyBundle:
+    return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
 
 
 class _EmptyCommitEvidenceSource:
@@ -149,12 +287,75 @@ class _EmptyCommitEvidenceSource:
 
 _EMPTY_COMMIT_EVIDENCE_SOURCE: CommitEvidenceSource = _EmptyCommitEvidenceSource()
 
+_COMPLETED_OWNED_CACHE: dict[str, tuple[Path, str, str]] = {}
+_COMPLETED_LANDING_CACHE: dict[str, tuple[Path, str, str, str]] = {}
 
-def _fresh_git_repo(base: Path, template: Path, name: str) -> Path:
-    repo = base / f"case-{name}"
-    close_cached_repo(template)
-    shutil.copytree(template, repo, ignore=REPO_TEMPLATE_IGNORE)
-    return repo
+
+def _completed_owned_template(operation: str, *, reintegrate: bool) -> tuple[Path, str, str]:
+    key = f"{operation}:{reintegrate}"
+    if key not in _COMPLETED_OWNED_CACHE:
+        from git import Repo
+
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-owned-{operation}-"))
+        repo = Repo.init(root, initial_branch="main")
+        with repo.config_writer() as cfg:
+            cfg.set_value("user", "name", "Test User")
+            cfg.set_value("user", "email", "test@example.com")
+            cfg.set_value("core", "fsync", "none")
+            cfg.set_value("gc", "auto", "0")
+            cfg.set_value("core", "logAllRefUpdates", "true")
+            cfg.set_value("commit", "gpgSign", "false")
+        (root / "README.md").write_text("test", encoding="utf-8")
+        repo.index.add(["README.md"])
+        repo.index.commit("initial commit")
+        repo.close()
+        target = "main"
+        _commit(root, "base.txt", "base\n")
+        assert _git(root, "switch", "-c", "feature").returncode == 0
+        feature = _commit(root, "feature.txt", "feature\n")
+        assert _git(root, "switch", target).returncode == 0
+        moved = _commit(root, "target.txt", "target\n")
+        assert _git(root, "switch", "feature").returncode == 0
+        write_record(
+            root,
+            IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=moved,
+                reintegrate_pending=reintegrate,
+            ),
+        )
+        assert _git(root, operation, target).returncode == 0
+        completed = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_OWNED_CACHE[key] = (root, target, completed)
+    return _COMPLETED_OWNED_CACHE[key]
+
+
+def _completed_landing_template(operation: str, phase: str) -> tuple[Path, str, str, str]:
+    key = f"{operation}:{phase}"
+    if key not in _COMPLETED_LANDING_CACHE:
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-landing-{key}-")) / "repo"
+        target, feature, main = interrupted_resolution_repo(root, operation)
+        pre_target = cached_repo(root).commit("main~1").hexsha if phase == "integrated" else main
+        write_record(
+            root,
+            IntegrationRecord(
+                phase=phase,
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=pre_target,
+                integrated_feature_sha=feature if phase == "integrated" else None,
+            ),
+        )
+        (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
+        _stage(root, "shared.txt")
+        index_before = _write_tree(root)
+        head_before = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_LANDING_CACHE[key] = (root, target, index_before, head_before)
+    return _COMPLETED_LANDING_CACHE[key]
 
 
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
@@ -162,7 +363,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
 ) -> None:
     root = tmp_path / "repo-owned-landing"
     diverged, target, feature, _main = diverged_repo_template()
-    shutil.copytree(diverged, root, ignore=REPO_TEMPLATE_IGNORE)
+    _clone_template(diverged, root)
     base = cached_repo(root).commit("main~1").hexsha
     write_record(
         root,
@@ -176,7 +377,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     )
     config = retained_resolution_config(target, enabled=True)
 
-    controller = make_resolver_controller()
+    controller = make_resolver_controller(FakeClock())
     declined = recover_incomplete_integration(
         WorkspaceScope(root),
         config=config,
@@ -300,35 +501,20 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
     [("merge", False), ("rebase", True)],
 )
 def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     operation: str,
     *,
     reintegrate: bool,
 ) -> None:
-    root = tmp_git_repo
-    assert _git(root, "config", "--replace-all", "core.logAllRefUpdates", "true").returncode == 0
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    _commit(root, "base.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "feature.txt", "feature\n")
-    assert _git(root, "switch", target).returncode == 0
-    moved = _commit(root, "target.txt", "target\n")
-    assert _git(root, "switch", "feature").returncode == 0
-    write_record(
-        root,
-        IntegrationRecord(
-            phase="integrating",
-            target=target,
-            pre_feature_sha=feature,
-            pre_target_sha=moved,
-            reintegrate_pending=reintegrate,
-        ),
-    )
-    assert _git(root, operation, target).returncode == 0
-    completed = _git(root, "rev-parse", "HEAD").stdout.strip()
+    template, target, completed = _completed_owned_template(operation, reintegrate=reintegrate)
+    root = _clone_template(template, tmp_path / f"owned-{operation}")
     config = retained_resolution_config(target, enabled=False)
 
-    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        recovery_controller=make_resolver_controller(FakeClock()),
+    )
 
     assert outcome is not None and outcome.fast_forwarded
     assert read_record(root) is None
@@ -343,43 +529,26 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     [("merge", "integrating"), ("rebase", "integrated")],
 )
 def test_completed_landing_receipt_preserves_later_operator_resolution(
-    tmp_git_repo: Path,
+    tmp_path: Path,
     operation: str,
     phase: str,
 ) -> None:
-    root = tmp_git_repo
-    target = _git(root, "branch", "--show-current").stdout.strip()
-    base = _commit(root, "shared.txt", "base\n")
-    assert _git(root, "switch", "-c", "feature").returncode == 0
-    feature = _commit(root, "shared.txt", "feature\n")
-    assert _git(root, "switch", target).returncode == 0
-    moved = _commit(root, "shared.txt", "target\n")
-    assert _git(root, "switch", "feature").returncode == 0
-    write_record(
-        root,
-        IntegrationRecord(
-            phase=phase,
-            target=target,
-            pre_feature_sha=feature,
-            pre_target_sha=base if phase == "integrated" else moved,
-            integrated_feature_sha=feature if phase == "integrated" else None,
-        ),
-    )
-    assert _git(root, operation, target).returncode != 0
-    (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
-    _stage(root, "shared.txt")
-    index_before = _git(root, "write-tree").stdout
-    head_before = _git(root, "rev-parse", "HEAD").stdout
+    template, target, index_before, head_before = _completed_landing_template(operation, phase)
+    root = _clone_template(template, tmp_path / f"landing-{operation}-{phase}")
     config = retained_resolution_config(target, enabled=False)
 
-    outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        recovery_controller=make_resolver_controller(FakeClock()),
+    )
 
     assert outcome is not None and not outcome.fast_forwarded
     assert read_record(root) is not None
     assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
     assert (root / "shared.txt").read_text(encoding="utf-8") == "valuable manual resolution\n"
-    assert _git(root, "write-tree").stdout == index_before
-    assert _sha(root) == head_before.strip()
+    assert _write_tree(root) == index_before
+    assert _sha(root) == head_before
 
 
 def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
@@ -473,7 +642,9 @@ def _foreign_reconcile_template(root: Path | None = None) -> tuple[Path, str]:
         template_base = Path(tempfile.mkdtemp(prefix="it-foreign-reconcile-"))
         diverged, target, _, _ = diverged_repo_template(root)
         tmpl_owner = template_base / "owner"
-        shutil.copytree(diverged, tmpl_owner, ignore=REPO_TEMPLATE_IGNORE)
+        _clone_template(diverged, tmpl_owner)
+        assert _git(tmpl_owner, "config", "--replace-all", "core.fsync", "none").returncode == 0
+        assert _git(tmpl_owner, "config", "--replace-all", "gc.auto", "0").returncode == 0
         tmpl_origin = template_base / "origin.git"
         assert _git(tmpl_owner, "init", "--bare", str(tmpl_origin)).returncode == 0
         assert _git(tmpl_owner, "remote", "add", "origin", str(tmpl_origin)).returncode == 0
@@ -490,12 +661,11 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     tmp_path: Path,
 ) -> None:
     tmpl_owner, target = _foreign_reconcile_template()
-    owner = tmp_path / "owner"
-    shutil.copytree(tmpl_owner, owner, ignore=REPO_TEMPLATE_IGNORE)
+    owner = _clone_template(tmpl_owner, tmp_path / "owner")
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     _commit(feature, "feature.txt", "valuable completed feature\n")
-    controller = make_resolver_controller()
+    controller = make_resolver_controller(FakeClock())
     initial = auto_integrate_after_commit(
         UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
         WorkspaceScope(feature),
@@ -517,7 +687,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     owner_receipt = record_path(owner)
     owner_receipt.parent.mkdir(parents=True, exist_ok=True)
     owner_receipt.write_text("{", encoding="utf-8")
-    before = _git(owner, "rev-parse", "HEAD").stdout
+    before = _sha(owner)
     blocked = recover_incomplete_integration(
         WorkspaceScope(feature),
         config=config,
@@ -525,7 +695,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         recovery_controller=controller,
     )
     assert blocked is not None and blocked.recovery_record_retained
-    assert _git(owner, "rev-parse", "HEAD").stdout == before
+    assert _sha(owner) == before
     assert owner_receipt.read_text(encoding="utf-8") == "{"
     assert not inspect_integration_resolution(feature, blocked).dispatch_allowed
     owner_receipt.unlink()
@@ -545,8 +715,8 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         recovery_controller=controller,
     )
     assert landed is not None and landed.fast_forwarded
-    assert _git(feature, "rev-parse", "HEAD").stdout == _git(feature, "rev-parse", target).stdout
-    assert _git(feature, "show", f"{target}:feature.txt").stdout == "valuable completed feature\n"
+    assert _sha(feature) == _sha(feature, target)
+    assert _blob(feature, target, "feature.txt") == "valuable completed feature\n"
     assert read_record(feature) is None
 
 
@@ -566,10 +736,14 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     assert _git(root, "-c", "core.editor=true", "rebase", "--continue").returncode == 0
     if completion == "unrelated":
         _commit(root, "unrelated.txt", "later commit\n")
+    controller = make_resolver_controller(FakeClock())
     outcome = integrate_before_planning(
         retained_resolution_config(target),
         WorkspaceScope(root),
         RebaseState(),
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
+        recovery_controller=controller,
     )
     assert outcome is not None
     if completion == "unrelated":
@@ -584,7 +758,7 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
         assert backup_refs
         return
     assert outcome.fast_forwarded
-    assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
+    assert _sha(root, target) == _sha(root)
     assert read_record(root) is None
 
 
@@ -596,7 +770,11 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     target, feature, main = interrupted_resolution_repo(root, operation)
     assert read_record(root) is not None
     assert _git(root, operation, "--abort").returncode == 0
-    aborted = recover_incomplete_integration(WorkspaceScope(root))
+    controller = make_resolver_controller(FakeClock())
+    aborted = recover_incomplete_integration(
+        WorkspaceScope(root),
+        recovery_controller=controller,
+    )
     assert aborted is not None and aborted.recovery_record_retained
     assert read_record(root) is not None
     assert _git(root, "reset", "--hard", main).returncode == 0
@@ -604,10 +782,13 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
         retained_resolution_config(target),
         WorkspaceScope(root),
         RebaseState(),
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
+        recovery_controller=controller,
     )
     assert outcome is not None and not outcome.fast_forwarded
     assert outcome.recovery_record_retained
-    assert _git(root, "rev-parse", target).stdout.strip() == main
+    assert _sha(root, target) == main
     assert _git(root, "cat-file", "-e", feature).returncode == 0
 
 
@@ -640,7 +821,6 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     )
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
     from ralph.pipeline.events import PipelineEvent
-    from ralph.policy.loader import load_policy
 
     calls: list[str] = []
 
@@ -653,14 +833,14 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
     config = retained_resolution_config(target)
-    policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    policy = _default_policy()
     registry = AgentRegistry()
     registry.agents.update(
         {name: AgentConfig(cmd="fake") for name in resolution_chain_agents(policy)}
     )
     context = make_display_context(console=Console(file=StringIO()))
     deps = make_test_pipeline_deps(context)
-    deps = dataclasses.replace(deps, recovery_controller=make_resolver_controller())
+    deps = dataclasses.replace(deps, recovery_controller=make_resolver_controller(FakeClock()))
     scope = WorkspaceScope(root)
     display = ParallelDisplay(context)
     resolver_kw = {
@@ -694,11 +874,13 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
             RebaseState(),
             conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
             recovery_controller=deps.recovery_controller,
         )
     assert calls == ["agent"]
     assert outcome is not None and outcome.fast_forwarded
-    assert _git(root, "show", f"{target}:shared.txt").stdout == "valuable unstaged completion\n"
+    assert _blob(root, target, "shared.txt") == "valuable unstaged completion\n"
     assert _git(root, "cat-file", "-e", f"{target}:unrelated.txt").returncode != 0
     assert (root / "unrelated.txt").read_text() == "unfinished user work\n"
     assert read_record(root) is None
@@ -756,7 +938,7 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    controller = make_resolver_controller()
+    controller = make_resolver_controller(FakeClock())
     deps = make_test_pipeline_deps(make_display_context(console=Console(file=StringIO())))
     deps = dataclasses.replace(deps, recovery_controller=controller)
     assert repair_pending_merge(
@@ -773,10 +955,13 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     assert seen == [owner]
     assert read_record(owner) is None
     assert read_record(feature) is not None
-    result = recover_incomplete_integration(WorkspaceScope(feature))
+    result = recover_incomplete_integration(
+        WorkspaceScope(feature),
+        recovery_controller=controller,
+    )
     assert result is not None and result.recovery_record_retained
-    assert _git(owner, "show", "feature:shared.txt").stdout == "fixed\n"
-    assert _git(feature, "rev-parse", "HEAD").stdout == original_feature
+    assert _blob(owner, "feature", "shared.txt") == "fixed\n"
+    assert _sha(feature) == original_feature.strip()
     assert read_record(feature) is not None
 
 
@@ -827,6 +1012,10 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
         sequence.append("record")
         written.append(rec)
 
+    def fake_run_git(args: object, **_kwargs: object) -> GitRunResult:
+        argv = tuple(args) if isinstance(args, (list, tuple)) else (str(args),)
+        return GitRunResult(args=argv, returncode=0, stdout="", stderr="")
+
     monkeypatch.setattr(
         owned, "read_in_progress_kind", lambda _root: Reading.known(InProgressKind.NONE)
     )
@@ -835,7 +1024,7 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
         "observe_unmerged_paths",
         lambda _root: UnmergedPathsObservation(paths=(), query_ok=True),
     )
-    monkeypatch.setattr(owned, "_has_user_work", lambda _root: False)
+    monkeypatch.setattr(owned, "run_git", fake_run_git)
     monkeypatch.setattr(owned, "branch_sha", lambda _root, _target: "b" * 40)
     monkeypatch.setattr(owned, "ancestry_state", lambda *_args: False)
     monkeypatch.setattr(owned, "get_head_sha", lambda _root: "a" * 40)

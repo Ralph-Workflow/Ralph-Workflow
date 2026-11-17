@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.plumbing.commit_integration import prepare_commit_integration
 from ralph.pipeline.rebase_state import RebaseState
@@ -29,6 +31,34 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStop
 
 pytestmark = [pytest.mark.timeout_seconds(10)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "FakeClock_recovery_controller": (
+        "recover and public-seam handoffs install FakeClock via make_resolver_controller "
+        "and install_executors; retained/landing asserts unchanged"
+    ),
+}
+
+
+def _recover(
+    root: Path,
+    *,
+    config: UnifiedConfig | None = None,
+    conflict_resolver: object | None = None,
+    rebase_stop_resolver: object | None = None,
+) -> RebaseState | None:
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        return recover_incomplete_integration(
+            WorkspaceScope(root),
+            config=config,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
+            recovery_controller=make_resolver_controller(clock),
+        )
+    finally:
+        reset_executors(token)
 
 
 def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
@@ -49,8 +79,8 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
             (repo / "shared.txt").write_text("incorrectly adopted operation\n", encoding="utf-8")
             return True
 
-        outcome = recover_incomplete_integration(
-            WorkspaceScope(root),
+        outcome = _recover(
+            root,
             config=retained_resolution_config(target),
             conflict_resolver=resolve,
             rebase_stop_resolver=lambda repo, branch, _stop: resolve(repo, branch),
@@ -73,7 +103,7 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     assert _git(root, operation, "--abort").returncode == 0
     config = retained_resolution_config(target, enabled=False)
 
-    waiting = recover_incomplete_integration(WorkspaceScope(root))
+    waiting = _recover(root)
 
     assert waiting is not None and waiting.recovery_record_retained
     assert read_record(root) is not None
@@ -84,11 +114,7 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
         (repo / "shared.txt").write_text("feature and main preserved\n", encoding="utf-8")
         return True
 
-    landed = recover_incomplete_integration(
-        WorkspaceScope(root),
-        config=config,
-        rebase_stop_resolver=resolve,
-    )
+    landed = _recover(root, config=config, rebase_stop_resolver=resolve)
     assert landed is not None and landed.fast_forwarded
     assert read_record(root) is None
     assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
@@ -110,7 +136,8 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     root = tmp_path / f"repo-{operation}-{seam}"
     target, _, _ = interrupted_resolution_repo(root, operation)
     calls: list[str] = []
-    controller = make_resolver_controller()
+    clock = FakeClock()
+    controller = make_resolver_controller(clock)
 
     def merge_resolver(repo: Path, branch: str) -> bool:
         calls.append(branch)
@@ -130,45 +157,49 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
         }
     )
     outcome: RebaseState | None
-    if seam == "standalone_commit":
-        context = make_display_context()
-        deps = dataclasses.replace(
-            make_test_pipeline_deps(context),
-            recovery_controller=controller,
-        )
-        verdict = prepare_commit_integration(
-            root,
-            config,
-            deps,
-            AgentRegistry.from_config(config),
-            context,
-            conflict_resolver=merge_resolver,
-            rebase_stop_resolver=rebase_resolver,
-        )
-        assert verdict.dispatch_allowed
-        outcome = RebaseState(fast_forwarded=True)
-    elif seam == "planning":
-        outcome = integrate_before_planning(
-            config,
-            WorkspaceScope(root),
-            RebaseState(),
-            conflict_resolver=merge_resolver,
-            rebase_stop_resolver=rebase_resolver,
-            sleep=lambda _s: None,
-            jitter=lambda: 0.0,
-            recovery_controller=controller,
-        )
-    else:
-        outcome = auto_integrate_after_commit(
-            config,
-            WorkspaceScope(root),
-            RebaseState(),
-            conflict_resolver=merge_resolver,
-            rebase_stop_resolver=rebase_resolver,
-            sleep=lambda _s: None,
-            jitter=lambda: 0.0,
-            recovery_controller=controller,
-        )
+    token = install_executors(clock=clock)
+    try:
+        if seam == "standalone_commit":
+            context = make_display_context()
+            deps = dataclasses.replace(
+                make_test_pipeline_deps(context),
+                recovery_controller=controller,
+            )
+            verdict = prepare_commit_integration(
+                root,
+                config,
+                deps,
+                AgentRegistry.from_config(config),
+                context,
+                conflict_resolver=merge_resolver,
+                rebase_stop_resolver=rebase_resolver,
+            )
+            assert verdict.dispatch_allowed
+            outcome = RebaseState(fast_forwarded=True)
+        elif seam == "planning":
+            outcome = integrate_before_planning(
+                config,
+                WorkspaceScope(root),
+                RebaseState(),
+                conflict_resolver=merge_resolver,
+                rebase_stop_resolver=rebase_resolver,
+                sleep=lambda _s: None,
+                jitter=lambda: 0.0,
+                recovery_controller=controller,
+            )
+        else:
+            outcome = auto_integrate_after_commit(
+                config,
+                WorkspaceScope(root),
+                RebaseState(),
+                conflict_resolver=merge_resolver,
+                rebase_stop_resolver=rebase_resolver,
+                sleep=lambda _s: None,
+                jitter=lambda: 0.0,
+                recovery_controller=controller,
+            )
+    finally:
+        reset_executors(token)
     assert calls == [target]
     assert outcome is not None and outcome.fast_forwarded
     assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
