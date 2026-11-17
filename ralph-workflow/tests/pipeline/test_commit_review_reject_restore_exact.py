@@ -352,3 +352,99 @@ def test_commit_review_reject_clean_baseline_restores_head_exact(
     assert agent_state.read_text(encoding="utf-8") == '{"phase": "development", "step": 2}\n'
 
     _assert_proposal_restorable_exact(root, seal.ref)
+
+
+_HEAD_BINARY_PAYLOAD = b"head binary payload\n"
+_RUN_START_BINARY_PAYLOAD = b"\x00\x01\x02run-start binary payload\xff\xfe"
+_RUN_START_UNTRACKED_PAYLOAD = b"\x00untracked run-start binary\xff"
+_HEAD_SCRIPT_PAYLOAD = b"#!/bin/sh\necho head\n"
+_HEAD_DOC_PAYLOAD = b"# doc present at head\n"
+
+
+def test_commit_review_reject_restores_the_run_start_baseline_byte_exactly(
+    tmp_git_repo: Path,
+) -> None:
+    root = Path(tmp_git_repo)
+
+    legacy_bin = root / "assets" / "legacy.bin"
+    legacy_bin.parent.mkdir(parents=True, exist_ok=True)
+    legacy_bin.write_bytes(_HEAD_BINARY_PAYLOAD)
+
+    script = root / "scripts" / "tool.sh"
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_bytes(_HEAD_SCRIPT_PAYLOAD)
+    script.chmod(0o644)
+
+    doc = root / "docs" / "removed_at_run_start.md"
+    doc.parent.mkdir(parents=True, exist_ok=True)
+    doc.write_bytes(_HEAD_DOC_PAYLOAD)
+
+    route_run_git(
+        ["add", "assets/legacy.bin", "scripts/tool.sh", "docs/removed_at_run_start.md"],
+        cwd=root,
+        label="add",
+    )
+    route_run_git(["commit", "-m", "add run-start fixtures"], cwd=root, label="commit")
+
+    legacy_bin.write_bytes(_RUN_START_BINARY_PAYLOAD)
+    script.chmod(0o755)
+    doc.unlink()
+    untracked_bin = root / "untracked_at_run_start" / "notes.bin"
+    untracked_bin.parent.mkdir(parents=True, exist_ok=True)
+    untracked_bin.write_bytes(_RUN_START_UNTRACKED_PAYLOAD)
+    untracked_removed = root / "untracked_at_run_start" / "removed.bin"
+    untracked_removed.write_bytes(b"\x00untracked removed at run start\xff")
+
+    baseline = seal_baseline(root, _RUN_ID)
+    assert baseline is not None
+    baseline_ref = baseline.ref
+    run_start_snapshot = _snapshot_tree(root)
+
+    legacy_bin.unlink()
+    script.chmod(0o644)
+    untracked_bin.write_bytes(b"\x00modified by the proposal\xff")
+    untracked_removed.unlink()
+    (root / "docs" / "added_by_proposal.txt").write_bytes(b"proposal text\n")
+    (root / "assets" / "proposal.bin").write_bytes(b"\x00proposal binary\xff")
+    (root / "README.md").write_bytes(b"developer change\n")
+
+    seal = seal_pending(root, _RUN_ID, _ITERATION)
+    preflight(root, seal.ref)
+
+    bundle = load_policy(_DEFAULT_POLICY_DIR)
+    state = PipelineState(
+        phase="development_commit_review",
+        commit_review_rejections=0,
+        rollback_baseline_ref=baseline_ref,
+    )
+    pending_state, _ = reduce(
+        state,
+        CommitReviewRejected(
+            reason="proposal rejected: run-start baseline restore",
+            ref=seal.ref,
+            hard=True,
+        ),
+        bundle.pipeline,
+    )
+    assert pending_state.rollback_pending is True
+    assert pending_state.rollback_ref == seal.ref
+
+    cleared_state = execute_pending_rollback(
+        pending_state,
+        root,
+        bundle.pipeline,
+        checkpoint_path=rollback_checkpoint_path_for_root(root),
+    )
+    assert cleared_state.rollback_pending is False
+    assert cleared_state.rollback_ref is None
+
+    assert _snapshot_tree(root) == run_start_snapshot
+
+    assert (root / "assets" / "legacy.bin").read_bytes() == _RUN_START_BINARY_PAYLOAD
+    assert oct((root / "scripts" / "tool.sh").stat().st_mode & 0o777) == "0o755"
+    assert untracked_bin.read_bytes() == _RUN_START_UNTRACKED_PAYLOAD
+    assert untracked_removed.read_bytes() == b"\x00untracked removed at run start\xff"
+    assert not (root / "docs" / "removed_at_run_start.md").exists()
+    assert not (root / "docs" / "added_by_proposal.txt").exists()
+    assert not (root / "assets" / "proposal.bin").exists()
+    assert (root / "README.md").read_bytes() == b"test"

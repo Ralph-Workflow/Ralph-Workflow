@@ -48,17 +48,23 @@ agent, the `UnavailabilityReason`, the duration and the expiry
 
 ## Audited agent-invoking call sites
 
+Each path is marked **already compliant** or **fixed**. Optional pipeline
+phases such as `fix`, `review`, and `design_verdict` use the same main
+pipeline owner when declared; the default bundled pipeline's non-terminal
+phases are planning, planning analysis, development, development analysis,
+commit review (per-iteration and final), and commit (per-iteration and final).
+
 | Call site | Disposition | Proof |
 | --- | --- | --- |
-| Main pipeline phases (`ralph/pipeline/effect_executor.py`, `ralph/pipeline/runner.py`) | uses owner | the registered production runner receives a `RecoveryController`, and the reducer routes classified outcomes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py`, `tests/pipeline/test_reducer_single_owner.py` |
-| Reducer and session runtime (`ralph/pipeline/reducer.py`, `ralph/_session_runtime_runtime.py`) | uses owner | failed attempts reach the shared recovery handler; `tests/pipeline/test_reducer_single_owner.py` |
-| Parallel phase workers (`ralph/pipeline/parallel/worker_runtime.py`) | uses owner | the worker returns the attempt outcome to the phase handler, which the reducer routes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | uses owner | `ralph/pipeline/conflict_resolution/session.py` passes typed outcomes to the shared owner's `FailureClassifier.classify_outcome` path, and `RecoveryController.handle` applies the cooldown, budget, and selection policy; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
-| Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | uses owner | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | uses owner | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | uses owner | the chain retains one `RecoveryController` across outer retries, so bench state survives; `tests/test_commit_retry_cooldown.py` |
-| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | uses owner | a caught launch failure is classified and handled, cooled-down candidates are skipped, and an all-unavailable chain waits through `earliest_available_wait_ms`; `tests/project_policy/test_policy_invocation_cooldown.py` |
-| Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | uses owner | the canary runner is registered through `AgentEntryPoint.CANARY_PROBE` and invokes `run_agent_attempt` with a recovery controller; `tests/recovery/test_canary_probe.py`, `tests/recovery/test_dead_agent_pipeline_matrix.py` |
+| Main pipeline phases (`ralph/pipeline/effect_executor.py`, `ralph/pipeline/runner.py`) | already compliant | the registered production runner receives a `RecoveryController`, and the reducer routes classified outcomes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py`, `tests/pipeline/test_reducer_single_owner.py` |
+| Reducer and session runtime (`ralph/pipeline/reducer.py`, `ralph/_session_runtime_runtime.py`) | already compliant | failed attempts reach the shared recovery handler; `tests/pipeline/test_reducer_single_owner.py` |
+| Parallel phase workers (`ralph/pipeline/parallel/worker_runtime.py`) | already compliant | the worker returns the attempt outcome to the phase handler, which the reducer routes through `recovery.handle`; `tests/recovery/test_cooldown_parity_all_phases.py` |
+| Conflict resolution (`ralph/pipeline/conflict_resolution/`) | fixed | `ralph/pipeline/conflict_resolution/session.py` passes typed outcomes to the shared owner's `FailureClassifier.classify_outcome` path, and `RecoveryController.handle` applies the cooldown, budget, and selection policy; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
+| Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | fixed | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
+| Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | already compliant | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
+| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | already compliant | the chain retains one `RecoveryController` across outer retries, so bench state survives; `tests/test_commit_retry_cooldown.py` |
+| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | already compliant | a caught launch failure is classified and handled, cooled-down candidates are skipped, and an all-unavailable chain waits through `earliest_available_wait_ms`; `tests/project_policy/test_policy_invocation_cooldown.py` |
+| Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | fixed | the canary runner is registered through `AgentEntryPoint.CANARY_PROBE` and invokes `run_agent_attempt` with a recovery controller; `tests/recovery/test_canary_probe.py`, `tests/recovery/test_dead_agent_pipeline_matrix.py` |
 
 ## Documented exemptions
 
@@ -95,17 +101,19 @@ the agent owner by construction. They are exemptions, not gaps.
 - **Cross-phase contract test.**
   `tests/recovery/test_cooldown_parity_all_phases.py` loads the production
   default policy through
-  `ralph.policy.loader.cached_default_policy_bundle` and drives the
-  registered production invocation routes for `planning`,
-  `planning_analysis`, `development`, `development_commit_review`,
-  `development_commit`, `development_analysis`,
-  `development_final_commit_review`, `development_final_commit`,
-  `policy_remediation`, and `policy_remediation_analysis`. Each route's
-  failed attempt is routed through the owner's own classification and
-  handling API (`RecoveryController.classify_*` followed by `handle`),
-  and the suite asserts `Cooldown` after the owner threshold, next-candidate
-  selection, and the owner's `earliest_available_wait_ms`. The matrix covers
-  launch failures (`PROCESS_EXITED`) and no-activity failures
+  `ralph.policy.loader.cached_default_policy_bundle` and drives every
+  non-terminal, non-`skip_invocation` phase from that pipeline plus the
+  `policy_remediation` and `policy_remediation_analysis` routes. For the
+  bundled default that set is `planning`, `planning_analysis`,
+  `development`, `development_commit_review`, `development_commit`,
+  `development_analysis`, `development_final_commit_review`,
+  `development_final_commit`, `policy_remediation`, and
+  `policy_remediation_analysis`. Each route's failed attempt is routed
+  through the owner's own classification and handling API
+  (`RecoveryController.classify_*` followed by `handle`), and the suite
+  asserts `Cooldown` after the owner threshold, next-candidate selection,
+  and the owner's `earliest_available_wait_ms`. The matrix covers launch
+  failures (`PROCESS_EXITED`) and no-activity failures
   (`NO_OUTPUT_AT_START`) with reasons and durations from the
   `UnavailabilityReason` policy table, as well as stalled agents reporting
   success without valid artifacts cooling down for

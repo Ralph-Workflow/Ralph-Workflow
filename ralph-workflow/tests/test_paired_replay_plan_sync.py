@@ -29,13 +29,17 @@ RALPH_TEST_CHANGE_REASONS = {
     ),
     "test_pilot_ledger_pins_section6_r1_invalid_and_r3_failed": (
         "paired-replay §6 counts a timed-out run as a failure on the pack and only "
-        "invalid runs as replaceable, so the canonical pilot ledger must pin R1 as "
-        "invalid with ENOSPC and R3 as failed at wall_seconds 720 with agent_exit 124"
+        "invalid runs as replaceable, so the shipped pilot ledger fixture under "
+        "tests/fixtures/policy-v6-replay-runs must pin R1 as invalid with ENOSPC and "
+        "R3 as failed at wall_seconds 720 with agent_exit 124. The live run script "
+        "still appends under tmp/, which is gitignored and absent on a fresh clone, "
+        "so the pin cannot live there"
     ),
     "test_unblinded_scored_effects_exclude_s2": (
-        "R3 failed under §6 so category S2 has no valid baseline arm; unblinded "
-        "treatment-effect aggregation must exclude S2 and must not compute a scored "
-        "S2 pair from the failed baseline"
+        "R3 failed under §6 so category S2 has no valid baseline arm; the shipped "
+        "unblinded fixture under tests/fixtures/policy-v6-replay-runs must exclude "
+        "S2 from scored treatment effects and must not compute a scored S2 pair "
+        "from the failed baseline"
     ),
 }
 
@@ -80,7 +84,7 @@ _CITED_POLICY_SCHEMA_SYMBOLS = (
     "VERSION_SPECS",
 )
 
-_PILOT_FIXTURE_ROOT = PACKAGE_ROOT / "tests" / "fixtures" / "policy_v6_replay_runs"
+_PILOT_FIXTURE_ROOT = PACKAGE_ROOT / "tests" / "fixtures" / "policy-v6-replay-runs"
 _PILOT_LEDGER_PATH = _PILOT_FIXTURE_ROOT / "ledger.jsonl"
 _PILOT_UNBLINDED_PATH = _PILOT_FIXTURE_ROOT / "unblinded.json"
 _PILOT_R3_AGENT_EXIT_PATH = _PILOT_FIXTURE_ROOT / "R3" / "agent_exit"

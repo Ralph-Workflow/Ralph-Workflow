@@ -182,7 +182,9 @@ Verification passes only when all checks complete with **no ERROR/WARNING diagno
 ## Agent recovery ownership audit
 
 The agent-failure single-owner audit enforces the recovery invariant described
-in [Agent Invoke Architecture](architecture.md#shared-recovery-ownership).
+in [Agent cooldown: the single-owner invariant](../../ralph-workflow/docs/agents/cooldown-invariant.md)
+and summarised in
+[Agent Invoke Architecture](architecture.md#shared-recovery-ownership).
 Exactly one `RecoveryController` owns cooldown/unavailability, failure-budget
 charging, backoff, spent state, candidate selection, and wait/termination.
 Every agent invocation must report each failed or unproductive attempt through
@@ -198,12 +200,13 @@ uv run python -m ralph.testing.audit_agent_failure_single_owner
 
 The audit covers the main phase loop, parallel worker, integration
 continuation, conflict resolution, pending-merge repair, integration
-diagnostics, project-policy analysis/remediation, commit-message generation
-including `ralph commit`, canary probes, and dead-agent probes. MCP server
-restart is a tested process-level non-agent exception; Explore recovery is a
-tested local-index non-agent exception. Commit-message generation and `ralph
-commit` select the next candidate through the shared controller and report
-attempt outcomes through it. The cooled-candidate regression in
+diagnostics, smoke-test plumbing, project-policy analysis/remediation,
+commit-message generation including `ralph commit`, canary probes, and
+dead-agent probes. Three tested non-agent exceptions sit outside the agent
+owner: MCP server restart (process-level), Explore recovery (local-index), and
+auto-integrate retry backoff (git-operation retries). Commit-message generation
+and `ralph commit` select the next candidate through the shared controller and
+report attempt outcomes through it. The cooled-candidate regression in
 `tests/test_commit_message_agent_selection.py` proves that the unavailable
 candidate is skipped while the eligible candidate runs once.
 

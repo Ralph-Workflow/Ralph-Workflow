@@ -10,8 +10,10 @@ unavailability, failure-budget charging, backoff, spent state, candidate
 selection, and wait/termination. Agent-invoking paths report every failed or
 unproductive attempt through it, and a failure may be unpenalised only after
 proven progress. Round caps come from configured limits; phases keep no local
-skip/backoff/cooldown collection. The audited path list and the two tested
-non-agent exceptions are maintained in
+skip/backoff/cooldown collection. The audited path list (each marked already
+compliant or fixed) and the three tested non-agent exceptions live in
+[`ralph-workflow/docs/agents/cooldown-invariant.md`](../../ralph-workflow/docs/agents/cooldown-invariant.md).
+The short operator summary is in
 [`docs/agents/architecture.md`](../agents/architecture.md#shared-recovery-ownership).
 
 The retired Rust implementation's architecture material is quarantined

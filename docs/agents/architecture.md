@@ -177,24 +177,29 @@ which finalises each attempt through the controller. Round limits come from the
 configured limits passed into each loop; phases do not keep their own
 skip/backoff/cooldown collections.
 
-The audited invocation paths are:
+The canonical audited path list, dispositions (**already compliant** or
+**fixed**), exemptions, and enforcement checks live in
+[`ralph-workflow/docs/agents/cooldown-invariant.md`](../../ralph-workflow/docs/agents/cooldown-invariant.md).
+Summary:
 
-| Path | Shared recovery route |
-|---|---|
-| Main pipeline phase loop | Phase candidate selection uses the controller; attempts use the `MAIN_PHASE_LOOP` entry point. |
-| Parallel worker | Phase candidate selection uses the controller; attempts use the `PARALLEL_WORKER` entry point. |
-| Integration continuation | Phase candidate selection uses the controller; continuation attempts use the `INTEGRATION_CONTINUATION` entry point. |
-| Conflict resolution | Resolver selection, cooldown waits, exhaustion, and attempts use the shared controller. |
-| Pending-merge repair | `choose_resolver` selects through the controller; failed or unproductive repairs are finalised through it. |
-| Integration diagnostics | `next_resolver` delegates selection to the controller; diagnostic attempts report their outcome through it. |
-| Project-policy analysis and remediation | Each round asks the controller for the next eligible chain candidate and runs the attempt through the `PROJECT_POLICY` entry point. |
-| Commit-message generation and `ralph commit` | Candidate selection asks `RecoveryController.preferred_agent_index` to choose the next candidate; attempts use the `COMMIT_GENERATION` entry point and report through the controller. |
-| Canary probe | The probe runs through the `CANARY_PROBE` entry point in probe mode. |
-| Dead-agent probe | The dead-agent check delegates to the canary probe path and its controller-owned verdict. |
+| Path | Disposition | Shared recovery route |
+|---|---|---|
+| Main pipeline phase loop | already compliant | Phase candidate selection uses the controller; attempts use the `MAIN_PHASE_LOOP` entry point. |
+| Parallel worker | already compliant | Phase candidate selection uses the controller; attempts use the `PARALLEL_WORKER` entry point. |
+| Integration continuation | fixed | Phase candidate selection uses the controller; continuation attempts use the `INTEGRATION_CONTINUATION` entry point. |
+| Conflict resolution | fixed | Resolver selection, cooldown waits, exhaustion, and attempts use the shared controller. |
+| Pending-merge repair | fixed | `choose_resolver` selects through the controller; failed or unproductive repairs are finalised through it. |
+| Integration diagnostics | fixed | `next_resolver` delegates selection to the controller; diagnostic attempts report their outcome through it. |
+| Smoke-test plumbing | already compliant | Attempts report through the shared owner. |
+| Project-policy analysis and remediation | already compliant | Each round asks the controller for the next eligible chain candidate and runs the attempt through the `PROJECT_POLICY` entry point. |
+| Commit-message generation and `ralph commit` | already compliant | Candidate selection asks `RecoveryController.preferred_agent_index` to choose the next candidate; attempts use the `COMMIT_GENERATION` entry point and report through the controller. |
+| Canary probe | fixed | The probe runs through the `CANARY_PROBE` entry point in probe mode. |
+| Dead-agent probe | fixed | The dead-agent check delegates to the canary probe path and its controller-owned verdict. |
 
-Two tested recovery paths do not invoke agents and therefore do not participate
-in agent cooldown selection: MCP server restart is process-level recovery, and
-Explore recovery rebuilds the local index.
+Three tested recovery paths do not invoke agents and therefore do not
+participate in agent cooldown selection: MCP server restart is process-level
+recovery, Explore recovery rebuilds the local index, and auto-integrate retry
+backoff cools non-agent git-operation retries.
 
 ## Adding a new agent
 

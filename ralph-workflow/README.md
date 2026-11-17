@@ -177,16 +177,21 @@ for update cadence and the trust statement.
 
 ## Protections
 
-A two-stage commit review runs immediately before each commit. Stage 1 computes
-deterministic tripwires from tracked and untracked pending state (defaulting to
-50 deleted files, 25% of tracked files, and a 1 MB binary size limit per the
+A two-stage commit review runs immediately before each commit as a damage gate
+and edit phase. Stage 1 computes deterministic tripwires from tracked and
+untracked pending state, with the `CommitReviewPolicy` defaults
+(`max_deleted_files` 50, `max_deleted_fraction` 0.25, `binary_size_limit`
+1_000_000 bytes, `proposal_retention` 10, `max_rejections` 2; see
 [commit review configuration](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/ralph-workflow/docs/sphinx/configuration.md#commit-review-configuration));
 hard mass or protected-deletion damage rejects without invoking an agent. Stage 2
 applies validated housekeeping edits only and never performs source-code review. A
-normal rejection saves the proposal first, then resets every pending-commit
-file. Only exact deletions in the planning-analysis-approved plan may bypass
-mass-deletion accounting; protected deletions never bypass, and developer or
-reviewer input cannot widen the list. Ralph Workflow's own engine writes are
+normal rejection saves the pending proposal under
+`refs/ralph/proposals/<run>/<iteration>`, resets every pending-commit file, and
+returns to development; a rejection at the consecutive-rejection limit or after
+the cycle timebox retains the saved proposal ref and routes to `failed_terminal`
+without another reset. Only exact deletions in the planning-analysis-approved
+plan may bypass mass-deletion accounting; protected deletions never bypass, and
+developer or reviewer input cannot widen the list. Ralph Workflow's own engine writes are
 auto-committed in isolation at the producer boundary: each commit covers
 only the exact paths the writer just modified, paths that are already
 dirty are skipped and stay in the agent or user commit flow, and an

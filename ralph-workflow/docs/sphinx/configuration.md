@@ -692,7 +692,7 @@ Each phase can declare a `display_style` override to control its banner colour. 
 
 ### Commit review configuration
 
-The commit review phases (`development_commit_review` and `development_final_commit_review`) run immediately before their corresponding commit phases. They act as both a deterministic safety gate and an edit phase. Commit review is a **damage gate**, not a code review: it decides whether the pending diff looks like accidental damage. Code quality and plan adherence stay with `development_analysis`.
+The commit review phases (`development_commit_review` and `development_final_commit_review`) run immediately before their corresponding commit phases. Commit review is a **damage gate and an edit phase**, not a code review: Stage 1 applies deterministic tripwires, and Stage 2 may apply validated housekeeping edits. It decides whether the pending diff looks like accidental damage. Code quality and plan adherence stay with `development_analysis`. Defaults match `CommitReviewPolicy`: `max_deleted_files` 50, `max_deleted_fraction` 0.25, `binary_size_limit` 1_000_000, `proposal_retention` 10, `max_rejections` 2.
 
 #### Loop counters
 

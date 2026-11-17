@@ -331,6 +331,11 @@ def pytest_configure(config: pytest.Config) -> None:
     from pygments.lexers import get_lexer_by_name
 
     get_lexer_by_name("python")
+    from ralph.pipeline.effect_executor import clear_agent_effect_dependencies
+    from ralph.pipeline.integration_actions import clear_executors
+
+    clear_agent_effect_dependencies()
+    clear_executors()
 
 
 _MACOS_GIT_SHIM = "/usr/bin/git"

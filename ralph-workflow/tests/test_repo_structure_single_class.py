@@ -8,6 +8,7 @@ import pytest
 
 _AUDITED_MODULES: tuple[tuple[str, str | None], ...] = (
     ("ralph.pipeline.auto_integrate_recovery_terminal", "ResolutionTerminalMarker"),
+    ("ralph.pipeline.cooldown_wait_context", "CooldownWaitContext"),
     ("ralph.pipeline.integration_ladder", None),
     ("ralph.pipeline.ladder_effect", "LadderEffect"),
     ("ralph.pipeline.ladder_effect_kind", "LadderEffectKind"),
@@ -20,6 +21,8 @@ _AUDITED_MODULES: tuple[tuple[str, str | None], ...] = (
     ("ralph.pipeline.last_resort_agent_proof", "LastResortAgentProof"),
     ("ralph.pipeline.last_resort_wait_proof", "LastResortWaitProof"),
     ("ralph.pipeline.terminal_state_violation_error", "TerminalStateViolationError"),
+    ("ralph.git.commit_tree_mismatch_error", "CommitTreeMismatchError"),
+    ("ralph.git.git_operation_error", "GitOperationError"),
     ("ralph.recovery.agent_failure_ledger", "AgentFailureLedger"),
     ("ralph.recovery.eligibility_wait", "EligibilityWait"),
     ("ralph.recovery.wait_kind", "WaitKind"),
@@ -30,6 +33,21 @@ _REEXPORTED_CLASSES: tuple[tuple[str, str, str], ...] = (
         "ralph.pipeline.auto_integrate_recovery_terminal",
         "TerminalStateViolationError",
         "ralph.pipeline.terminal_state_violation_error",
+    ),
+    (
+        "ralph.pipeline.run_loop",
+        "CooldownWaitContext",
+        "ralph.pipeline.cooldown_wait_context",
+    ),
+    (
+        "ralph.git.errors",
+        "GitOperationError",
+        "ralph.git.git_operation_error",
+    ),
+    (
+        "ralph.git.errors",
+        "CommitTreeMismatchError",
+        "ralph.git.commit_tree_mismatch_error",
     ),
     ("ralph.pipeline.integration_ladder", "LadderEffect", "ralph.pipeline.ladder_effect"),
     ("ralph.pipeline.integration_ladder", "LadderEffectKind", "ralph.pipeline.ladder_effect_kind"),

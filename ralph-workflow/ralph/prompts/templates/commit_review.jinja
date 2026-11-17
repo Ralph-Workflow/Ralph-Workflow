@@ -15,13 +15,18 @@ Commit review is a deterministic safety damage gate and housekeeping edit phase:
 
 ### Explicit Non-Goal
 
-Commit review is **NOT** a code style, architecture, or design review. It does not judge whether the code is good, tests are adequate, or whether work meets the plan — `development_analysis` owns those judgements. Commit review answers one question only: **"Does this look like accidental damage or contain unsafe files?"**
+Commit review is not a source code review, and not a code style, architecture, or design review. It does not judge whether the code is good, tests are adequate, or whether work meets the plan — `development_analysis` owns those judgements. It does not judge whether a source change belongs in this commit: unrelated source edits, scope creep and commit composition are not findings here, and source code for the project is always acceptable content. Commit review answers one question only: **"Does this look like accidental damage or contain unsafe files?"**
 
-A change to source code is never rejection evidence, however large, off-plan, or wrong it looks: approve it and leave the judgement to `development_analysis`. When unrelated or unsafe files sit beside real work, remove them with `delete_file`, `add_to_gitignore`, or `add_to_git_exclude` and approve the rest. Reject only when nothing in the pending change is worth keeping.
+A change to source code is never rejection evidence, however large, off-plan, or wrong it looks: approve it and leave the judgement to `development_analysis`.
+
+When content that does not belong sits beside real work, remove them with `delete_file`, `add_to_gitignore`, or `add_to_git_exclude` and approve the rest.
+
+Reject only when the entire commit is nonsense for this project or is concrete damage it can cite.
 
 ### Default Rule: Approve-Unless-Citable-Damage
 
 The default rule is **approve-unless-citable-damage**:
+- Approve in every other case, including when in doubt.
 - When in doubt, **approve** and let `development_analysis` handle it.
 - **Reject** ONLY on clear, verifiable evidence of damage that you can cite (specific file paths or counts).
 

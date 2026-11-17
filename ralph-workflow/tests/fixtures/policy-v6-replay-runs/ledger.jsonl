@@ -1,0 +1,5 @@
+{"run_id": "policy-v6-pilot-R1", "arm": "R1", "category": "S1", "outcome": "invalid", "wall_seconds": 52, "invalid": "ENOSPC: agent commands never started; no source change (see transcript.jsonl)", "scores_path": null}
+{"run_id": "policy-v6-pilot-R1b", "arm": "R1b", "category": "S1", "outcome": "valid", "wall_seconds": 485, "invalid": null, "scores_path": "ralph-workflow/tmp/policy-v6-replay-runs/scores.json"}
+{"run_id": "policy-v6-pilot-R2", "arm": "R2", "category": "S1", "outcome": "valid", "wall_seconds": 584, "invalid": null, "scores_path": "ralph-workflow/tmp/policy-v6-replay-runs/scores.json"}
+{"run_id": "policy-v6-pilot-R3", "arm": "R3", "category": "S2", "outcome": "failed", "wall_seconds": 720, "invalid": null, "scores_path": null}
+{"run_id": "policy-v6-pilot-R4", "arm": "R4", "category": "S2", "outcome": "valid", "wall_seconds": 508, "invalid": null, "scores_path": "ralph-workflow/tmp/policy-v6-replay-runs/scores.json"}
