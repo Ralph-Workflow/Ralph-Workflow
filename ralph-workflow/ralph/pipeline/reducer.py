@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
 from loguru import logger
 
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.phases._commit_review_events import (
     CommitReviewApproved,
     CommitReviewEvent,
@@ -570,8 +569,7 @@ def reduce(
             snap = recovery.ledger.snapshot()
             if snap != routed_state.ledger_snapshot:
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
-        raw_verdict_record: object = getattr(recovery, "last_verdict_record", None)
-        verdict_record = as_object_dict(raw_verdict_record)
+        verdict_record = recovery.last_verdict_record
         if verdict_record is not None and verdict_record != routed_state.dead_agent_verdict_record:
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
         feedback_snapshot = recovery.false_bench_feedback.snapshot()

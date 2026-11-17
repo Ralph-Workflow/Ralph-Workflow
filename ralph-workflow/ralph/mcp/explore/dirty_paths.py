@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import sqlite3
 import threading
 import time
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from collections.abc import Sequence
+from typing import Protocol, TypeGuard
 
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
-from ralph.mcp.explore.store import ExploreStore, normalize_index_path
-
-if TYPE_CHECKING:
-    import sqlite3
-
-    from ralph.mcp.explore._store_types import EvidenceRow, FileRow, SpanRow, SymbolRow
+from ralph.mcp.explore.store import (
+    EvidenceRow,
+    ExploreStore,
+    FileRow,
+    SpanRow,
+    SymbolRow,
+    normalize_index_path,
+)
 
 
 class ExploreIndexLike(Protocol):
@@ -46,7 +50,7 @@ class ExploreStoreLike(Protocol):
         name: str | None = None,
         qualified_name: str | None = None,
         path: str | None = None,
-    ) -> list[SymbolRow]: ...
+    ) -> Sequence[SymbolRow]: ...
 
     def insert_evidence(self, row: EvidenceRow) -> None: ...
 

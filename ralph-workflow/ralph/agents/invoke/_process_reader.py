@@ -579,7 +579,7 @@ def _convert_idle_stream_timeout_to_agent_error(
             session_resume_safe=session_resume_safe,
             resumable_session_id=captured_session_id or expected_session_id,
             diagnostic=(
-                _as_idle_diagnostic(exc.diagnostic) if exc.diagnostic is not None else None
+                _as_idle_diagnostic(dict(exc.diagnostic)) if exc.diagnostic is not None else None
             ),
             runtime_event=(
                 exc.__cause__.runtime_event

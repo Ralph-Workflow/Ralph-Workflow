@@ -139,7 +139,6 @@ def _handle_non_zero_returncode(
     returncode: int,
     stderr_text: str,
     *,
-    stderr_available: bool,
     supervisor: AttemptSupervisor,
 ) -> None:
     issuer_method = cast(
@@ -193,11 +192,10 @@ def _handle_non_zero_returncode(
             returncode=returncode,
             stderr=stderr_text,
         )
-    stderr = stderr_text if stderr_available else ""
     exc = AgentInvocationError(
         agent_name,
         returncode,
-        stderr,
+        stderr_text,
         bounded_output,
         failure_origin=(
             "runtime_launch"

@@ -205,13 +205,15 @@ def erase_broker_secret_environment() -> None:
         prefix = b"RALPH_BROKER_SECRET="
         encoded_secret = secret.encode()
         index = 0
-        address = as_int(environ_table[index], field="environment address")
+        entry: object = environ_table[index]
+        address = as_int(entry, field="environment address")
         while address:
             if ctypes.string_at(address, len(prefix)) == prefix:
                 ctypes.memset(address + len(prefix), 0, len(encoded_secret))
                 break
             index += 1
-            address = as_int(environ_table[index], field="environment address")
+            entry = environ_table[index]
+            address = as_int(entry, field="environment address")
     os.environ.pop("RALPH_BROKER_SECRET", None)
 
 

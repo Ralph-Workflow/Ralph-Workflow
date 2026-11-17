@@ -5,7 +5,7 @@ import logging
 import os
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_TOOL_CATALOG_ENV,
@@ -148,7 +148,7 @@ def _read_disk_snapshot(workspace_root: Path) -> UpstreamToolCatalogSnapshot | N
         return UpstreamToolCatalogSnapshot(present=False)
     decoded: object
     try:
-        decoded = json.loads(raw)
+        decoded = cast("object", json.loads(raw))
     except json.JSONDecodeError:
         decoded = None
     if not isinstance(decoded, dict):

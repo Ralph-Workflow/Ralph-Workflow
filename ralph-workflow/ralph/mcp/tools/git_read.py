@@ -688,7 +688,7 @@ def _collect_git_diff_capped(
         try:
             outcome.append(
                 _read_git_diff_until_cap(
-                    cast("_ReadablePipe", stdout),
+                    stdout,
                     max_bytes,
                 )
             )

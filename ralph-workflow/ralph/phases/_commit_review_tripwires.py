@@ -372,11 +372,7 @@ def _normalized_repo_path(raw_path: str) -> str:
 def _is_path_collection(
     value: object,
 ) -> TypeGuard[list[object] | tuple[object, ...] | set[object] | frozenset[object]]:
-    match value:
-        case list() | tuple() | set() | frozenset():
-            return True
-        case _:
-            return False
+    return isinstance(value, (list, tuple, set, frozenset))
 
 
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:

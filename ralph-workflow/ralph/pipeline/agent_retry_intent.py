@@ -103,7 +103,12 @@ def resume_agent_retry_intent(
     )
 
 
-_retry_intent_local: _threading.local = _threading.local()
+class _RetryIntentCapture(_threading.local):
+    intent: AgentRetryIntent = _CLEARED_AGENT_RETRY_INTENT
+    fresh_bridge_requested: bool = False
+
+
+_retry_intent_local = _RetryIntentCapture()
 
 
 def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
@@ -113,8 +118,7 @@ def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
 
 
 def fresh_bridge_requested() -> bool:
-    raw: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
-    return raw is True
+    return _retry_intent_local.fresh_bridge_requested is True
 
 
 def mark_fresh_bridge_requested() -> None:
@@ -126,7 +130,7 @@ def clear_fresh_bridge_requested() -> None:
 
 
 def pop_last_captured_retry_intent() -> AgentRetryIntent:
-    raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
+    raw: object = _retry_intent_local.intent
     intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()
     _retry_intent_local.intent = cleared_agent_retry_intent()
     return intent

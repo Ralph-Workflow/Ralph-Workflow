@@ -82,22 +82,22 @@ class _FileRowMethods:
         result: dict[str, tuple[int, int]] = {}
         for row in all_rows:
             try:
-                size_obj: object = row["size_bytes"]
-                mtime_obj: object = row["mtime_ns"]
-                path_value: object = row["path"]
+                size_raw: object = row["size_bytes"]
+                mtime_raw: object = row["mtime_ns"]
+                path_raw: object = row["path"]
             except (KeyError, IndexError):
                 continue
-            if not isinstance(path_value, str):
+            if not isinstance(path_raw, str):
                 continue
             size = (
-                int(size_obj) if isinstance(size_obj, int) and not isinstance(size_obj, bool) else 0
+                int(size_raw) if isinstance(size_raw, int) and not isinstance(size_raw, bool) else 0
             )
             mtime = (
-                int(mtime_obj)
-                if isinstance(mtime_obj, int) and not isinstance(mtime_obj, bool)
+                int(mtime_raw)
+                if isinstance(mtime_raw, int) and not isinstance(mtime_raw, bool)
                 else 0
             )
-            result[path_value] = (size, mtime)
+            result[path_raw] = (size, mtime)
         return result
 
     def upsert_file_many(self, rows: Sequence[FileRow]) -> None:

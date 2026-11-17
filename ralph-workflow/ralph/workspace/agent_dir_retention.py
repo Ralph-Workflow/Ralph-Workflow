@@ -253,11 +253,11 @@ def _prune_missing_temporary_path_owners(workspace_root: Path) -> None:
 def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]:
     raw = _read_json(workspace_root / _OWNERSHIP_RELPATH)
     try:
-        raw_dict = as_object_dict(raw)
+        typed = as_object_dict(raw)
     except TypeError:
         return {}
     owners: dict[str, tuple[str, float]] = {}
-    for path, entry in raw_dict.items():
+    for path, entry in typed.items():
         if isinstance(entry, dict):
             run_id = entry.get("run_id")
             created_at = entry.get("created_at")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
 from ralph.checked_accessors import as_mapping
 from ralph.mcp.artifacts.markdown.specs._plan_steps import PLAN_STEP_ID_PATTERN
@@ -12,27 +12,9 @@ if TYPE_CHECKING:
 
     from ralph.mcp.artifacts.markdown._document import ParsedDocument
     from ralph.mcp.artifacts.markdown._parsed_section import ParsedSection
-
-
-class StepTarget(TypedDict):
-    path: str
-    action: str
-
-
-class PlanStep(TypedDict, total=False):
-    id: str
-    number: int
-    depends_on: list[int]
-    targets: list[StepTarget]
-
-
-class WorkUnit(TypedDict):
-    unit_id: str
-    description: str
-    allowed_directories: list[str]
-    allowed_paths: list[str]
-    dependencies: list[str]
-    step_ids: list[str]
+    from ralph.mcp.artifacts.markdown.specs._plan_step import PlanStep
+    from ralph.mcp.artifacts.markdown.specs._plan_step_target import StepTarget
+    from ralph.mcp.artifacts.markdown.specs._work_unit import WorkUnit
 
 
 _PLAN_WORDS = (

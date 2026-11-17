@@ -91,6 +91,11 @@ class JavaGuidelines:
             "Security-relevant and state-changing operations have appropriate audit visibility.",
             "Logs avoid exposing secrets and personally identifiable information.",
         )
+        self.secrets_checks: tuple[str, ...] = (
+            "Load secrets from environment or configuration, not source code.",
+            "Do not log credentials, tokens, or sensitive request data.",
+            "Review default configuration values for accidental secret exposure.",
+        )
         self.api_design_checks: tuple[str, ...] = (
             "API naming is consistent across services, DTOs, and controller endpoints.",
             "Method contracts are explicit about nullability, exceptions, and side effects.",
@@ -142,6 +147,7 @@ class JavaGuidelines:
                 len(self.concurrency_checks),
                 len(self.resource_checks),
                 len(self.observability_checks),
+                len(self.secrets_checks),
                 len(self.api_design_checks),
             ]
         )

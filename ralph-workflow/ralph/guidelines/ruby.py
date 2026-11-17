@@ -95,7 +95,11 @@ class RubyGuidelines:
             "Avoid deeply nested conditionals when guard clauses or object"
             " extraction would simplify flow.",
         )
+        self.concurrency_checks = ()
+        self.resource_checks = ()
+        self.observability_checks = ()
         self.secrets_checks = ()
+        self.api_design_checks = ()
 
         for framework in normalized_frameworks:
             self._apply_framework(framework)
@@ -155,6 +159,11 @@ class RubyGuidelines:
                 len(self.documentation_checks),
                 len(self.idioms),
                 len(self.anti_patterns),
+                len(self.concurrency_checks),
+                len(self.resource_checks),
+                len(self.observability_checks),
+                len(self.secrets_checks),
+                len(self.api_design_checks),
             ]
         )
 

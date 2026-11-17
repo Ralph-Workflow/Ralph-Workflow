@@ -15,6 +15,7 @@ class _FakeRecord:
     def __init__(self) -> None:
         self.status = ProcessStatus.RUNNING
         self.label = "agent:unit-1:root"
+        self.pgid = -1
 
 
 class _FakeHandle(ManagedAsyncProcess):

@@ -387,12 +387,13 @@ def commit_receipt_matches_changed_files(
             db.close()
     except (OSError, RuntimeError, sqlite3.Error):
         pass
+    audit: object
     if audit_json is MISSING:
         path = _receipt_path(workspace_root, run_id, artifact_type)
         if not backend.exists(path):
             return False
         try:
-            payload: object = json.loads(backend.read_text(path, encoding="utf-8"))
+            payload = cast("object", json.loads(backend.read_text(path, encoding="utf-8")))
             audit = (
                 cast("dict[str, object]", payload).get("normalization_audit")
                 if isinstance(payload, dict)
@@ -404,7 +405,10 @@ def commit_receipt_matches_changed_files(
         audit = None
     else:
         try:
-            audit = json.loads(as_str(audit_json, field="normalization_audit"))
+            audit = cast(
+                "object",
+                json.loads(as_str(audit_json, field="normalization_audit")),
+            )
         except (json.JSONDecodeError, TypeError, ValueError):
             return False
     if not isinstance(audit, dict):

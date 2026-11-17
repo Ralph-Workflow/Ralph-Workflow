@@ -2650,19 +2650,32 @@ def execute_fan_out_sync(
     state: PipelineState,
     display: ParallelDisplay,
     pipeline_deps: PipelineDeps | None = None,
+    _install_signal_handlers: object | None = None,
+    _executor_cls: object | None = None,
+    _mcp_factory_cls: object | None = None,
+    _run_process_async: object | None = None,
+    _reducer_reduce: object | None = None,
     **opts: object,
 ) -> PipelineState:
     forwarded: dict[str, object] = dict(opts)
-    forwarded.setdefault("_install_signal_handlers", install_signal_handlers)
-    forwarded.setdefault("_executor_cls", SubprocessAgentExecutor)
-    forwarded.setdefault("_mcp_factory_cls", DynamicBindingMcpServerFactory)
-    forwarded.setdefault("_run_process_async", run_process_async)
-    forwarded.setdefault("_reducer_reduce", reducer_reduce)
     return _fan_out_execute_fan_out_sync(
         effect=effect,
         state=state,
         display=display,
         pipeline_deps=pipeline_deps,
+        _install_signal_handlers=(
+            install_signal_handlers
+            if _install_signal_handlers is None
+            else _install_signal_handlers
+        ),
+        _executor_cls=(SubprocessAgentExecutor if _executor_cls is None else _executor_cls),
+        _mcp_factory_cls=(
+            DynamicBindingMcpServerFactory if _mcp_factory_cls is None else _mcp_factory_cls
+        ),
+        _run_process_async=(
+            run_process_async if _run_process_async is None else _run_process_async
+        ),
+        _reducer_reduce=(reducer_reduce if _reducer_reduce is None else _reducer_reduce),
         **forwarded,
     )
 

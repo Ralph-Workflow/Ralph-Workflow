@@ -1614,6 +1614,12 @@ def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIden
         return ConflictIdentity()
 
 
+def _firm_conflict_identity_bound(rebase: RebaseState, identity: ConflictIdentity) -> bool:
+    recorded = (rebase.last_conflict_feature_sha, rebase.last_conflict_target_sha)
+    observed = (identity.feature_sha, identity.target_sha)
+    return None not in recorded and None not in observed
+
+
 def _cold_capped_escalation_due(
     ctx: LoopContext,
     rebase: RebaseState,
@@ -1630,7 +1636,7 @@ def _cold_capped_escalation_due(
             return False
         if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
             return False
-    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity):
+    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity) or _firm_conflict_identity_bound(rebase, identity):
         return False
     session_attempted: object = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:

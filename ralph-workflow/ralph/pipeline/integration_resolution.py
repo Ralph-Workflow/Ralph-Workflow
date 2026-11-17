@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 
+__all__ = ["IntegrationResolutionVerdict"]
+
 _PORCELAIN_MIN_ENTRY_LEN = 4
 
 
