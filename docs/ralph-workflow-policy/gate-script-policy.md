@@ -86,10 +86,9 @@ reader how to fix it, and MUST cite the policy that says so.**
   outcome that satisfies it, not a restatement of the error.
 
 **This output is addressed to development agents and humans working on the
-project's code.** It is NOT addressed to the policy-authoring agents that write
-these documents: an agent whose task is to fill out a policy form must not be
-diverted into fixing a failing test because a gate script told it to. See the AI
-execution instructions below.
+project's code.** Work on this policy corpus records a failing gate as a
+finding against that gate; it does not divert the policy work into repairing
+the product code the gate reports. See the AI execution instructions below.
 
 ## Security
 

@@ -334,6 +334,9 @@ RALPH-INAPPLICABLE: reason - no Go source exists in this project; reopens when t
 RALPH-LANG: Ruby
 RALPH-INAPPLICABLE: reason - the only Ruby file in the project is the Homebrew formula (a build-distribution artefact, syntax-checked via the fail-closed `make formula-check` gate); no Ruby security scanner is wired up. Reopens if a real Ruby source tree is added - at which point `RALPH-COMMAND: bundle exec brakeman` or `RALPH-COMMAND: bundle exec rubocop` becomes the gate.
 
+RALPH-LANG: JavaScript
+RALPH-INAPPLICABLE: reason - the only tracked JavaScript in the project is the Sphinx documentation asset (ralph-workflow/docs/sphinx/_static/ralph-docs.js), which ships verbatim into the built HTML site; no JavaScript security scanner is wired into any gate. Reopens if a JavaScript source tree or a package manifest is added - at which point `RALPH-COMMAND: npx semgrep --config p/javascript` becomes the gate.
+
 The expected successful result is exit 0 with no unwaived findings. On
 failure, report the finding identifier, the affected file, and the
 category (secret, injection, unsafe API, unsafe deserialization,
