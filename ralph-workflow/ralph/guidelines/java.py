@@ -25,58 +25,58 @@ class JavaGuidelines:
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
-        self.quality_checks = (
+        self.quality_checks: tuple[str, ...] = (
             "Follow Java naming conventions.",
             "Use Optional instead of null returns where it clarifies absence.",
             "Prefer composition over inheritance.",
             "Use try-with-resources for AutoCloseable resources.",
         )
-        self.security_checks = (
+        self.security_checks: tuple[str, ...] = (
             "Use PreparedStatement or parameterized queries for SQL access.",
             "Validate deserialized objects before use.",
             "Check for path traversal in file operations.",
         )
-        self.performance_checks = (
+        self.performance_checks: tuple[str, ...] = (
             "Avoid unnecessary object allocation in hot paths.",
             "Choose data structures and stream usage based on measured costs.",
             "Be explicit about blocking I/O and expensive database access.",
         )
-        self.testing_checks = (
+        self.testing_checks: tuple[str, ...] = (
             "Cover service, repository, and controller behavior with focused tests.",
             "Test exception handling and validation failures, not only happy paths.",
             "Keep mocks at network, filesystem, and process boundaries.",
         )
-        self.documentation_checks = (
+        self.documentation_checks: tuple[str, ...] = (
             "Document public APIs and non-obvious business rules.",
             "Keep public API contracts aligned with actual parameters, return values, and exceptions.",
             "Explain transactional, threading, and framework-specific assumptions.",
         )
-        self.idioms = (
+        self.idioms: tuple[str, ...] = (
             "Use interfaces and records where they simplify API boundaries and DTOs.",
             "Prefer immutable value objects when mutability is not required.",
             "Use standard library and framework conventions before custom abstractions.",
         )
-        self.anti_patterns = (
+        self.anti_patterns: tuple[str, ...] = (
             "Avoid catching Exception or Throwable.",
             "Do not use raw types with generics.",
             "Avoid public fields.",
         )
-        self.concurrency_checks = (
+        self.concurrency_checks: tuple[str, ...] = (
             "Shared mutable state is synchronized consistently.",
             "Executor, CompletableFuture, and thread-pool usage has clear lifecycle management.",
             "Concurrent code does not block event loops or request threads unexpectedly.",
         )
-        self.resource_checks = (
+        self.resource_checks: tuple[str, ...] = (
             "Connections, streams, and files are closed on success and failure paths.",
             "Database transactions, locks, and other managed resources have clear ownership.",
             "Long-lived caches and buffers have bounds and eviction strategy where needed.",
         )
-        self.observability_checks = (
+        self.observability_checks: tuple[str, ...] = (
             "Errors are logged with enough context to diagnose failures.",
             "Security-relevant and state-changing operations have appropriate audit visibility.",
             "Logs avoid exposing secrets and personally identifiable information.",
         )
-        self.api_design_checks = (
+        self.api_design_checks: tuple[str, ...] = (
             "API naming is consistent across services, DTOs, and controller endpoints.",
             "Method contracts are explicit about nullability, exceptions, and side effects.",
             "Dependency injection boundaries stay clear and constructor-based where possible.",

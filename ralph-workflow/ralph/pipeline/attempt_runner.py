@@ -233,7 +233,7 @@ def run_agent_attempt(
         return outcome
 
     target = effect if effect is not None else invocation
-    if not isinstance(target, InvokeAgentEffect | AgentConfig):
+    if not (isinstance(target, InvokeAgentEffect) or isinstance(target, AgentConfig)):
         raise TypeError("attempt target must be an InvokeAgentEffect or AgentConfig")
     invoke_kwargs: dict[str, object] = dict(execute_kwargs)
     invoke_kwargs["attempt_finalizer"] = finalize
@@ -417,7 +417,10 @@ def _registry_factory(
 
 
 def _is_agent_failure_event(event: object) -> bool:
-    value = getattr(event, "value", event)
+    try:
+        value: object = object.__getattribute__(event, "value")
+    except AttributeError:
+        value = event
     return isinstance(value, str) and value == "agent_failure"
 
 

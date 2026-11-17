@@ -694,7 +694,10 @@ def _auto_integrate_resolve_context(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
 ) -> tuple[Path, str | None, str | None, str | None] | None:
-    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    try:
+        enabled_raw: object = object.__getattribute__(config.general, "auto_integrate_enabled")
+    except AttributeError:
+        enabled_raw = True
     enabled = bool(enabled_raw)
     if not enabled:
         return None

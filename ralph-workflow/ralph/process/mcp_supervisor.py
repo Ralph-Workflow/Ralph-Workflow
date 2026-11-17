@@ -130,9 +130,10 @@ class McpSupervisor:
             self._mcp_error = exc
             if self._on_error is not None:
                 self._on_error(exc)
+            restart_count: object = object.__getattribute__(exc, "restart_count")
             logger.error(
                 "MCP server restart budget exhausted during active agent run; restart_count={}: {}",
-                exc.restart_count,
+                restart_count,
                 exc,
             )
             raise
@@ -166,11 +167,11 @@ class McpSupervisor:
         if self._shutdown_bridge:
             with contextlib.suppress(Exception):
                 self._bridge.shutdown()
-        if (
-            self._mcp_error is not None
-            and self._mcp_error.failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED
-        ):
-            raise self._mcp_error
+        mcp_error = self._mcp_error
+        if mcp_error is not None:
+            failure_kind: object = object.__getattribute__(mcp_error, "failure_kind")
+            if failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED:
+                raise mcp_error
 
     def _run(self) -> None:
         interval_s = self._check_interval.total_seconds()

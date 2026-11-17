@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol._startup_timeouts import mcp_discovery_budget_from_env
 from ralph.mcp.tools.names import proxied_mcp_tool_name
 from ralph.mcp.upstream._proxied_tool import ProxiedTool
@@ -472,9 +473,20 @@ class UpstreamRegistry:
             )
             normalised: object = wrapper["content"]
             return normalised
+        if isinstance(raw_result, tuple):
+            tuple_blocks: list[object] = list(raw_result)
+            tuple_wrapper: JsonObject = {"content": tuple_blocks}
+            normalize_upstream_content_blocks(
+                tuple_wrapper, proxied.server_name, proxied.tool.name, session, workspace
+            )
+            tuple_normalised: object = tuple_wrapper["content"]
+            return tuple_normalised
         if not isinstance(raw_result, dict):
             return raw_result
-        result: JsonObject = raw_result
+        result_map = as_object_dict(raw_result)
+        if result_map is None:
+            return raw_result
+        result: JsonObject = result_map
         nested: object = result.get("result")
         if isinstance(nested, dict):
             normalize_upstream_content_blocks(

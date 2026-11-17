@@ -91,7 +91,10 @@ class ResolutionStatusReporter:
 
 
 def _status_diagnostic(event: object) -> dict[str, object]:
-    raw: object = getattr(event, "diagnostic", {})
+    try:
+        raw: object = object.__getattribute__(event, "diagnostic")
+    except AttributeError:
+        raw = {}
     return raw if isinstance(raw, dict) else {}
 
 
@@ -207,10 +210,16 @@ phase_label = _phase_label
 
 def capture_status_bar_model(display: object) -> object | None:
     try:
-        status_bar: object = getattr(display, "status_bar", None)
+        try:
+            status_bar: object = object.__getattribute__(display, "status_bar")
+        except AttributeError:
+            status_bar = None
         if status_bar is None:
             return None
-        model: object = getattr(status_bar, "last_model", None)
+        try:
+            model: object = object.__getattribute__(status_bar, "last_model")
+        except AttributeError:
+            model = None
         return model
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar capture failed: {}", exc)
@@ -255,7 +264,10 @@ def _update_status_bar(display: object, model: object) -> None:
 
 
 def _display_run_started_monotonic(display: object) -> float | None:
-    value: object = getattr(display, "run_started_monotonic", None)
+    try:
+        value: object = object.__getattribute__(display, "run_started_monotonic")
+    except AttributeError:
+        value = None
     return value if isinstance(value, float) else None
 
 

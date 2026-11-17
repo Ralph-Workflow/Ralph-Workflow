@@ -184,8 +184,18 @@ class _BaselineSession:
     run_id = "product-baseline-run"
     broker_secret: str | None = None
 
-    def __init__(self, explore_index: object) -> None:
+    def __init__(
+        self,
+        explore_index: object,
+        *,
+        session_id: str = "product-baseline-session",
+        run_id: str = "product-baseline-run",
+        broker_secret: str | None = None,
+    ) -> None:
         self.explore_index = explore_index
+        self.session_id = session_id
+        self.run_id = run_id
+        self.broker_secret = broker_secret
 
     def check_capability(self, capability: str) -> Mapping[str, str]:
         return {"status": "approved", "capability": capability}

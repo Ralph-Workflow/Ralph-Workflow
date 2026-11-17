@@ -63,6 +63,9 @@ def current_branch_or_detached_marker(root: Path) -> str | None:
         return None
     finally:
         if repo is not None:
-            close_method: object = getattr(repo, "close", None)
+            try:
+                close_method: object = object.__getattribute__(repo, "close")
+            except AttributeError:
+                close_method = None
             if callable(close_method):
                 close_method()

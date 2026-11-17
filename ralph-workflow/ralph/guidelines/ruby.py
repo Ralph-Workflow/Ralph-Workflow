@@ -35,42 +35,42 @@ class RubyGuidelines:
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
-        self.quality_checks = (
+        self.quality_checks: tuple[str, ...] = (
             "Follow the Ruby style guide and keep RuboCop issues addressed.",
             "Use meaningful variable and method names.",
             "Keep methods short and focused when possible.",
             "Prefer symbols over strings for stable hash keys.",
         )
-        self.security_checks = (
+        self.security_checks: tuple[str, ...] = (
             "Use parameterized queries and avoid SQL string interpolation.",
             "Escape output rendered into templates and views.",
             "Validate and sanitize user-controlled input before use.",
         )
-        self.performance_checks = (
+        self.performance_checks: tuple[str, ...] = (
             "Avoid N+1 query patterns and eager load associations when appropriate.",
             "Use enumerators and collection helpers intentionally to avoid needless"
             " intermediate work.",
             "Profile hot paths before introducing non-obvious optimizations.",
         )
-        self.testing_checks = (
+        self.testing_checks: tuple[str, ...] = (
             "Cover service objects, business rules, and error handling with focused specs.",
             "Exercise framework request, controller, or route behavior with"
             " integration-style tests.",
             "Test authorization, validation, and persistence edge cases explicitly.",
         )
-        self.documentation_checks = (
+        self.documentation_checks: tuple[str, ...] = (
             "Document public APIs, rake tasks, and non-obvious callbacks or metaprogramming.",
             "Keep README, setup steps, and framework conventions aligned with"
             " the actual app structure.",
             "Explain cross-model side effects, background jobs, and lifecycle"
             " hooks that are not obvious from names alone.",
         )
-        self.idioms = (
+        self.idioms: tuple[str, ...] = (
             "Prefer expressive Ruby collection helpers and blocks when they improve clarity.",
             "Use small POROs, modules, and concerns only when responsibilities stay clear.",
             "Lean on framework conventions before introducing custom abstractions.",
         )
-        self.anti_patterns = (
+        self.anti_patterns: tuple[str, ...] = (
             "Avoid monkey patching core classes.",
             "Do not use eval with user-controlled input.",
             "Avoid deeply nested conditionals when guard clauses or object"

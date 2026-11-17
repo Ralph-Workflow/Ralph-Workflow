@@ -50,11 +50,12 @@ from ralph.agents.invoke._fire_reason_issuer import termination_issuer_for_fire_
 from ralph.agents.invoke._session import _bounded_output_lines
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
+from ralph.process.manager import ManagedProcess
 from ralph.process.manager.process_termination_issuer import ProcessTerminationIssuer
 
 if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
-    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+    from ralph.process.manager import ManagedPtyProcess
     from ralph.process.teardown import ProcessTeardown
 
 _TerminationRecorder = TerminationRecorder
@@ -122,8 +123,7 @@ def _check_process_result(
 
     returncode = terminal_returncode(handle, agent_name=agent_name)
     stderr_text = read_bounded_stderr(handle)
-    stderr_attr: object = getattr(handle, "stderr", None)
-    stderr_available = stderr_attr is not None
+    stderr_available = isinstance(handle, ManagedProcess) and handle.stderr is not None
     if returncode != 0:
         _handle_non_zero_returncode(
             handle,

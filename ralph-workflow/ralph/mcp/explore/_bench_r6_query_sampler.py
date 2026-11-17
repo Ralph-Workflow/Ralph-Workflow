@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.explore._bench_product_baseline import nearest_rank_p95
+from ralph.mcp.tools.coordination import CoordinationSessionLike
+
+if TYPE_CHECKING:
+    from ralph.workspace import Workspace
 
 
 class _QueryCallable(Protocol):
     def __call__(
         self,
-        session: object,
-        workspace: object,
+        session: CoordinationSessionLike,
+        workspace: Workspace,
         params: dict[str, object],
     ) -> object: ...
 
@@ -18,8 +22,8 @@ class _QueryCallable(Protocol):
 def sample_query_latencies(
     *,
     grep_handler: _QueryCallable,
-    session: object,
-    workspace: object,
+    session: CoordinationSessionLike,
+    workspace: Workspace,
     perf_counter: Callable[[], float],
     raw_overhead_p50: float,
     samples: int = 5,

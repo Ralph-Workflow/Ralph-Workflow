@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
@@ -36,14 +36,36 @@ def default_direct_mcp_retry_limit(raw_limit: object) -> int:
     return 10
 
 
+@runtime_checkable
+class _HasAgentName(Protocol):
+    @property
+    def agent_name(self) -> object: ...
+
+
+@runtime_checkable
+class _HasParsedOutput(Protocol):
+    @property
+    def parsed_output(self) -> object: ...
+
+
+@runtime_checkable
+class _HasResumableSessionId(Protocol):
+    @property
+    def resumable_session_id(self) -> object: ...
+
+
 def _exception_agent_name(exc: Exception) -> str | None:
-    raw: object = getattr(exc, "agent_name", None)
+    if not isinstance(exc, _HasAgentName):
+        return None
+    raw = exc.agent_name
     return raw if isinstance(raw, str) and raw else None
 
 
 def _exception_parsed_output(exc: Exception) -> tuple[str, ...]:
-    raw: object = getattr(exc, "parsed_output", ())
-    if not isinstance(raw, list | tuple):
+    if not isinstance(exc, _HasParsedOutput):
+        return ()
+    raw = exc.parsed_output
+    if not isinstance(raw, (list, tuple)):
         return ()
     return tuple(str(line) for line in raw)
 
@@ -111,7 +133,9 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
-    raw_resumable_session_id: object = getattr(exc, "resumable_session_id", None)
+    raw_resumable_session_id = (
+        exc.resumable_session_id if isinstance(exc, _HasResumableSessionId) else None
+    )
     resumable_session_id = (
         raw_resumable_session_id
         if isinstance(raw_resumable_session_id, str) and raw_resumable_session_id

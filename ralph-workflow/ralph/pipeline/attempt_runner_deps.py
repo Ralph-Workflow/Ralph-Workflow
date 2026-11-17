@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents.invoke import AttemptEnded, InvokeOptions
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ralph.workspace.probe import WorkspaceChangeProbe
 
 
+@runtime_checkable
 class _EffectRunner(Protocol):
     def __call__(
         self,
@@ -35,6 +36,12 @@ class _EffectRunner(Protocol):
 
 
 EffectRunner = _EffectRunner
+
+
+def _as_effect_runner(value: object) -> _EffectRunner:
+    if not isinstance(value, _EffectRunner):
+        raise TypeError("effect runner must satisfy EffectRunner")
+    return value
 
 
 class _RawAgentInvoke(Protocol):
@@ -164,7 +171,9 @@ class AttemptRunnerDeps:
     connectivity: Callable[[], ConnectivityState | None] | None
 
 
-PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(execute_agent_effect)
+PRODUCTION_INVOKE: AttemptInvoke = effect_attempt_invoke(
+    _as_effect_runner(execute_agent_effect)
+)
 
 
 __all__ = (

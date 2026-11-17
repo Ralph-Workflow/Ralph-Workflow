@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from typing import Protocol, runtime_checkable
 
 JsonObject = dict[str, object]
-ToolHandler = Callable[[object, object, JsonObject], object]
+
+
+@runtime_checkable
+class ToolHandler(Protocol):
+    def __call__(
+        self,
+        session: object,
+        workspace: object,
+        params: JsonObject,
+        **kwargs: object,
+    ) -> object: ...

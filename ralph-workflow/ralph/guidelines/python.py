@@ -34,40 +34,40 @@ class PythonGuidelines:
     def __init__(self, frameworks: Iterable[str] = ()) -> None:
         normalized_frameworks = tuple(frameworks)
         self.frameworks = normalized_frameworks
-        self.quality_checks = (
+        self.quality_checks: tuple[str, ...] = (
             "Follow PEP 8 style guidance and keep imports organized.",
             "Use type hints for public function signatures and important internal boundaries.",
             "Prefer f-strings over str.format() for readable string interpolation.",
             "Use context managers for files, locks, and other managed resources.",
         )
-        self.security_checks = (
+        self.security_checks: tuple[str, ...] = (
             "Do not use eval() or exec() with untrusted input.",
             "Use parameterized queries for database access.",
             "Validate and normalize file paths to prevent path traversal.",
             "Avoid unsafe deserialization such as pickle or yaml.load on untrusted data.",
         )
-        self.performance_checks = (
+        self.performance_checks: tuple[str, ...] = (
             "Use generators and iterators for large data processing paths.",
             "Prefer comprehensions when they improve clarity and avoid unnecessary temporary"
             " loops.",
             "Profile before optimizing and justify non-obvious performance trade-offs.",
         )
-        self.testing_checks = (
+        self.testing_checks: tuple[str, ...] = (
             "Use pytest fixtures to keep test setup explicit and reusable.",
             "Mock external dependencies at process and network boundaries.",
             "Test exception handling and failure paths, not only success cases.",
         )
-        self.documentation_checks = (
+        self.documentation_checks: tuple[str, ...] = (
             "Public modules, classes, and functions state their contract through names, types, and structure.",
             "Keep public contracts aligned with actual behavior, parameters, and return values.",
             "Explain non-obvious business rules, side effects, and framework conventions.",
         )
-        self.idioms = (
+        self.idioms: tuple[str, ...] = (
             "Prefer Pythonic idioms such as EAFP where they improve clarity.",
             "Leverage the standard library before adding custom utility code.",
             "Use pathlib, collections, itertools, and typing features where they simplify intent.",
         )
-        self.anti_patterns = (
+        self.anti_patterns: tuple[str, ...] = (
             "Avoid mutable default arguments.",
             "Do not use bare except clauses.",
             "Avoid global mutable state and hidden side effects.",

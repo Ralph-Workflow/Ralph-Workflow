@@ -15,12 +15,19 @@ class OpenCodeChildPart:
     time_updated_ms: int
 
 
+def _as_str_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: item for key, item in value.items() if isinstance(key, str)}
+
+
 def part_kind_from_data(data: str) -> str:
     try:
         decoded = cast("object", json.loads(data))
     except (TypeError, ValueError):
         return "part"
-    if not isinstance(decoded, dict):
+    payload = _as_str_object_dict(decoded)
+    if payload is None:
         return "part"
     payload = cast("dict[str, object]", decoded)
     part_type = payload.get("type")

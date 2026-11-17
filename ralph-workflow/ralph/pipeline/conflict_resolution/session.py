@@ -21,7 +21,11 @@ from ralph.pipeline.agent_entry_point import (
 )
 from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.attempt_runner import run_agent_attempt
-from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, effect_attempt_invoke
+from ralph.pipeline.attempt_runner_deps import (
+    AttemptRunnerDeps,
+    _as_effect_runner,
+    effect_attempt_invoke,
+)
 from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -451,7 +455,9 @@ def invoke_resolution_agent(
             controller=controller,
             deps=AttemptRunnerDeps(
                 clock=controller.clock,
-                invoke=effect_attempt_invoke(_effect_executor_module.execute_agent_effect),
+                invoke=effect_attempt_invoke(
+                    _as_effect_runner(_effect_executor_module.execute_agent_effect)
+                ),
                 probe_runner=None,
                 workspace_probe=None,
                 connectivity=None,
@@ -627,7 +633,10 @@ _RALPH_AUTHORED_DIAGNOSTIC_KEYS = (
 
 
 def _ralph_authored_fault_text(event: object) -> str:
-    diagnostic: object = getattr(event, "diagnostic", None)
+    try:
+        diagnostic: object = object.__getattribute__(event, "diagnostic")
+    except AttributeError:
+        diagnostic = None
     if not isinstance(diagnostic, dict):
         return ""
     authored: list[str] = []

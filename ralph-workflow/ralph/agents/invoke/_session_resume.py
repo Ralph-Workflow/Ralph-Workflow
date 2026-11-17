@@ -4,13 +4,13 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
+from ralph.agents.invoke._workspace import WorkspaceMonitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.invoke._types import InvokeOptions
-    from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.pipeline.agent_retry_intent import AgentRetryAction
 

@@ -2,10 +2,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+@runtime_checkable
+class _HasBaseTreePaths(Protocol):
+    base_tree_paths: object
+
+
+@runtime_checkable
+class _HasEntryFields(Protocol):
+    path: object
+    status: object
+    is_binary: object
 
 _STRIP_PUNCT: str = ".,;:()[]{}'\"`<>!?"
 
@@ -304,10 +316,14 @@ def _entry_fields(entry: object) -> tuple[str, str, bool]:
         raw_path: object = entry.get("path")
         raw_status: object = entry.get("status")
         raw_binary: object = entry.get("is_binary")
+    elif isinstance(entry, _HasEntryFields):
+        raw_path = entry.path
+        raw_status = entry.status
+        raw_binary = entry.is_binary
     else:
-        raw_path = getattr(entry, "path", None)
-        raw_status = getattr(entry, "status", None)
-        raw_binary = getattr(entry, "is_binary", None)
+        raw_path = None
+        raw_status = None
+        raw_binary = None
 
     path = raw_path if isinstance(raw_path, str) else ""
     status = raw_status if isinstance(raw_status, str) else ""
@@ -318,11 +334,23 @@ def _entry_fields(entry: object) -> tuple[str, str, bool]:
 def _entry_tracked_paths(entry: object) -> frozenset[str]:
     if isinstance(entry, dict):
         raw: object = entry.get("base_tree_paths")
+    elif isinstance(entry, _HasBaseTreePaths):
+        raw = entry.base_tree_paths
+    else:
+        raw = None
+    if isinstance(raw, frozenset):
+        items: frozenset[object] = raw
+    elif isinstance(raw, set):
+        items = frozenset(raw)
+    elif isinstance(raw, tuple):
+        items = frozenset(raw)
+    elif isinstance(raw, list):
+        items = frozenset(raw)
     else:
         raw = getattr(entry, "base_tree_paths", None)
     if not isinstance(raw, (frozenset, set, tuple, list)):
         return frozenset()
-    return frozenset(str(item) for item in raw)
+    return frozenset(str(item) for item in items)
 
 
 def _status_kind(status: str) -> str:

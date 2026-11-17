@@ -761,9 +761,11 @@ class FailureClassifier:
             typed_cause = self._find_typed_watchdog_cause(exc_obj)
             if isinstance(typed_cause, IdleWatchdogKilledError):
                 child_alive = typed_cause.child_alive
-                cause_session_id: str | None = getattr(typed_cause, "resumable_session_id", None)
-                if isinstance(cause_session_id, str) and cause_session_id:
-                    resumable_session_id = cause_session_id
+                cause_session_raw: object = getattr(
+                    typed_cause, "resumable_session_id", None
+                )
+                if isinstance(cause_session_raw, str) and cause_session_raw:
+                    resumable_session_id = cause_session_raw
         if resumable_session_id is None and exc_obj is not None:
             exc_session_id = cast("object", getattr(exc_obj, "resumable_session_id", None))
             if isinstance(exc_session_id, str) and exc_session_id:
@@ -943,8 +945,9 @@ class FailureClassifier:
     ) -> tuple[FailureCategory, bool, bool] | None:
         failure_origin = cast("object", getattr(exc, "failure_origin", "agent"))
         reset_session = contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS)
-        checks = (
-            (failure_origin != "agent", (FailureCategory.AMBIGUOUS, False, False)),
+        origin_not_agent = failure_origin != "agent"
+        checks: tuple[tuple[bool, tuple[FailureCategory, bool, bool]], ...] = (
+            (origin_not_agent, (FailureCategory.AMBIGUOUS, False, False)),
             (reset_session, (FailureCategory.AGENT, True, True)),
             (
                 _is_permanent_account_failure(detail_parts),

@@ -8,18 +8,41 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class GuidelineSource(Protocol):
-    quality_checks: Sequence[str]
-    security_checks: Sequence[str]
-    performance_checks: Sequence[str]
-    testing_checks: Sequence[str]
-    documentation_checks: Sequence[str]
-    idioms: Sequence[str]
-    anti_patterns: Sequence[str]
-    concurrency_checks: Sequence[str]
-    resource_checks: Sequence[str]
-    observability_checks: Sequence[str]
-    secrets_checks: Sequence[str]
-    api_design_checks: Sequence[str]
+    @property
+    def quality_checks(self) -> Sequence[str]: ...
+
+    @property
+    def security_checks(self) -> Sequence[str]: ...
+
+    @property
+    def performance_checks(self) -> Sequence[str]: ...
+
+    @property
+    def testing_checks(self) -> Sequence[str]: ...
+
+    @property
+    def documentation_checks(self) -> Sequence[str]: ...
+
+    @property
+    def idioms(self) -> Sequence[str]: ...
+
+    @property
+    def anti_patterns(self) -> Sequence[str]: ...
+
+    @property
+    def concurrency_checks(self) -> Sequence[str]: ...
+
+    @property
+    def resource_checks(self) -> Sequence[str]: ...
+
+    @property
+    def observability_checks(self) -> Sequence[str]: ...
+
+    @property
+    def secrets_checks(self) -> Sequence[str]: ...
+
+    @property
+    def api_design_checks(self) -> Sequence[str]: ...
 
 
 __all__ = ["GuidelineSource"]

@@ -41,20 +41,20 @@ class PHPGuidelines:
             "Keep public APIs small and expressive with typed request/response signatures.",
             "Favor value objects, DTOs, and named arguments for constructors and factory helpers.",
         )
-        self.security_checks = (
+        self.security_checks: tuple[str, ...] = (
             "Use prepared statements or parameter binding for every database query.",
             "Escape untrusted output with htmlspecialchars() or a trusted templating engine.",
             "Validate uploads, paths, and input metadata before processing.",
             "Use password_hash() and password_verify() for authentication flows.",
         )
-        self.performance_checks = (
+        self.performance_checks: tuple[str, ...] = (
             "Profile before optimizing and justify non-obvious performance trade-offs.",
             "Avoid repeated database queries inside loops; batch work and eager load "
             "relationships.",
             "Cache expensive computations and rendered fragments only when "
             "invalidation remains clear.",
         )
-        self.testing_checks = (
+        self.testing_checks: tuple[str, ...] = (
             "Cover validation, authorization, and persistence failure paths in automated tests.",
             "Exercise controller, route, or HTTP behavior with integration-style tests "
             "when the framework supports them.",
@@ -69,12 +69,12 @@ class PHPGuidelines:
             "Explain middleware, listener, and lifecycle behavior that affects "
             "request flow or bootstrapping.",
         )
-        self.idioms = (
+        self.idioms: tuple[str, ...] = (
             "Prefer Composer ecosystem conventions over custom abstractions.",
             "Keep services, controllers, and domain classes focused on single responsibilities.",
             "Use value objects, enums, and typed collections when they clarify intent.",
         )
-        self.anti_patterns = (
+        self.anti_patterns: tuple[str, ...] = (
             "Avoid using extract() with user input.",
             "Do not suppress errors with the @ operator.",
             "Resist register_globals-style behavior and global state.",

@@ -156,7 +156,7 @@ def _show_phase_start_with_context(
         pipeline_policy,
         agent_name=agent_name,
     )
-    console: object = getattr(display_context, "console", None)
+    console = display_context.console
     display_obj: ParallelDisplay | None = None
     if console is not None:
         try:
@@ -481,7 +481,12 @@ def _emit_phase_change_surfaces(
     display_context: DisplayContext,
     pipeline_policy: PipelinePolicy,
 ) -> None:
-    phase_close_already_emitted_attr: object = getattr(display, "phase_close_emitted", False)
+    try:
+        phase_close_already_emitted_attr: object = object.__getattribute__(
+            display, "phase_close_emitted"
+        )
+    except AttributeError:
+        phase_close_already_emitted_attr = False
     phase_close_already_emitted: bool = bool(phase_close_already_emitted_attr)
     if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
         with suppress(Exception):

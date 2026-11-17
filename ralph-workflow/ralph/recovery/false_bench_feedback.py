@@ -107,7 +107,8 @@ class FalseBenchFeedback:
         for key, item in cast("Mapping[object, object]", verdict_ref).items():
             if not isinstance(key, str):
                 return None
-            parsed_verdict_ref[key] = deepcopy(item)
+            copied: object = deepcopy(item)
+            parsed_verdict_ref[key] = copied
         parsed_session_ref: dict[str, str] = {}
         for key, item in cast("Mapping[object, object]", session_ref).items():
             if not isinstance(key, str) or not isinstance(item, str):

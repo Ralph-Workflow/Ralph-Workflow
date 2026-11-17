@@ -202,6 +202,14 @@ def _is_deletable_housekeeping(
     return suffix not in _UNSAFE_EXTENSIONS
 
 
+def _attr_or(obj: object, name: str, default: object) -> object:
+    try:
+        value: object = object.__getattribute__(obj, name)
+    except AttributeError:
+        return default
+    return value
+
+
 def _resolve_run_id_and_iteration(
     ctx: PhaseContext,
     effect: Effect,

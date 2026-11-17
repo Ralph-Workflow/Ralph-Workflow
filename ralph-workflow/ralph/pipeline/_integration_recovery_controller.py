@@ -30,7 +30,10 @@ def reachable_shared_recovery_controller(
     if isinstance(explicit, RecoveryController):
         return explicit
     if ledger is not None:
-        owner: object = getattr(ledger, "recovery_controller", None)
+        try:
+            owner: object = object.__getattribute__(ledger, "recovery_controller")
+        except AttributeError:
+            owner = None
         if isinstance(owner, RecoveryController):
             return owner
     ambient = current_agent_effect_dependencies().recovery_controller

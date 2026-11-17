@@ -101,12 +101,14 @@ def drive_request(
     return _parse_sse_envelope(wfile.getvalue())
 
 
-def _invoke_http_method(handler: _HandlerWithBaseAttrs, method: str) -> None:
-    attr_name = "do_POST" if method == "POST" else "do_GET"
-    action: object = getattr(handler, attr_name, None)
-    if not callable(action):
-        raise TypeError(f"handler must provide {attr_name}")
-    action()
+def _invoke_http_method(handler: _FallbackHttpHandler, method: str) -> None:
+    if method == "POST":
+        handler.do_POST()
+        return
+    if method == "GET":
+        handler.do_GET()
+        return
+    raise TypeError(f"unsupported HTTP method {method!r}")
 
 
 def drive_streamed_request(

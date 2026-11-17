@@ -153,7 +153,7 @@ def _render_ready_block(
     implementation_verified: str,
     outcome_evidence_reviewed: str,
 ) -> str:
-    return _AGENTS_READY_TEMPLATE.format(
+    return _AGENTS_READY_TEMPLATE.render(
         begin=markers.AGENTS_BLOCK_BEGIN,
         end=markers.AGENTS_BLOCK_END,
         canonical_dir=markers.CANONICAL_DIR,

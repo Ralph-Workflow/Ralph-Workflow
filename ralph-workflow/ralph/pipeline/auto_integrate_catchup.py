@@ -159,7 +159,10 @@ def _current_branch_name(root: Path) -> str | None:
 
 
 def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
-    configured: object = getattr(config.general, "auto_integrate_target", None)
+    try:
+        configured: object = object.__getattribute__(config.general, "auto_integrate_target")
+    except AttributeError:
+        configured = None
     if not isinstance(configured, str) or not configured:
         return None
     sha, query_ok = observe_branch_sha(root, configured)
@@ -309,7 +312,10 @@ def attempt_catchup_fast_forward(
 def _catchup_enabled(config: UnifiedConfig | None) -> bool:
     if config is None:
         return False
-    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    try:
+        enabled_raw: object = object.__getattribute__(config.general, "auto_integrate_enabled")
+    except AttributeError:
+        enabled_raw = True
     return isinstance(enabled_raw, bool) and enabled_raw
 
 
@@ -1043,7 +1049,10 @@ def start_catchup_worker_if_enabled(
     remote_client: RemoteClient | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> AutoIntegrateCatchupWorker | None:
-    enabled_raw: object = getattr(config.general, "auto_integrate_enabled", True)
+    try:
+        enabled_raw: object = object.__getattribute__(config.general, "auto_integrate_enabled")
+    except AttributeError:
+        enabled_raw = True
     if not (isinstance(enabled_raw, bool) and enabled_raw):
         return None
     worker = AutoIntegrateCatchupWorker(

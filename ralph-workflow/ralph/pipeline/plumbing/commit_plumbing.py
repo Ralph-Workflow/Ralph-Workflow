@@ -166,10 +166,50 @@ class _CommitDispatch(Protocol):
     ) -> object: ...
 
 
+@runtime_checkable
+class _DeleteCommitArtifacts(Protocol):
+    def __call__(self, repo_root: Path) -> object: ...
+
+
+@runtime_checkable
+class _ReadCommitArtifact(Protocol):
+    def __call__(self, repo_root: Path) -> str | None: ...
+
+
+@runtime_checkable
+class _HasEventValue(Protocol):
+    @property
+    def value(self) -> object: ...
+
+
 def _checked_attempt_dispatch(dispatch: object) -> _CommitDispatch:
     if not isinstance(dispatch, _CommitDispatch):
         raise TypeError("commit attempt dispatch must be callable")
     return dispatch
+
+
+def _event_payload(event: object) -> object:
+    if isinstance(event, _HasEventValue):
+        return event.value
+    return event
+
+
+def _as_delete_commit_artifacts(value: object) -> _DeleteCommitArtifacts:
+    if not isinstance(value, _DeleteCommitArtifacts):
+        raise TypeError("delete_commit_message_artifacts must be callable")
+    return value
+
+
+def _as_read_commit_artifact(value: object) -> _ReadCommitArtifact:
+    if not isinstance(value, _ReadCommitArtifact):
+        raise TypeError("read_commit_message_artifact must be callable")
+    return value
+
+
+def _as_materialize_master_prompt(value: object) -> MaterializeMasterPromptFn:
+    if not isinstance(value, MaterializeMasterPromptFn):
+        raise TypeError("materialize_master_prompt must be callable")
+    return value
 
 
 def _run_commit_generation_attempt(
@@ -688,9 +728,17 @@ def _generate_commit_message_with_agent(
     general_cfg = attempt_context.general_config
     if general_cfg is not None:
         if isinstance(general_cfg, GeneralConfig):
-            raw_max_retries = getattr(general_cfg, "max_same_agent_retries", None)
+            try:
+                raw_max_retries = object.__getattribute__(general_cfg, "max_same_agent_retries")
+            except AttributeError:
+                raw_max_retries = None
         else:
-            raw_max_retries = getattr(general_cfg.general, "max_same_agent_retries", None)
+            try:
+                raw_max_retries = object.__getattribute__(
+                    general_cfg.general, "max_same_agent_retries"
+                )
+            except AttributeError:
+                raw_max_retries = None
     max_retries = default_direct_mcp_retry_limit(raw_max_retries)
     (
         _effective_general_config,
@@ -946,7 +994,8 @@ def _run_commit_agent_attempt_with_recovery(
             commit_module, "read_commit_message_artifact", read_commit_message_artifact
         )
         artifact_message = read_artifact(attempt_context.repo_root)
-        if getattr(attempt.event, "value", attempt.event) == "agent_success" or artifact_message:
+        _event_value = _event_payload(attempt.event)
+        if _event_value == "agent_success" or artifact_message:
             if artifact_message:
                 if _is_skip_response(artifact_message):
                     return (
@@ -1543,7 +1592,7 @@ def commit_chain_is_ambiguous(chain_config: CommitChainConfig) -> bool:
 def _start_commit_bridge(
     repo_root: Path,
     *,
-    agents_policy: AgentsPolicy,
+    agents_policy: AgentsPolicy | None = None,
     model_identity: MultimodalModelIdentity | None = None,
     transport: AgentTransport | None = None,
 ) -> SessionBridgeLike:
@@ -1551,7 +1600,7 @@ def _start_commit_bridge(
     return build_session_bridge(
         workspace_root=repo_root,
         drain="commit",
-        agents_policy=agents_policy,
+        agents_policy=agents_policy or AgentsPolicy(),
         session_id_prefix="commit",
         model_identity=model_identity,
         transport=transport,
@@ -1566,10 +1615,12 @@ def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
 start_commit_bridge = _start_commit_bridge
 
 
+@runtime_checkable
 class _CommitStartBridgeProto(typing.Protocol):
     def __call__(self, repo_root: Path, **kwargs: object) -> SessionBridgeLike: ...
 
 
+@runtime_checkable
 class _CommitWritePromptFileProto(typing.Protocol):
     def __call__(self, repo_root: Path, prompt: str) -> str: ...
 

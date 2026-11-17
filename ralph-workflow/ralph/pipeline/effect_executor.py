@@ -255,7 +255,10 @@ def _controller_and_ledger_from_deps(
 ) -> tuple[RecoveryController | None, AgentFailureLedger | None]:
     controller: RecoveryController | None = injected.recovery_controller
     if controller is None:
-        rc: object = getattr(pipeline_deps, "recovery_controller", None)
+        try:
+            rc: object = object.__getattribute__(pipeline_deps, "recovery_controller")
+        except AttributeError:
+            rc = None
         from ralph.recovery.controller import RecoveryController
 
         if isinstance(rc, RecoveryController):
@@ -264,7 +267,10 @@ def _controller_and_ledger_from_deps(
     if controller is not None:
         ledger = controller.ledger
     else:
-        al: object = getattr(pipeline_deps, "ledger", None)
+        try:
+            al: object = object.__getattribute__(pipeline_deps, "ledger")
+        except AttributeError:
+            al = None
         from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
         if isinstance(al, AgentFailureLedger):
@@ -621,7 +627,10 @@ def _record_agent_invocation_telemetry(
 def _pipeline_profile(policy_bundle: PolicyBundle | None) -> str:
     if policy_bundle is None:
         return "custom"
-    raw_phase_names: object = getattr(policy_bundle.pipeline, "phases", {})
+    try:
+        raw_phase_names: object = object.__getattribute__(policy_bundle.pipeline, "phases")
+    except AttributeError:
+        raw_phase_names = {}
     if not isinstance(raw_phase_names, dict):
         return "custom"
     phase_names = cast("Mapping[object, object]", raw_phase_names)
@@ -732,7 +741,10 @@ def _attempt_failure_observation(
 def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
     if state is None:
         return None
-    raw_value: object = getattr(state, "last_agent_session_id", None)
+    try:
+        raw_value: object = object.__getattribute__(state, "last_agent_session_id")
+    except AttributeError:
+        raw_value = None
     if isinstance(raw_value, str):
         return raw_value
     return None
@@ -1020,7 +1032,10 @@ def has_valid_terminal_artifact(
     *,
     baseline: list[int] | None = None,
 ) -> bool:
-    returncode_obj: object = getattr(exc, "returncode", 0)
+    try:
+        returncode_obj: object = object.__getattribute__(exc, "returncode")
+    except AttributeError:
+        returncode_obj = 0
     if (
         not isinstance(returncode_obj, int)
         or returncode_obj == 0
@@ -1531,7 +1546,10 @@ def _check_bridge_health(
 
 
 def _bridge_endpoint_uri(bridge: object) -> str:
-    raw_uri: object = getattr(bridge, "agent_endpoint_uri", None)
+    try:
+        raw_uri: object = object.__getattribute__(bridge, "agent_endpoint_uri")
+    except AttributeError:
+        raw_uri = None
     if raw_uri is None:
         return ""
     if callable(raw_uri):
@@ -1743,7 +1761,10 @@ def _consume_attempt_output(
     )
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
-    _raw_transport: object = getattr(ctx.agent_config, "transport", None)
+    try:
+        _raw_transport: object = object.__getattribute__(ctx.agent_config, "transport")
+    except AttributeError:
+        _raw_transport = None
     if isinstance(_raw_transport, AgentTransport):
         _agent_config_transport = _raw_transport
     else:
@@ -1963,11 +1984,18 @@ def _build_recovery_input_for_attempt(
     rendered_output: deque[str],
     run_id: str,
 ) -> AgentRecoveryInput:
-    _transport_obj: object = getattr(ctx.agent_config, "transport", None)
+    try:
+        _transport_obj: object = object.__getattribute__(ctx.agent_config, "transport")
+    except AttributeError:
+        _transport_obj = None
     _transport_value: str | None = (
         _transport_obj.value if isinstance(_transport_obj, AgentTransport) else None
     )
-    _model_value: str | None = getattr(ctx.agent_config, "model", None)
+    try:
+        _model_value_raw: object = object.__getattribute__(ctx.agent_config, "model")
+    except AttributeError:
+        _model_value_raw = None
+    _model_value: str | None = _model_value_raw if isinstance(_model_value_raw, str) else None
     is_stale_session_failure = _is_stale_session_failure(exc)
     return AgentRecoveryInput(
         exc=exc,

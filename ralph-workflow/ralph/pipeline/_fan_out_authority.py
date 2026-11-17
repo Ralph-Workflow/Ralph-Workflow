@@ -96,7 +96,10 @@ def handle_worker_failed(
 
 
 def fan_out_decision(state: PipelineState) -> FanOutDecision:
-    raw_worker_states: object = getattr(state, "worker_states", None)
+    try:
+        raw_worker_states: object = object.__getattribute__(state, "worker_states")
+    except AttributeError:
+        raw_worker_states = None
     if not isinstance(raw_worker_states, dict) or not raw_worker_states:
         return FanOutDecision.JOIN_COMPLETE
     statuses = {worker.status for worker in state.worker_states.values()}

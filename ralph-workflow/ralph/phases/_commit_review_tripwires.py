@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -367,6 +367,17 @@ def _evaluate_mass_deletion(
 
 def _normalized_repo_path(raw_path: str) -> str:
     return PurePosixPath(raw_path.replace("\\", "/")).as_posix()
+
+
+def _is_path_collection(
+    value: object,
+) -> TypeGuard[list[object] | tuple[object, ...] | set[object] | frozenset[object]]:
+    return (
+        isinstance(value, list)
+        or isinstance(value, tuple)
+        or isinstance(value, set)
+        or isinstance(value, frozenset)
+    )
 
 
 def _collect_base_tree_paths(entries: list[object]) -> frozenset[str] | None:

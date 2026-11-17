@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.tool_contract import expand_tool_names_with_aliases
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
@@ -114,8 +115,9 @@ def _parse_nanocoder_mcp_servers(existing: str | None) -> dict[str, object]:
 
     if isinstance(decoded, list):
         mapped: dict[str, object] = {}
-        for item in decoded:
-            if not isinstance(item, dict):
+        for item_obj in decoded:
+            item = as_object_dict(item_obj)
+            if item is None:
                 continue
             item_map = cast("dict[str, object]", item)
             name = item_map.get("name")
@@ -124,9 +126,10 @@ def _parse_nanocoder_mcp_servers(existing: str | None) -> dict[str, object]:
             mapped[name] = {key: value for key, value in item_map.items() if key != "name"}
         return mapped
 
-    if not isinstance(decoded, dict):
+    decoded_map = as_object_dict(decoded)
+    if decoded_map is None:
         return {}
-    wrapped = decoded.get("mcpServers")
+    wrapped = decoded_map.get("mcpServers")
     if isinstance(wrapped, dict):
         return cast("dict[str, object]", wrapped)
     return {}

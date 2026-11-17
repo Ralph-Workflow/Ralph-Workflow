@@ -29,6 +29,18 @@ def looks_like_credentials_failure(text: str) -> bool:
     return contains_casefolded_marker([text], _CREDENTIALS_FAILURE_SUBSTRINGS)
 
 
+@runtime_checkable
+class _ReturncodeHandle(Protocol):
+    @property
+    def returncode(self) -> object: ...
+
+
+@runtime_checkable
+class _StderrHandle(Protocol):
+    @property
+    def stderr(self) -> object: ...
+
+
 def terminal_returncode(handle: object, *, agent_name: str) -> int:
     returncode = cast("object", getattr(handle, "returncode", None))
     if not isinstance(returncode, int):
@@ -91,8 +103,10 @@ def read_bounded_stderr(handle: object) -> str:
     captured = _bounded_stderr_text(handle)
     if captured is not None:
         return captured
+    if not isinstance(handle, _StderrHandle):
+        return ""
     try:
-        stderr_pipe: object = getattr(handle, "stderr", None)
+        stderr_pipe = handle.stderr
         return _bounded_read(stderr_pipe) if isinstance(stderr_pipe, _ReadableTextPipe) else ""
     except (OSError, RuntimeError, ValueError, AttributeError, UnicodeDecodeError):
         return ""

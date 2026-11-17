@@ -169,6 +169,14 @@ def _identity_max(ctx: PhaseContext) -> int:
     return parsed
 
 
+def _attr_or(obj: object, name: str, default: object) -> object:
+    try:
+        value: object = object.__getattribute__(obj, name)
+    except AttributeError:
+        return default
+    return value
+
+
 def _identity_max_from_untyped_policy(policy: object) -> int:
     counters = cast("object", getattr(policy, "loop_counters", None))
     if not isinstance(counters, dict):

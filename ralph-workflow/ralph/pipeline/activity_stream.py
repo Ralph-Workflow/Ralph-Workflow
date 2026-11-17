@@ -110,7 +110,10 @@ def stream_parsed_agent_activity(
 
     parallel_display_cls = _parallel_display_cls()
     subscriber = subscriber_for_display(display)
-    emit_hook_raw: object = getattr(parser, "emit_subagent_activity", None)
+    try:
+        emit_hook_raw: object = object.__getattribute__(parser, "emit_subagent_activity")
+    except AttributeError:
+        emit_hook_raw = None
     last_subagent_summary: list[str] = []
     tool_targets: dict[str, dict[str, object]] = {}
     for parsed_line in parser.parse(_iter_lines()):

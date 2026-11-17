@@ -167,6 +167,7 @@ def _compute_width_uncached(
 ) -> int:
     if explicit_env and resolved_env.columns is not None:
         return resolved_env.columns
+    configured_width: object = getattr(console, "_width", None)
     if injected_console:
         configured_width = cast("object", getattr(console, "_width", None))
         if isinstance(configured_width, int) and configured_width > 0:

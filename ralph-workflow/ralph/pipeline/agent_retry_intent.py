@@ -113,7 +113,10 @@ def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
 
 
 def fresh_bridge_requested() -> bool:
-    raw: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    try:
+        raw: object = object.__getattribute__(_retry_intent_local, "fresh_bridge_requested")
+    except AttributeError:
+        raw = False
     return raw is True
 
 
@@ -126,7 +129,10 @@ def clear_fresh_bridge_requested() -> None:
 
 
 def pop_last_captured_retry_intent() -> AgentRetryIntent:
-    raw: object = getattr(_retry_intent_local, "intent", cleared_agent_retry_intent())
+    try:
+        raw: object = object.__getattribute__(_retry_intent_local, "intent")
+    except AttributeError:
+        raw = cleared_agent_retry_intent()
     intent = raw if isinstance(raw, AgentRetryIntent) else cleared_agent_retry_intent()
     _retry_intent_local.intent = cleared_agent_retry_intent()
     return intent

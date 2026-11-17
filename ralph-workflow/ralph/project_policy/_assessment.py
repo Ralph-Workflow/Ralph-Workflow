@@ -60,6 +60,7 @@ def _parse_single_line(line: str) -> CommandOutcome:
         raise EvidenceParseError("RALPH-EVIDENCE payload requires numeric duration_seconds")
     if duration < 0:
         raise EvidenceParseError("RALPH-EVIDENCE payload duration_seconds must be non-negative")
+    duration_seconds = float(duration)
     content_hash = typed_payload["policy_content_hash"]
     if not isinstance(content_hash, str) or not content_hash.strip():
         raise EvidenceParseError(
@@ -72,7 +73,7 @@ def _parse_single_line(line: str) -> CommandOutcome:
     return CommandOutcome(
         command=command.strip(),
         exit_code=exit_code,
-        duration_seconds=float(duration),
+        duration_seconds=duration_seconds,
         policy_content_hash=content_hash.strip(),
     )
 

@@ -191,7 +191,10 @@ resolve_rebase_in_progress = _resolve_rebase_in_progress
 
 
 def _configured_stop_cap(session: ResolutionSession | None, fallback: int) -> int:
-    raw: object = getattr(session, "max_rebase_conflict_stops", fallback)
+    try:
+        raw: object = object.__getattribute__(session, "max_rebase_conflict_stops")
+    except AttributeError:
+        raw = fallback
     return raw if isinstance(raw, int) and raw > 0 else fallback
 
 

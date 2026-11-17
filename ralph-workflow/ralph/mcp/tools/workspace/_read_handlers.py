@@ -12,6 +12,7 @@ from ralph.mcp.explore.dirty_paths import (
     ExploreIndexLike,
     resolve_explore_index,
 )
+from ralph.mcp.explore.store import ExploreStore, SpanRow, SymbolRow
 from ralph.mcp.explore.serving import serving_metadata
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
@@ -42,7 +43,7 @@ from ralph.mcp.tools.workspace._utils import (
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
-    from ralph.mcp.explore.store import EvidenceRow, ExploreStore, SpanRow, SymbolRow
+    from ralph.mcp.explore.store import EvidenceRow
     from ralph.workspace import Workspace
 
 
@@ -64,7 +65,7 @@ def _resolve_evidence(session: object, evidence_id: str) -> dict[str, object] | 
     handle = resolve_explore_index(session)
     if handle is None:
         return None
-    store: ExploreStore | None = getattr(handle, "store", None)
+    store = handle.store
     if store is None:
         return None
     row: EvidenceRow | None = store.get_evidence(evidence_id)
@@ -92,7 +93,7 @@ def _freshness_for_read(session: object) -> dict[str, object]:
     handle = resolve_explore_index(session)
     if handle is None:
         return {}
-    store: ExploreStore | None = getattr(handle, "store", None)
+    store = handle.store
     if store is None:
         return {}
     generation_raw = store.get_setting("current_generation") or "0"
@@ -476,11 +477,11 @@ _SYMBOL_NOT_FOUND = object()
 _SYMBOL_AMBIGUOUS = object()
 
 
-def _resolve_span(session: object, span_id: str) -> object | None:
+def _resolve_span(session: object, span_id: str) -> SpanRow | object | None:
     handle = resolve_explore_index(session)
     if handle is None:
         return None
-    store: ExploreStore | None = getattr(handle, "store", None)
+    store = handle.store
     if store is None:
         return None
     span_row = store.get_span(span_id)
@@ -494,11 +495,11 @@ def _resolve_symbol(
     symbol: str,
     *,
     path: str | None = None,
-) -> object | None:
+) -> SymbolRow | object | None:
     handle = resolve_explore_index(session)
     if handle is None:
         return None
-    store: ExploreStore | None = getattr(handle, "store", None)
+    store = handle.store
     if store is None:
         return None
     if "." in symbol or "::" in symbol:
@@ -660,7 +661,7 @@ def _read_via_symbol(
         handle = resolve_explore_index(session)
         candidates: Sequence[SymbolRow] = []
         if handle is not None:
-            store: ExploreStore | None = getattr(handle, "store", None)
+            store = handle.store
             if store is not None:
                 if "." in symbol or "::" in symbol:
                     candidates = store.find_symbols(qualified_name=symbol)
@@ -1628,7 +1629,7 @@ def handle_search_files(
 
         handle = resolve_explore_index(session)
         if handle is not None:
-            store: ExploreStore | None = getattr(handle, "store", None)
+            store = handle.store
             if store is not None:
                 evidence_ids: list[str] = []
                 now = time.time()

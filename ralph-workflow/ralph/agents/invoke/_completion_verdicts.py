@@ -46,6 +46,12 @@ def _raise_if_pi_reported_failed_exit(
     raise PiProviderFailureExitError(agent_name, provider_failure)
 
 
+def _as_str_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: item for key, item in value.items() if isinstance(key, str)}
+
+
 def _raise_if_transport_reported_error(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,

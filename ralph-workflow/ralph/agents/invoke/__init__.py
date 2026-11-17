@@ -185,6 +185,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+    from ralph.process.monitor import SubagentPidSource
     from ralph.process.teardown import ProcessTeardown
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
@@ -233,7 +234,7 @@ def strategy_for_command(
     *,
     label_scope: str | None = None,
     registry: ChildLivenessRegistry | None = None,
-    subagent_pid_source: object = None,
+    subagent_pid_source: SubagentPidSource | None = None,
 ) -> BaseExecutionStrategy:
     module: object = import_module("ralph.agents.execution_state")
     if not isinstance(module, _ExecutionStateModule):
@@ -384,6 +385,12 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
 _CURSOR_AUTH_TOKEN_KEYS = frozenset(
     {"accessToken", "token", "refreshToken", "cursorAuth/accessToken", "cursorAuth/refreshToken"}
 )
+
+
+def _as_str_object_dict(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = None) -> bool:

@@ -498,19 +498,28 @@ def _bind_session_workspace(
 ) -> None:
     if session.workspace is not None:
         return
-    ws_obj: object = getattr(effective_scope, "workspace", None)
+    try:
+        ws_obj: object = object.__getattribute__(effective_scope, "workspace")
+    except AttributeError:
+        ws_obj = None
     from ralph.workspace.protocol import Workspace
 
     if isinstance(ws_obj, Workspace):
         session.workspace = ws_obj
         return
-    ws_root: object = getattr(effective_scope, "root", None)
+    try:
+        ws_root: object = object.__getattribute__(effective_scope, "root")
+    except AttributeError:
+        ws_root = None
     from pathlib import Path
 
     if isinstance(ws_root, Path):
         from ralph.workspace.fs import FsWorkspace
 
-        allowed_obj: object = getattr(effective_scope, "allowed_roots", ())
+        try:
+            allowed_obj: object = object.__getattribute__(effective_scope, "allowed_roots")
+        except AttributeError:
+            allowed_obj = ()
         allowed = allowed_obj if isinstance(allowed_obj, tuple) else ()
         session.workspace = FsWorkspace(
             ws_root,
@@ -716,7 +725,10 @@ def _bootstrap_resolution_session(
     display: ParallelDisplay | None,
 ) -> bool:
     if pipeline_deps is not None and session.unavailability_store is None:
-        store: object = getattr(pipeline_deps, "unavailability_store", None)
+        try:
+            store: object = object.__getattribute__(pipeline_deps, "unavailability_store")
+        except AttributeError:
+            store = None
         from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
 
         if isinstance(store, UnavailabilityStore):

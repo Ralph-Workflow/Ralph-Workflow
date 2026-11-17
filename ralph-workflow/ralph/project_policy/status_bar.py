@@ -16,12 +16,20 @@ if TYPE_CHECKING:
 NEUTRAL_PHASE_LABEL: str = "Running"
 
 
+def _attr_or(obj: object, name: str, default: object) -> object:
+    try:
+        value: object = object.__getattribute__(obj, name)
+    except AttributeError:
+        return default
+    return value
+
+
 def format_readiness_footer_label(assessment: object | None) -> str:
     if assessment is None:
         return "Policy: -- -"
-    s_attr: object = getattr(assessment, "structure_complete", False)
-    i_attr: object = getattr(assessment, "implementation_verified", False)
-    o_attr: object = getattr(assessment, "outcome_evidence_reviewed", False)
+    s_attr = _attr_or(assessment, "structure_complete", False)
+    i_attr = _attr_or(assessment, "implementation_verified", False)
+    o_attr = _attr_or(assessment, "outcome_evidence_reviewed", False)
     s = "S*" if bool(s_attr) else "S-"
     i = "I*" if bool(i_attr) else "I-"
     o = "O*" if bool(o_attr) else "O-"
@@ -110,11 +118,11 @@ def push_resumed_pipeline_status_bar(
 
 
 def capture_status_bar_model(display: object) -> object | None:
-    status_bar: object = getattr(display, "status_bar", None)
+    status_bar = _attr_or(display, "status_bar", None)
     if status_bar is None:
         return None
     try:
-        model: object | None = getattr(status_bar, "last_model", None)
+        model = _attr_or(status_bar, "last_model", None)
     except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar capture failed (non-fatal): {}", exc)
         return None

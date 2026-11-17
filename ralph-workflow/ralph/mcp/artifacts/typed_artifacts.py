@@ -34,8 +34,9 @@ def _load_analysis_decision_vocabulary() -> frozenset[str]:
         drain = contract.get("drain", "")
         if not isinstance(drain, str) or not drain.endswith("_analysis"):
             continue
-        raw_vocab = contract.get("decision_vocabulary", [])
-        if isinstance(raw_vocab, list):
+        raw_vocab_obj: object = contract.get("decision_vocabulary", [])
+        if isinstance(raw_vocab_obj, list):
+            raw_vocab: list[object] = raw_vocab_obj
             vocab.update(str(v) for v in raw_vocab)
     return frozenset(v for v in vocab if v)
 

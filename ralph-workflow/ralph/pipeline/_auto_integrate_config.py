@@ -7,7 +7,10 @@ if TYPE_CHECKING:
 
 
 def configured_target(config: UnifiedConfig) -> str:
-    configured: object = getattr(config.general, "auto_integrate_target", "")
+    try:
+        configured: object = object.__getattribute__(config.general, "auto_integrate_target")
+    except AttributeError:
+        configured = ""
     return configured if isinstance(configured, str) else ""
 
 

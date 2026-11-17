@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.checked_accessors import as_mapping
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
@@ -32,7 +33,9 @@ def load_state(path: Path) -> VersionCheckState | None:
         parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return None
-    if not isinstance(parsed, dict):
+    try:
+        raw = dict(as_mapping(parsed))
+    except TypeError:
         return None
     raw = cast("dict[str, object]", parsed)
     last_checked = raw.get("last_checked")

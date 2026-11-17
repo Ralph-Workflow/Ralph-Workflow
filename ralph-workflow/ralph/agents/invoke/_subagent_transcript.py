@@ -319,16 +319,14 @@ def _safe_metadata_get(metadata: object, key: str, default: object) -> object:
     return result
 
 
-def _summarize_tool_kind(event: object, prefix: str) -> str | None:
-    metadata: object = getattr(event, "metadata", None)
-    tool_obj: object = _safe_metadata_get(metadata, "tool", "Subagent")
+def _summarize_tool_kind(event: InteractiveTranscriptEvent, prefix: str) -> str | None:
+    tool_obj: object = _safe_metadata_get(event.metadata, "tool", "Subagent")
     tool_name = str(tool_obj)
     return f"{prefix}:{tool_name}"
 
 
-def _summarize_text_kind(event: object, prefix: str) -> str | None:
-    text_raw: object = getattr(event, "text", "")
-    text = str(text_raw).strip()
+def _summarize_text_kind(event: InteractiveTranscriptEvent, prefix: str) -> str | None:
+    text = event.text.strip()
     if not text:
         return None
     if len(text) > SUMMARY_TRUNCATE_LENGTH:
@@ -341,7 +339,7 @@ def summarize_event(
     meta_dict: dict[str, object] | None,
     transcript_path: Path,
 ) -> str | None:
-    kind: object = getattr(event, "kind", None)
+    kind = event.kind
     if kind == "tool_use":
         return _summarize_tool_kind(event, "tool_use")
     if kind == "tool_result":

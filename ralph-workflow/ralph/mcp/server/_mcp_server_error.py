@@ -2,6 +2,18 @@ from __future__ import annotations
 
 
 class McpServerError(Exception):
+    restart_count: int
+    last_stage: str | None
+    elapsed_s: float | None
+    restart_reason: str | None
+    handover_step: str | None
+    probe_duration_s: float | None
+    probe_timeout_s: float | None
+    child_pid: int | None
+    psutil_status: str | None
+    startup_diagnostic: str
+    failure_kind: str
+
     def __init__(
         self,
         message: str,

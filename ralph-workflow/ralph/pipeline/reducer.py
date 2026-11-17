@@ -128,7 +128,7 @@ def _without_terminal_waiting(state: PipelineState, policy: PipelinePolicy | Non
 
 def _dispatch_worker_event(
     state: PipelineState,
-    event: Event,
+    event: object,
     recovery: RecoveryController | None = None,
     policy: PipelinePolicy | None = None,
     routing_timing: RoutingTiming | None = None,
@@ -207,7 +207,11 @@ def _reduce_phase_failure(
                 raw_message=raw_message,
                 reset_session=False,
             )
-        workspace_changed: bool = getattr(event, "workspace_changed", False)
+        try:
+            workspace_changed_raw: object = object.__getattribute__(event, "workspace_changed")
+        except AttributeError:
+            workspace_changed_raw = False
+        workspace_changed = workspace_changed_raw is True
         new_state, effects, _ = recovery.handle(
             state,
             event.reason or f"(no reason reported for phase={event.phase})",
@@ -532,7 +536,7 @@ def reduce(
                 routed_state = routed_state.copy_with(ledger_snapshot=snap)
         verdict_record = cast("object", getattr(recovery, "last_verdict_record", None))
         if (
-            isinstance(verdict_record, dict)
+            verdict_record is not None
             and verdict_record != routed_state.dead_agent_verdict_record
         ):
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)

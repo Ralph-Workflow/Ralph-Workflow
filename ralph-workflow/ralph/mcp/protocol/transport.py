@@ -106,19 +106,19 @@ class StdioTransport:
                 msg_dict = cast("dict[str, object]", json.loads(stripped.decode("utf-8")))
                 method_value = msg_dict.get("method")
                 method = method_value if isinstance(method_value, str) else ""
-                params_value = msg_dict.get("params")
+                params_value: object | None = msg_dict.get("params")
                 params = (
                     cast("dict[str, object] | None", params_value)
                     if isinstance(params_value, dict)
                     else None
                 )
-                error_value = msg_dict.get("error")
+                error_value: object | None = msg_dict.get("error")
                 error = (
                     cast("dict[str, object] | None", error_value)
                     if isinstance(error_value, dict)
                     else None
                 )
-                msg_id_value = msg_dict.get("id")
+                msg_id_value: object | None = msg_dict.get("id")
                 msg_id = msg_id_value if isinstance(msg_id_value, str | int) else None
                 msg = MCPMessage(
                     method=method,
