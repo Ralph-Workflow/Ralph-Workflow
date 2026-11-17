@@ -70,6 +70,7 @@ _AGY_DEFAULT_TEST_PATHS = frozenset(
     {
         "tests/test_agy_pty_invocation.py",
         "tests/test_agy_runtime_home_auth.py",
+        "tests/test_private_agent_home_rust_toolchain.py",
     }
 )
 

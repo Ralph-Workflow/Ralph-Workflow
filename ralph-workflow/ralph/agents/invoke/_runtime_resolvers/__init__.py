@@ -45,6 +45,26 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
+_RUST_TOOLCHAIN_HOME_DIRECTORIES = (("RUSTUP_HOME", ".rustup"), ("CARGO_HOME", ".cargo"))
+
+
+def _redirect_home(
+    runtime_env: dict[str, str],
+    base_env: Mapping[str, str],
+    source_home: Path,
+    private_home: Path,
+) -> None:
+    for variable, directory in _RUST_TOOLCHAIN_HOME_DIRECTORIES:
+        toolchain_home = source_home / directory
+        if (
+            variable not in runtime_env
+            and base_env.get(variable) is None
+            and DEFAULT_FILE_BACKEND.exists(toolchain_home)
+        ):
+            runtime_env[variable] = str(toolchain_home)
+    runtime_env["HOME"] = str(private_home)
+
+
 @runtime_checkable
 class _InvokeCompatibilitySeam(Protocol):
     def _apply_upstream_env(
@@ -579,7 +599,7 @@ class AgyRuntimeResolver:
             private_home / ".gemini" / "antigravity-cli",
         )
         project_agy_skill_roots(source_home, private_home)
-        runtime_env["HOME"] = str(private_home)
+        _redirect_home(runtime_env, _env, source_home, private_home)
 
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,
@@ -717,7 +737,7 @@ class CursorRuntimeResolver:
                 private_config_home / "cursor" / "auth.json",
             ):
                 _replace_private_cursor_auth(private_auth, credential_payload)
-        runtime_env["HOME"] = str(private_home)
+        _redirect_home(runtime_env, _env, source_home, private_home)
         runtime_env["XDG_CONFIG_HOME"] = str(private_config_home)
         for marker in _CURSOR_SSH_MARKERS:
             runtime_env.pop(marker, None)
