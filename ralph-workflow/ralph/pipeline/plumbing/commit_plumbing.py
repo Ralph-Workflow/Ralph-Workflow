@@ -956,26 +956,29 @@ def _run_commit_agent_attempt_with_recovery(
             recovery_deps,
         )
         invoke = _commit_invoke_agent(commit_module)
-        recovery_controller.record_attempt("commit", agent_name)
-        attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
-            effect=effect,
-            config=effective_general_config,
-            controller=recovery_controller,
-            deps=recovery_deps,
-            pipeline_deps=effective_pipeline_deps,
-            workspace_scope=workspace_scope,
-            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
-            display_context=display_context,
-            run_id=_COMMIT_RUN_ID,
-            required_artifact=_commit_required_artifact(),
-            session_id=prior_session_id,
-            raw_output_sink=raw_output,
-            rendered_output_sink=rendered_output,
-            set_session_id_cb=_capture_session_id,
-            invoke_agent=invoke,
-            on_retry_failure=on_retry_failure,
-            agent_invocation_error_sink=_capture_error,
-        )
+        try:
+            attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
+                effect=effect,
+                config=effective_general_config,
+                controller=recovery_controller,
+                deps=recovery_deps,
+                recovery_controller=recovery_controller,
+                pipeline_deps=effective_pipeline_deps,
+                workspace_scope=workspace_scope,
+                bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
+                display_context=display_context,
+                run_id=_COMMIT_RUN_ID,
+                required_artifact=_commit_required_artifact(),
+                session_id=prior_session_id,
+                raw_output_sink=raw_output,
+                rendered_output_sink=rendered_output,
+                set_session_id_cb=_capture_session_id,
+                invoke_agent=invoke,
+                on_retry_failure=on_retry_failure,
+                agent_invocation_error_sink=_capture_error,
+            )
+        finally:
+            recovery_controller.record_attempt("commit", agent_name)
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
             parser_type=resolve_parser_key(
