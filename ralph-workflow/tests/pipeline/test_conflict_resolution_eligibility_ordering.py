@@ -14,7 +14,6 @@ from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.pipeline.auto_integrate_conflict_budget import resolve_failure_ledger
 from ralph.pipeline.conflict_resolution import bind_active_rebase_resolution_session
-from ralph.pipeline.conflict_resolution._errors import RecoveryControllerUnavailableError
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface,
     session_ledger,
@@ -23,6 +22,7 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
 from ralph.pipeline.conflict_resolution.driver import can_continue_rounds
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
+    RecoveryControllerUnavailableError,
     ResolutionSession,
     ResolutionTerminationReason,
     ensure_session_controller,
@@ -525,6 +525,7 @@ def test_without_shared_controller_dead_surface_fails_closed() -> None:
     with pytest.raises(RecoveryControllerUnavailableError):
         remember_dead_surface(without_controller, "unavailable_agent")
     assert session_ledger(without_controller) is None
+
 
 def test_continue_rounds_without_controller_or_ledger_fails_closed() -> None:
     session = ResolutionSession()

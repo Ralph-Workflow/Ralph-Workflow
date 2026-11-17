@@ -308,23 +308,24 @@ def _execute_single_candidate(
     succeeded = False
     try:
         raw_result = runner(agent_name, prompt_path, round_index)
-        if isinstance(raw_result, AttemptResult):
-            session.last_attempt_result = raw_result
-            from ralph.pipeline.conflict_resolution import driver as _driver_mod
+        match raw_result:
+            case AttemptResult():
+                session.last_attempt_result = raw_result
+                from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
-            invoker_result = _driver_mod.stop_outcome_from_attempt_result(
-                session, raw_result, agent_name=agent_name
-            )
-        elif isinstance(raw_result, bool):
-            invoker_result = (
-                ResolvedOutcome()
-                if raw_result
-                else RetryLaterOutcome(
-                    on_change="conflict resolution incomplete; progress retained for next agent"
+                invoker_result = _driver_mod.stop_outcome_from_attempt_result(
+                    session, raw_result, agent_name=agent_name
                 )
-            )
-        else:
-            invoker_result = raw_result
+            case bool():
+                invoker_result = (
+                    ResolvedOutcome()
+                    if raw_result
+                    else RetryLaterOutcome(
+                        on_change="conflict resolution incomplete; progress retained for next agent"
+                    )
+                )
+            case _:
+                invoker_result = raw_result
         succeeded = isinstance(invoker_result, ResolvedOutcome)
         if succeeded:
             session.chain_cursor = 0

@@ -366,7 +366,7 @@ def _auto_integrate_after_commit_entry(
     identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
     effective_ledger = resolve_failure_ledger(ledger)
     allowed = (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             state,
             target,
             identity,
@@ -553,7 +553,7 @@ def _attempt_loop_seams(
         resolve_context=_auto_integrate_resolve_context,
         early_skips=_check_early_skips,
         observe_conflict_identity=observe_conflict_identity,
-        configured_resolver_allowed=_configured_resolver_allowed,
+        configured_resolver_allowed=configured_resolver_allowed,
         recover_before_attempt=recover_before_attempt_bound,
         freshen_target=_freshen_attempt_target,
         integrate_once=_integrate_once,
@@ -618,7 +618,7 @@ def _sync_remote_before_target_skip(
     )
 
 
-def _configured_resolver_allowed(
+def configured_resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity,
@@ -749,6 +749,7 @@ __all__ = [
     "auto_integrate_on_phase_transition",
     "branch_sha",
     "complete_commit",
+    "configured_resolver_allowed",
     "contained_land",
     "get_head_sha",
     "integration_transaction",

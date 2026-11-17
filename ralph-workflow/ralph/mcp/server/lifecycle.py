@@ -15,7 +15,7 @@ import urllib.request
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
+from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, TypeGuard, cast
 
 import psutil
 from loguru import logger
@@ -352,18 +352,22 @@ class _WaitFn(Protocol):
     def __call__(self, timeout: float = 0.0) -> object: ...
 
 
+def _is_poll_fn(value: object) -> TypeGuard[_PollFn]:
+    return callable(value)
+
+
+def _is_wait_fn(value: object) -> TypeGuard[_WaitFn]:
+    return callable(value)
+
+
 def _optional_poll(obj: object) -> _PollFn | None:
     attr: object = getattr(obj, "poll", None)
-    if attr is None or not callable(attr):
-        return None
-    return cast("_PollFn", attr)
+    return attr if _is_poll_fn(attr) else None
 
 
 def _optional_wait(obj: object) -> _WaitFn | None:
     attr: object = getattr(obj, "wait", None)
-    if attr is None or not callable(attr):
-        return None
-    return cast("_WaitFn", attr)
+    return attr if _is_wait_fn(attr) else None
 
 
 def _as_finite_float(value: object, default: float) -> float:

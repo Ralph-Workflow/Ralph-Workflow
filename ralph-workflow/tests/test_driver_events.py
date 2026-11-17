@@ -127,9 +127,7 @@ def test_emit_attempt_outcome_progress_line_reports_done_and_remaining(
     lifecycle: list[tuple[str, str]] = []
     warn: list[str] = []
 
-    def _lifecycle(
-        _d: ParallelDisplay | None, label: str, value: str, style: str = "cyan"
-    ) -> None:
+    def _lifecycle(_d: ParallelDisplay | None, label: str, value: str, style: str = "cyan") -> None:
         del style
         lifecycle.append((label, value))
 
@@ -164,9 +162,7 @@ def test_emit_attempt_outcome_waiting_and_failure_use_lifecycle_not_warn(
     lifecycle: list[tuple[str, str]] = []
     warn: list[str] = []
 
-    def _lifecycle(
-        _d: ParallelDisplay | None, label: str, value: str, style: str = "cyan"
-    ) -> None:
+    def _lifecycle(_d: ParallelDisplay | None, label: str, value: str, style: str = "cyan") -> None:
         del style
         lifecycle.append((label, value))
 

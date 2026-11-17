@@ -203,9 +203,7 @@ def _emit_unresolved_outcome(
             _emit_lifecycle(display, "FAILED", line)
         case ConfigFailureOutcome(file=file, parse_error=parse_error):
             _state.last_waiting_line = None
-            _emit_lifecycle(
-                display, "FAILED", f"configuration failure: {file}: {parse_error}"
-            )
+            _emit_lifecycle(display, "FAILED", f"configuration failure: {file}: {parse_error}")
         case UnknownOutcome(error=error):
             _state.last_waiting_line = None
             _emit_lifecycle(display, "FAILED", f"unknown resolution failure: {error}")

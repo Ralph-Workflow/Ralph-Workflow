@@ -34,10 +34,8 @@ def _session_with_controller(
     ledger: AgentFailureLedger,
     **session_kwargs: object,
 ) -> ResolutionSession:
-    return ResolutionSession(
-        recovery_controller=_make_controller(clock, ledger=ledger),
-        **session_kwargs,
-    )
+    session_kwargs.setdefault("recovery_controller", _make_controller(clock, ledger=ledger))
+    return ResolutionSession(**session_kwargs)
 
 
 def test_resolver_falls_over_after_three_failures(

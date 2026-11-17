@@ -9,7 +9,7 @@ from ralph.phases.commit_review import (
     CommitReviewRejected,
 )
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
+from ralph.pipeline.auto_integrate import configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 from ralph.pipeline.events import (
     PhaseFailureEvent,
@@ -513,7 +513,7 @@ class TestPhaseFailureEvent:
         )
         assert first.rebase.resolution_exhausted is False
         assert (
-            _configured_resolver_allowed(
+            configured_resolver_allowed(
                 first.rebase,
                 "main",
                 ConflictIdentity(),
@@ -581,7 +581,7 @@ class TestPhaseFailureEvent:
 
         assert restored.conflict_strategy_index == 1
         assert (
-            _configured_resolver_allowed(
+            configured_resolver_allowed(
                 restored,
                 "main",
                 ConflictIdentity(),

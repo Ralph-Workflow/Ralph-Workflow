@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,7 +12,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import run_loop
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
+from ralph.pipeline.auto_integrate import configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
 )
@@ -31,6 +32,10 @@ from tests._conflict_resolution_phase_parity_seams import (
     _install_seams,
     _policy_bundle,
 )
+
+if TYPE_CHECKING:
+    from ralph.pipeline.run_loop import LoopContext
+    from ralph.pipeline.state import PipelineState
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_shared_eligibility_governs_run_loop_escalation_and_cooldown": (
@@ -129,11 +134,11 @@ def test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay(
     delay_ms_seen: list[int] = []
     real_handle = run_loop.handle_cooldown_delay
 
-    def _spy_handle(state: object, ctx: object) -> object:
-        delay = getattr(state, "last_retry_delay_ms", 0)
+    def _spy_handle(state: PipelineState, ctx: LoopContext) -> PipelineState:
+        delay = state.last_retry_delay_ms
         if isinstance(delay, int) and delay > 0:
             delay_ms_seen.append(delay)
-        return real_handle(state, ctx)  # type: ignore[arg-type]
+        return real_handle(state, ctx)
 
     monkeypatch.setattr(run_loop, "handle_cooldown_delay", _spy_handle)
     if hasattr(driver_module, "handle_cooldown_delay"):
@@ -311,7 +316,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
     )
     assert not ledger.any_eligible("rebase_conflict_resolution", candidates)
     assert not ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert not _configured_resolver_allowed(
+    assert not configured_resolver_allowed(
         state, "main", ident, ledger=ledger, candidates=candidates
     )
 
@@ -345,7 +350,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
         AttemptFact(phase="rebase_conflict_resolution", agent="res-1", artifact_valid=False)
     )
     assert spent_ledger.all_exhausted("rebase_conflict_resolution", candidates)
-    assert not _configured_resolver_allowed(
+    assert not configured_resolver_allowed(
         state, "main", ident, ledger=spent_ledger, candidates=candidates
     )
     assert cold_capped_escalation_due(

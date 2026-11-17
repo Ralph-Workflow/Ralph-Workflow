@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
+from ralph.pipeline.auto_integrate import configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
     apply_conflict_budget,
@@ -61,7 +61,7 @@ def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> 
 
     assert spent.conflict_strategy_index == 1
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             spent,
             "main",
             identity,
@@ -75,7 +75,7 @@ def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> 
 
     assert restored.conflict_strategy_index == 1
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             restored,
             "main",
             identity,

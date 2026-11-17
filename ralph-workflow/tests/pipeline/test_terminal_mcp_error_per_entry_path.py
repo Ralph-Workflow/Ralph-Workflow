@@ -19,6 +19,7 @@ from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
+from ralph.pipeline.conflict_resolution.driver import stop_outcome_from_attempt_result
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -62,6 +63,12 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_drive_conflict_session": (
+        "4959fb143 made invoke_resolution_agent return the attempt's AttemptResult and moved "
+        "the stop-outcome mapping into the driver's public stop_outcome_from_attempt_result; "
+        "the conflict entry path now maps through that seam and still asserts the same "
+        "RetryLaterOutcome and McpServerError evidence"
+    ),
     "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": (
         "invoke_resolution_agent reports a typed outcome instead of a boolean; "
         "the conflict-session case asserts the RetryLaterOutcome that carries "
@@ -483,7 +490,10 @@ def _drive_conflict_session(
         display_context=make_display_context(),
         session=session,
     )
-    return _ConflictOutcome(launched=launched, last_attempt_evidence=session.last_attempt_evidence)
+    return _ConflictOutcome(
+        launched=stop_outcome_from_attempt_result(session, launched, agent_name="resolver"),
+        last_attempt_evidence=session.last_attempt_evidence,
+    )
 
 
 def _assert_conflict_outcome(outcome: object) -> None:

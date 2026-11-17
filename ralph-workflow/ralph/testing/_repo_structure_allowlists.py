@@ -246,21 +246,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_integration_owner_seam",),
         ),
         (
-            "tests/test_auto_integrate_strategy_ladder.py",
-            "ralph.pipeline.auto_integrate",
-            ("_configured_resolver_allowed",),
-        ),
-        (
-            "tests/test_conflict_resolution_cross_path_budget.py",
-            "ralph.pipeline.auto_integrate",
-            ("_configured_resolver_allowed",),
-        ),
-        (
-            "tests/test_conflict_resolution_phase_parity_cooldown.py",
-            "ralph.pipeline.auto_integrate",
-            ("_configured_resolver_allowed",),
-        ),
-        (
             "tests/test_conflict_resolution_phase_parity_cooldown.py",
             "ralph.pipeline.conflict_resolution",
             ("_driver_rounds",),
@@ -274,11 +259,6 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/test_git_lock_live_holder_wait.py",
             "ralph.git",
             ("_lock_recovery",),
-        ),
-        (
-            "tests/test_reducer_phase_failure_event.py",
-            "ralph.pipeline.auto_integrate",
-            ("_configured_resolver_allowed",),
         ),
         (
             "tests/agents/invoke/test_cli_attempt_fact_completeness.py",

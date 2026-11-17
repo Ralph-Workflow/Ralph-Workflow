@@ -22,6 +22,9 @@ from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
 )
 from ralph.pipeline.conflict_resolution._driver_events import (
+    emit_attempt_outcome,
+)
+from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success as _emit_success,
 )
 from ralph.pipeline.conflict_resolution._driver_rounds import (
@@ -326,6 +329,7 @@ __all__ = [
     "classify_unmerged_conflicts",
     "declared_decision_paths",
     "emit_agent_lifecycle_status",
+    "emit_attempt_outcome",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
     "out_of_reach_escalation_message",

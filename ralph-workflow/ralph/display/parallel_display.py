@@ -14,7 +14,7 @@ import zlib
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -3953,9 +3953,12 @@ class ParallelDisplay:
         self.stop()
 
 
-@runtime_checkable
-class _ActivityLineEmitter(Protocol):
-    def emit(self, unit_id: str | None, line: str) -> None: ...
+class _ActivityEmit(Protocol):
+    def __call__(self, unit_id: str | None, line: str, /) -> None: ...
+
+
+def _is_activity_emit(value: object) -> TypeGuard[_ActivityEmit]:
+    return callable(value)
 
 
 def emit_activity_line(
@@ -3964,8 +3967,9 @@ def emit_activity_line(
     line: str,
     display_context: DisplayContext | None = None,
 ) -> None:
-    if isinstance(display, _ActivityLineEmitter):
-        display.emit(unit_id, line)
+    emit: object = getattr(display, "emit", None)
+    if _is_activity_emit(emit):
+        emit(unit_id, line)
         return
     if display_context is None:
         return

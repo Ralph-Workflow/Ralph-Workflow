@@ -62,9 +62,7 @@ def default_invoker(
             session=session,
             require_completion_evidence=require_completion_evidence,
         )
-        return _driver.stop_outcome_from_attempt_result(
-            session, attempt, agent_name=agent_name
-        )
+        return _driver.stop_outcome_from_attempt_result(session, attempt, agent_name=agent_name)
 
     return _invoke
 

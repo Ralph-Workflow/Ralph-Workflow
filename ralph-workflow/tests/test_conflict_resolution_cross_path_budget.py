@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.auto_integrate import _configured_resolver_allowed
+from ralph.pipeline.auto_integrate import configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
@@ -18,6 +18,15 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 _RESOLUTION_PHASE = "rebase_conflict_resolution"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity": (
+        "the same launch-permission answer is asserted through the public configured_resolver_allowed seam; the private _configured_resolver_allowed import it replaces is rejected by the frozen white-box baseline"
+    ),
+    "test_no_ledger_does_not_apply_a_local_launch_veto": (
+        "with no shared ledger the launch gate applies no local counter veto; chain "
+        "dispatch sites that select among candidates separately require a non-empty set"
+        "; the private _configured_resolver_allowed import is replaced by the public "
+        "configured_resolver_allowed seam"
+    ),
     "test_unchanged_paths_and_oids_are_the_same_conflict": (
         "launch permission is shared eligibility, not resolution_exhausted; same-conflict "
         "identity still matches while an Eligible ledger may launch"
@@ -36,10 +45,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_a_cooling_resolver_is_not_launched": (
         "cooldown-strict any_eligible replaces the retired cooldown-blind all_exhausted branch"
-    ),
-    "test_no_ledger_does_not_apply_a_local_launch_veto": (
-        "with no shared ledger the launch gate applies no local counter veto; chain "
-        "dispatch sites that select among candidates separately require a non-empty set"
     ),
     "test_budget_spend_advances_the_strategy_rung": (
         "apply_conflict_budget advances the strategy rung in the same step as the spend"
@@ -84,7 +89,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
     )
     assert identity.matches(state) is True
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             state, "main", identity, ledger=_ledger(), candidates=("resolver",)
         )
         is True
@@ -109,7 +114,7 @@ def test_changed_stage_oids_are_a_new_conflict() -> None:
     )
     assert identity.matches(state) is False
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             state, "main", identity, ledger=_ledger(), candidates=("resolver",)
         )
         is True
@@ -378,13 +383,11 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
     assert remote.matches(state) is False
     ledger = _ledger()
     assert (
-        _configured_resolver_allowed(
-            state, "main", feature, ledger=ledger, candidates=("resolver",)
-        )
+        configured_resolver_allowed(state, "main", feature, ledger=ledger, candidates=("resolver",))
         is True
     )
     assert (
-        _configured_resolver_allowed(state, "main", remote, ledger=ledger, candidates=("resolver",))
+        configured_resolver_allowed(state, "main", remote, ledger=ledger, candidates=("resolver",))
         is True
     )
 
@@ -401,7 +404,7 @@ def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
     )
 
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             state, "main", identity, ledger=_ledger(), candidates=("resolver",)
         )
         is True
@@ -421,7 +424,7 @@ def test_a_cooling_resolver_is_not_launched() -> None:
     assert not cooling.any_eligible(_RESOLUTION_PHASE, ("resolver",))
     assert not cooling.all_exhausted(_RESOLUTION_PHASE, ("resolver",))
     assert (
-        _configured_resolver_allowed(
+        configured_resolver_allowed(
             state,
             "main",
             identity,
@@ -444,10 +447,10 @@ def test_no_ledger_does_not_apply_a_local_launch_veto() -> None:
     )
 
     assert (
-        _configured_resolver_allowed(state, "main", identity, ledger=None, candidates=("resolver",))
+        configured_resolver_allowed(state, "main", identity, ledger=None, candidates=("resolver",))
         is True
     )
     assert (
-        _configured_resolver_allowed(state, "main", identity, ledger=_ledger(), candidates=())
+        configured_resolver_allowed(state, "main", identity, ledger=_ledger(), candidates=())
         is True
     )

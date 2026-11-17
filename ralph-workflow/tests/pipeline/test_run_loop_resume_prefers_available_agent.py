@@ -229,7 +229,7 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
 def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ralph.pipeline._integration_strategy import IntegrationStrategy
+    from ralph.pipeline.integration_strategy import IntegrationStrategy
 
     config = MagicMock()
     config.general.auto_integrate_enabled = True
@@ -249,7 +249,9 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
     monkeypatch.setattr(run_loop, "_announce_deferred_startup_integration", lambda *_args: None)
-    monkeypatch.setattr(run_loop, "_exhaustion_still_binds", lambda *_args: True)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_args: ""
+    )
 
     assert run_loop._block_unresolved_integration(state, ctx, "analysis") is None
     assert ctx.latest_state[0].rebase.last_decision == IntegrationStrategy.COMPLETE_IN_PLACE.value
@@ -526,6 +528,7 @@ def test_a_recorded_exhaustion_does_not_block_a_different_conflict(
 def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
     from ralph.pipeline.integration_resolution import IntegrationResolutionVerdict
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionStatus
     from ralph.pipeline.rebase_state import RebaseState
@@ -541,7 +544,13 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
             reasons=("conflict resolver exhausted",),
         ),
     )
-    monkeypatch.setattr(run_loop, "_exhaustion_still_binds", lambda _ctx, _rebase: False)
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_args: "main"
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
+        lambda *_args, **_kwargs: ConflictIdentity(),
+    )
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
     monkeypatch.setattr(run_loop, "_announce_conflict_resolution_entry", lambda *_a: None)
     monkeypatch.setattr(run_loop, "_announce_blocked_dispatch", lambda *_a: None)
