@@ -4,10 +4,10 @@ from typing import Literal
 
 from pydantic import Field
 
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
-class PhaseParallelization(RalphBaseModel):
+class PhaseParallelization(_FrozenPolicyModel):
     mode: Literal["same_workspace"] = Field(
         default="same_workspace",
         description="Parallelization mode; only 'same_workspace' is supported in v1",

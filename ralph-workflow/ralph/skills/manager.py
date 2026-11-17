@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 from datetime import UTC, datetime
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from loguru import logger as _logger
@@ -61,12 +62,14 @@ def _web_search_is_available() -> bool:
 
 
 def _visit_url_is_available() -> bool:
-    return importlib.util.find_spec("ralph.mcp.webvisit.extractor") is not None
+    try:
+        import_module("ralph.mcp.webvisit.extractor")
+    except ImportError:
+        return False
+    return True
 
 
 class SkillManager:
-    __slots__ = ("_policy", "_state_path")
-
     def __init__(
         self,
         state_path: Path | None = None,
@@ -147,10 +150,8 @@ class SkillManager:
         state = self._load_state()
         current_version = _get_ralph_version()
         updates: dict[str, object] = {}
-        for field_name, entry in (
-            ("web_search", state.web_search),
-            ("visit_url", state.visit_url),
-        ):
+        for field_name in ("web_search", "visit_url"):
+            entry: CapabilityEntry = getattr(state, field_name)
             if (
                 entry.status == CapabilityStatus.INSTALLED_HEALTHY
                 and entry.ralph_version

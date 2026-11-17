@@ -181,12 +181,16 @@ def _iter_fields(
     node: ast.AST,
 ) -> tuple[tuple[str, ast.AST | list[ast.AST] | None], ...]:
     fields: list[tuple[str, ast.AST | list[ast.AST] | None]] = []
-    for field_name, val in ast.iter_fields(node):
+    for field_name in node._fields:
+        try:
+            val: object = getattr(node, field_name)
+        except AttributeError:
+            continue
         if isinstance(val, ast.AST):
             fields.append((field_name, val))
-        if isinstance(val, list):
+        elif isinstance(val, list):
             fields.append((field_name, [item for item in val if isinstance(item, ast.AST)]))
-        if val is None:
+        elif val is None:
             fields.append((field_name, None))
     return tuple(fields)
 

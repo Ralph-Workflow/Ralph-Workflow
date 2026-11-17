@@ -43,13 +43,12 @@ def _read_string_assignment(source: str, name: str) -> str:
     except (SyntaxError, ValueError):
         return ""
     for statement in module.body:
-        match statement:
-            case ast.Assign(targets=targets, value=value):
-                pass
-            case ast.AnnAssign(target=target, value=value) if value is not None:
-                targets = [target]
-            case _:
-                continue
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            continue
         named = any(isinstance(target, ast.Name) and target.id == name for target in targets)
         if named and isinstance(value, ast.Constant) and isinstance(value.value, str):
             return value.value

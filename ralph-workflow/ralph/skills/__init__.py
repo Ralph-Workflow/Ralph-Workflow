@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from ralph.skills._content import get_skill_content
 
@@ -15,6 +16,6 @@ def __getattr__(name: str) -> object:
         msg = f"module {__name__!r} has no attribute {name!r}"
         raise AttributeError(msg)
 
-    from ralph.skills import _state_store as module
-
+    module = import_module("ralph.skills._state_store")
+    cast("dict[str, object]", globals())["state_store"] = module
     return module

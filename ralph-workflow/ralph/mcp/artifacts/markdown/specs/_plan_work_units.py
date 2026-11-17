@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from ralph.checked_accessors import as_mapping
 from ralph.mcp.artifacts.markdown.specs._plan_steps import PLAN_STEP_ID_PATTERN
@@ -126,7 +126,7 @@ def _attach_owned_step_ids(
     section_names: tuple[str, ...],
 ) -> None:
     owner_by_step: dict[str, str] = {}
-    entry_by_id = {entry["unit_id"]: entry for entry in entries}
+    entry_by_id = {cast("str", entry["unit_id"]): entry for entry in entries}
 
     for index, section in enumerate(document.sections):
         if section.name in section_names:

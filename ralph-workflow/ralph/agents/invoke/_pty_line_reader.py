@@ -10,7 +10,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import psutil
 from loguru import logger
@@ -121,7 +121,7 @@ from ralph.process.child_liveness import (
     ChildLivenessSubagentPidSource,
     classify_child_snapshot,
 )
-from ralph.process.liveness import DefaultLivenessProbe
+from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedPtyProcess,
     ProcessEvent,
@@ -144,15 +144,19 @@ if TYPE_CHECKING:
     from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-    from ralph.agents.invoke._agent_run_ctx import AgentRunCtx
+    from ralph.agents.invoke._agent_run_ctx import AgentRunCtx, _EvalCompletionFn
     from ralph.agents.invoke._subagent_transcript import R7AbsentLayoutDiagnostic
     from ralph.agents.parsers.interactive_transcript_event import (
         InteractiveTranscriptEvent,
     )
     from ralph.agents.timeout_clock import Clock
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.monitor import ProcessMonitor
+    from ralph.process.teardown import ProcessTeardown
 
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
+
+type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
 
 def _zero_idle_elapsed(_now: float) -> float:
@@ -219,7 +223,7 @@ class _ReadLoopSetup(NamedTuple):
 def _resolve_pre_existing_transcript_names(
     extras: PtyExtras, workspace_path: Path | None
 ) -> frozenset[str]:
-    snapshot = extras.pre_existing_transcript_names
+    snapshot = cast("frozenset[str] | None", getattr(extras, "pre_existing_transcript_names", None))
     if snapshot is not None:
         return snapshot
     if workspace_path is not None:
@@ -227,91 +231,9 @@ def _resolve_pre_existing_transcript_names(
     return frozenset()
 
 
-
-def _strategy_registry(strategy: BaseExecutionStrategy) -> ChildLivenessRegistry | None:
-    return strategy._registry
-
-
-def _strategy_label_prefix(strategy: BaseExecutionStrategy) -> str | None:
-    if not isinstance(strategy, OpenCodeExecutionStrategy):
-        return None
-    return strategy._active_label_prefix()
-
-
-def _timeout_diagnostic(merged: dict[str, object]) -> dict[str, object]:
-    return dict(merged)
-
-
 class PtyLineReader:
-    __slots__ = (
-        "__weakref__",
-        "_agent_name",
-        "_agy_cli_log",
-        "_auto_mode_menu_screen",
-        "_auto_mode_prompt_seen",
-        "_auto_response_menu_seen",
-        "_awaiting_post_tool_result_progress",
-        "_captured_session_id",
-        "_clock",
-        "_completion_exit_sent",
-        "_completion_run_id",
-        "_config",
-        "_connectivity_state_provider",
-        "_cpu_baselines",
-        "_evaluate_completion_fn",
-        "_expected_session_id",
-        "_handle",
-        "_input_prompt",
-        "_input_writer_fd",
-        "_input_writer_lock",
-        "_is_waiting_state_provider",
-        "_last_activity_kind",
-        "_last_auto_mode_menu_seen_at",
-        "_last_auto_mode_response_at",
-        "_last_hard_stop",
-        "_last_meaningful",
-        "_last_tool_result_at",
-        "_last_tool_result_excerpt",
-        "_last_tool_use_name",
-        "_lines_event",
-        "_lines_lock",
-        "_lines_queue",
-        "_log_growth_state",
-        "_max_pending_chars",
-        "_monitor",
-        "_monitor_stop",
-        "_parser_key",
-        "_pending_permission_prompt_line",
-        "_pending_permission_prompt_started_at",
-        "_permission_prompt_listener",
-        "_policy",
-        "_pre_existing_transcript_names",
-        "_pre_output_listener",
-        "_probe",
-        "_process_monitor",
-        "_process_teardown",
-        "_quota_error",
-        "_raw_overflow",
-        "_read_fd",
-        "_reader_done",
-        "_recent_choice_lines",
-        "_relay_activity_sink_register",
-        "_relay_health_error",
-        "_remove_relay_sink",
-        "_required_artifact",
-        "_started_at_wall_clock",
-        "_stop_sentinel_path",
-        "_strategy",
-        "_subagent_sink_holder",
-        "_subagent_tails",
-        "_supervisor",
-        "_terminal_counter",
-        "_transcript_session_ids",
-        "_transcript_session_ids_lock",
-        "_waiting_listener",
-        "_watchdog",
-        "_workspace_path",
-    )
+    _supervisor: AttemptSupervisor | None = None
+    _process_teardown: ProcessTeardown | None = None
 
     def __init__(
         self,
@@ -328,8 +250,10 @@ class PtyLineReader:
         _extras = extras or PtyExtras()
         self._handle = handle
         self._supervisor = supervisor
-        self._process_teardown = ctx.process_teardown
-        self._parser_key = reader_parser_key(ctx.config)
+        self._process_teardown: ProcessTeardown | None = (
+            ctx.process_teardown if hasattr(ctx, "process_teardown") else None
+        )
+        self._parser_key: str | None = reader_parser_key(ctx.config)
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
         self._config = ctx.config
@@ -337,14 +261,14 @@ class PtyLineReader:
         self._quota_error: QuotaExhaustedError | None = None
         self._agy_cli_log = self._resolve_agy_cli_log(agy_cli_log, ctx)
         self._monitor = ctx.monitor
-        self._workspace_path = ctx.workspace_path
-        self._pre_existing_transcript_names = _resolve_pre_existing_transcript_names(
-            _extras, self._workspace_path
+        self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
+        self._pre_existing_transcript_names: frozenset[str] = (
+            _resolve_pre_existing_transcript_names(_extras, self._workspace_path)
         )
         self._clock = clock
         self._max_pending_chars = max_pending_chars
-        self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
-        self._probe = ctx.liveness_probe or DefaultLivenessProbe()
+        self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
+        self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
         self._bind_optional_ctx_hooks(ctx)
         self._configure_runtime_hooks(ctx, _extras)
@@ -352,12 +276,18 @@ class PtyLineReader:
 
     def _init_reader_runtime(self, handle: ManagedPtyProcess, ctx: AgentRunCtx) -> None:
         self._completion_run_id = completion_run_id_from_extra_env(
-            ctx.extra_env
+            cast("dict[str, str] | None", getattr(ctx, "extra_env", None))
         )
-        self._evaluate_completion_fn = ctx.evaluate_completion_fn
-        self._required_artifact = ctx.required_artifact
+        self._evaluate_completion_fn = cast(
+            "_EvalCompletionFn | None",
+            getattr(ctx, "evaluate_completion_fn", None),
+        )
+        self._required_artifact = cast(
+            "RequiredArtifact | None",
+            getattr(ctx, "required_artifact", None),
+        )
         self._completion_exit_sent = False
-        self._lines_queue = self._build_lines_queue()
+        self._lines_queue: BoundedLinesQueue = self._build_lines_queue()
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
         self._monitor_stop = threading.Event()
@@ -383,21 +313,29 @@ class PtyLineReader:
         self._last_auto_mode_menu_seen_at: float | None = None
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
-        self._recent_choice_lines: deque[str] = deque(maxlen=_RECENT_CHOICE_LINES_MAX)
-        self._transcript_session_ids: deque[str] = deque(maxlen=_MAX_TRANSCRIPT_SESSION_IDS)
+        recent_choice_cap = _RECENT_CHOICE_LINES_MAX
+        self._recent_choice_lines: deque[str] = deque(maxlen=recent_choice_cap)
+        cap = _MAX_TRANSCRIPT_SESSION_IDS
+        self._transcript_session_ids: deque[str] = deque(maxlen=cap)
         self._transcript_session_ids_lock = threading.Lock()
-        self._captured_session_id = self._expected_session_id
+        self._captured_session_id: str | None = self._expected_session_id
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
-        self._process_monitor: ProcessMonitor | None = None
-        self._watchdog: IdleWatchdog | None = None
-        self._subagent_sink_holder: dict[str, Callable[[str], None]] = {}
 
     def _bind_optional_ctx_hooks(self, ctx: AgentRunCtx) -> None:
-        self._pre_output_listener = ctx.pre_output_listener
-        self._connectivity_state_provider = ctx.connectivity_state_provider
-        self._is_waiting_state_provider = ctx.is_waiting_state_provider
+        self._pre_output_listener = cast(
+            "Callable[[], None] | None",
+            getattr(ctx, "pre_output_listener", None),
+        )
+        self._connectivity_state_provider = cast(
+            "Callable[[], str | None] | None",
+            getattr(ctx, "connectivity_state_provider", None),
+        )
+        self._is_waiting_state_provider = cast(
+            "Callable[[], bool] | None",
+            getattr(ctx, "is_waiting_state_provider", None),
+        )
 
     @staticmethod
     def _resolve_agy_cli_log(
@@ -406,15 +344,20 @@ class PtyLineReader:
     ) -> tuple[Path, int] | None:
         if agy_cli_log is not None:
             return agy_cli_log
-        if ctx.config.transport != AgentTransport.AGY:
-            return None
-        return agy_cli_log_start_offset(ctx.agy_cli_log_path)
+        agy_cli_log_path = cast("Path | None", getattr(ctx, "agy_cli_log_path", None))
+        if ctx.config.transport == AgentTransport.AGY:
+            return agy_cli_log_start_offset(agy_cli_log_path)
+        return None
 
     def _configure_runtime_hooks(self, ctx: AgentRunCtx, extras: PtyExtras) -> None:
         self._expected_session_id = extras.expected_session_id
         self._input_prompt = extras.input_prompt
-        self._relay_activity_sink_register = ctx.relay_activity_sink_register
-        self._relay_health_error = ctx.relay_health_error
+        relay_register: object = getattr(ctx, "relay_activity_sink_register", None)
+        relay_health_error: object = getattr(ctx, "relay_health_error", None)
+        self._relay_activity_sink_register = cast(
+            "Callable[[Callable[[str], None]], Callable[[], None]] | None", relay_register
+        )
+        self._relay_health_error = cast("Callable[[], str | None] | None", relay_health_error)
         self._remove_relay_sink: Callable[[], None] | None = None
         self._stop_sentinel_path = extras.stop_sentinel_path
         self._permission_prompt_listener = extras.permission_prompt_listener
@@ -538,7 +481,7 @@ class PtyLineReader:
         scoped_child_active: bool | None = None
         scoped_child_count: int | None = None
         try:
-            monitor = self._process_monitor
+            monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
             if monitor is not None:
                 filtered_count: int = monitor.spawned_subagent_count()
                 scoped_child_count = filtered_count
@@ -559,10 +502,13 @@ class PtyLineReader:
             scoped_child_active = None
         scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
-        registry = _strategy_registry(self._strategy)
+        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is not None:
             try:
-                label_prefix = _strategy_label_prefix(self._strategy)
+                label_prefix = cast(
+                    "str | None",
+                    getattr(self._strategy, "_active_label_prefix", lambda: None)(),
+                )
                 snapshot = registry.snapshot(label_prefix or "")
                 verdict = classify_child_snapshot(
                     snapshot,
@@ -683,7 +629,7 @@ class PtyLineReader:
 
     def _capture_discovered_transcript_session_id(self, session_id: str) -> None:
         self._captured_session_id = session_id
-        watchdog = self._watchdog
+        watchdog: IdleWatchdog | None = getattr(self, "_watchdog", None)
         if watchdog is not None:
             watchdog.record_session_id_capture(session_id)
 
@@ -805,23 +751,30 @@ class PtyLineReader:
     def _ensure_subagent_tails_for_session(
         self, session_id: str
     ) -> ClaudeSubagentTranscriptTails | None:
-        existing = self._subagent_tails
-        if existing is not None:
-            if existing.session_id == session_id:
-                return existing
+        existing_obj: object = getattr(self, "_subagent_tails", None)
+        if isinstance(existing_obj, ClaudeSubagentTranscriptTails):
+            if existing_obj.session_id == session_id:
+                return existing_obj
             with contextlib.suppress(Exception):
-                existing.stop()
+                existing_obj.stop()
         if self._workspace_path is None:
             return None
         try:
             project_key = str(self._workspace_path.resolve()).replace("/", "-").replace(" ", "-")
         except OSError:
             return None
-        holder = self._subagent_sink_holder
+        holder_obj: object = getattr(self, "_subagent_sink_holder", None)
         sink: Callable[[str], None]
-        existing_sink = holder.get("sink")
-        if existing_sink is not None:
-            sink = existing_sink
+        if isinstance(holder_obj, dict):
+            existing_sink: object = holder_obj.get("sink")
+            if callable(existing_sink):
+                sink = cast("Callable[[str], None]", existing_sink)
+            else:
+
+                def _noop_sink(_summary: str) -> None:
+                    return None
+
+                sink = _noop_sink
         else:
 
             def _noop_sink(_summary: str) -> None:
@@ -864,8 +817,7 @@ class PtyLineReader:
             return
         if not isinstance(obj, dict):
             return
-        record: dict[str, object] = {str(key): value for key, value in obj.items()}
-        tails.note_parent_record(record)
+        tails.note_parent_record(cast("dict[str, object]", obj))
 
     def _sentinel_thread(self) -> None:
         sentinel_path = self._stop_sentinel_path
@@ -981,7 +933,9 @@ class PtyLineReader:
         watchdog: IdleWatchdog,
         verdict: WatchdogVerdict,
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
-        relay_health_error = self._relay_health_error
+        relay_health_error = cast(
+            "Callable[[], str | None] | None", getattr(self, "_relay_health_error", None)
+        )
         if relay_health_error is not None:
             detail = relay_health_error()
             if detail:
@@ -1026,23 +980,28 @@ class PtyLineReader:
         }
         merged_diag["resumable_session_id"] = captured_session_id
         merged_diag["resume_safe"] = resume_safe
-        try:
-            snapshot_obj = watchdog.diagnostic_snapshot(now=now)
-        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
-            snapshot_obj = None
-        if snapshot_obj:
-            merged_diag["watchdog_snapshot"] = snapshot_obj
-        try:
-            repetition_diag = watchdog.repetition_diagnostic()
-        except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
-            repetition_diag = None
-        if repetition_diag:
-            merged_diag.update(repetition_diag)
+        snapshot_method: object = getattr(watchdog, "diagnostic_snapshot", None)
+        if callable(snapshot_method):
+            try:
+                snapshot_obj: dict[str, object] | None = snapshot_method(now=now)
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
+                snapshot_obj = None
+            if snapshot_obj:
+                merged_diag["watchdog_snapshot"] = snapshot_obj
+        repetition_diag_method: object = getattr(watchdog, "repetition_diagnostic", None)
+        if callable(repetition_diag_method):
+            try:
+                repetition_diag: dict[str, str | int] | None = repetition_diag_method()
+            except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
+                repetition_diag = None
+            if repetition_diag:
+                merged_diag.update(repetition_diag)
         if diagnostic is not None:
             for key, value in diagnostic.items():
                 if key not in merged_diag:
                     merged_diag[key] = value
-        _child_alive = watchdog.last_alive_by is not None
+        _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
+        _child_alive = _alive_by_signal is not None
         _append_conflict_termination_diagnostic(merged_diag, watchdog, fire_reason, now)
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
@@ -1056,7 +1015,7 @@ class PtyLineReader:
         wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=_timeout_diagnostic(merged_diag),
+            diagnostic=cast("_MergedDiagType", merged_diag),
         )
         wrapper.__cause__ = typed_exc
         return pending_lines, wrapper
@@ -1238,7 +1197,12 @@ class PtyLineReader:
         self._lines_event.set()
 
     def _record_terminal_reason(self, reason: str) -> None:
-        self._handle.record_terminal_reason(reason)
+        reason_recorder = cast(
+            "Callable[[str], None] | None",
+            getattr(self._handle, "record_terminal_reason", None),
+        )
+        if reason_recorder is not None:
+            reason_recorder(reason)
 
     def _raise_if_fresh_agy_log_has_quota(self) -> None:
         if self._agy_cli_log is None:
@@ -1393,10 +1357,21 @@ class PtyLineReader:
     def _strategy_registry_and_prefix(
         self,
     ) -> tuple[ChildLivenessRegistry | None, str]:
-        registry = _strategy_registry(self._strategy)
+        registry = cast(
+            "ChildLivenessRegistry | None",
+            getattr(self._strategy, "_registry", None),
+        )
         if registry is None:
             return None, ""
-        return registry, _strategy_label_prefix(self._strategy) or ""
+        active_prefix_fn = cast(
+            "Callable[[], str | None] | None",
+            getattr(self._strategy, "_active_label_prefix", None),
+        )
+        try:
+            prefix = active_prefix_fn() if active_prefix_fn is not None else ""
+        except AttributeError:
+            prefix = ""
+        return registry, prefix or ""
 
     def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
         registry, prefix = self._strategy_registry_and_prefix()
@@ -1517,25 +1492,30 @@ class PtyLineReader:
 
         sink_token = set_active_sink(_mcp_sink)
         subagent_token = set_subagent_sink(_subagent_sink)
-        relay_register = self._relay_activity_sink_register
+        relay_register = cast(
+            "Callable[[Callable[[str], None]], Callable[[], None]] | None",
+            getattr(self, "_relay_activity_sink_register", None),
+        )
         if relay_register is not None:
             self._remove_relay_sink = relay_register(_mcp_sink)
         return sink_token, subagent_token, _subagent_sink
 
     def _teardown_read_loop(self, setup: _ReadLoopSetup, *, interrupted: bool) -> None:
         setup.watchdog.record_invocation_end()
-        remove_relay_sink = self._remove_relay_sink
+        remove_relay_sink = cast(
+            "Callable[[], None] | None", getattr(self, "_remove_relay_sink", None)
+        )
         if remove_relay_sink is not None:
             remove_relay_sink()
-            self._remove_relay_sink = None
+            del self._remove_relay_sink
         reset_active_sink(setup.sink_token)
         reset_subagent_sink(setup.subagent_token)
         if self._monitor is not None:
             self._monitor.set_on_event(None)
-        lazy_tails = self._subagent_tails
-        if lazy_tails is not None:
+        lazy_tails_obj: object = getattr(self, "_subagent_tails", None)
+        if isinstance(lazy_tails_obj, ClaudeSubagentTranscriptTails):
             with contextlib.suppress(OSError, RuntimeError, ValueError, AttributeError):
-                lazy_tails.stop()
+                lazy_tails_obj.stop()
         self._cleanup(
             [
                 setup.reader,

@@ -681,7 +681,7 @@ def _run_integration_continuation_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **dict(execute_kwargs),
+        **execute_kwargs,
     )
 
 

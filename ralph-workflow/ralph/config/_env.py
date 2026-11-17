@@ -50,6 +50,20 @@ def _os_environ() -> _EnvironView:
     raw: object = os.environ
     return _EnvironView(raw)
 
+__all__ = [
+    "copy_environ",
+    "del_environ",
+    "environ",
+    "getenv",
+    "os",
+    "pop_environ",
+    "resolve_config_home",
+    "resolve_environ",
+    "set_environ",
+    "setdefault_environ",
+    "update_environ",
+]
+
 
 def getenv(name: str, env: Mapping[str, str] | None = None) -> str | None:
     source: Mapping[str, str] = _os_environ() if env is None else env

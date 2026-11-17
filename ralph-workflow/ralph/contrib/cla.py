@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -10,8 +11,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-
-from ralph.config import _env as config_env
+from typing import cast
 
 CLA_CHECKBOX_LABEL = (
     "I have read and agree to the Contributor License Agreement in CLA.md, including "
@@ -106,15 +106,15 @@ def evaluate_codeberg_environment(
 
 def evaluate_current_environment() -> ClaCheckResult:
 
-    github_event_path = config_env.getenv("GITHUB_EVENT_PATH")
+    github_event_path = os.environ.get("GITHUB_EVENT_PATH")
     if github_event_path:
         try:
             event = _read_json_file(Path(github_event_path))
         except (OSError, ValueError) as exc:
             return ClaCheckResult(ok=False, message=f"Could not load GitHub event payload: {exc}")
-        return evaluate_github_event(event_name=config_env.getenv("GITHUB_EVENT_NAME"), event=event)
+        return evaluate_github_event(event_name=os.environ.get("GITHUB_EVENT_NAME"), event=event)
 
-    return evaluate_codeberg_environment(config_env.environ())
+    return evaluate_codeberg_environment(os.environ)
 
 
 def main() -> int:
@@ -156,14 +156,13 @@ def _fetch_json(url: str) -> object:
             path = f"{path}?{parsed.query}"
         conn.request("GET", path, headers={"Accept": "application/json"})
         response = conn.getresponse()
-        payload: object = json.loads(response.read().decode("utf-8"))
-        return payload
+        return cast("object", json.loads(response.read().decode("utf-8")))
     finally:
         conn.close()
 
 
 def _read_json_file(path: Path) -> Mapping[str, object]:
-    payload: object = json.loads(path.read_text(encoding="utf-8"))
+    payload = cast("object", json.loads(path.read_text(encoding="utf-8")))
     if not isinstance(payload, Mapping):
         raise TypeError("event payload is not a JSON object")
     return payload

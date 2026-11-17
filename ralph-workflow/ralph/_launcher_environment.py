@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.cli import main as cli_main
-from ralph.config import _env as config_env
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping
@@ -36,5 +35,5 @@ def detach_runtime_virtualenv(environ: MutableMapping[str, str], runtime_prefix:
 
 def launch() -> None:
     sys.argv[0] = "ralph"
-    detach_runtime_virtualenv(config_env.environ(), Path(sys.prefix))
+    detach_runtime_virtualenv(os.environ, Path(sys.prefix))
     cli_main.app()

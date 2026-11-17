@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import attr_or_none
@@ -52,12 +53,15 @@ class ExaBackend:
 
 def _load_exa_type() -> _ExaType:
     try:
-        from exa_py import Exa
+        module = import_module("exa_py")
     except ImportError as exc:
         raise WebSearchError(
             "backend 'exa' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    return cast("_ExaType", Exa)
+    exa_type = cast("object | None", getattr(module, "Exa", None))
+    if exa_type is None:
+        raise WebSearchError("exa backend is unavailable")
+    return cast("_ExaType", exa_type)
 
 
 def _normalize_results(response: _ExaSearchResponse) -> list[SearchResult]:
@@ -79,9 +83,10 @@ def _object_payload(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
         return value
     try:
-        return as_object_dict(attr_or_none(value, "__dict__"))
+        payload = cast("dict[str, object]", vars(value))
     except TypeError:
         return {}
+    return payload
 
 
 def _string_value(payload: Mapping[str, object], *keys: str) -> str:

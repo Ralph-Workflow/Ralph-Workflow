@@ -5,8 +5,6 @@ PARALLEL_DISPLAY_BUFFER_SIZE: int = 1000
 
 
 class RingBuffer:
-    __slots__ = ("_buf", "_dropped_count", "_lock")
-
     def __init__(self, maxsize: int) -> None:
         self._buf: collections.deque[str] = collections.deque(maxlen=maxsize)
         self._lock = threading.Lock()

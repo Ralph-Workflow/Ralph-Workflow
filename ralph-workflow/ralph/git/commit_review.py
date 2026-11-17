@@ -109,8 +109,10 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
             if _is_recognized_secret_name(PurePosixPath(pattern.strip().replace("\\", "/")).name)
         ]
         if sensitive_patterns:
-            tracked_raw: object = route_git_method(repo, "ls_files", ("--cached", "-z"))
-            tracked_output = "" if not isinstance(tracked_raw, str) else tracked_raw
+            tracked_output = cast(
+                "str",
+                route_git_method(repo, "ls_files", ("--cached", "-z")),
+            )
             tracked: list[str] = [path for path in tracked_output.split("\0") if path]
             tracked_secrets: list[str] = [
                 path

@@ -1,5 +1,59 @@
 from __future__ import annotations
 
-from ralph.agents.invoke._agent_invocation_error import BrokenAgentExitError
+from typing import Literal
+
+from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
+from ralph.recovery.typed_signal import TypedSignal
+
+_BrokenAgentReason = Literal["no_output", "prompt_echo", "no_llm_activity"]
+_VALID_REASONS = frozenset({"no_output", "prompt_echo", "no_llm_activity"})
+
+
+class BrokenAgentExitError(AgentInvocationError):
+    __slots__ = (
+        "elapsed_seconds",
+        "grace_seconds",
+        "reason",
+        "skip_same_agent_retries",
+    )
+
+    def __init__(
+        self,
+        agent_name: str,
+        *,
+        reason: _BrokenAgentReason,
+        elapsed_seconds: float | None = None,
+        grace_seconds: float | None = None,
+        returncode: int = 0,
+        stderr: str = "",
+    ) -> None:
+        if reason not in _VALID_REASONS:
+            msg = f"unsupported broken-agent reason: {reason!r}"
+            raise ValueError(msg)
+        self.skip_same_agent_retries = True
+        self.reason = reason
+        self.elapsed_seconds = elapsed_seconds
+        self.grace_seconds = grace_seconds
+        context = {
+            "no_output": "no meaningful LLM output",
+            "prompt_echo": "only prompt-echo output",
+            "no_llm_activity": "no meaningful LLM activity",
+        }[reason]
+        super().__init__(
+            agent_name,
+            returncode,
+            stderr
+            or f"agent appears broken: {context}; check credentials or provider availability",
+        )
+
+    typed_signal_provider_originated: bool = False
+
+    @property
+    def typed_signal(self) -> TypedSignal:
+        return TypedSignal(
+            name=type(self).__name__,
+            provider_originated=self.reason == "prompt_echo",
+        )
+
 
 __all__ = ["BrokenAgentExitError"]

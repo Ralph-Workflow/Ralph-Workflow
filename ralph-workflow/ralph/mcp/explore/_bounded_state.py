@@ -9,8 +9,6 @@ ValueT = TypeVar("ValueT")
 
 
 class BoundedKeyValueStore(MutableMapping[KeyT, ValueT]):
-    __slots__ = ("_entries",)
-
     def __init__(self) -> None:
         self._entries: deque[tuple[KeyT, ValueT]] = deque(maxlen=64)
 

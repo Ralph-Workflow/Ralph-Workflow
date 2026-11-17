@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph._typed_attrs import attr_or_none
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
@@ -14,6 +14,8 @@ from ralph.workspace._shared_awareness import SharedAwarenessSidecar
 from ralph.workspace.awareness import awareness_for_workspace
 
 if TYPE_CHECKING:
+    from queue import Queue
+
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke.watchdog_observer import (
         WatchObserverFactory,

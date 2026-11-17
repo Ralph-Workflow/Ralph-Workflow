@@ -19,23 +19,8 @@ class _ResetScopeState:
     scope: str | None = None
 
 
-class _ResetScopeCoordinator:
-    __slots__ = ("_lock", "_state")
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._state = _ResetScopeState()
-
-    @property
-    def lock(self) -> threading.Lock:
-        return self._lock
-
-    @property
-    def state(self) -> _ResetScopeState:
-        return self._state
-
-
-_RESET_SCOPE = _ResetScopeCoordinator()
+_ACTIVE_RESET_STATE = _ResetScopeState()
+_RESET_SCOPE_LOCK = threading.Lock()
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -239,16 +224,16 @@ def scoped_reset_tool_registry_callback(
         record_runtime_event("mcp_operation", "reset_tool_registry")
         if recorder is not None:
             recorder(scope_key)
-        with _RESET_SCOPE.lock:
-            if _RESET_SCOPE.state.scope is not None:
+        with _RESET_SCOPE_LOCK:
+            if _ACTIVE_RESET_STATE.scope is not None:
                 return None
-            _RESET_SCOPE.state.scope = scope_key
+            _ACTIVE_RESET_STATE.scope = scope_key
         try:
             reset_fn = cast("Callable[[], object]", reset_tool_registry_obj)
             return reset_fn()
         finally:
-            with _RESET_SCOPE.lock:
-                _RESET_SCOPE.state.scope = None
+            with _RESET_SCOPE_LOCK:
+                _ACTIVE_RESET_STATE.scope = None
 
     return reset
 

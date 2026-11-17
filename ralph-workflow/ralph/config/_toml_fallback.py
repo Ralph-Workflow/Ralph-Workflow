@@ -17,6 +17,8 @@ _MAX_FALLBACK_WARNING_REGISTRY_ENTRIES = 256
 
 _FALLBACK_WARNING_REGISTRY: dict[tuple[Path, str | type[BaseException]], None] = {}
 
+_CONFIG_PARSE_ERROR_ATTR = "config_parse_error"
+
 
 @dataclass(frozen=True)
 class ConfigParseError:
@@ -41,7 +43,7 @@ def _attach_config_parse_error(exc: BaseException, file: Path | str) -> None:
     chain = _cause_chain(exc)
     payload = config_parse_error(file, chain[-1])
     try:
-        object.__setattr__(exc, "config_parse_error", payload)
+        setattr(exc, _CONFIG_PARSE_ERROR_ATTR, payload)
     except (AttributeError, TypeError):
         return
 
@@ -49,16 +51,13 @@ def _attach_config_parse_error(exc: BaseException, file: Path | str) -> None:
 def config_parse_error_of(exc: BaseException) -> ConfigParseError | None:
     chain = _cause_chain(exc)
     for entry in chain:
-        payload: object = read_attr(entry, "config_parse_error", None)
+        payload: object = getattr(entry, _CONFIG_PARSE_ERROR_ATTR, None)
         if isinstance(payload, ConfigParseError):
             return payload
     for entry in chain:
-        file: object = read_attr(entry, "file", None)
-        match file:
-            case str() | Path():
-                return config_parse_error(file, chain[-1])
-            case _:
-                continue
+        file: object = getattr(entry, "file", None)
+        if isinstance(file, (str, Path)):
+            return config_parse_error(file, chain[-1])
     return None
 
 
@@ -68,22 +67,19 @@ def reset_fallback_warning_registry() -> None:
 
 def _format_error_detail(exc: BaseException) -> str:
     exc_msg = str(exc)
-    lineno: object = read_attr(exc, "lineno", None)
-    colno: object = read_attr(exc, "colno", None)
-    match (lineno, colno):
-        case (int(), int()):
-            has_line = "line" in exc_msg.lower()
-            has_col = "column" in exc_msg.lower() or "col" in exc_msg.lower()
-            if not has_line and not has_col:
-                return f"{exc_msg} (line {lineno}, column {colno})"
-            if not has_line:
-                return f"{exc_msg} (line {lineno})"
-            if not has_col:
-                return f"{exc_msg} (column {colno})"
-        case (int(), _) if "line" not in exc_msg.lower():
+    lineno: object = getattr(exc, "lineno", None)
+    colno: object = getattr(exc, "colno", None)
+    if isinstance(lineno, int) and isinstance(colno, int):
+        has_line = "line" in exc_msg.lower()
+        has_col = "column" in exc_msg.lower() or "col" in exc_msg.lower()
+        if not has_line and not has_col:
+            return f"{exc_msg} (line {lineno}, column {colno})"
+        if not has_line:
             return f"{exc_msg} (line {lineno})"
-        case _:
-            pass
+        if not has_col:
+            return f"{exc_msg} (column {colno})"
+    elif isinstance(lineno, int) and "line" not in exc_msg.lower():
+        return f"{exc_msg} (line {lineno})"
     return exc_msg
 
 

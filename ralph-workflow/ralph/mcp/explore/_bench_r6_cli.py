@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from typing import Final
 
 from ralph.mcp.explore._bench_r6_metrics import (
     _R6_3_WORKLOADS,
@@ -134,18 +135,24 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_DEFAULT_ARGS: Final[tuple[tuple[str, object], ...]] = (
+    ("workloads", ",".join(_R6_3_WORKLOADS)),
+    ("out", None),
+    ("capture_baseline", None),
+    ("validate_baseline", None),
+    ("validate_report", None),
+    ("baseline", None),
+    ("targets", None),
+    ("list_workloads", False),
+    ("repeat", 1),
+    ("post", None),
+)
+
+
 def _empty_args() -> _BenchArgs:
     args = _BenchArgs()
-    args.workloads = ",".join(_R6_3_WORKLOADS)
-    args.out = None
-    args.capture_baseline = None
-    args.validate_baseline = None
-    args.validate_report = None
-    args.baseline = None
-    args.targets = None
-    args.list_workloads = False
-    args.repeat = 1
-    args.post = None
+    for field, value in _DEFAULT_ARGS:
+        setattr(args, field, value)
     return args
 
 

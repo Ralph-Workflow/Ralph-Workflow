@@ -3,8 +3,12 @@ from __future__ import annotations
 import base64
 import json
 import threading
-from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping, Sequence
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 import httpx
 
@@ -37,8 +41,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class HttpUpstreamClient:
-    __slots__ = ("_caller", "_server")
-
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -265,8 +267,19 @@ def _normalize_media_block(
         artifact_id = new_artifact_id()
         if _workspace is not None:
             try:
-                from ralph.mcp.tools.workspace._media_io import write_durable_media_cache
-                from ralph.mcp.tools.workspace._media_session import _workspace_artifact_loader
+                _media_io_mod: ModuleType = import_module("ralph.mcp.tools.workspace._media_io")
+                _media_session_mod: ModuleType = import_module(
+                    "ralph.mcp.tools.workspace._media_session"
+                )
+
+                write_durable_media_cache = cast(
+                    "Callable[[object, str, bytes], str]",
+                    _media_io_mod.write_durable_media_cache,
+                )
+                _workspace_artifact_loader = cast(
+                    "Callable[[object, str, str], Callable[[], bytes | None]]",
+                    _media_session_mod._workspace_artifact_loader,
+                )
 
                 cache_path = write_durable_media_cache(_workspace, artifact_id, raw_bytes)
                 if cache_path:
@@ -325,7 +338,7 @@ def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> l
 def carries_upstream_media_blocks(content: object) -> bool:
     if content is None:
         return False
-    if not (any(isinstance(content, _t) for _t in (list, tuple))):
+    if not isinstance(content, (list, tuple)):
         return True
     for block in as_sequence(content):
         if not isinstance(block, dict):

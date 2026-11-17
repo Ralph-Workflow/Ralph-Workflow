@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from urllib.parse import quote
 
 from ._child_part import OpenCodeChildPart, part_kind_from_data
@@ -74,20 +74,19 @@ class SqliteOpenCodeChildPartSource:
         if conn is None:
             return []
         try:
-            fetched: object = conn.execute(
-                _CHILD_PART_QUERY,
-                (parent_session_id, _MAX_LINEAGE_DEPTH, since_ms, _FETCH_LIMIT),
-            ).fetchall()
+            rows = cast(
+                "list[tuple[object, ...]]",
+                conn.execute(
+                    _CHILD_PART_QUERY,
+                    (parent_session_id, _MAX_LINEAGE_DEPTH, since_ms, _FETCH_LIMIT),
+                ).fetchall(),
+            )
         except sqlite3.Error:
             self.close()
             self._retry_after = self._monotonic() + _RECONNECT_BACKOFF_SECONDS
             return []
-        if not isinstance(fetched, list):
-            return []
         parts: list[OpenCodeChildPart] = []
-        for row in fetched:
-            if not isinstance(row, tuple):
-                continue
+        for row in rows:
             part = _row_to_part(row)
             if part is not None:
                 parts.append(part)

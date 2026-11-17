@@ -15,7 +15,6 @@ from ralph.mcp.explore._bench_types import (
     FlowTiming,
     ScriptedCall,
 )
-from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore.store import ExploreStore
 from ralph.mcp.tools.tool_content import ToolContent
 from ralph.workspace.fs import FsWorkspace
@@ -103,7 +102,7 @@ def gate_product_baseline(
     group_limits: dict[str, float] = {}
     for group, _tools in REPRESENTATIVE_FLOW_GROUPS:
         raw_value: object = raw_limits.get(group)
-        if not is_int_or_float(raw_value):
+        if not isinstance(raw_value, (int, float)) or isinstance(raw_value, bool):
             return (f"response_limits_ms.{group} must be a positive number",)
         group_limits[group] = float(raw_value)
     failures: list[str] = []
@@ -133,7 +132,7 @@ def flow_limits_seconds(limits: Mapping[str, object]) -> dict[str, float]:
     result: dict[str, float] = {}
     for group, tools in REPRESENTATIVE_FLOW_GROUPS:
         raw_value: object = raw_limits.get(group)
-        if is_int_or_float(raw_value):
+        if isinstance(raw_value, (int, float)) and not isinstance(raw_value, bool):
             result.update(dict.fromkeys(tools, float(raw_value) / 1000.0))
     return result
 

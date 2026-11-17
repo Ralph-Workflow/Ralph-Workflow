@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, Unpack
-
-from ralph.config import _env as config_env
 
 from .models import (
     Architecture,
@@ -82,7 +81,7 @@ def detect_environment(
     cgroup_text: str | None = None,
     proc_root: Path = Path("/proc"),
 ) -> EnvironmentInfo:
-    env_map = env or config_env.environ()
+    env_map = env or os.environ
     detected_os = os_name or detect_operating_system()
     normalized_release = _normalize(release or platform.release())
     cgroup = (

@@ -5,9 +5,10 @@ import secrets
 import shutil
 import uuid
 from contextlib import ExitStack, suppress
+from importlib import import_module
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard, Unpack
+from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, cast
 
 from loguru import logger
 from rich.text import Text
@@ -23,7 +24,6 @@ from ralph.cli.commands._run_start_setup import (
     run_start_retention_sweep,
     sync_shipped_skills,
 )
-from ralph.config._env import environ
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
@@ -85,31 +85,25 @@ if TYPE_CHECKING:
             **kwargs: object,
         ) -> int: ...
 
+    class _RunnerModule(Protocol):
+        run: _RunnerFunc
+
 
 _state = _RunFuncState()
 
 
-def _is_runner_func(value: object) -> TypeGuard[_RunnerFunc]:
-    return callable(value)
-
-
 def _get_run_func() -> _RunnerFunc | None:
-    current = _state.run_func
-    if current is not _RUN_FUNC_UNSET:
-        if current is None:
-            return None
-        if _is_runner_func(current):
-            return current
-        raise TypeError("expected callable pipeline run function")
+    if _state.run_func is not _RUN_FUNC_UNSET:
+        return cast("_RunnerFunc | None", _state.run_func)
 
     try:
-        from ralph.pipeline.runner import run as run_func
+        module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
     except ImportError:
         _state.run_func = None
         return None
 
-    _state.run_func = run_func
-    return run_func
+    _state.run_func = module.run
+    return module.run
 
 
 ConfigOverrides = dict[str, object]
@@ -137,9 +131,8 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
 
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
-    from ralph.pipeline.runner import validate_custom_mcp_servers as validate
-
-    return validate(workspace_root)
+    module = import_module("ralph.pipeline.runner")
+    return cast("int", module.validate_custom_mcp_servers(workspace_root))
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
@@ -175,7 +168,7 @@ class RunPipelineRequest(NamedTuple):
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = resolve_effective_prompt_path(workspace_root, environ())
+    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
     if not prompt_path.exists() or not product_criteria_path.exists():
         return False
@@ -304,14 +297,6 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
     )
 
 
-def _as_policy_bundle(value: object) -> PolicyBundle:
-    from ralph.policy.models import PolicyBundle as PolicyBundleModel
-
-    if not isinstance(value, PolicyBundleModel):
-        raise TypeError(f"expected PolicyBundle, got {type(value).__name__}")
-    return value
-
-
 def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
     validate_drain_contracts(policy_bundle)
 
@@ -372,7 +357,7 @@ def _run_preflight_checks(
 ) -> int:
     display = resolve_active_display(None, display_context)
     if request.workspace_scope is not None:
-        prompt_path = resolve_effective_prompt_path(request.workspace_scope.root, environ())
+        prompt_path = resolve_effective_prompt_path(request.workspace_scope.root, os.environ)
         agent_dir = request.workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
             _print_not_initialized_panel(display_context=display_context)
@@ -391,7 +376,7 @@ def _run_preflight_checks(
             return _EXIT_PREFLIGHT
 
     if request.policy_bundle is not None:
-        loaded_policy_bundle = _as_policy_bundle(request.policy_bundle)
+        loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:

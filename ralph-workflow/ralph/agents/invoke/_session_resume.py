@@ -49,7 +49,9 @@ def fresh_session_options(
     opts: InvokeOptions,
     *,
     prior_session_id: str | None = None,
-    workspace_monitor_factory: object = _INVOKE_OPTS_UNSET,
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None | object
+    ) = _INVOKE_OPTS_UNSET,
 ) -> InvokeOptions:
     del prior_session_id
     if workspace_monitor_factory is _INVOKE_OPTS_UNSET:

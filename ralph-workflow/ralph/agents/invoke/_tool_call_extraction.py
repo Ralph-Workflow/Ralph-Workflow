@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+from typing import cast
 
 from ralph.checked_accessors import as_object_dict
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -63,12 +64,12 @@ def _parse_json_object(raw: str) -> dict[str, object] | None:
     if stripped.startswith("data:"):
         stripped = stripped[5:].strip()
     try:
-        parsed: object = json.loads(stripped, strict=False)
+        parsed = cast("object", json.loads(stripped, strict=False))
     except (json.JSONDecodeError, ValueError):
         return None
     if not isinstance(parsed, dict):
         return None
-    return _require_str_object_dict(parsed)
+    return cast("dict[str, object]", parsed)
 
 
 def _extract_claude_message_tool_use(obj: dict[str, object]) -> dict[str, object] | None:
@@ -77,7 +78,7 @@ def _extract_claude_message_tool_use(obj: dict[str, object]) -> dict[str, object
     message = obj.get("message")
     if not isinstance(message, dict):
         return None
-    content = _require_str_object_dict(message).get("content")
+    content = cast("dict[str, object]", message).get("content")
     if not isinstance(content, list):
         return None
     blocks: list[dict[str, object]] = []
@@ -117,10 +118,10 @@ def _extract_plain_text_tool_call(raw: str) -> tuple[str, dict[str, object]] | N
 def _unwrap_stream_event_envelope(obj: dict[str, object]) -> dict[str, object]:
     event = obj.get("event")
     if isinstance(event, dict):
-        inner_obj = _require_str_object_dict(event)
+        inner_obj = cast("dict[str, object]", event)
         content_block = inner_obj.get("content_block")
         if isinstance(content_block, dict):
-            inner_obj = _require_str_object_dict(content_block)
+            inner_obj = cast("dict[str, object]", content_block)
         return inner_obj
     step_update = obj.get("step_update")
     if isinstance(step_update, dict):
@@ -129,14 +130,14 @@ def _unwrap_stream_event_envelope(obj: dict[str, object]) -> dict[str, object]:
             merged: dict[str, object] = dict(tool_info)
             merged.setdefault("tool_name", step_update.get("tool_name", merged.get("name")))
             return merged
-        return _require_str_object_dict(step_update)
+        return cast("dict[str, object]", step_update)
     return obj
 
 
 def _unwrap_gemini_function_call(obj: dict[str, object]) -> dict[str, object] | None:
     function_call = obj.get("function_call")
     if isinstance(function_call, dict):
-        unwrapped = dict(_require_str_object_dict(function_call))
+        unwrapped = dict(cast("dict[str, object]", function_call))
         unwrapped.setdefault("type", "function_call")
         return unwrapped
     candidates = obj.get("candidates")
@@ -149,14 +150,14 @@ def _unwrap_gemini_function_call(obj: dict[str, object]) -> dict[str, object] | 
                 if isinstance(parts, list):
                     for part in parts:
                         if isinstance(part, dict) and isinstance(part.get("function_call"), dict):
-                            unwrapped = dict(_require_str_object_dict(part["function_call"]))
+                            unwrapped = dict(cast("dict[str, object]", part["function_call"]))
                             unwrapped.setdefault("type", "function_call")
                             return unwrapped
     parts = obj.get("parts")
     if isinstance(parts, list):
         for part in parts:
             if isinstance(part, dict) and isinstance(part.get("function_call"), dict):
-                unwrapped = dict(_require_str_object_dict(part["function_call"]))
+                unwrapped = dict(cast("dict[str, object]", part["function_call"]))
                 unwrapped.setdefault("type", "function_call")
                 return unwrapped
     return None
@@ -171,16 +172,16 @@ def _unwrap_tool_calls_list(obj: dict[str, object]) -> dict[str, object] | None:
         return None
     func = first.get("function")
     if isinstance(func, dict):
-        unwrapped = dict(_require_str_object_dict(func))
+        unwrapped = dict(cast("dict[str, object]", func))
         unwrapped.setdefault("type", "function_call")
         args_str = unwrapped.get("arguments")
         if isinstance(args_str, str):
             with contextlib.suppress(json.JSONDecodeError, ValueError):
-                decoded: object = json.loads(args_str)
+                decoded = cast("object", json.loads(args_str))
                 if isinstance(decoded, dict):
-                    unwrapped["arguments"] = _require_str_object_dict(decoded)
+                    unwrapped["arguments"] = cast("dict[str, object]", decoded)
         return unwrapped
-    return _require_str_object_dict(first)
+    return cast("dict[str, object]", first)
 
 
 def _unwrap_tool_use_envelope(obj: dict[str, object]) -> dict[str, object]:
@@ -188,11 +189,11 @@ def _unwrap_tool_use_envelope(obj: dict[str, object]) -> dict[str, object]:
         return _unwrap_stream_event_envelope(obj)
     content_block = obj.get("content_block")
     if obj.get("type") == "content_block_start" and isinstance(content_block, dict):
-        return _require_str_object_dict(content_block)
+        return cast("dict[str, object]", content_block)
     for key in ("assistantMessageEvent", "item"):
         inner = obj.get(key)
         if isinstance(inner, dict):
-            return _require_str_object_dict(inner)
+            return cast("dict[str, object]", inner)
     gemini_func = _unwrap_gemini_function_call(obj)
     if gemini_func is not None:
         return gemini_func
@@ -245,7 +246,7 @@ def _resolve_tool_name_and_args(
 ) -> tuple[str, dict[str, object]] | None:
     opencode_part = obj.get("part")
     if isinstance(opencode_part, dict):
-        return _resolve_opencode_part_tool_call(_require_str_object_dict(opencode_part))
+        return _resolve_opencode_part_tool_call(cast("dict[str, object]", opencode_part))
 
     cursor_tool_call = obj.get("tool_call")
     if isinstance(cursor_tool_call, dict):
@@ -253,11 +254,11 @@ def _resolve_tool_name_and_args(
 
     tool_call = obj.get("toolCall")
     if isinstance(tool_call, dict):
-        return _resolve_flat_tool_call(_require_str_object_dict(tool_call))
+        return _resolve_flat_tool_call(cast("dict[str, object]", tool_call))
 
     function_call = obj.get("function_call")
     if isinstance(function_call, dict):
-        return _resolve_flat_tool_call(_require_str_object_dict(function_call))
+        return _resolve_flat_tool_call(cast("dict[str, object]", function_call))
 
     return _resolve_flat_tool_call(obj)
 
@@ -288,7 +289,7 @@ def _resolve_flat_tool_call(
         args_field = obj.get("parameters")
     if not isinstance(args_field, dict):
         args_field = {}
-    return tool_name, _require_str_object_dict(args_field)
+    return tool_name, cast("dict[str, object]", args_field)
 
 
 def _resolve_opencode_part_tool_call(
@@ -308,12 +309,12 @@ def _resolve_opencode_part_tool_call(
     if not isinstance(args_field, dict):
         state = part.get("state")
         if isinstance(state, dict):
-            nested = _require_str_object_dict(state).get("input")
+            nested = cast("dict[str, object]", state).get("input")
             if isinstance(nested, dict):
                 args_field = nested
     if not isinstance(args_field, dict):
         args_field = {}
-    return tool_name, _require_str_object_dict(args_field)
+    return tool_name, cast("dict[str, object]", args_field)
 
 
 def _resolve_cursor_tool_call(
@@ -321,19 +322,19 @@ def _resolve_cursor_tool_call(
 ) -> tuple[str, dict[str, object]] | None:
     if not isinstance(cursor_tool_call, dict):
         return None
-    cursor_tool_call_dict = _require_str_object_dict(cursor_tool_call)
+    cursor_tool_call_dict = cast("dict[str, object]", cursor_tool_call)
     for key, value in cursor_tool_call_dict.items():
         if key in _CURSOR_TOOL_CALL_METADATA_KEYS:
             continue
         if not isinstance(value, dict):
             continue
-        payload = _require_str_object_dict(value)
+        payload = cast("dict[str, object]", value)
         args_field = payload.get("args")
         if not isinstance(args_field, dict):
             args_field = payload.get("input")
         if not isinstance(args_field, dict):
             args_field = {}
-        return key, _strip_per_call_keys(_require_str_object_dict(args_field))
+        return key, _strip_per_call_keys(cast("dict[str, object]", args_field))
     return None
 
 

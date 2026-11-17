@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 import tomli_w
 from loguru import logger

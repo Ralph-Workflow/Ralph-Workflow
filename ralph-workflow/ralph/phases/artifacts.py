@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import read_attr
 from ralph.mcp.artifacts.markdown import parse_and_validate, parse_markdown_document
-from ralph.mcp.artifacts.markdown import specs as _markdown_artifact_specs
 from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.pipeline.events import PhaseFailureEvent
-from ralph.policy.models import ArtifactContract, ArtifactsPolicy
 from ralph.recovery.classifier import FailureCategory
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.policy.models import ArtifactContract
     from ralph.workspace.protocol import Workspace
 
 
@@ -64,17 +64,13 @@ def load_phase_artifact(
     return _load_markdown_artifact(text, path, artifact_type=artifact_type)
 
 
-def _ensure_markdown_specs_loaded() -> None:
-    _ = _markdown_artifact_specs
-
-
 def _load_markdown_artifact(
     text: str,
     path: str,
     *,
     artifact_type: str | None = None,
 ) -> dict[str, object]:
-    _ensure_markdown_specs_loaded()
+    import_module("ralph.mcp.artifacts.markdown.specs")
     document, _ = parse_markdown_document(text)
     declared = document.frontmatter.get("type")
     if artifact_type is None:
@@ -129,7 +125,7 @@ def unwrap_phase_artifact_content(
         return dict(artifact)
     if not isinstance(content, dict):
         raise PhaseArtifactError("Artifact content must be a mapping")
-    return {str(key): value for key, value in content.items()}
+    return cast("dict[str, object]", content)
 
 
 def validate_artifact_on_disk(
@@ -176,21 +172,22 @@ def artifact_contract_for_drain(
     drain: str,
     artifact_type: str,
 ) -> ArtifactContract | None:
-    if isinstance(artifacts_policy, ArtifactsPolicy):
-        for contract in artifacts_policy.artifacts.values():
-            if contract.drain == drain and contract.artifact_type == artifact_type:
-                return contract
-        return None
-
-    raw_artifacts: object = read_attr(artifacts_policy, "artifacts", None)
+    raw_artifacts: object = getattr(artifacts_policy, "artifacts", None)
     if not isinstance(raw_artifacts, dict):
         return None
 
-    for contract in raw_artifacts.values():
-        if not isinstance(contract, ArtifactContract):
-            continue
-        if contract.drain == drain and contract.artifact_type == artifact_type:
-            return contract
+    artifacts = cast("dict[str, object]", raw_artifacts)
+
+    for contract in artifacts.values():
+        contract_drain = cast("object", getattr(contract, "drain", None))
+        contract_artifact_type = cast("object", getattr(contract, "artifact_type", None))
+        if (
+            isinstance(contract_drain, str)
+            and isinstance(contract_artifact_type, str)
+            and contract_drain == drain
+            and contract_artifact_type == artifact_type
+        ):
+            return cast("ArtifactContract", contract)
     return None
 
 

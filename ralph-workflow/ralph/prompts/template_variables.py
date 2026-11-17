@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import time as _time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
@@ -270,12 +270,15 @@ def _session_attribute(session: object, attribute: str) -> object | None:
 
 
 def _resolve_session_iterable(session: object, attribute: str) -> Sequence[str] | None:
-    candidate = _session_attribute(session, attribute)
+    try:
+        attributes = cast("dict[str, object]", vars(session))
+        candidate = attributes.get(attribute)
+    except TypeError:
+        return None
     if candidate is None:
         return None
     if callable(candidate):
-        retrieved: object = candidate()
-        candidate = retrieved
+        candidate = cast("Callable[[], object]", candidate)()
     if isinstance(candidate, str | bytes):
         return None
     if isinstance(candidate, Iterable):

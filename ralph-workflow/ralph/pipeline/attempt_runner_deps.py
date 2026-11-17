@@ -14,7 +14,7 @@ from ralph.pipeline.factory import PipelineDeps
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterator
 
     from ralph.agents.clock import Clock
     from ralph.recovery.canary_probe import ProbeOutcome
@@ -32,7 +32,6 @@ class _EffectRunner(Protocol):
         workspace_scope: WorkspaceScope,
         *,
         display_context: DisplayContext | None,
-        **opts: object,
     ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
 
 
@@ -65,31 +64,32 @@ def _forward_effect(
     pipeline_deps: PipelineDeps,
     workspace_scope: WorkspaceScope,
     display_context: DisplayContext | None,
-    extras: Mapping[str, object],
+    *positional: object,
+    **kwargs: object,
 ) -> object:
     return runner(
         target,
         config,
         pipeline_deps,
         workspace_scope,
+        *positional,
         display_context=display_context,
-        **extras,
+        **kwargs,
     )
 
 
 def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
-        *args: object,
+        *_args: object,
         **kwargs: object,
     ) -> object:
         if not isinstance(target, InvokeAgentEffect):
             raise TypeError("effect attempts require an InvokeAgentEffect target")
-        positional = list(args)
-        extras = dict(kwargs)
-        config = extras.pop("config", None)
-        pipeline_deps = extras.pop("pipeline_deps", None)
-        workspace_scope = extras.pop("workspace_scope", None)
+        positional = list(_args)
+        config = kwargs.pop("config", None)
+        pipeline_deps = kwargs.pop("pipeline_deps", None)
+        workspace_scope = kwargs.pop("workspace_scope", None)
         if config is None and positional:
             config = positional.pop(0)
         if pipeline_deps is None and positional:
@@ -97,8 +97,8 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
         if workspace_scope is None and positional:
             workspace_scope = positional.pop(0)
         display_context: DisplayContext | None = None
-        if "display_context" in extras:
-            candidate = extras.pop("display_context")
+        if "display_context" in kwargs:
+            candidate = kwargs.pop("display_context")
             if candidate is not None and not isinstance(candidate, DisplayContext):
                 raise TypeError("effect attempts require DisplayContext or None")
             display_context = candidate
@@ -110,8 +110,6 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             raise TypeError("effect attempts require WorkspaceScope")
         if display_context is not None and not isinstance(display_context, DisplayContext):
             raise TypeError("effect attempts require DisplayContext or None")
-        if positional:
-            raise TypeError("effect attempts do not accept extra positional arguments")
         return _forward_effect(
             runner,
             target,
@@ -119,7 +117,8 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             pipeline_deps,
             workspace_scope,
             display_context,
-            extras,
+            *positional,
+            **kwargs,
         )
 
     return _invoke

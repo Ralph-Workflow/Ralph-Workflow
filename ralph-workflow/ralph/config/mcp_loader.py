@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import copy
+from os import getenv
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import ValidationError
 
-from ralph.config._env import getenv
 from ralph.config._toml_fallback import load_optional_toml, validate_or_default
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.config.loader import deep_merge as _deep_merge
@@ -24,8 +24,6 @@ _MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "me
 
 
 class McpConfigError(SystemExit):
-    __slots__ = ("code", "message")
-
     def __init__(self, message: str, *, code: int = 1) -> None:
         super().__init__(code)
         self.message = message

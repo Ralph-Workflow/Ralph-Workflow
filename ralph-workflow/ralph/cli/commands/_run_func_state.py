@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.cli.commands.run import _RunnerFunc
+
 _RUN_FUNC_UNSET: object = object()
 
 
 class _RunFuncState:
-    __slots__ = ("run_func",)
-
     def __init__(self) -> None:
-        self.run_func: object = _RUN_FUNC_UNSET
+        self.run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
 
 
 __all__ = ["_RUN_FUNC_UNSET", "_RunFuncState"]

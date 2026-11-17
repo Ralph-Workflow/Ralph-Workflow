@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph._typed_attrs import read_attr
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
@@ -22,14 +21,6 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
 
 PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
-
-
-class _SubagentEmitHook(Protocol):
-    def __call__(self, line: AgentOutputLine, sink: Callable[[str], None], /) -> None: ...
-
-
-def _is_subagent_emit_hook(value: object) -> TypeGuard[_SubagentEmitHook]:
-    return callable(value)
 
 
 def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
@@ -49,23 +40,25 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     return {
         ActivityProvider.AGY: AgyParser,
         ActivityProvider.CLAUDE: ClaudeParser,
-        ActivityProvider.CLAUDE_INTERACTIVE: ClaudeInteractiveParser,
+        ActivityProvider.CLAUDE_INTERACTIVE: cast("type[AgentParser]", ClaudeInteractiveParser),
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
         ActivityProvider.CURSOR: CursorParser,
         ActivityProvider.GEMINI: GeminiParser,
-        ActivityProvider.NANOCODER: NanocoderParser,
-        ActivityProvider.PI: PiParser,
-        ActivityProvider.GENERIC: GenericParser,
+        ActivityProvider.NANOCODER: cast("type[AgentParser]", NanocoderParser),
+        ActivityProvider.PI: cast("type[AgentParser]", PiParser),
+        ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
     }
 
 
 def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
     if not PARSERS:
         PARSERS.update(_build_parsers())
-    from ralph.agents.parsers import GenericParser
+    parser_cls = PARSERS.get(provider)
+    if parser_cls is None:
+        from ralph.agents.parsers import GenericParser
 
-    parser_cls = PARSERS.get(provider, GenericParser)
+        parser_cls = cast("type[AgentParser]", GenericParser)
     return parser_cls()
 
 
@@ -116,15 +109,6 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
 
 
 class ActivityRouter:
-    __slots__ = (
-        "_buffer_factory",
-        "_buffers",
-        "_on_event",
-        "_parser_factory",
-        "_parsers",
-        "_raw_overflow_callback",
-    )
-
     def __init__(
         self,
         *,
@@ -216,12 +200,15 @@ class ActivityRouter:
         unit_id: str,
         raw_reference: str | None,
     ) -> None:
-        emit_hook: object = read_attr(parser, "emit_subagent_activity", None)
-        if not _is_subagent_emit_hook(emit_hook):
+        emit_hook: object = getattr(parser, "emit_subagent_activity", None)
+        if not callable(emit_hook):
             return
         captured: list[str] = []
         try:
-            emit_hook(out, captured.append)
+            cast(
+                "Callable[[AgentOutputLine, Callable[[str], None]], None]",
+                emit_hook,
+            )(out, captured.append)
         except (OSError, RuntimeError, ValueError, TypeError, AttributeError):
             return
         if not captured:

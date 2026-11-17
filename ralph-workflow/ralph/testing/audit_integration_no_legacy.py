@@ -376,7 +376,7 @@ def _exhaustive_match_violations(rel: str, tree: ast.Module) -> list[Violation]:
                     )
                     if cls_name in _SEALED_OUTCOME_CLASSES:
                         matched_classes.add(cls_name)
-                if isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
+                elif isinstance(pattern, ast.MatchAs) and pattern.pattern is None:
                     has_fallback = True
         if matched_classes and not has_fallback and matched_classes != _SEALED_OUTCOME_CLASSES:
             missing = sorted(_SEALED_OUTCOME_CLASSES - matched_classes)

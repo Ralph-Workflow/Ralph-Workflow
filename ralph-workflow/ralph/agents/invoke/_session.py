@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import cast
 
 from ralph.agents._session_markers import TURN_BOUNDARY_MARKER
 from ralph.agents.invoke._pty_helpers import _visible_tui_text
@@ -140,7 +141,7 @@ def _session_id_from_nested_meta(parsed: dict[str, object]) -> str | None:
 
 def _extract_transport_session_id_from_line(line: str) -> str | None:
     try:
-        parsed: object = json.loads(line)
+        parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
         return extract_transport_text_session_id(line.strip())
     if not isinstance(parsed, dict):

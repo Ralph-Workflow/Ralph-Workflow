@@ -87,12 +87,6 @@ def _decode_json_at(text: str, pos: int) -> tuple[object, int]:
     return value, end
 
 
-def _is_json_container(value: object) -> bool:
-    if isinstance(value, dict):
-        return True
-    return isinstance(value, list)
-
-
 def _redact_json_fragments(text: str) -> str:
     if not text:
         return text
@@ -103,7 +97,7 @@ def _redact_json_fragments(text: str) -> str:
         ch = text[i]
         if ch in {"{", "["}:
             parsed, end = _decode_json_at(text, i)
-            if parsed is not None and _is_json_container(parsed) and end > i:
+            if parsed is not None and isinstance(parsed, (dict, list)) and end > i:
                 try:
                     redacted_obj = _redact_json_values(parsed)
                     redacted_text = json.dumps(redacted_obj, ensure_ascii=False)

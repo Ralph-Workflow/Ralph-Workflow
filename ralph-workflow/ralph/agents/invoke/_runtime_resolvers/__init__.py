@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import sys
-from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
@@ -17,7 +17,6 @@ from ralph.agents.invoke._invoke_options import (
 )
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.agents.invoke._runtime_resolvers._agy_skills import project_agy_skill_roots
-from ralph.config._env import getenv
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -38,49 +37,12 @@ from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.transport.cursor import _mirror_cursor_home
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV, write_pi_mcp_extension
 from ralph.mcp.transport.private_config_root import prepare_private_config_root
-from ralph.process._spawn_env import child_env_for_spawn
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
-
-
-def _as_str_object_dict(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    return {key: item for key, item in value.items() if isinstance(key, str)}
-
-
-def _env_get(
-    base_env: Mapping[str, str] | None, key: str, default: str | None = None
-) -> str | None:
-    value = getenv(key, base_env)
-    return default if value is None else value
-
-
-class _GetenvFallbackMapping(Mapping[str, str]):
-    __slots__ = ("_base",)
-
-    def __init__(self, base: Mapping[str, str] | None) -> None:
-        self._base = base
-
-    def __getitem__(self, key: str) -> str:
-        value = getenv(key, self._base)
-        if value is None:
-            raise KeyError(key)
-        return value
-
-    def __iter__(self) -> Iterator[str]:
-        if self._base is None:
-            return iter(())
-        return iter(self._base)
-
-    def __len__(self) -> int:
-        return 0 if self._base is None else len(self._base)
-
-
-def _resolve_base_env(base_env: Mapping[str, str] | None) -> Mapping[str, str]:
-    return _GetenvFallbackMapping(base_env)
 
 
 @runtime_checkable
@@ -226,11 +188,7 @@ class RuntimeResolver(Protocol):
 
 
 def _invoke_module() -> _InvokeCompatibilitySeam:
-    module = sys.modules["ralph.agents.invoke"]
-    if not isinstance(module, _InvokeCompatibilitySeam):
-        msg = "ralph.agents.invoke missing compatibility seam"
-        raise TypeError(msg)
-    return module
+    return cast("_InvokeCompatibilitySeam", sys.modules["ralph.agents.invoke"])
 
 
 def _apply_upstream_env(
@@ -289,8 +247,8 @@ def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
     return extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
 
 
-def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str] | None) -> str | None:
-    return runtime_env.get(MCP_ENDPOINT_ENV) or _env_get(base_env, MCP_ENDPOINT_ENV)
+def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> str | None:
+    return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
 
 
 _CURSOR_AUTH_TOKEN_KEYS = frozenset(
@@ -304,9 +262,9 @@ def _read_valid_cursor_auth(source: Path) -> dict[str, object] | None:
         payload: object = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    credential_payload = _as_str_object_dict(payload)
-    if credential_payload is None:
+    if not isinstance(payload, dict):
         return None
+    credential_payload = cast("dict[str, object]", payload)
     if not any(
         isinstance(token := credential_payload.get(key), str) and token.strip()
         for key in _CURSOR_AUTH_TOKEN_KEYS
@@ -345,15 +303,13 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
                 ("cursorAuth/accessToken", "accessToken"),
                 ("cursorAuth/refreshToken", "refreshToken"),
             ):
-                row_obj: object = connection.execute(
-                    "SELECT value FROM ItemTable WHERE key = ?", (key,)
-                ).fetchone()
-                if (
-                    isinstance(row_obj, tuple)
-                    and row_obj
-                    and isinstance(token := row_obj[0], str)
-                    and token.strip()
-                ):
+                row = cast(
+                    "tuple[object, ...] | None",
+                    connection.execute(
+                        "SELECT value FROM ItemTable WHERE key = ?", (key,)
+                    ).fetchone(),
+                )
+                if row is not None and isinstance(token := row[0], str) and token.strip():
                     credentials[name] = token
     except (OSError, sqlite3.Error, ValueError):
         return None
@@ -372,7 +328,7 @@ class OpencodeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -415,7 +371,7 @@ class NanocoderRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -434,14 +390,14 @@ class NanocoderRuntimeResolver:
             always_allow=_canonical_http_mcp_tool_names(endpoint),
             unsafe_mode=unsafe_mode,
             workspace_path=workspace_path,
-            env=runtime_env or child_env_for_spawn(None),
+            env=runtime_env or dict(_env),
         )
         runtime_env["NANOCODER_MCPSERVERS"] = mcp_config
 
         _apply_upstream_env(
             _invoke_module().load_existing_nanocoder_upstream_servers(
                 workspace_path,
-                env=runtime_env or child_env_for_spawn(None),
+                env=runtime_env or dict(_env),
             )
             + env_upstreams,
             workspace_path,
@@ -468,7 +424,7 @@ class CodexRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)
@@ -522,7 +478,7 @@ class ClaudeRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         configured_depth = runtime_env.get("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH") or _env.get(
             "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "3"
@@ -589,7 +545,7 @@ class AgyRuntimeResolver:
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
 
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
@@ -644,7 +600,7 @@ class DefaultRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
 
@@ -670,7 +626,7 @@ class PiRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         endpoint = _get_endpoint(runtime_env, _env)
         runtime_env.pop(MCP_ENDPOINT_ENV, None)
@@ -700,7 +656,7 @@ class CursorRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         source_home = Path(_env.get("HOME", str(Path.home()))).expanduser()
         source_config_home = Path(
             _env.get("XDG_CONFIG_HOME") or source_home / ".config"
@@ -785,7 +741,7 @@ class KimiRuntimeResolver:
         master_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = _resolve_base_env(base_env)
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
         server_env: dict[str, str] = {}
         endpoint = _get_endpoint(runtime_env, _env)

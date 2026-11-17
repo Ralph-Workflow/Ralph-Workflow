@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Self
+from typing import TYPE_CHECKING, Literal, Self, cast
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -25,12 +25,12 @@ def _load_analysis_decision_vocabulary() -> frozenset[str]:
     artifacts_obj = data.get("artifacts", {})
     if not isinstance(artifacts_obj, dict):
         return frozenset()
-    artifacts = artifacts_obj
+    artifacts = cast("dict[str, object]", artifacts_obj)
     vocab: set[str] = set()
     for contract_obj in artifacts.values():
         if not isinstance(contract_obj, dict):
             continue
-        contract = contract_obj
+        contract = cast("dict[str, object]", contract_obj)
         drain = contract.get("drain", "")
         if not isinstance(drain, str) or not drain.endswith("_analysis"):
             continue

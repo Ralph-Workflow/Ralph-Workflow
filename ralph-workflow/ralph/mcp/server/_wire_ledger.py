@@ -60,17 +60,8 @@ _DROP_LOG_EVERY: Final[int] = 100
 _dropped_frames = itertools.count(1)
 
 _MAX_CACHED_INDEXES = 32
-
-
-class _IndexCache:
-    __slots__ = ("indexes", "lock")
-
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.indexes: OrderedDict[tuple[str, str], WireLedgerIndex] = OrderedDict()
-
-
-_INDEX_CACHE = _IndexCache()
+_INDEXES_LOCK = threading.Lock()
+_INDEXES: OrderedDict[tuple[str, str], WireLedgerIndex] = OrderedDict()
 
 
 def _ledger_path(workspace_root: Path, secret: str | None) -> Path:
@@ -279,7 +270,7 @@ def append_wire_record(
                 if time.monotonic() >= deadline:
                     _note_dropped_frame(method)
                     return None
-                threading.Event().wait(_LOCK_POLL_INTERVAL_S)
+                time.sleep(_LOCK_POLL_INTERVAL_S)
             except OSError as e:
                 raise WireLedgerIOError(
                     f"wire_ledger_io_error: lock contention or lock failure: {e}"
@@ -337,17 +328,17 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
 def _ledger_index(workspace_root: Path, secret: str) -> WireLedgerIndex:
     ledger_path = _ledger_path(workspace_root, secret)
     key = (str(ledger_path), hashlib.sha256(secret.encode()).hexdigest())
-    with _INDEX_CACHE.lock:
-        index = _INDEX_CACHE.indexes.get(key)
+    with _INDEXES_LOCK:
+        index = _INDEXES.get(key)
         if index is None:
             index = WireLedgerIndex(
                 ledger_path, lambda row, prior: expected_row_hmac(secret, row, prior)
             )
-            _INDEX_CACHE.indexes[key] = index
-            while len(_INDEX_CACHE.indexes) > _MAX_CACHED_INDEXES:
-                _INDEX_CACHE.indexes.popitem(last=False)
+            _INDEXES[key] = index
+            while len(_INDEXES) > _MAX_CACHED_INDEXES:
+                _INDEXES.popitem(last=False)
         else:
-            _INDEX_CACHE.indexes.move_to_end(key)
+            _INDEXES.move_to_end(key)
         return index
 
 

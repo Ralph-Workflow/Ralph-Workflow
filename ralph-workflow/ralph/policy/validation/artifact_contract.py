@@ -5,13 +5,31 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.policy.validation._policy_validation_error import ArtifactContractMismatchError
+from ralph.policy.validation._policy_validation_error import PolicyValidationError
 from ralph.skills._content import get_skill_content
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.phases.required_artifacts import RequiredArtifact
+
+
+class ArtifactContractMismatchError(PolicyValidationError):
+    def __init__(
+        self,
+        phase: str,
+        prompted_type: str | None,
+        graded_type: str,
+        message: str | None = None,
+    ) -> None:
+        self.phase = phase
+        self.prompted_type = prompted_type
+        self.graded_type = graded_type
+        detail = message or (
+            f"Phase '{phase}' artifact contract mismatch: prompted type is "
+            f"'{prompted_type}' but graded type is '{graded_type}'"
+        )
+        super().__init__(detail)
 
 
 _PROMPTED_ARTIFACT_PATTERNS: tuple[re.Pattern[str], ...] = (

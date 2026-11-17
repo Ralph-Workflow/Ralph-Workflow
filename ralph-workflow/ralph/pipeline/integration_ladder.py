@@ -729,45 +729,42 @@ def last_resort_wait_proof(
     for pool in pools:
         for agent in pool.agents:
             status = eligibility.agent_eligibility(pool.phase, agent)
-            match status:
-                case CoolingDown():
-                    proofs.append(
-                        _LastResortAgentProof(
-                            phase=pool.phase,
-                            agent=agent,
-                            tried=True,
-                            outcome="cooling_down",
-                            cooldown_until_ms=status.until_ms,
-                            reason=status.reason,
-                        )
+            if isinstance(status, CoolingDown):
+                proofs.append(
+                    _LastResortAgentProof(
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=True,
+                        outcome="cooling_down",
+                        cooldown_until_ms=status.until_ms,
+                        reason=status.reason,
                     )
-                case Spent():
-                    proofs.append(
-                        _LastResortAgentProof(
-                            phase=pool.phase,
-                            agent=agent,
-                            tried=True,
-                            outcome="spent",
-                            cooldown_until_ms=None,
-                            reason=status.reason,
-                        )
+                )
+            elif isinstance(status, Spent):
+                proofs.append(
+                    _LastResortAgentProof(
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=True,
+                        outcome="spent",
+                        cooldown_until_ms=None,
+                        reason=status.reason,
                     )
-                case _:
-                    reason = (
-                        None
-                        if status.is_eligible
-                        else eligibility.failure_reason(pool.phase, agent)
+                )
+            else:
+                reason = (
+                    None if status.is_eligible else eligibility.failure_reason(pool.phase, agent)
+                )
+                proofs.append(
+                    _LastResortAgentProof(
+                        phase=pool.phase,
+                        agent=agent,
+                        tried=False,
+                        outcome="eligible" if status.is_eligible else "unavailable",
+                        cooldown_until_ms=None,
+                        reason=reason,
                     )
-                    proofs.append(
-                        _LastResortAgentProof(
-                            phase=pool.phase,
-                            agent=agent,
-                            tried=False,
-                            outcome="eligible" if status.is_eligible else "unavailable",
-                            cooldown_until_ms=None,
-                            reason=reason,
-                        )
-                    )
+                )
     all_tried_and_unavailable = bool(proofs) and all(proof.tried for proof in proofs)
     durable = _wait_record(ledger.read())
     since_ms: int | None = None

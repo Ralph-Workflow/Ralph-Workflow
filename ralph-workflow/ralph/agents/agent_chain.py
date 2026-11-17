@@ -10,16 +10,6 @@ if TYPE_CHECKING:
 
 
 class AgentChain:
-    __slots__ = (
-        "agents",
-        "backoff_multiplier",
-        "current_index",
-        "max_backoff_ms",
-        "max_retries",
-        "retries",
-        "retry_delay_ms",
-    )
-
     def __init__(
         self,
         agents: list[str],

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -27,61 +28,24 @@ _WARN_CHANNEL = "rebase-conflict"
 _DIAGNOSIS_WARN_CHANNEL = "evidence-diagnosis"
 
 
+@dataclass
 class ResolutionStatusReporter:
-    __slots__ = (
-        "_last_emitted_at",
-        "action",
-        "agent_name",
-        "clock",
-        "display",
-        "initial_conflicted_count",
-        "interval_seconds",
-        "is_diagnosis",
-        "operation_display_state",
-        "round_cap",
-        "round_index",
-        "started_at",
-        "stop_cap",
-        "stop_index",
-        "target",
-        "unresolved_paths",
-    )
-
-    def __init__(
-        self,
-        display: object,
-        target: str,
-        round_index: int,
-        round_cap: int,
-        stop_index: int | None,
-        stop_cap: int | None,
-        clock: Callable[[], float],
-        interval_seconds: float,
-        started_at: float,
-        unresolved_paths: tuple[str, ...],
-        initial_conflicted_count: int | None = None,
-        agent_name: str | None = None,
-        _last_emitted_at: float | None = None,
-        is_diagnosis: bool = False,
-        action: object = None,
-        operation_display_state: str | None = None,
-    ) -> None:
-        self.display = display
-        self.target = target
-        self.round_index = round_index
-        self.round_cap = round_cap
-        self.stop_index = stop_index
-        self.stop_cap = stop_cap
-        self.clock = clock
-        self.interval_seconds = interval_seconds
-        self.started_at = started_at
-        self.unresolved_paths = unresolved_paths
-        self.initial_conflicted_count = initial_conflicted_count
-        self.agent_name = agent_name
-        self._last_emitted_at = _last_emitted_at
-        self.is_diagnosis = is_diagnosis
-        self.action = action
-        self.operation_display_state = operation_display_state
+    display: object
+    target: str
+    round_index: int
+    round_cap: int
+    stop_index: int | None
+    stop_cap: int | None
+    clock: Callable[[], float]
+    interval_seconds: float
+    started_at: float
+    unresolved_paths: tuple[str, ...]
+    initial_conflicted_count: int | None = None
+    agent_name: str | None = None
+    _last_emitted_at: float | None = None
+    is_diagnosis: bool = False
+    action: object = None
+    operation_display_state: str | None = None
 
     def observe(self, event: object) -> None:
         now = self.clock()
@@ -294,8 +258,8 @@ def restore_status_bar(display: object, model: object | None) -> None:
 
 
 def _update_status_bar(display: object, model: object) -> None:
-    update: object = getattr(display, "update_status_bar", None)
-    if callable(update):
+    update = cast("Callable[[object], None] | None", getattr(display, "update_status_bar", None))
+    if update is not None:
         update(model)
 
 
@@ -311,6 +275,8 @@ def emit_conflict_phase_line(
     display: object, message: str, *, channel: str = _WARN_CHANNEL
 ) -> None:
     with contextlib.suppress(Exception):
-        emit: object = getattr(display, "emit_warn_line", None)
-        if callable(emit):
+        emit = cast(
+            "Callable[[str, str, str], None] | None", getattr(display, "emit_warn_line", None)
+        )
+        if emit is not None:
             emit("run", channel, message)

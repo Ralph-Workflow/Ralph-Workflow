@@ -9,6 +9,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.integration_remote_actions import RemoteOps
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -25,7 +26,7 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
     return result.stdout.strip() or None
 
 
-class _DefaultRemoteClient:
+class _DefaultRemoteClient(RemoteOps):
     def refresh_target(
         self,
         repo_root: Path,

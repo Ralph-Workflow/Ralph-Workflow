@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Final
+from typing import Final, cast
 
 from ralph.checked_accessors import as_mapping
 

@@ -120,16 +120,14 @@ def resolve_conflicted_rebase(
     blocked_reason: str | None = None
     with conflict_status_bar_session(display, root):
         from ralph.pipeline._stop_resolution_entry import (
+            DeferredStopResolution,
             attempt_stop_resolution,
             production_rebase_runner,
             resolution_gate_record,
         )
         from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
         from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
-        from ralph.pipeline.stop_resolution_blocked import (
-            DeferredStopResolution,
-            StopResolutionBlocked,
-        )
+        from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
         outcome = attempt_stop_resolution(
@@ -147,30 +145,32 @@ def resolve_conflicted_rebase(
         )
         res: StopResolutionOutcome
         deferred_cause = ResolutionFailureCause.NONE
-        match outcome:
-            case StopResolutionBlocked():
-                blocked_reason = outcome.reason
-                deferred_cause = (
-                    outcome.failure_cause
-                    if isinstance(outcome, DeferredStopResolution)
-                    else ResolutionFailureCause.NONE
-                )
-                res = RetryLaterOutcome(on_change=outcome.reason)
-            case RebaseResolutionResult():
-                blocked_reason = None
-                res = outcome.outcome
-            case (
-                ResolvedOutcome()
-                | WaitingOutcome()
-                | RetryLaterOutcome()
-                | NextStrategyOutcome()
-                | ConfigFailureOutcome()
-                | UnknownOutcome()
-            ):
-                blocked_reason = None
-                res = outcome
-            case _:
-                raise TypeError("rebase stop resolution returned an invalid result")
+        if isinstance(outcome, StopResolutionBlocked):
+            blocked_reason = outcome.reason
+            deferred_cause = (
+                outcome.failure_cause
+                if isinstance(outcome, DeferredStopResolution)
+                else ResolutionFailureCause.NONE
+            )
+            res = RetryLaterOutcome(on_change=outcome.reason)
+        elif isinstance(outcome, RebaseResolutionResult):
+            blocked_reason = None
+            res = outcome.outcome
+        elif isinstance(
+            outcome,
+            (
+                ResolvedOutcome,
+                WaitingOutcome,
+                RetryLaterOutcome,
+                NextStrategyOutcome,
+                ConfigFailureOutcome,
+                UnknownOutcome,
+            ),
+        ):
+            blocked_reason = None
+            res = outcome
+        else:
+            raise TypeError("rebase stop resolution returned an invalid result")
     resolution_completed = isinstance(res, ResolvedOutcome)
     if resolution_completed and not _merge_mod.set_resolving_rebase(root, resolving=False):
         logger.warning(
@@ -257,13 +257,11 @@ def _rebase_run_result(
     from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
 
     outcome_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
-    match outcome:
-        case ResolvedOutcome() | RetryLaterOutcome() if outcome.failure_cause is not None:
+    if isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
+        if outcome.failure_cause is not None:
             outcome_cause = outcome.failure_cause
-        case ConfigFailureOutcome():
-            outcome_cause = ResolutionFailureCause.CONFIG_FAILURE
-        case _:
-            pass
+    elif isinstance(outcome, ConfigFailureOutcome):
+        outcome_cause = ResolutionFailureCause.CONFIG_FAILURE
     failure_cause: ResolutionFailureCause = (
         record.last_failure_cause
         if record is not None and record.last_failure_cause is not ResolutionFailureCause.NONE

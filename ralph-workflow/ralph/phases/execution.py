@@ -4,7 +4,7 @@ import json
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from loguru import logger
 
@@ -87,7 +87,8 @@ def _load_pre_execution_snapshot(workspace: Workspace, phase: str) -> dict[str, 
                 workspace.remove(snap_path)
             parsed: object = json.loads(raw)
             if isinstance(parsed, dict):
-                return {str(k): str(v) for k, v in parsed.items()}
+                parsed_dict = cast("dict[object, object]", parsed)
+                return {str(k): str(v) for k, v in parsed_dict.items()}
     return None
 
 

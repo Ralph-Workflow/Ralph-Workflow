@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import dataclasses
+import importlib
 import io
 import logging
 import secrets
@@ -13,7 +14,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import IO, TYPE_CHECKING, Literal, TypeGuard
+from typing import IO, TYPE_CHECKING, Final, Literal, TypeGuard
 
 import psutil
 
@@ -76,20 +77,20 @@ def _kill_issuer_for_cause(cause: KillCause | None) -> ProcessTerminationIssuer:
     return ProcessTerminationIssuer.TOOL_TIMEOUT
 
 
+def _hook_registrar(module: object, attribute: str) -> _HookRegistrar:
+    registrar: object = getattr(module, attribute)
+    if not _is_hook_registrar(registrar):
+        raise TypeError(f"{attribute} is not a hook registrar callable")
+    return registrar
+
+
 def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
     cached_owner_loss = _runtime_hook_cache.get("owner_loss")
     cached_shutdown = _runtime_hook_cache.get("shutdown")
     if cached_owner_loss is None or cached_shutdown is None:
-        from ralph.mcp.server import runtime as runtime_mod
-
-        owner_loss: object = runtime_mod.register_owner_loss_hook
-        shutdown: object = runtime_mod.register_shutdown_hook
-        if not _is_hook_registrar(owner_loss):
-            raise TypeError("register_owner_loss_hook is not a hook registrar callable")
-        if not _is_hook_registrar(shutdown):
-            raise TypeError("register_shutdown_hook is not a hook registrar callable")
-        cached_owner_loss = owner_loss
-        cached_shutdown = shutdown
+        runtime_mod = importlib.import_module("ralph.mcp.server.runtime")
+        cached_owner_loss = _hook_registrar(runtime_mod, "register_owner_loss_hook")
+        cached_shutdown = _hook_registrar(runtime_mod, "register_shutdown_hook")
         _runtime_hook_cache["owner_loss"] = cached_owner_loss
         _runtime_hook_cache["shutdown"] = cached_shutdown
     return cached_owner_loss, cached_shutdown
@@ -812,15 +813,8 @@ class ExecJobRegistry:
             self._pm.shutdown_all_for_label("exec_job:")
 
 
-class _DefaultRegistryState:
-    __slots__ = ("holder", "lock")
-
-    def __init__(self) -> None:
-        self.holder: ExecJobRegistry | None = None
-        self.lock = threading.Lock()
-
-
-_DEFAULT_REGISTRY_STATE = _DefaultRegistryState()
+_DEFAULT_REGISTRY_HOLDER: list[ExecJobRegistry | None] = [None]
+_DEFAULT_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 def get_exec_job_registry(
@@ -832,10 +826,10 @@ def get_exec_job_registry(
     sample_interval_s: float = td.EXEC_LIVENESS_SAMPLE_INTERVAL_S,
     spill_dir: Path | None = None,
 ) -> ExecJobRegistry:
-    if _DEFAULT_REGISTRY_STATE.holder is None:
-        with _DEFAULT_REGISTRY_STATE.lock:
-            if _DEFAULT_REGISTRY_STATE.holder is None:
-                _DEFAULT_REGISTRY_STATE.holder = ExecJobRegistry(
+    if _DEFAULT_REGISTRY_HOLDER[0] is None:
+        with _DEFAULT_REGISTRY_LOCK:
+            if _DEFAULT_REGISTRY_HOLDER[0] is None:
+                _DEFAULT_REGISTRY_HOLDER[0] = ExecJobRegistry(
                     process_manager=process_manager,
                     clock=clock,
                     liveness_config=liveness_config,
@@ -843,15 +837,15 @@ def get_exec_job_registry(
                     sample_interval_s=sample_interval_s,
                     spill_dir=spill_dir,
                 )
-    reg = _DEFAULT_REGISTRY_STATE.holder
+    reg = _DEFAULT_REGISTRY_HOLDER[0]
     if reg is None:
         raise RuntimeError("ExecJobRegistry singleton cleared without lock")
     return reg
 
 
 def set_exec_job_registry(registry: ExecJobRegistry | None) -> None:
-    with _DEFAULT_REGISTRY_STATE.lock:
-        _DEFAULT_REGISTRY_STATE.holder = registry
+    with _DEFAULT_REGISTRY_LOCK:
+        _DEFAULT_REGISTRY_HOLDER[0] = registry
 
 
 def reset_exec_job_registry() -> None:

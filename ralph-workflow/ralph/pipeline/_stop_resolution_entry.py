@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeGuard
 
 from loguru import logger
@@ -35,10 +36,7 @@ from ralph.pipeline.resolution_outcome import (
 from ralph.pipeline.resolution_outcome_producer import (
     classify_resolution_failure,
 )
-from ralph.pipeline.stop_resolution_blocked import (
-    DeferredStopResolution,
-    StopResolutionBlocked,
-)
+from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,6 +60,11 @@ _GATE_ACTIVE_REASON = (
     "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
 )
 _KEY_UNAVAILABLE_PREFIX = "WAITING: continuation retry key unavailable"
+
+
+@dataclass(frozen=True)
+class DeferredStopResolution(StopResolutionBlocked):
+    failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
 def decide_resolution_attempt(facts: ResolutionGateFacts) -> ResolutionGateDecision:
@@ -349,8 +352,25 @@ def _record_outcome_attempt(
     key: ResolutionAttemptKey,
     outcome: StopResolutionOutcome,
 ) -> None:
-    attempt_cause = _attempt_cause_from_outcome(outcome, trigger)
-    failure_reason = _failure_reason_from_outcome(outcome)
+    attempt_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    if isinstance(outcome, (ResolvedOutcome, RetryLaterOutcome)):
+        if outcome.failure_cause is not None:
+            attempt_cause = outcome.failure_cause
+    elif isinstance(outcome, ConfigFailureOutcome):
+        attempt_cause = ResolutionFailureCause.CONFIG_FAILURE
+    if attempt_cause == ResolutionFailureCause.NONE:
+        attempt_cause = _deferred_failure_cause(trigger.root, trigger.record)
+    failure_reason: str | None = None
+    if isinstance(outcome, RetryLaterOutcome):
+        failure_reason = outcome.on_change
+    elif isinstance(outcome, ConfigFailureOutcome):
+        failure_reason = f"fix {outcome.file} then run ralph --check-config"
+    elif isinstance(outcome, WaitingOutcome):
+        failure_reason = outcome.external_condition
+    elif isinstance(outcome, NextStrategyOutcome):
+        failure_reason = outcome.strategy
+    elif isinstance(outcome, UnknownOutcome):
+        failure_reason = str(outcome.error)
     _record_failed_attempt(trigger, key, attempt_cause, failure_reason=failure_reason)
 
 
@@ -480,7 +500,17 @@ def _record_post_attempt(
     result: object,
 ) -> None:
     eff_outcome = result.outcome if isinstance(result, RebaseResolutionResult) else result
-    if _is_stop_resolution_outcome(eff_outcome):
+    if isinstance(
+        eff_outcome,
+        (
+            ResolvedOutcome,
+            WaitingOutcome,
+            RetryLaterOutcome,
+            NextStrategyOutcome,
+            ConfigFailureOutcome,
+            UnknownOutcome,
+        ),
+    ):
         if not isinstance(eff_outcome, ResolvedOutcome):
             if (
                 isinstance(result, RebaseResolutionResult)

@@ -6,7 +6,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
@@ -41,6 +41,7 @@ from ralph.skills._prune import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.skills._project_paths import ProjectAgentSkillRoot
@@ -579,10 +580,9 @@ def _root_skill_marker_valid(resolved: Path, name: str) -> bool:
         actual_hash = hashlib.sha256(skill_file.read_bytes()).hexdigest()
     except (OSError, json.JSONDecodeError):
         return False
-    try:
-        recorded = dict(as_mapping(recorded_raw))
-    except TypeError:
+    if not isinstance(recorded_raw, dict):
         return False
+    recorded = cast("dict[str, object]", recorded_raw)
     expected_hash = _compute_skill_hash(name)
     return (
         recorded.get("managed_by") == "ralph-workflow"

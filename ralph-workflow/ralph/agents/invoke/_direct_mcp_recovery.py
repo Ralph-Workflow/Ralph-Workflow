@@ -176,14 +176,11 @@ def _run_with_direct_mcp_recovery[T](
     retries_used = 0
     agy_incomplete_exit_reprompted = False
     while True:
-        observed_session: dict[str, str | None] = {"id": current_session_id}
+        observed_session_id = current_session_id
 
-        def _capture_session_id(
-            session_id: str,
-            *,
-            _observed_session: dict[str, str | None] = observed_session,
-        ) -> None:
-            _observed_session["id"] = session_id
+        def _capture_session_id(session_id: str) -> None:
+            nonlocal observed_session_id
+            observed_session_id = session_id
             if on_session_observed is not None:
                 on_session_observed(session_id)
 
@@ -212,7 +209,7 @@ def _run_with_direct_mcp_recovery[T](
             retry_plan = _retry_plan_for_exception(
                 exc,
                 attempt_lines=list(_exception_parsed_output(exc)),
-                current_session_id=observed_session["id"],
+                current_session_id=observed_session_id,
             )
             if retry_plan is None or retry_plan.skip_same_agent_retries:
                 raise

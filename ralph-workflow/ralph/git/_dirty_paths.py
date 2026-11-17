@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -25,13 +26,14 @@ def path_in_scope(path: str, scopes: tuple[str, ...]) -> bool:
 
 
 def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
-    raw: object = route_git_method(
-        repo,
-        "status",
-        (*_STATUS_ARGS, "--", scope),
+    raw = cast(
+        "str",
+        route_git_method(
+            repo,
+            "status",
+            (*_STATUS_ARGS, "--", scope),
+        ),
     )
-    if not isinstance(raw, str):
-        return []
     return sorted({path for path in _porcelain_z_paths(raw) if path_in_scope(path, (scope,))})
 
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import errno
 import functools
-import importlib.util
 import os
 import shutil
 import subprocess
@@ -12,8 +12,6 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
-from ralph._typed_attrs import is_callable_obj, read_attr
-from ralph.checked_accessors import as_int
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._git_termination import is_git_name
@@ -124,19 +122,6 @@ class _PopenConstructor(Protocol):
     ) -> subprocess.Popen[bytes]: ...
 
 
-def _ctypes_module() -> _CtypesModule:
-    existing = sys.modules.get("ctypes")
-    if existing is not None:
-        return cast("_CtypesModule", existing)
-    spec = importlib.util.find_spec("ctypes")
-    if spec is None or spec.loader is None:
-        raise RuntimeError("ctypes is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["ctypes"] = module
-    spec.loader.exec_module(module)
-    return cast("_CtypesModule", module)
-
-
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SUPERVISOR_SCRIPT: Final[Path] = Path(__file__).with_name("_supervisor.py")
 _SIGKILL: Final[int] = 9
@@ -144,20 +129,10 @@ _SIGTERM: Final[int] = 15
 _PRCTL_FN: _Prctl | None = None
 if sys.platform.startswith("linux"):
     try:
-        _libc = cast(
-            "_CtypesLib",
-            cast("_CtypesConstructor", _ctypes_module().CDLL)(None, use_errno=True),
-        )
-        _raw_prctl: object = read_attr(_libc, "prctl", None)
-
-        def _bound_prctl(option: int, value: int) -> int:
-            if not is_callable_obj(_raw_prctl):
-                return -1
-            result: object = cast("Callable[[int, int], object]", _raw_prctl)(option, value)
-            return as_int(result, field="prctl")
-
-        if is_callable_obj(_raw_prctl):
-            _PRCTL_FN = _bound_prctl
+        _libc = ctypes.CDLL(None, use_errno=True)
+        _raw_prctl: object = getattr(_libc, "prctl", None)
+        if callable(_raw_prctl):
+            _PRCTL_FN = cast("_Prctl", _raw_prctl)
     except (OSError, RuntimeError, ValueError, AttributeError):
         _PRCTL_FN = None
 

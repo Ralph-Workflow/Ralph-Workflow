@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
@@ -30,20 +31,21 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 
 
+class _CommitNormalizationModule(Protocol):
+    def normalize_commit_submission(
+        self, artifact_type: str, content: str, workspace_root: Path
+    ) -> tuple[str, dict[str, object] | None]: ...
+
+
 def _normalize_commit_submission(
     artifact_type: str, markdown: str, workspace_root: Path
 ) -> tuple[str, dict[str, object] | None]:
     if artifact_type != "commit_message":
         return markdown, None
-    from ralph.mcp.tools.commit_normalization import normalize_commit_submission
-
-    return normalize_commit_submission(artifact_type, markdown, workspace_root)
-
-
-def _default_artifact_handler_deps() -> ArtifactHandlerDeps:
-    from ralph.mcp.tools.artifact import DEFAULT_ARTIFACT_HANDLER_DEPS
-
-    return DEFAULT_ARTIFACT_HANDLER_DEPS
+    module = cast(
+        "_CommitNormalizationModule", import_module("ralph.mcp.tools.commit_normalization")
+    )
+    return module.normalize_commit_submission(artifact_type, markdown, workspace_root)
 
 
 @dataclass(frozen=True)
@@ -254,7 +256,10 @@ def submit_artifact_canonical(
             artifact_type, markdown, workspace_root
         )
     if deps is None:
-        deps = _default_artifact_handler_deps()
+        deps = cast(
+            "ArtifactHandlerDeps",
+            import_module("ralph.mcp.tools.artifact").DEFAULT_ARTIFACT_HANDLER_DEPS,
+        )
     backend = deps.backend
     directory = artifact_dir or _artifact_dir(workspace_root)
     artifact_path = directory / f"{artifact_type}.md"
@@ -463,7 +468,10 @@ def promote_fallback_artifact(
         return None
     resolved_deps = deps
     if resolved_deps is None:
-        resolved_deps = _default_artifact_handler_deps()
+        resolved_deps = cast(
+            "ArtifactHandlerDeps",
+            import_module("ralph.mcp.tools.artifact").DEFAULT_ARTIFACT_HANDLER_DEPS,
+        )
     if receipt_secret is not None:
         resolved_deps = replace(resolved_deps, receipt_secret=receipt_secret)
     backend = resolved_deps.backend

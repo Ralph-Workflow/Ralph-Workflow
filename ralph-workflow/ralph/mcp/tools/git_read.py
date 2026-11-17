@@ -7,7 +7,7 @@ import threading
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -60,38 +60,12 @@ class _ReadablePipe(Protocol):
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
     if isinstance(workspace, WorkspaceWithRoot):
         return workspace.root
-    root_value = getattr(workspace, "root", None)
+    root_value = cast("Path | str | None", getattr(workspace, "root", None))
     if isinstance(root_value, Path):
         return root_value
     if isinstance(root_value, str):
         return Path(root_value)
     return cwd_provider()
-
-
-def _coerce_max_bytes(raw: object, *, minimum: int, default: int) -> int:
-    if isinstance(raw, bool):
-        raise InvalidParamsError(
-            f"max_bytes must be an integer in [{minimum}, {default}]; got bool {raw!r}"
-        )
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return int(raw)
-        except ValueError as exc:
-            raise InvalidParamsError(
-                f"max_bytes must be an integer in [{minimum}, {default}]; got {raw!r}"
-            ) from exc
-    if isinstance(raw, float):
-        if not raw.is_integer():
-            raise InvalidParamsError(
-                f"max_bytes must be an integer in [{minimum}, {default}]; "
-                f"got non-integer float {raw!r}"
-            )
-        return int(raw)
-    raise InvalidParamsError(
-        f"max_bytes must be an integer in [{minimum}, {default}]; got {type(raw).__name__}"
-    )
 
 
 def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
@@ -361,7 +335,7 @@ def _resolve_compact_status_index(
 ) -> tuple[ExploreIndexLike, ExploreStoreLike] | None:
     handle: ExploreIndexLike | None = None
     workspace_session: object = (
-        getattr(workspace, "session", None) if workspace is not None else None
+        cast("object", getattr(workspace, "session", None)) if workspace is not None else None
     )
     for candidate in (session, workspace, workspace_session):
         if candidate is None:
@@ -471,7 +445,30 @@ def _strict_max_bytes_param(
     if "max_bytes" not in params:
         return default
     raw: object = params["max_bytes"]
-    value = _coerce_max_bytes(raw, minimum=minimum, default=default)
+    if isinstance(raw, bool):
+        raise InvalidParamsError(
+            f"max_bytes must be an integer in [{minimum}, {default}]; got bool {raw!r}"
+        )
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise InvalidParamsError(
+                f"max_bytes must be an integer in [{minimum}, {default}]; got {raw!r}"
+            ) from exc
+    elif isinstance(raw, float):
+        if not raw.is_integer():
+            raise InvalidParamsError(
+                f"max_bytes must be an integer in [{minimum}, {default}]; "
+                f"got non-integer float {raw!r}"
+            )
+        value = int(raw)
+    else:
+        raise InvalidParamsError(
+            f"max_bytes must be an integer in [{minimum}, {default}]; got {type(raw).__name__}"
+        )
     if value < minimum or value > default:
         raise InvalidParamsError(
             f"max_bytes must be an integer in [{minimum}, {default}]; got {value}"
@@ -693,7 +690,7 @@ def _collect_git_diff_capped(
         try:
             outcome.append(
                 _read_git_diff_until_cap(
-                    stdout,
+                    cast("_ReadablePipe", stdout),
                     max_bytes,
                 )
             )
@@ -727,7 +724,7 @@ def _collect_git_diff_capped(
 def _start_pipe_drain(pipe: object) -> threading.Thread | None:
     if pipe is None or not isinstance(pipe, _ReadablePipe):
         return None
-    readable = pipe
+    readable = cast("_ReadablePipe", pipe)
 
     def _drain() -> None:
         with contextlib.suppress(Exception):

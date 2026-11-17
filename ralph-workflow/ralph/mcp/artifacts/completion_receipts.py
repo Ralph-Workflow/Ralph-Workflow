@@ -6,7 +6,7 @@ import hmac
 import json
 import sqlite3
 from pathlib import Path
-from typing import TypeGuard
+from typing import TypeGuard, cast
 
 from ralph.checked_accessors import as_str, optional_str_list
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -69,7 +69,7 @@ def _legacy_file_receipt_present(
         return False
     if not isinstance(parsed, dict):
         return False
-    stored = parsed.get("hmac")
+    stored = cast("dict[str, object]", parsed).get("hmac")
     if not isinstance(stored, str):
         return False
     expected = _receipt_hmac(receipt_secret, run_id, artifact_type)
@@ -211,7 +211,7 @@ def _snapshot_from_payload(
 ) -> ArtifactSubmissionSnapshot | None:
     if not isinstance(payload, dict):
         return None
-    values = payload
+    values = cast("dict[str, object]", payload)
     path = values.get("submission_snapshot_path")
     digest = values.get("submission_snapshot_digest")
     stored_hmac = values.get("submission_snapshot_hmac")
@@ -394,7 +394,7 @@ def commit_receipt_matches_changed_files(
         try:
             payload: object = json.loads(backend.read_text(path, encoding="utf-8"))
             audit = (
-                payload.get("normalization_audit")
+                cast("dict[str, object]", payload).get("normalization_audit")
                 if isinstance(payload, dict)
                 else None
             )
@@ -476,7 +476,7 @@ def get_recorded_receipt_artifact_types(
             if isinstance(raw_rows, list):
                 result = [
                     row[0]
-                    for row in raw_rows
+                    for row in cast("list[object]", raw_rows)
                     if isinstance(row, tuple) and len(row) > 0 and isinstance(row[0], str)
                 ]
                 if result:
@@ -494,7 +494,7 @@ def get_recorded_receipt_artifact_types(
         try:
             parsed: object = json.loads(backend.read_text(path, encoding="utf-8"))
             if isinstance(parsed, dict):
-                payload = parsed
+                payload = cast("dict[str, object]", parsed)
                 val = payload.get("artifact_type")
                 if isinstance(val, str):
                     types.append(val)

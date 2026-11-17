@@ -17,15 +17,6 @@ if TYPE_CHECKING:
 
 
 class _FallbackHttpServer(ThreadingHTTPServer):
-    __slots__ = (
-        "_dummy_pair",
-        "health_probe_fn",
-        "mcp_server",
-        "metrics",
-        "shutdown_event",
-        "state",
-    )
-
     daemon_threads = True
     mcp_server: McpServer
     state: ServerState

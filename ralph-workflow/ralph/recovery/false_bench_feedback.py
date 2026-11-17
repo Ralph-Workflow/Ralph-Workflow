@@ -3,14 +3,13 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Mapping
 from copy import deepcopy
+from typing import cast
 
 _MAX_EVENTS = 32
 _MAX_CANDIDATES = 128
 
 
 class FalseBenchFeedback:
-    __slots__ = ("_candidates", "_count", "_events")
-
     def __init__(self) -> None:
         self._count = 0
         self._events: tuple[dict[str, object], ...] = ()
@@ -34,7 +33,7 @@ class FalseBenchFeedback:
         verdict_ref: Mapping[str, object],
         session_ref: Mapping[str, str],
     ) -> None:
-        self._candidates[agent, config_fingerprint] = {
+        self._candidates[(agent, config_fingerprint)] = {
             "agent": agent,
             "phase": phase,
             "reason": reason,
@@ -70,7 +69,7 @@ class FalseBenchFeedback:
         count = snapshot.get("count")
         events = snapshot.get("events")
         candidates = snapshot.get("candidates")
-        if not isinstance(count, int) or count < 0 or (not isinstance(events, list)):
+        if not isinstance(count, int) or count < 0 or not isinstance(events, list):
             return feedback
         parsed_events = [cls._parse_record(value) for value in events]
         if any(value is None for value in parsed_events):
@@ -105,13 +104,13 @@ class FalseBenchFeedback:
         if not isinstance(verdict_ref, Mapping) or not isinstance(session_ref, Mapping):
             return None
         parsed_verdict_ref: dict[str, object] = {}
-        for key, item in verdict_ref.items():
+        for key, item in cast("Mapping[object, object]", verdict_ref).items():
             if not isinstance(key, str):
                 return None
             copied: object = deepcopy(item)
             parsed_verdict_ref[key] = copied
         parsed_session_ref: dict[str, str] = {}
-        for key, item in session_ref.items():
+        for key, item in cast("Mapping[object, object]", session_ref).items():
             if not isinstance(key, str) or not isinstance(item, str):
                 return None
             parsed_session_ref[key] = item

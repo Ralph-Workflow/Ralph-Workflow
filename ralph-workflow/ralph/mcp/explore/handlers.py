@@ -5,9 +5,10 @@ import logging
 import sqlite3
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import attr_or_none
@@ -233,105 +234,46 @@ __all__ = [
 ]
 
 
+_LAZY_REEXPORTS: Mapping[str, str] = MappingProxyType(
+    {
+        "graph_module": "ralph.mcp.explore.graph",
+        "_GRAPH_CANCEL_FLAGS": "ralph.mcp.explore._handlers_graph",
+        "_GRAPH_CANCEL_LOCK": "ralph.mcp.explore._handlers_graph",
+        "_graph_edge_to_dict": "ralph.mcp.explore._handlers_graph",
+        "_graph_node_to_dict": "ralph.mcp.explore._handlers_graph",
+        "_graph_result_to_dict": "ralph.mcp.explore._handlers_graph",
+        "handle_ralph_graph": "ralph.mcp.explore._handlers_graph",
+        "_build_disabled_status_payload": "ralph.mcp.explore._handlers_index_status",
+        "_build_status_payload": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_child_rule_present": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_coverage": "ralph.mcp.explore._handlers_index_status",
+        "_gitignore_repair_payload": "ralph.mcp.explore._handlers_index_status",
+        "handle_ralph_index_status": "ralph.mcp.explore._handlers_index_status",
+        "_REINDEX_CANCEL_FLAGS": "ralph.mcp.explore._handlers_reindex",
+        "_REINDEX_CANCEL_LOCK": "ralph.mcp.explore._handlers_reindex",
+        "_build_reindex_payload": "ralph.mcp.explore._handlers_reindex",
+        "handle_ralph_reindex": "ralph.mcp.explore._handlers_reindex",
+    }
+)
+
+
 def __getattr__(name: str) -> object:
-    if name == "graph_module":
-        from ralph.mcp.explore import graph as graph_module
+    if name in _LAZY_REEXPORTS:
+        import importlib
+        import sys
 
-        return graph_module
-    if name == "_GRAPH_CANCEL_FLAGS":
-        from ralph.mcp.explore._handlers_graph import _GRAPH_CANCEL_FLAGS
-
-        return _GRAPH_CANCEL_FLAGS
-    if name == "_GRAPH_CANCEL_LOCK":
-        from ralph.mcp.explore._handlers_graph import _GRAPH_CANCEL_LOCK
-
-        return _GRAPH_CANCEL_LOCK
-    if name == "_graph_edge_to_dict":
-        from ralph.mcp.explore._handlers_graph import _graph_edge_to_dict
-
-        return _graph_edge_to_dict
-    if name == "_graph_node_to_dict":
-        from ralph.mcp.explore._handlers_graph import _graph_node_to_dict
-
-        return _graph_node_to_dict
-    if name == "_graph_result_to_dict":
-        from ralph.mcp.explore._handlers_graph import _graph_result_to_dict
-
-        return _graph_result_to_dict
-    if name == "handle_ralph_graph":
-        from ralph.mcp.explore._handlers_graph import handle_ralph_graph
-
-        return handle_ralph_graph
-    if name == "_build_disabled_status_payload":
-        from ralph.mcp.explore._handlers_index_status import _build_disabled_status_payload
-
-        return _build_disabled_status_payload
-    if name == "_build_status_payload":
-        from ralph.mcp.explore._handlers_index_status import _build_status_payload
-
-        return _build_status_payload
-    if name == "_gitignore_child_rule_present":
-        from ralph.mcp.explore._handlers_index_status import _gitignore_child_rule_present
-
-        return _gitignore_child_rule_present
-    if name == "_gitignore_coverage":
-        return _gitignore_coverage
-    if name == "_gitignore_repair_payload":
-        from ralph.mcp.explore._handlers_index_status import _gitignore_repair_payload
-
-        return _gitignore_repair_payload
-    if name == "handle_ralph_index_status":
-        from ralph.mcp.explore._handlers_index_status import handle_ralph_index_status
-
-        return handle_ralph_index_status
-    if name == "_REINDEX_CANCEL_FLAGS":
-        from ralph.mcp.explore._handlers_reindex import _REINDEX_CANCEL_FLAGS
-
-        return _REINDEX_CANCEL_FLAGS
-    if name == "_REINDEX_CANCEL_LOCK":
-        from ralph.mcp.explore._handlers_reindex import _REINDEX_CANCEL_LOCK
-
-        return _REINDEX_CANCEL_LOCK
-    if name == "_build_reindex_payload":
-        from ralph.mcp.explore._handlers_reindex import _build_reindex_payload
-
-        return _build_reindex_payload
-    if name == "handle_ralph_reindex":
-        from ralph.mcp.explore._handlers_reindex import handle_ralph_reindex
-
-        return handle_ralph_reindex
+        sub_module = importlib.import_module(_LAZY_REEXPORTS[name])
+        if name == "graph_module":
+            value: object = sub_module
+        else:
+            value = getattr(sub_module, name)
+        setattr(sys.modules[__name__], name, value)
+        return value
     raise AttributeError(f"module 'ralph.mcp.explore.handlers' has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
-    return sorted(
-        {
-            "DEFAULT_INDEX_ROOT",
-            "ExploreIndex",
-            "_GRAPH_CANCEL_FLAGS",
-            "_GRAPH_CANCEL_LOCK",
-            "_REINDEX_CANCEL_FLAGS",
-            "_REINDEX_CANCEL_LOCK",
-            "_arm_cancel_flag",
-            "_build_disabled_status_payload",
-            "_build_reindex_payload",
-            "_build_status_payload",
-            "_disarm_cancel_flag",
-            "_gitignore_child_rule_present",
-            "_gitignore_coverage",
-            "_gitignore_repair_payload",
-            "_graph_edge_to_dict",
-            "_graph_node_to_dict",
-            "_graph_result_to_dict",
-            "_int_param",
-            "_new_cancel_token",
-            "_resolve_explore_index",
-            "_resolve_index_dir",
-            "_strict_int_param",
-            "build_explore_index",
-            "graph_module",
-            "handle_ralph_graph",
-            "handle_ralph_index_status",
-            "handle_ralph_reindex",
-        }
-    )
+    module_globals: dict[str, str] = globals()
+    eagerly_defined_names: list[str] = list(module_globals)
+    lazy_rexport_names: list[str] = list(_LAZY_REEXPORTS.keys())
+    return sorted(set(eagerly_defined_names) | set(lazy_rexport_names))

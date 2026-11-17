@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -231,11 +232,10 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
             data = _as_object_dict(loads_toml(fh))
     except (OSError, ValueError):
         return True
-    if data is None:
+    raw_general = data.get("general")
+    if not isinstance(raw_general, dict):
         return False
-    general = _as_object_dict(data.get("general"))
-    if general is None:
-        return False
+    general = cast("dict[str, object]", raw_general)
     return general.get("telemetry_enabled") is False
 
 
@@ -264,11 +264,9 @@ def _sentry_environment() -> str:
 
 def _add_breadcrumb(*, category: str, message: str, data: Mapping[str, object]) -> None:
     with contextlib.suppress(Exception):
-        recorder: object = sentry_sdk.add_breadcrumb
-        if not _is_breadcrumb_recorder(recorder):
-            return
+        add_breadcrumb = cast("_BreadcrumbRecorder", sentry_sdk.add_breadcrumb)
         payload: dict[str, object] = dict(data)
-        recorder(
+        add_breadcrumb(
             category=category,
             message=message,
             level="info",
@@ -283,9 +281,7 @@ def _metric_count(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        count: object = sentry_metrics.count
-        if not _is_metric_counter(count):
-            return
+        count = cast("_MetricCounter", sentry_metrics.count)
         payload: dict[str, object] = dict(attributes)
         count(name, value, attributes=payload)
 
@@ -298,9 +294,7 @@ def _metric_distribution(
     attributes: Mapping[str, object],
 ) -> None:
     with contextlib.suppress(Exception):
-        distribution: object = sentry_metrics.distribution
-        if not _is_metric_distribution(distribution):
-            return
+        distribution = cast("_MetricDistribution", sentry_metrics.distribution)
         payload: dict[str, object] = dict(attributes)
         distribution(name, value, unit=unit, attributes=payload)
 
@@ -349,7 +343,7 @@ def _is_absolute_filename(value: object) -> bool:
     return value.startswith("\\\\")
 
 
-def _is_path_like_filename(value: object) -> TypeGuard[str]:
+def _is_path_like_filename(value: object) -> bool:
     if not isinstance(value, str) or not value:
         return False
     return "/" in value or "\\" in value
@@ -367,11 +361,12 @@ def _scrub_frames(frames: object) -> None:
     for frame in frames:
         if not isinstance(frame, dict):
             continue
-        frame.pop("abs_path", None)
-        filename = frame.get("filename")
+        d_frame = cast("dict[str, object]", frame)
+        d_frame.pop("abs_path", None)
+        filename = d_frame.get("filename")
         if not _is_path_like_filename(filename):
             continue
-        frame["filename"] = _basename_of_path_like(filename)
+        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
 
 
 def scrub_event(
@@ -380,17 +375,18 @@ def scrub_event(
     policy: ScrubPolicy | None = None,
 ) -> object:
     if isinstance(event, dict):
-        event.pop("server_name", None)
-        exception = event.get("exception")
+        d = cast("dict[str, object]", event)
+        d.pop("server_name", None)
+        exception = d.get("exception")
         if isinstance(exception, dict):
-            values = exception.get("values")
+            values = cast("dict[str, object]", exception).get("values")
             if isinstance(values, list):
                 for value in values:
                     if not isinstance(value, dict):
                         continue
-                    stacktrace = value.get("stacktrace")
+                    stacktrace = cast("dict[str, object]", value).get("stacktrace")
                     if isinstance(stacktrace, dict):
-                        _scrub_frames(stacktrace.get("frames"))
+                        _scrub_frames(cast("dict[str, object]", stacktrace).get("frames"))
     scrub_obj(event, policy)
     return event
 

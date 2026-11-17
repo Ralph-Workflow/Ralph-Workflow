@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-import importlib.util
+import ctypes
 import os
 import signal
 import sys
@@ -9,26 +9,9 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol, cast
 
-from ralph._typed_attrs import is_callable_obj, read_attr
-from ralph.checked_accessors import as_int
-from ralph.config._env import pop_environ
-
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import FrameType
-
-
-class _CtypesLib(Protocol):
-    def __getattr__(self, name: str) -> object: ...
-
-
-class _CtypesConstructor(Protocol):
-    def __call__(self, *args: object, **kwargs: object) -> object: ...
-
-
-class _CtypesModule(Protocol):
-    CDLL: object
-
 
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SIGTERM: Final[int] = 15
@@ -39,35 +22,26 @@ _MALLOC_DEBUG_NOISE_VARS: Final[tuple[str, ...]] = (
     "MallocStackLoggingNoCompact",
 )
 
-_sleep = time.sleep
-
 
 def sanitize_process_environment() -> tuple[str, ...]:
-    return tuple(name for name in _MALLOC_DEBUG_NOISE_VARS if pop_environ(name) is not None)
+    return tuple(
+        name for name in _MALLOC_DEBUG_NOISE_VARS if os.environ.pop(name, None) is not None
+    )
 
 
-def _ctypes_module() -> _CtypesModule:
-    existing = sys.modules.get("ctypes")
-    if existing is not None:
-        return cast("_CtypesModule", existing)
-    spec = importlib.util.find_spec("ctypes")
-    if spec is None or spec.loader is None:
-        raise RuntimeError("ctypes is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["ctypes"] = module
-    spec.loader.exec_module(module)
-    return cast("_CtypesModule", module)
+class _Prctl(Protocol):
+    def __call__(self, option: int, value: int) -> int: ...
 
 
-_libc = cast("_CtypesLib", cast("_CtypesConstructor", _ctypes_module().CDLL)(None, use_errno=True))
-_prctl_raw: object = read_attr(_libc, "prctl", None)
+_libc = ctypes.CDLL(None, use_errno=True)
+_prctl_raw: object = getattr(_libc, "prctl", None)
+if callable(_prctl_raw):
+    _prctl: _Prctl = cast("_Prctl", _prctl_raw)
+else:
 
-
-def _prctl(option: int, value: int) -> int:
-    if not is_callable_obj(_prctl_raw):
+    def _prctl(option: int, value: int) -> int:
+        del option, value
         return -1
-    result: object = cast("Callable[[int, int], object]", _prctl_raw)(option, value)
-    return as_int(result, field="prctl")
 
 
 def _set_pdeathsig(signal_number: int) -> bool:
@@ -102,7 +76,7 @@ def _kill_tree_and_exit() -> NoReturn:
         os.killpg(pgid, _SIGTERM)
         deadline = time.monotonic() + _GROUP_TERM_GRACE_S
         while time.monotonic() < deadline and _other_group_members_alive(pgid):
-            _sleep(0.05)
+            time.sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         os.killpg(pgid, _SIGKILL)
     os._exit(0)

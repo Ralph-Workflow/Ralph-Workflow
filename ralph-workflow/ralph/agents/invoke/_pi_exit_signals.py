@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 _PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
 _PI_PROVIDER_FAILURE_STOP_REASON = "error"
@@ -19,10 +20,9 @@ def _is_pi_agent(agent_name: str) -> bool:
 
 
 def _message_has_length_stop_reason(message: object) -> bool:
-    message_dict = _as_str_object_dict(message)
-    if message_dict is None:
+    if not isinstance(message, dict):
         return False
-    stop_reason = message_dict.get("stopReason")
+    stop_reason = message.get("stopReason")
     return isinstance(stop_reason, str) and (
         stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
     )
@@ -30,15 +30,15 @@ def _message_has_length_stop_reason(message: object) -> bool:
 
 def _line_has_pi_context_exhaustion(line: str) -> bool:
     try:
-        parsed: object = json.loads(line)
+        parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
         return False
-    obj = _as_str_object_dict(parsed)
-    if obj is None:
+    if not isinstance(parsed, dict):
         return False
+    obj = cast("dict[str, object]", parsed)
     assistant_event = obj.get("assistantMessageEvent")
-    event_dict = _as_str_object_dict(assistant_event)
-    if event_dict is not None:
+    if isinstance(assistant_event, dict):
+        event_dict = cast("dict[str, object]", assistant_event)
         event_type = event_dict.get("type")
         stop_reason = event_dict.get("stopReason")
         return (
@@ -61,9 +61,9 @@ def has_pi_context_exhaustion_signal(agent_name: str, output: list[str]) -> bool
 
 
 def _message_provider_failure_reason(message: object) -> str | None:
-    message_dict = _as_str_object_dict(message)
-    if message_dict is None:
+    if not isinstance(message, dict):
         return None
+    message_dict = cast("dict[str, object]", message)
     stop_reason = message_dict.get("stopReason")
     if not isinstance(stop_reason, str):
         return None
@@ -91,7 +91,7 @@ def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
     messages = obj.get("messages")
     if not isinstance(messages, list):
         return None
-    for message in messages:
+    for message in cast("list[object]", messages):
         reason = _message_provider_failure_reason(message)
         if reason is not None:
             return reason
@@ -100,12 +100,12 @@ def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
 
 def _line_provider_failure_reason(line: str) -> str | None:
     try:
-        parsed: object = json.loads(line)
+        parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
         return None
-    obj = _as_str_object_dict(parsed)
-    if obj is None:
+    if not isinstance(parsed, dict):
         return None
+    obj = cast("dict[str, object]", parsed)
     return _exhausted_retry_ladder_reason(obj) or _messages_provider_failure_reason(obj)
 
 

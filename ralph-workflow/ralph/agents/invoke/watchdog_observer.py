@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -37,22 +38,16 @@ WatchObserverFactory = Callable[[], _WatchObserverProtocol | None]
 
 
 def create_watchdog_observer() -> ObserverProtocol | None:
+
+    class _WatchdogObserversModule(Protocol):
+        Observer: type[ObserverProtocol]
+
     try:
-        from watchdog.observers import Observer
+        observers_module = cast(
+            "_WatchdogObserversModule", importlib.import_module("watchdog.observers")
+        )
     except ImportError:
         return None
-    raw: object = Observer()
-    object.__setattr__(raw, "_event_queue", DroppingEventQueue(MAX_WATCHDOG_EVENT_QUEUE))
-    schedule = attr_or_none(raw, "schedule")
-    start = attr_or_none(raw, "start")
-    stop = attr_or_none(raw, "stop")
-    join = attr_or_none(raw, "join")
-    if not (
-        callable(schedule)
-        and callable(start)
-        and callable(stop)
-        and callable(join)
-        and hasattr(raw, "event_queue")
-    ):
-        return None
-    return cast("ObserverProtocol", raw)
+    observer = observers_module.Observer()
+    observer._event_queue = DroppingEventQueue(MAX_WATCHDOG_EVENT_QUEUE)
+    return observer

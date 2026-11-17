@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.checked_accessors import as_object_dict, as_object_list
 from ralph.display.plan_summary import PlanSummary

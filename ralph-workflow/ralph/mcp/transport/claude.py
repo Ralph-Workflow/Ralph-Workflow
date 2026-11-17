@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
 from ralph.checked_accessors import as_object_list
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
@@ -182,7 +181,7 @@ def _declined_mcpjson_server_names(workspace_path: Path) -> frozenset[str]:
     value = entry[0].get("disabledMcpjsonServers")
     if not isinstance(value, list):
         return frozenset()
-    names = as_object_list(value)
+    names = cast("list[object]", value)
     return frozenset(name for name in names if isinstance(name, str))
 
 
@@ -204,7 +203,7 @@ def _mcp_servers_map(config: dict[str, object], path: Path) -> dict[str, object]
             path,
         )
         return {}
-    return dict(as_object_dict(value) or {})
+    return dict(cast("dict[str, object]", value))
 
 
 def _read_json_object(path: Path) -> dict[str, object] | None:
@@ -227,7 +226,7 @@ def _read_json_object(path: Path) -> dict[str, object] | None:
             path,
         )
         return None
-    return as_object_dict(raw_payload) or {}
+    return cast("dict[str, object]", raw_payload)
 
 
 def _local_scope_mcp_servers(workspace_path: Path | None) -> dict[str, object]:
@@ -247,11 +246,11 @@ def _user_config_project_entry(workspace_path: Path) -> tuple[dict[str, object],
     projects = config.get("projects")
     if not isinstance(projects, dict):
         return None
-    project_entries = as_object_dict(projects) or {}
+    project_entries = cast("dict[str, object]", projects)
     for key in _workspace_config_keys(workspace_path):
         entry = project_entries.get(key)
         if isinstance(entry, dict):
-            return (as_object_dict(entry) or {}), user_config_path
+            return cast("dict[str, object]", entry), user_config_path
     return None
 
 
@@ -296,7 +295,7 @@ def _enabled_plugin_keys(workspace_path: Path | None) -> frozenset[str]:
         enabled.update(
             {
                 plugin_key: flag
-                for plugin_key, flag in (as_object_dict(value) or {}).items()
+                for plugin_key, flag in cast("dict[str, object]", value).items()
                 if isinstance(flag, bool)
             }
         )
@@ -323,10 +322,10 @@ def _installed_plugin_paths() -> dict[str, tuple[Path, ...]]:
     if not isinstance(plugins, dict):
         return {}
     resolved: dict[str, tuple[Path, ...]] = {}
-    for plugin_key, raw_entries in (as_object_dict(plugins) or {}).items():
+    for plugin_key, raw_entries in cast("dict[str, object]", plugins).items():
         if not isinstance(raw_entries, list):
             continue
-        install_paths = tuple(_install_path(entry) for entry in raw_entries)
+        install_paths = tuple(_install_path(entry) for entry in cast("list[object]", raw_entries))
         present = tuple(path for path in install_paths if path is not None)
         if present:
             resolved[plugin_key] = present
@@ -336,7 +335,7 @@ def _installed_plugin_paths() -> dict[str, tuple[Path, ...]]:
 def _install_path(raw_entry: object) -> Path | None:
     if not isinstance(raw_entry, dict):
         return None
-    install_path = (as_object_dict(raw_entry) or {}).get("installPath")
+    install_path = cast("dict[str, object]", raw_entry).get("installPath")
     if isinstance(install_path, str) and install_path:
         return Path(install_path)
     return None

@@ -4,10 +4,10 @@ from typing import Literal
 
 from pydantic import Field
 
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
-class GroupPolicyBlock(RalphBaseModel):
+class GroupPolicyBlock(_FrozenPolicyModel):
     kind: Literal["group"] = "group"
     child_blocks: list[str] = Field(
         default_factory=list,

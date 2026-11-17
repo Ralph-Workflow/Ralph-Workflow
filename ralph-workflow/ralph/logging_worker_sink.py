@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 
@@ -14,15 +14,6 @@ if TYPE_CHECKING:
 class WorkerSinkHandle:
     sink_id: int
     log_path: Path
-
-
-def _record_extra(record: object) -> Mapping[str, object] | None:
-    if not isinstance(record, Mapping):
-        return None
-    extra = record.get("extra")
-    if not isinstance(extra, Mapping):
-        return None
-    return extra
 
 
 def bind_worker_sink(
@@ -35,9 +26,8 @@ def bind_worker_sink(
     log_path = worker_log_dir / f"unit-{unit_id}.log"
 
     def worker_filter(record: object) -> bool:
-        extra = _record_extra(record)
-        if extra is None:
-            return False
+        record_mapping = cast("Mapping[str, object]", record)
+        extra = cast("Mapping[str, object]", record_mapping["extra"])
         unit_id_value = extra.get("unit_id")
         return isinstance(unit_id_value, str) and unit_id_value == unit_id
 

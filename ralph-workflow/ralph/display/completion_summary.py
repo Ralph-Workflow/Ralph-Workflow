@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
@@ -26,12 +27,22 @@ from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import Protocol
 
     from rich.console import Group
 
     from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.policy.models import PipelinePolicy
+
+    class _RenderCompletionSummaryGroupFn(Protocol):
+        def __call__(
+            self,
+            snapshot: PipelineSnapshot,
+            *,
+            display_context: DisplayContext,
+            options: CompletionSummaryOptions,
+        ) -> Group: ...
 
 
 _BADGE_THEME_KEYS: dict[str, str] = {
@@ -356,8 +367,9 @@ def render_completion_summary_group(
     display_context: DisplayContext,
     options: CompletionSummaryOptions | None = None,
 ) -> Group:
-    from ralph.display._completion_summary_group import (
-        render_completion_summary_group as render_fn,
+    render_fn = cast(
+        "_RenderCompletionSummaryGroupFn",
+        import_module("ralph.display._completion_summary_group").render_completion_summary_group,
     )
 
     return render_fn(

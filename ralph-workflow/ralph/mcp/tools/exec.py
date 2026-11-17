@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph._typed_attrs import read_attr
 from ralph.mcp.explore._narrowing import is_int_or_float
@@ -49,7 +50,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.process._spawn_env import child_env_for_spawn
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import (
     DeadlineTimeoutExpired,
     ProcessTerminationIssuer,
@@ -162,8 +163,11 @@ def _shell_source_text(command_value: object, argv_value: object) -> str | None:
 def _shell_command_source(params: Mapping[str, object]) -> str | None:
     command_value = params.get("command")
     argv_value = params.get("argv")
-    source = _shell_source_text(command_value, argv_value)
-    if source is None:
+    if isinstance(command_value, str):
+        source = command_value
+    elif command_value is None and isinstance(argv_value, str):
+        source = argv_value
+    else:
         return None
     stripped = source.strip()
     if stripped and (
@@ -396,7 +400,12 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
 
 
 def _child_env(cwd: Path) -> dict[str, str]:
-    return child_env_for_spawn(None, cwd=str(cwd))
+    env = scrub_activity_relay_controls(dict(os.environ))
+    env.pop("RALPH_BROKER_SECRET", None)
+    env["PWD"] = str(cwd)
+    env.pop("OLDPWD", None)
+    scrub_activity_relay_controls(env)
+    return env
 
 
 def run_command(

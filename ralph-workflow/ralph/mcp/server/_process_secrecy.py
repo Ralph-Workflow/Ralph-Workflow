@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import ctypes
+import os
 import secrets
 import sys
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.checked_accessors import as_int
-from ralph.config._env import environ, getenv
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -102,7 +103,6 @@ def _require_library_loader(value: object, *, label: str) -> _LibraryLoader:
 
 
 def _protect_darwin_process() -> None:
-    ctypes = _native_ctypes()
     libc = ctypes.CDLL(None, use_errno=True)
     raw_ptrace: object = getattr(libc, "ptrace", None)
     ptrace = _require_cfunc(raw_ptrace, label="ptrace")
@@ -112,7 +112,6 @@ def _protect_darwin_process() -> None:
 
 
 def _protect_windows_process() -> None:
-    ctypes = _native_ctypes()
     acl_revision = 2
     dacl_security_information = 0x00000004
     se_kernel_object = 6
@@ -160,7 +159,7 @@ def _protect_windows_process() -> None:
 
 def protect_broker_secret(
     *,
-    env_getter: Callable[[str], str | None] = getenv,
+    env_getter: Callable[[str], str | None] = os.getenv,
     platform: str = sys.platform,
     prctl: _Prctl | None = None,
     darwin_protect: Callable[[], None] = _protect_darwin_process,
@@ -177,7 +176,6 @@ def protect_broker_secret(
     if platform != "linux":
         raise RuntimeError(f"Unsupported platform for broker secret protection: {platform}")
     if prctl is None:
-        ctypes = _native_ctypes()
         libc = ctypes.CDLL(None, use_errno=True)
         raw_prctl_fn: object = getattr(libc, "prctl", None)
         raw_prctl = _require_cfunc(raw_prctl_fn, label="prctl")
@@ -188,17 +186,13 @@ def protect_broker_secret(
         raise RuntimeError("MCP broker secret process protection failed")
 
 
-def _process_environ() -> MutableMapping[str, str]:
-    return environ()
-
-
 def mint_and_protect_broker_secret(
     *,
     environment: MutableMapping[str, str] | None = None,
     token_factory: Callable[[int], str] = secrets.token_hex,
     protector: Callable[[], None] = protect_broker_secret,
 ) -> str:
-    target = _process_environ() if environment is None else environment
+    target = os.environ if environment is None else environment
     secret = token_factory(32)
     target["RALPH_BROKER_SECRET"] = secret
     protector()
@@ -209,8 +203,7 @@ def erase_broker_secret_environment() -> None:
     secret = parent_broker_secret()
     if not secret:
         return
-    if sys.platform != "win32":
-        ctypes = _native_ctypes()
+    if os.name == "posix":
         libc = ctypes.CDLL(None)
         environ_table = ctypes.POINTER(ctypes.c_void_p).in_dll(libc, "environ")
         prefix = b"RALPH_BROKER_SECRET="
@@ -223,7 +216,7 @@ def erase_broker_secret_environment() -> None:
                 break
             index += 1
             address = as_int(environ_table[index], field="environment address")
-    _process_environ().pop("RALPH_BROKER_SECRET", None)
+    os.environ.pop("RALPH_BROKER_SECRET", None)
 
 
 __all__ = [

@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -237,8 +237,6 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
 
 
 class _IntegrationClockAdapter:
-    __slots__ = ("_clock",)
-
     def __init__(self, clock: AgentClock) -> None:
         self._clock = clock
 

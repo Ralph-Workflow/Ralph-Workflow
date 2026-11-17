@@ -2,8 +2,6 @@ from ralph.agents.registry import lookup_dynamic_alias_help
 
 
 class UnknownAgentError(Exception):
-    __slots__ = ("agent_name",)
-
     def __init__(self, agent_name: str) -> None:
         self.agent_name = agent_name
         msg = f"Unknown agent: '{agent_name}'. Register the agent in the configuration."

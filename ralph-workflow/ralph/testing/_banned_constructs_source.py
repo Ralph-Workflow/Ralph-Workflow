@@ -48,7 +48,6 @@ _ALL_MUTATORS = frozenset(
 )
 _TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore(?:\s*\[[^]]*\])?", re.IGNORECASE)
 _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:|\s|$)", re.IGNORECASE)
-_BOOTSTRAP_PATH_BASENAMES = frozenset({"conftest.py", "_sitecustomize_shim.py"})
 _ATTRIBUTE_ARGUMENT_COUNT = 2
 _SETATTR_ARGUMENT_COUNT = 3
 _TYPE_FACTORY_ARGUMENT_COUNT = 3
@@ -111,6 +110,9 @@ def _is_production(label: str) -> bool:
 
 def _is_config_env_module(module: str) -> bool:
     return module == CONFIG_ENV_MODULE
+
+
+_BOOTSTRAP_PATH_BASENAMES = frozenset({"conftest.py", "_sitecustomize_shim.py"})
 
 
 def _is_bootstrap_path_unit(label: str) -> bool:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts._normalization_types import Confidence, NormalizationTransformation

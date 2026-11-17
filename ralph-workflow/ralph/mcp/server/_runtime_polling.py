@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import concurrent.futures
-import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -39,10 +38,6 @@ from ralph.workspace.fs import FsWorkspace
 _REGISTRY_BUILD_GATE_HARD_DEADLINE_S: float = 0.05
 
 
-def _pause(seconds: float) -> None:
-    threading.Event().wait(seconds)
-
-
 def _workspace_mcp_config_path(workspace_root: Path) -> Path:
     return workspace_root / ".agent" / "mcp.toml"
 
@@ -64,7 +59,6 @@ def _poll_registry_build_gate(
     budget_s: float,
     *,
     clock_fn: Callable[[], float] = time.monotonic,
-    sleep_fn: Callable[[float], None] = _pause,
 ) -> None:
     gate_path = env_map.get(MCP_TEST_REGISTRY_BUILD_GATE_ENV)
     if not gate_path:
@@ -80,7 +74,7 @@ def _poll_registry_build_gate(
                 elapsed_s=elapsed,
                 restart_count=0,
             )
-        sleep_fn(0.005)
+        time.sleep(0.005)
 
 
 def _poll_bounded_pre_serve(
@@ -99,7 +93,7 @@ def _poll_bounded_pre_serve(
     effective_timeout_s = remaining_s
 
     def _do_pre_serve() -> tuple[FsWorkspace, McpConfig]:
-        allowed_roots = _session_allowed_roots(effective_session)
+        allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
         ws = (
             workspace
             if workspace is not None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -32,7 +33,7 @@ def default_prompt_path(
     workspace_root: Path,
     env: Mapping[str, str] | None = None,
 ) -> Path:
-    return resolve_effective_prompt_path(workspace_root, env)
+    return resolve_effective_prompt_path(workspace_root, env if env is not None else os.environ)
 
 
 def verify_prompt_integrity(
@@ -41,7 +42,7 @@ def verify_prompt_integrity(
     prompt_path: str | None = None,
 ) -> IntegrityResult:
     if prompt_path is None:
-        prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path(".")))
+        prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path("."), os.environ))
     if not workspace.exists(prompt_path):
         return IntegrityResult(
             ok=False,
@@ -87,7 +88,7 @@ def ensure_prompt_integrity(
     backup_paths: tuple[str, ...] = DEFAULT_BACKUP_PATHS,
 ) -> IntegrityResult:
     if prompt_path is None:
-        prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path(".")))
+        prompt_path = str(resolve_effective_prompt_path(workspace.absolute_path("."), os.environ))
     verification = verify_prompt_integrity(workspace, prompt_path=prompt_path)
     if verification.ok:
         return verification

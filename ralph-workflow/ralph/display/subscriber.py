@@ -4,7 +4,7 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from queue import Full, Queue
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -72,8 +72,6 @@ class _WaitingKindLike(Protocol):
 
 
 def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKindLike]]:
-    from typing import cast
-
     from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 
     event_cls = cast("type[_WaitingEventLike]", WaitingStatusEvent)
@@ -214,37 +212,6 @@ def _now_iso() -> str:
 
 
 class PipelineSubscriber:
-    __slots__ = (
-        "_activity",
-        "_analysis_decision",
-        "_analysis_phase",
-        "_analysis_reason",
-        "_decision_log",
-        "_dropped_count",
-        "_last_plan_refresh_marker",
-        "_last_state",
-        "_lock",
-        "_mcp_restart_count",
-        "_on_snapshot",
-        "_pipeline_policy",
-        "_plan_marker_reader",
-        "_plan_reader",
-        "_plan_risks",
-        "_plan_scope_items",
-        "_plan_summary",
-        "_plan_total_steps",
-        "_previous_phase",
-        "_prompt_path",
-        "_prompt_preview",
-        "_queue",
-        "_run_id",
-        "_snapshot_cache",
-        "_snapshot_cache_state",
-        "_watchdog_attention_sink",
-        "_watchdog_attention_sink_lock",
-        "_workspace_root",
-    )
-
     def __init__(
         self,
         *,

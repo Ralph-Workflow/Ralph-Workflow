@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
@@ -48,12 +49,15 @@ class TavilyBackend:
 
 def _load_tavily_client_type() -> _TavilyClientType:
     try:
-        from tavily import TavilyClient
+        module = import_module("tavily")
     except ImportError as exc:
         raise WebSearchError(
             "backend 'tavily' requires 'pip install ralph-workflow[web-search]'"
         ) from exc
-    return cast("_TavilyClientType", TavilyClient)
+    client_type = cast("object | None", getattr(module, "TavilyClient", None))
+    if client_type is None:
+        raise WebSearchError("tavily backend is unavailable")
+    return cast("_TavilyClientType", client_type)
 
 
 def _normalize_results(payload: Mapping[str, object]) -> list[SearchResult]:

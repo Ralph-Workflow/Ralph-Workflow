@@ -4,9 +4,8 @@ import json
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.upstream_config_error import UpstreamConfigError
@@ -45,7 +44,7 @@ def normalize_upstream_mcp_servers(
         if not isinstance(raw_entry, Mapping):
             continue
 
-        entry = as_object_dict(raw_entry) or {}
+        entry = cast("Mapping[str, object]", raw_entry)
         url = entry.get("url")
         command = entry.get("command")
 
@@ -111,35 +110,22 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
     for item in decoded:
         if not isinstance(item, Mapping):
             continue
-        item_map = as_object_dict(item) or {}
+        item_map = cast("Mapping[str, object]", item)
         name = item_map.get("name")
         transport = item_map.get("transport")
         if not isinstance(name, str) or transport not in {"http", "stdio"}:
             continue
-        if transport == "http":
-            servers.append(
-                UpstreamMcpServer(
-                    name=name,
-                    transport="http",
-                    url=_optional_str(item_map.get("url")),
-                    command=_optional_str(item_map.get("command")),
-                    args=_args_tuple(item_map.get("args")),
-                    env=_env_mapping(item_map.get("env")),
-                    origin=_origin_value(item_map.get("origin")),
-                )
+        servers.append(
+            UpstreamMcpServer(
+                name=name,
+                transport=cast('Literal["http", "stdio"]', transport),
+                url=_optional_str(item_map.get("url")),
+                command=_optional_str(item_map.get("command")),
+                args=_args_tuple(item_map.get("args")),
+                env=_env_mapping(item_map.get("env")),
+                origin=_origin_value(item_map.get("origin")),
             )
-        else:
-            servers.append(
-                UpstreamMcpServer(
-                    name=name,
-                    transport="stdio",
-                    url=_optional_str(item_map.get("url")),
-                    command=_optional_str(item_map.get("command")),
-                    args=_args_tuple(item_map.get("args")),
-                    env=_env_mapping(item_map.get("env")),
-                    origin=_origin_value(item_map.get("origin")),
-                )
-            )
+        )
     return tuple(servers)
 
 
@@ -194,7 +180,7 @@ def load_upstream_tool_catalog(raw: str | None) -> dict[str, list[UpstreamTool]]
             description = raw_tool.get("description")
             input_schema_raw = raw_tool.get("input_schema")
             input_schema = (
-                dict(as_object_dict(input_schema_raw) or {})
+                dict(cast("Mapping[str, object]", input_schema_raw))
                 if isinstance(input_schema_raw, Mapping)
                 else {}
             )
@@ -227,10 +213,8 @@ def _optional_str(value: object) -> str | None:
 
 
 def _origin_value(value: object) -> McpServerOrigin:
-    if value == "custom":
-        return "custom"
-    if value == "agent_upstream":
-        return "agent_upstream"
+    if isinstance(value, str) and value in {"custom", "agent_upstream"}:
+        return cast("McpServerOrigin", value)
     return "agent_upstream"
 
 

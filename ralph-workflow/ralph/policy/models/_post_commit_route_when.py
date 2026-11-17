@@ -4,10 +4,10 @@ from typing import Literal
 
 from pydantic import Field
 
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 
 
-class PostCommitRouteWhen(RalphBaseModel):
+class PostCommitRouteWhen(_FrozenPolicyModel):
     phase: str = Field(
         ...,
         description="Commit phase that this route applies to",

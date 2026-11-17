@@ -10,7 +10,7 @@ import threading
 import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import read_attr
 from ralph.checked_accessors import as_object_dict, loads_json
@@ -140,10 +140,10 @@ def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]
         raise ValueError(f"tools/list response from {endpoint} is not JSON") from exc
     if not isinstance(decoded, dict):
         raise TypeError(f"tools/list response from {endpoint} is not a JSON-RPC envelope")
-    result = decoded.get("result")
+    result = cast("dict[str, object]", decoded).get("result")
     if not isinstance(result, dict):
         raise TypeError(f"tools/list response from {endpoint} has no result object")
-    raw_tools = result.get("tools")
+    raw_tools = cast("dict[str, object]", result).get("tools")
     if not isinstance(raw_tools, list):
         raise TypeError(f"tools/list response from {endpoint} has no tools array")
     return canonical_tool_entries(raw_tools)
@@ -187,7 +187,7 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
                 if isinstance(res_dict, dict):
                     tools_val: object = res_dict.get("tools")
                     if isinstance(tools_val, list):
-                        return canonical_tool_entries(tools_val)
+                        return canonical_tool_entries(cast("list[object]", tools_val))
 
     raw_tools = _resolve_raw_tools(mcp_server)
     if not raw_tools:
@@ -195,7 +195,7 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
     raw: list[dict[str, object]] = []
     for item in raw_tools:
         if isinstance(item, dict):
-            raw.append(item)
+            raw.append(cast("dict[str, object]", item))
         else:
             name_obj: object = read_attr(item, "name", "")
             desc_obj: object = read_attr(item, "description", "")
@@ -377,7 +377,7 @@ def _verify_init_exchange(
         return False, "private_preflight_invalid_response", str(result_raw)
 
     meta_err = _validate_init_metadata(
-        result_raw,
+        cast("dict[str, object]", result_raw),
         expected_pid=expected_pid,
         expected_spawn_id=expected_spawn_id,
         expected_session_id=expected_session_id,
@@ -410,7 +410,7 @@ def _verify_tools_exchange(
     if not isinstance(res_raw, dict):
         return _failure("private_tools_list_invalid_response", str(res_raw))
 
-    tools_list = canonical_tool_entries(res_raw.get("tools"))
+    tools_list = canonical_tool_entries(cast("dict[str, object]", res_raw).get("tools"))
     candidate_tool_hash = compute_tool_set_hash(tools_list)
     entries = tuple(tools_list)
 
@@ -517,9 +517,8 @@ def _read_json_response(sock: socket.socket, deadline: float) -> dict[str, objec
             line, _ = buf.split(b"\n", 1)
             try:
                 data: object = json.loads(line.decode("utf-8"))
-                as_dict = _as_object_dict(data)
-                if as_dict is not None:
-                    return as_dict
+                if isinstance(data, dict):
+                    return cast("dict[str, object]", data)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return None
     return None
@@ -554,16 +553,14 @@ def wait_for_candidate_resume(
     resume_path: Path,
     timeout: float = 30.0,
     stop_event: threading.Event | None = None,
-    sleep_fn: Callable[[float], object] | None = None,
 ) -> bool:
     deadline = time.monotonic() + timeout
-    sleeper = sleep_fn if sleep_fn is not None else time.sleep
     while time.monotonic() < deadline:
         if stop_event is not None and stop_event.is_set():
             return False
         if resume_path.exists():
             return True
-        sleeper(0.005)
+        time.sleep(0.005)
     return resume_path.exists()
 
 

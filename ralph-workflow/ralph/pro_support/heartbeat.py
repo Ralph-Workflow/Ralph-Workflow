@@ -48,20 +48,6 @@ def _default_clock() -> float:
 
 
 class ProHeartbeatClient:
-    __slots__ = (
-        "_base_url",
-        "_client_factory",
-        "_clock",
-        "_interval",
-        "_metadata",
-        "_pid",
-        "_run_id",
-        "_stop_event",
-        "_thread",
-        "_timeout",
-        "_token",
-    )
-
     def __init__(
         self,
         run_id: str,

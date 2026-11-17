@@ -4,7 +4,7 @@ import base64 as _base64
 import hashlib
 import json
 import time
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -43,6 +43,7 @@ from ralph.mcp.upstream.client import carries_upstream_media_blocks
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
 
     from ralph.mcp.protocol.session import McpSession
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -50,6 +51,14 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.bridge import ToolBridge
     from ralph.mcp.tools.bridge._tool_definition import ToolDefinition
     from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+
+    class _ToDict(Protocol):
+        def __call__(self) -> dict[str, object]: ...
+
+    class _ModelDump(Protocol):
+        def __call__(self, **kwargs: bool) -> dict[str, object]: ...
 
 
 for _member in RalphToolName:
@@ -104,17 +113,17 @@ def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]
     serialized: list[dict[str, object]] = []
     for idx, block in enumerate(as_sequence(content_blocks)):
         if isinstance(block, dict):
-            serialized.append(_as_str_object_dict(block))
+            serialized.append(cast("dict[str, object]", block))
             continue
 
-        to_dict_payload = _call_to_dict(block)
-        if to_dict_payload is not None:
-            serialized.append(to_dict_payload)
+        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
+        if callable(to_dict):
+            serialized.append(to_dict())
             continue
 
-        model_dump_payload = _call_model_dump(block)
-        if model_dump_payload is not None:
-            serialized.append(model_dump_payload)
+        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
+        if callable(model_dump):
+            serialized.append(model_dump(exclude_none=True, by_alias=True))
             continue
 
         raise TypeError(
@@ -136,32 +145,20 @@ def decode_json_payload_from_content(content_blocks: object) -> dict[str, object
     if not isinstance(text, str):
         return None
     try:
-        decoded: object = json.loads(text)
+        decoded = cast("object", json.loads(text))
     except json.JSONDecodeError:
         return None
     if not isinstance(decoded, dict) or "content" not in decoded:
         return None
     if carries_upstream_media_blocks(decoded.get("content")):
         return None
-    return _as_str_object_dict(decoded)
+    return cast("dict[str, object]", decoded)
 
 
 _SLOW_PRE_DISPATCH_S: Final[float] = 5.0
 
 
 class McpServer:
-    __slots__ = (
-        "_activity_relay_error",
-        "_clock",
-        "_expose_mcp_aliases",
-        "_mcp_activity_sink",
-        "_metrics",
-        "_registry",
-        "_schema_flavor",
-        "_session",
-        "_workspace",
-    )
-
     def __init__(
         self,
         session: McpSession,
@@ -681,7 +678,7 @@ class McpServer:
         content = payload.get("content")
         block = {"type": "text", "text": notice}
         if isinstance(content, list):
-            content.append(block)
+            cast("list[object]", content).append(block)
         else:
             payload["content"] = [block]
 

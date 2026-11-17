@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
-
-from ralph.config._env import resolve_environ
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -14,7 +13,7 @@ PROMPT_PATH = "PROMPT_PATH"
 
 
 def _get_env(env: Mapping[str, str] | None) -> Mapping[str, str]:
-    return resolve_environ(env)
+    return os.environ if env is None else env
 
 
 def is_pro_mode(env: Mapping[str, str] | None = None) -> bool:

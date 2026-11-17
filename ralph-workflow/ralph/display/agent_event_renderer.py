@@ -584,7 +584,7 @@ def _metadata_truthy(value: object) -> bool:
         return value
     if isinstance(value, str):
         return value.strip().lower() in {"true", "1", "yes"}
-    if any(isinstance(value, _t) for _t in (int, float)):
+    if isinstance(value, (int, float)):
         return value != 0
     return False
 
@@ -621,15 +621,20 @@ def normalize_event_from_agent_output_line(
     unit_id: str = "",
     source_kind: ActivityEventKind | None = None,
 ) -> AgentActivityEvent:
+    from typing import cast
+
     from ralph.display.event_options import EventOptions
 
     kind = source_kind or map_parser_type_to_kind(line.type)
     return make_event(
         provider=provider,
         kind=kind,
-        options=EventOptions(
-            content=line.content,
-            metadata=line.metadata or {},
-            source=unit_id,
+        options=cast(
+            "EventOptions | None",
+            EventOptions(
+                content=line.content,
+                metadata=line.metadata or {},
+                source=unit_id,
+            ),
         ),
     )

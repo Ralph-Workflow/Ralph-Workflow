@@ -124,12 +124,14 @@ def _classify_via_shared_outcome(outcome: ConflictAttemptOutcome) -> AttemptFaul
 
 
 def classify_attempt_fault(
-    evidence: AttemptFault | ResolutionTerminationReason | None = None,
+    evidence: object = None,
 ) -> AttemptFault:
     if isinstance(evidence, AttemptFault):
         return evidence
     if evidence is None:
         return AttemptFault.AGENT_HEALTHY
+    if not isinstance(evidence, ResolutionTerminationReason):
+        return AttemptFault.UNKNOWN
     outcome = _REASON_TO_OUTCOME.get(evidence)
     if outcome is not None:
         return _classify_via_shared_outcome(outcome)

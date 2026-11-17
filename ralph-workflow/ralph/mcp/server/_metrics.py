@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass, field
 
 
+@dataclass
 class McpMetrics:
-    __slots__ = (
-        "_lock",
-        "health_probe_outcomes",
-        "post_header_failures",
-        "terminal_frame_emissions",
+    post_header_failures: int = 0
+    terminal_frame_emissions: int = 0
+    health_probe_outcomes: dict[str, int] = field(
+        default_factory=lambda: {"success": 0, "failure": 0}
     )
-
-    def __init__(self) -> None:
-        self.post_header_failures = 0
-        self.terminal_frame_emissions = 0
-        self.health_probe_outcomes: dict[str, int] = {"success": 0, "failure": 0}
-        self._lock = threading.Lock()
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record_post_header_failure(
         self,
@@ -54,30 +50,23 @@ class McpMetrics:
             }
 
 
-class _DefaultMetricsState:
-    __slots__ = ("lock", "metrics")
-
-    def __init__(self) -> None:
-        self.lock = threading.Lock()
-        self.metrics: McpMetrics | None = None
-
-
-_default_metrics_state = _DefaultMetricsState()
+_default_metrics_holder: list[McpMetrics | None] = [None]
+_default_metrics_lock = threading.Lock()
 
 
 def get_default_metrics() -> McpMetrics:
-    with _default_metrics_state.lock:
-        metrics = _default_metrics_state.metrics
+    with _default_metrics_lock:
+        metrics = _default_metrics_holder[0]
         if metrics is not None:
             return metrics
         metrics = McpMetrics()
-        _default_metrics_state.metrics = metrics
+        _default_metrics_holder[0] = metrics
         return metrics
 
 
 def reset_default_metrics() -> None:
-    with _default_metrics_state.lock:
-        _default_metrics_state.metrics = None
+    with _default_metrics_lock:
+        _default_metrics_holder[0] = None
 
 
 __all__ = [

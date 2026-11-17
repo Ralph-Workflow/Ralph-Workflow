@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
 import sys
@@ -8,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.config import _env as config_env
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class SystemInfo:
         os_name = sys.platform
         arch = platform.machine()
         working_directory = _get_working_directory()
-        shell = _get_shell(dict(config_env.environ()) if env is None else dict(env))
+        shell = _get_shell(dict(os.environ) if env is None else dict(env))
         git_version = git_probe(["--version"])
         git_repo = _is_git_repo(git_probe)
         git_branch = None

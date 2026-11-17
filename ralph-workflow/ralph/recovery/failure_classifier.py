@@ -3,7 +3,8 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -16,6 +17,8 @@ from .failure_details import FailureDetailParts, contains_casefolded_marker, fai
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .attempt_facts import AttemptFacts
     from .typed_signal import TypedSignal
 
@@ -676,14 +679,11 @@ class FailureClassifier:
         category, counts, unavailability_reason = classification
         original: BaseException | None = None
         raw_message = ""
-        match raw_failure:
-            case BaseException() as exc_failure:
-                original = exc_failure
-                raw_message = str(exc_failure)
-            case str() as text_failure:
-                raw_message = text_failure
-            case _:
-                raw_message = ""
+        if isinstance(raw_failure, BaseException):
+            original = raw_failure
+            raw_message = str(raw_failure)
+        elif isinstance(raw_failure, str):
+            raw_message = raw_failure
         return ClassifiedFailure(
             category=category,
             reason=typed_outcome_reason(outcome, unresolved_count),
@@ -721,9 +721,12 @@ class FailureClassifier:
         exc_obj = exc if isinstance(exc, BaseException) else None
         signal = facts.typed_signal if facts is not None else None
         if signal is None and exc_obj is not None:
-            from ralph.agents.invoke._completion_termination import attempt_facts_for_failure
-
-            signal = attempt_facts_for_failure(exc_obj).typed_signal
+            module = import_module("ralph.agents.invoke._completion_termination")
+            facts_for_failure = cast(
+                "Callable[[BaseException], AttemptFacts]",
+                module.attempt_facts_for_failure,
+            )
+            signal = facts_for_failure(exc_obj).typed_signal
         signal_name = signal.name if signal is not None else None
         signal_provider_originated = signal.provider_originated if signal is not None else False
         typed_unavailability = typed_signal_unavailability_reason(signal)

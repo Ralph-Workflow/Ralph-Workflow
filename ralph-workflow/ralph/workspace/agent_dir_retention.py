@@ -7,7 +7,7 @@ import sqlite3
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, cast
 
 if sys.platform == "win32":
     import msvcrt
@@ -36,17 +36,6 @@ _METADATA_LOCK_RELPATH = ".agent/.retention-metadata.lock"
 
 
 class RetentionPassCoordinator:
-    __slots__ = (
-        "_condition",
-        "_in_flight",
-        "_joiners",
-        "_late_joiners",
-        "_on_wave_acquired",
-        "_pass_count",
-        "_published_until",
-        "_wave",
-    )
-
     def __init__(self, *, on_wave_acquired: Callable[[], None] | None = None) -> None:
         self._condition = threading.Condition()
         self._pass_count = 0
@@ -129,18 +118,7 @@ class RetentionPassCoordinator:
             self._condition.notify_all()
 
 
-class _ActiveRunRegistry:
-    __slots__ = ()
-    _lock: ClassVar[threading.Lock | None] = None
-
-    @classmethod
-    def lock(cls) -> threading.Lock:
-        existing = cls._lock
-        if existing is not None:
-            return existing
-        created = threading.Lock()
-        cls._lock = created
-        return created
+_active_run_lock = threading.Lock()
 
 
 @contextlib.contextmanager
@@ -195,7 +173,7 @@ def _active_run_ids(workspace_root: Path) -> frozenset[str]:
 
 
 def register_active_run(workspace_root: Path, run_id: str) -> None:
-    with _ActiveRunRegistry.lock(), _metadata_lock(workspace_root):
+    with _active_run_lock, _metadata_lock(workspace_root):
         _write_json(
             workspace_root / _ACTIVE_RUNS_RELPATH,
             {"run_ids": sorted(_active_run_ids(workspace_root) | {run_id})},
@@ -203,7 +181,7 @@ def register_active_run(workspace_root: Path, run_id: str) -> None:
 
 
 def unregister_active_run(workspace_root: Path, run_id: str) -> None:
-    with _ActiveRunRegistry.lock(), _metadata_lock(workspace_root):
+    with _active_run_lock, _metadata_lock(workspace_root):
         _write_json(
             workspace_root / _ACTIVE_RUNS_RELPATH,
             {"run_ids": sorted(_active_run_ids(workspace_root) - {run_id})},
@@ -227,7 +205,7 @@ def register_temporary_path_owner(workspace_root: Path, path: Path, run_id: str)
     with _metadata_lock(workspace_root):
         raw = _read_json(ownership_path)
         owners: dict[str, object] = (
-            {key: value for key, value in raw.items() if isinstance(key, str)}
+            {key: cast("object", value) for key, value in raw.items() if isinstance(key, str)}
             if isinstance(raw, dict)
             else {}
         )
@@ -279,19 +257,12 @@ def _temporary_path_owners(workspace_root: Path) -> dict[str, tuple[str, float]]
     except TypeError:
         return {}
     owners: dict[str, tuple[str, float]] = {}
-    for path, entry in raw_dict.items():
-        try:
-            entry_dict = as_object_dict(entry)
-        except TypeError:
-            continue
-        run_id = entry_dict.get("run_id")
-        created_at = entry_dict.get("created_at")
-        if (
-            isinstance(run_id, str)
-            and isinstance(created_at, int | float)
-            and not isinstance(created_at, bool)
-        ):
-            owners[path] = (run_id, float(created_at))
+    for path, entry in raw.items():
+        if isinstance(path, str) and isinstance(entry, dict):
+            run_id = entry.get("run_id")
+            created_at = entry.get("created_at")
+            if isinstance(run_id, str) and isinstance(created_at, (int, float)):
+                owners[path] = (run_id, float(created_at))
     return owners
 
 

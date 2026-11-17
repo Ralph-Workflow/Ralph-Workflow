@@ -244,7 +244,7 @@ def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
         return {}
     return {
         name: entries
-        for name, entries in dict(as_mapping(raw_chains)).items()
+        for name, entries in cast("dict[str, object]", raw_chains).items()
         if isinstance(entries, list) and all(isinstance(entry, str) for entry in entries)
     }
 

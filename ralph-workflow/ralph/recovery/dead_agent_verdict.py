@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, cast
 
 from ralph.checked_accessors import as_object_dict
 from ralph.recovery.attempt_facts import (
@@ -12,7 +12,10 @@ from ralph.recovery.attempt_facts import (
 )
 from ralph.recovery.attribution import Attribution, AttributionVerdict
 from ralph.recovery.canary_probe import ProbeOutcome
-from ralph.recovery.typed_signal import TypedSignal, runtime_issued_termination_is_not_agent_fault
+from ralph.recovery.typed_signal import (
+    TypedSignal,
+    runtime_issued_termination_is_not_agent_fault,
+)
 
 __all__ = (
     "DeadAgentVerdict",
@@ -28,7 +31,9 @@ __all__ = (
     "verdict_counts_toward_agent_state",
     "verdict_record",
 )
+
 _VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
+
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "agent_dead",
     "healthy",
@@ -66,7 +71,8 @@ PersistedVerdict = _PersistedVerdict
 
 
 def task_or_environment_attribution_is_not_agent_fault(
-    attribution: AttributionVerdict, probe_outcome: ProbeOutcome | None = None
+    attribution: AttributionVerdict,
+    probe_outcome: ProbeOutcome | None = None,
 ) -> bool:
     if attribution.attribution is not Attribution.TASK_OR_ENVIRONMENT:
         return False

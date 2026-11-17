@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError
 from loguru import logger
@@ -136,7 +136,7 @@ def _commit_selected_paths(
     try:
         stage_fn(repo_root_path, stageable)
     except (OSError, GitCommandError):
-        route_git_method(repo, "reset", ("HEAD", "--", *stageable))
+        _ = cast("None", route_git_method(repo, "reset", ("HEAD", "--", *stageable)))
         raise
     try:
         if body_builder is not None:
@@ -153,7 +153,10 @@ def _commit_selected_paths(
         expected_head = str(repo.head.commit.hexsha)
         result = create_commit_fn(repo_root_path, message, expected_head=expected_head)
         if result.status is not CommitCreationStatus.CREATED or result.sha is None:
-            route_git_method(repo, "reset", ("HEAD", "--", *stageable))
+            _ = cast(
+                "None",
+                route_git_method(repo, "reset", ("HEAD", "--", *stageable)),
+            )
             _restore_pre_staged_index(repo, pre_staged_snapshots)
             error_message: str | None
             error_attr: object = read_attr(result, "error", None)
@@ -174,7 +177,10 @@ def _commit_selected_paths(
     except (OSError, GitCommandError) as inner_exc:
         reset_error: str | None = None
         try:
-            route_git_method(repo, "reset", ("HEAD", "--", *stageable))
+            _ = cast(
+                "None",
+                route_git_method(repo, "reset", ("HEAD", "--", *stageable)),
+            )
         except (OSError, GitCommandError) as reset_exc:
             reset_error = str(reset_exc)
             logger.warning(

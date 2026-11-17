@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
@@ -74,17 +74,13 @@ __all__ = [
 
 
 def __getattr__(name: str) -> object:
-    match name:
-        case "AgentInvocationError":
-            from ralph.agents.invoke import AgentInvocationError
+    if name in ("AgentInvocationError", "invoke_agent"):
+        from typing import cast
 
-            return AgentInvocationError
-        case "invoke_agent":
-            from ralph.agents.invoke import invoke_agent
+        from ralph.agents import invoke
 
-            return invoke_agent
-        case _:
-            raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        return cast("object", getattr(invoke, name))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 _MAX_DISPLAY_FILES = 5
@@ -104,7 +100,7 @@ def commit_plumbing(
 
     try:
         repo_root = find_repo_root()
-    except GitOperationError as e:
+    except Exception as e:
         logging.exception("find_repo_root failed")
         display.emit_warning(f"Error: Not in a git repository: {e}")
         return 1
@@ -391,11 +387,8 @@ def _generate_commit_message_with_chain(
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> CommitAgentResult:
-    general_config = chain_config.general_config
-    if general_config is None:
-        raise TypeError("CommitChainConfig.general_config is required")
     deps = DefaultPipelineFactory().build(
-        general_config,
+        cast("UnifiedConfig", chain_config.general_config),
         display_context,
         model_identity=model_identity,
         pro_hooks=pro_hooks,

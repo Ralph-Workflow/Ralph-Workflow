@@ -27,6 +27,7 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "ralph/mcp/server/runtime.py",
         "ralph/git/operations.py",
         "tests/test_git_operations.py",
+        "tests/recovery/test_dead_agent_pipeline_matrix.py",
         "tests/agents/test_idle_watchdog_1.py",
         "tests/agents/test_idle_watchdog.py",
         "tests/recovery/test_agent_unavailable_tracker.py",
@@ -234,6 +235,51 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
 
 _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = frozenset(
     {
+        (
+            "tests/scenarios/test_last_resort_recovery.py",
+            "ralph.pipeline",
+            ("_integration_diagnostic_handoff",),
+        ),
+        (
+            "tests/scenarios/test_last_resort_recovery.py",
+            "ralph.pipeline",
+            ("_integration_owner_seam",),
+        ),
+        (
+            "tests/test_auto_integrate_strategy_ladder.py",
+            "ralph.pipeline.auto_integrate",
+            ("_configured_resolver_allowed",),
+        ),
+        (
+            "tests/test_conflict_resolution_cross_path_budget.py",
+            "ralph.pipeline.auto_integrate",
+            ("_configured_resolver_allowed",),
+        ),
+        (
+            "tests/test_conflict_resolution_phase_parity_cooldown.py",
+            "ralph.pipeline.auto_integrate",
+            ("_configured_resolver_allowed",),
+        ),
+        (
+            "tests/test_conflict_resolution_phase_parity_cooldown.py",
+            "ralph.pipeline.conflict_resolution",
+            ("_driver_rounds",),
+        ),
+        (
+            "tests/test_conflict_resolution_shared_finalization.py",
+            "ralph.pipeline.conflict_resolution",
+            ("_driver_rounds",),
+        ),
+        (
+            "tests/test_git_lock_live_holder_wait.py",
+            "ralph.git",
+            ("_lock_recovery",),
+        ),
+        (
+            "tests/test_reducer_phase_failure_event.py",
+            "ralph.pipeline.auto_integrate",
+            ("_configured_resolver_allowed",),
+        ),
         (
             "tests/agents/invoke/test_cli_attempt_fact_completeness.py",
             "ralph.agents.parsers",

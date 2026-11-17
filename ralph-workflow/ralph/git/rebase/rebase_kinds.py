@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import cast
 
 from ralph.git.rebase._rebase_kind import RebaseKind
 
@@ -18,8 +19,7 @@ class RebaseErrorKind:
 
 def _freeze_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:
     metadata_dict: dict[str, object] = dict(metadata)
-    frozen: Mapping[str, object] = MappingProxyType(metadata_dict)
-    return frozen
+    return cast("Mapping[str, object]", MappingProxyType(metadata_dict))
 
 
 def classify_rebase_error(stderr: str, stdout: str) -> RebaseErrorKind:

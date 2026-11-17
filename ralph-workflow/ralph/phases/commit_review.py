@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from git import GitError, InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -68,6 +68,9 @@ from ralph.phases._commit_review_outcome import (
     decide_commit_review_outcome,
 )
 from ralph.phases._commit_review_tripwires import (
+    DEFAULT_BINARY_SIZE_LIMIT,
+    DEFAULT_MAX_DELETED_FILES,
+    DEFAULT_MAX_DELETED_FRACTION,
     Finding,
     TripwireReport,
     TripwireThresholds,
@@ -255,15 +258,33 @@ def _resolve_policy_thresholds(
 
     policy: object = read_attr(ctx_or_policy, "pipeline_policy", ctx_or_policy)
     if isinstance(policy, PipelinePolicy):
-        cr_policy = policy.commit_review
-        thresholds = TripwireThresholds(
-            max_deleted_files=cr_policy.max_deleted_files,
-            max_deleted_fraction=cr_policy.max_deleted_fraction,
-            binary_size_limit=cr_policy.binary_size_limit,
-        )
+        cr_policy_obj = cast("object", getattr(policy, "commit_review", None))
+        if cr_policy_obj is not None:
+            max_del_obj = cast(
+                "object", getattr(cr_policy_obj, "max_deleted_files", DEFAULT_MAX_DELETED_FILES)
+            )
+            max_frac_obj = cast(
+                "object",
+                getattr(cr_policy_obj, "max_deleted_fraction", DEFAULT_MAX_DELETED_FRACTION),
+            )
+            bin_size_obj = cast(
+                "object", getattr(cr_policy_obj, "binary_size_limit", DEFAULT_BINARY_SIZE_LIMIT)
+            )
+            max_del = max_del_obj if isinstance(max_del_obj, int) else DEFAULT_MAX_DELETED_FILES
+            max_frac = (
+                max_frac_obj if isinstance(max_frac_obj, float) else DEFAULT_MAX_DELETED_FRACTION
+            )
+            bin_size = bin_size_obj if isinstance(bin_size_obj, int) else DEFAULT_BINARY_SIZE_LIMIT
+            thresholds = TripwireThresholds(
+                max_deleted_files=max_del,
+                max_deleted_fraction=max_frac,
+                binary_size_limit=bin_size,
+            )
         phase_def = policy.phases.get(phase_name)
         if phase_def is not None:
-            allowed_dirs = list(phase_def.allowed_directories)
+            ad_obj = cast("object", getattr(phase_def, "allowed_directories", None))
+            if isinstance(ad_obj, (list, tuple, set)):
+                allowed_dirs = [str(d) for d in ad_obj]
 
     return thresholds, allowed_dirs
 
@@ -690,7 +711,7 @@ def _run_stage1(
         phase_name,
         artifacts_policy=ctx.artifacts_policy,
     )
-    if isinstance(res, CommitReviewRejected | CommitReviewGateFailed):
+    if isinstance(res, (CommitReviewRejected, CommitReviewGateFailed)):
         return [res]
     return res
 

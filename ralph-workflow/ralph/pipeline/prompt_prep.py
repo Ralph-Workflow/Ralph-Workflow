@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -7,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.config import _env
 from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import (
     CYCLE_DEADLINE_EPOCH_ENV,
@@ -140,11 +140,8 @@ def session_capabilities_for_agent_phase(
     )
 
 
-def _prompt_changed_since_last_materialization(
-    workspace_root: Path,
-    env: Mapping[str, str] | None = None,
-) -> bool:
-    prompt_path = resolve_effective_prompt_path(workspace_root, env)
+def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
+    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
 
     if not product_criteria_path.exists():
@@ -225,7 +222,7 @@ def _materialize_prepared_prompt(
     registry: _RegistryLike | None = None,
     config: UnifiedConfig | None = None,
 ) -> None:
-    env_map: Mapping[str, str] = _env.resolve_environ(env)
+    env_map = os.environ if env is None else env
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
@@ -269,7 +266,7 @@ def _materialize_prepared_prompt(
         previous_phase=effect.previous_phase,
         work_unit=work_unit,
         resume_existing_phase=(
-            not _prompt_changed_since_last_materialization(workspace_scope.root, env)
+            not _prompt_changed_since_last_materialization(workspace_scope.root)
             and _should_resume_existing_planning_phase_name(
                 phase=effect.phase,
                 drain=effect.drain,
@@ -293,20 +290,19 @@ _CYCLE_DEADLINE_ENV_NAMES = (
 
 def _withdraw_cycle_deadline_env() -> None:
     for name in _CYCLE_DEADLINE_ENV_NAMES:
-        _env.pop_environ(name)
+        os.environ.pop(name, None)
 
 
 @contextmanager
 def cycle_deadline_suspended() -> Iterator[None]:
-    process_env = _env.environ()
     saved = {
-        str(name): process_env[name] for name in _CYCLE_DEADLINE_ENV_NAMES if name in process_env
+        str(name): os.environ[name] for name in _CYCLE_DEADLINE_ENV_NAMES if name in os.environ
     }
     _withdraw_cycle_deadline_env()
     try:
         yield
     finally:
-        _env.update_environ(saved)
+        os.environ.update(saved)
 
 
 def _publish_cycle_deadline_env(
@@ -341,12 +337,12 @@ def _publish_cycle_deadline_env(
     _withdraw_cycle_deadline_env()
     if cycle_published is not None:
         warn_epoch, deadline_epoch = cycle_published
-        _env.set_environ(CYCLE_WARN_EPOCH_ENV, repr(warn_epoch))
-        _env.set_environ(CYCLE_DEADLINE_EPOCH_ENV, repr(deadline_epoch))
+        os.environ[CYCLE_WARN_EPOCH_ENV] = repr(warn_epoch)
+        os.environ[CYCLE_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
     if development_published is not None:
         warn_epoch, deadline_epoch = development_published
-        _env.set_environ(DEV_WARN_EPOCH_ENV, repr(warn_epoch))
-        _env.set_environ(DEV_DEADLINE_EPOCH_ENV, repr(deadline_epoch))
+        os.environ[DEV_WARN_EPOCH_ENV] = repr(warn_epoch)
+        os.environ[DEV_DEADLINE_EPOCH_ENV] = repr(deadline_epoch)
 
 
 def _materialize_agent_prompt_if_needed(

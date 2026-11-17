@@ -4,11 +4,11 @@ from pydantic import Field, model_validator
 
 from ralph.policy.models._agents_policy import AgentsPolicy
 from ralph.policy.models._artifacts_policy import ArtifactsPolicy
+from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
 from ralph.policy.models._pipeline_policy import PipelinePolicy
-from ralph.pydantic_compat import RalphBaseModel
 
 
-class PolicyBundle(RalphBaseModel):
+class PolicyBundle(_FrozenPolicyModel):
     agents: AgentsPolicy = Field(..., description="Agent chains and drain bindings")
     pipeline: PipelinePolicy = Field(..., description="Phase graph and routing")
     artifacts: ArtifactsPolicy = Field(..., description="Artifact contracts per drain")

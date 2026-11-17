@@ -1,30 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.checked_accessors import as_int
 from ralph.display.log_sink import make_stderr_log_sink
 
-from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
-from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
-
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
 
     from loguru import Logger
 
+    class SinkAdder(Protocol):
+        def __call__(self, target: object, /, **kwargs: object) -> int: ...
 
-class SinkAdder(Protocol):
-    def __call__(self, target: object, /, **kwargs: object) -> int: ...
 
-
-def _default_sink_adder(target: object, /, **kwargs: object) -> int:
-    adder = cast("SinkAdder", logger.add)
-    return as_int(adder(target, **kwargs), field="logger.add")
-
+from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
+from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
 
 _FILE_SINK_BUFFER_BYTES: int = 8192
 
@@ -128,7 +123,7 @@ def _configure_file_handlers(
     run_directory = log_directory / config.run_id if config.run_id else log_directory
     run_directory.mkdir(parents=True, exist_ok=True)
 
-    adder: SinkAdder = sink_adder if sink_adder is not None else _default_sink_adder
+    adder: SinkAdder = sink_adder if sink_adder is not None else cast("SinkAdder", logger.add)
 
     text_log_path = run_directory / "ralph.log"
     _add_buffered_file_sink(
@@ -170,7 +165,7 @@ def _add_buffered_file_sink(adder: SinkAdder, path: Path, **kwargs: object) -> i
             "_add_buffered_file_sink sets buffering=8192 internally;"
             " callers must NOT pass buffering"
         )
-    return adder(str(path), buffering=_FILE_SINK_BUFFER_BYTES, **dict(kwargs))
+    return adder(str(path), buffering=_FILE_SINK_BUFFER_BYTES, **kwargs)
 
 
 def get_logger() -> Logger:
@@ -178,8 +173,6 @@ def get_logger() -> Logger:
 
 
 class RalphLogger:
-    __slots__ = ("_logger",)
-
     def __init__(self, base_logger: Logger | None = None) -> None:
         self._logger: Logger = base_logger if base_logger is not None else logger
 
@@ -240,10 +233,10 @@ class RalphLogger:
         )
 
     def success(self, message: str, **extra: object) -> None:
-        self._logger.bind(**dict(extra)).log("SUCCESS", message)
+        self._logger.bind(**extra).log("SUCCESS", message)
 
     def milestone(self, message: str, **extra: object) -> None:
-        self._logger.bind(**dict(extra)).log("MILESTONE", message)
+        self._logger.bind(**extra).log("MILESTONE", message)
 
 
 __all__ = [

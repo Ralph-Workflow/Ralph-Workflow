@@ -340,7 +340,7 @@ def _check_production_assignment(
         target_name: str | None = None
         if isinstance(target, ast.Name):
             target_name = target.id
-        if isinstance(target, ast.Attribute):
+        elif isinstance(target, ast.Attribute):
             target_name = target.attr
         if (
             target_name is not None
@@ -479,7 +479,7 @@ def _check_production_call(
         recv_name: str | None = None
         if isinstance(recv, ast.Name):
             recv_name = recv.id
-        if isinstance(recv, ast.Attribute):
+        elif isinstance(recv, ast.Attribute):
             recv_name = recv.attr
         if (
             recv_name is not None
@@ -972,15 +972,14 @@ def _null_bound_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> froze
     for node in ast.walk(function):
         targets: list[ast.expr]
         value: ast.expr | None
-        match node:
-            case ast.Assign():
-                targets = list(node.targets)
-                value = node.value
-            case ast.AnnAssign() | ast.AugAssign():
-                targets = [node.target]
-                value = node.value
-            case _:
-                continue
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
         for target in targets:
             if not isinstance(target, ast.Name):
                 continue
@@ -1150,19 +1149,18 @@ def _check_runner_ownership(
 
 def _direct_calls(statement: ast.stmt) -> list[ast.Call]:
     headers: list[ast.AST]
-    match statement:
-        case ast.If() | ast.While():
-            headers = [statement.test]
-        case ast.For() | ast.AsyncFor():
-            headers = [statement.iter]
-        case ast.With() | ast.AsyncWith():
-            headers = list(statement.items)
-        case ast.Match():
-            headers = [statement.subject]
-        case ast.Try():
-            headers = []
-        case _:
-            headers = [statement]
+    if isinstance(statement, (ast.If, ast.While)):
+        headers = [statement.test]
+    elif isinstance(statement, (ast.For, ast.AsyncFor)):
+        headers = [statement.iter]
+    elif isinstance(statement, (ast.With, ast.AsyncWith)):
+        headers = list(statement.items)
+    elif isinstance(statement, ast.Match):
+        headers = [statement.subject]
+    elif isinstance(statement, ast.Try):
+        headers = []
+    else:
+        headers = [statement]
     return [
         child for header in headers for child in ast.walk(header) if isinstance(child, ast.Call)
     ]
@@ -1571,7 +1569,7 @@ def _check_production_import(
                 or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
         )
-    if isinstance(node, ast.ImportFrom):
+    elif isinstance(node, ast.ImportFrom):
         if (
             node.module
             and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
@@ -1762,7 +1760,7 @@ def _collect_classifier_instance_names(tree: ast.Module) -> set[str]:
         for target in _assignment_targets(node):
             if isinstance(target, ast.Name):
                 names.add(target.id)
-            if isinstance(target, ast.Attribute):
+            elif isinstance(target, ast.Attribute):
                 names.add(target.attr)
     return names
 
@@ -1815,7 +1813,7 @@ def _collect_module_string_constants(tree: ast.Module) -> set[str]:
                     and isinstance(node.value.value, str)
                 ):
                     constants.add(target.id)
-        if (
+        elif (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and isinstance(node.value, ast.Constant)
@@ -1866,7 +1864,7 @@ def _collect_local_provenance(
                 name: str | None = None
                 if isinstance(target, ast.Name):
                     name = target.id
-                if isinstance(target, ast.Attribute):
+                elif isinstance(target, ast.Attribute):
                     name = target.attr
                 if name is not None and name not in tainted:
                     tainted[name] = node.lineno

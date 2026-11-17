@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ralph.agents.parsers._event_classification import is_user_prompt_event_line
 

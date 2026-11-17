@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import subprocess
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol._startup_timeouts import upstream_call_timeout_seconds
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
-from ralph.process._spawn_env import child_env_for_spawn, scrub_activity_relay_controls
+from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import (
     ProcessManager,
     ProcessTerminationIssuer,
@@ -25,8 +26,6 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class StdioUpstreamClient:
-    __slots__ = ("_caller", "_server")
-
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -126,7 +125,7 @@ def _make_stdio_caller(
             json.dumps(method_payload, separators=(",", ":")),
         ]
         payload = "\n".join(payload_lines) + "\n"
-        env = scrub_activity_relay_controls({**child_env_for_spawn(None), **server.env})
+        env = scrub_activity_relay_controls({**os.environ, **server.env})
         handle = effective_pm.spawn(
             command,
             SpawnOptions(

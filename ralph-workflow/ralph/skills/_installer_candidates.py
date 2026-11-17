@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
@@ -14,6 +15,9 @@ from ralph.skills._agent_paths import (
     project_skill_root,
 )
 from ralph.skills._content import _MANAGED_MARKER, BASELINE_SKILL_NAMES
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _candidate_skill_paths(workspace_root: Path) -> list[str]:

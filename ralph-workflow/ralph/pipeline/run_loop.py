@@ -10,7 +10,7 @@ import uuid
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
@@ -31,7 +31,6 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
-from ralph.display.subscriber import PipelineSubscriber
 from ralph.git.proposal_seal import seal_baseline
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -119,11 +118,13 @@ from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangePr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
 
     from ralph.agents.clock import Clock
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline._config_failure_fingerprint import ConfigFileFingerprintWatcher
     from ralph.pipeline._integration_executor import RebaseContinuationExecutor
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
@@ -148,85 +149,56 @@ if TYPE_CHECKING:
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.workspace.scope import WorkspaceScope
 
+    class _PipelineSubscriberProtocol(Protocol):
+        def notify(self, state: PipelineState) -> None: ...
 
-@runtime_checkable
-class _PipelineSubscriberProtocol(Protocol):
-    def notify(self, state: PipelineState) -> None: ...
+    class _RegistryLike(Protocol):
+        def get(self, name: str) -> AgentConfig | None: ...
 
+    class _RunPipelineStepFn(Protocol):
+        def __call__(
+            self,
+            *,
+            state: PipelineState,
+            policy_bundle: PolicyBundle,
+            workspace_scope: WorkspaceScope,
+            config: UnifiedConfig,
+            display: ParallelDisplay,
+            display_context: DisplayContext,
+            verbosity: Verbosity,
+            registry: _RegistryLike,
+            pipeline_subscriber: _PipelineSubscriberProtocol | None,
+            recovery_controller: RecoveryController,
+            config_path: Path | None,
+            cli_overrides: dict[str, object],
+            _monitor_stop_cb: Callable[[], None] | None,
+            pipeline_deps: PipelineDeps | None = None,
+            _cycle_sample_box: list[float | None] | None = None,
+            _development_sample_box: list[float | None] | None = None,
+        ) -> PipelineState | int: ...
 
-@runtime_checkable
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> AgentConfig | None: ...
+    class _ConnectivityMonitorLike(Protocol):
+        @property
+        def current_state(self) -> ConnectivityState: ...
 
+        def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
-class _ConnectivityMonitorLike(Protocol):
-    @property
-    def current_state(self) -> ConnectivityState: ...
+    class _DisplayContextOwner(Protocol):
+        _ctx: DisplayContext
 
-    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
+    class _PhaseAwareDisplay(Protocol):
+        def begin_phase(self, phase: str) -> None: ...
 
-
-@runtime_checkable
-class _DisplayContextOwner(Protocol):
-    _ctx: DisplayContext
-
-
-@runtime_checkable
-class _PhaseAwareDisplay(Protocol):
-    def begin_phase(self, phase: str) -> None: ...
-
-
-@runtime_checkable
-class _RunEndDisplay(Protocol):
-    def emit_run_end(
-        self,
-        *,
-        phase: str,
-        total_agent_calls: int,
-        pr_url: str | None = None,
-        exit_trigger: str | None = None,
-        outer_dev_iteration: int | None = None,
-    ) -> None: ...
-
-
-def _is_text(value: object) -> TypeGuard[str]:
-    return isinstance(value, str)
-
-
-def _is_plain_int(value: object) -> TypeGuard[int]:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_positive_interval(value: object) -> TypeGuard[int | float]:
-    return (
-        isinstance(value, int | float)
-        and not isinstance(value, bool)
-        and float(value) > 0.0
-    )
-
-
-def _is_registry_like(value: object) -> TypeGuard[_RegistryLike]:
-    return isinstance(value, _RegistryLike)
-
-
-def _is_display_context_owner(value: object) -> TypeGuard[_DisplayContextOwner]:
-    return isinstance(value, _DisplayContextOwner)
-
-
-def _is_phase_aware_display(value: object) -> TypeGuard[_PhaseAwareDisplay]:
-    return isinstance(value, _PhaseAwareDisplay)
-
-
-def _is_run_end_display(value: object) -> TypeGuard[_RunEndDisplay]:
-    return isinstance(value, _RunEndDisplay)
-
-
-def _is_pipeline_subscriber(value: object) -> TypeGuard[PipelineSubscriber]:
-    return isinstance(value, PipelineSubscriber)
-
-
-def _is_exact_rebase_state(value: object) -> TypeGuard[RebaseState]:
-    return isinstance(value, RebaseState) and value.__class__ is RebaseState
+    class _RunEndDisplay(Protocol):
+        def emit_run_end(
+            self,
+            *,
+            phase: str,
+            total_agent_calls: int,
+            pr_url: str | None = None,
+            exit_trigger: str | None = None,
+            outer_dev_iteration: int | None = None,
+        ) -> None: ...
 
 
 @dataclass
@@ -452,10 +424,12 @@ def _setup_connectivity_monitor(
             mon_loop.run_until_complete(real_monitor.start())
             mon_loop.run_forever()
         finally:
-            with suppress(Exception):
-                mon_loop.run_until_complete(real_monitor.stop())
-            with suppress(Exception):
-                mon_loop.close()
+            pending_tasks = cast("set[asyncio.Task[object]]", asyncio.all_tasks(mon_loop))
+            for task in pending_tasks:
+                task.cancel()
+            if pending_tasks:
+                mon_loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+            mon_loop.close()
 
     mon_thread = threading.Thread(target=_run_mon_thread, daemon=True, name="connectivity-probe")
     mon_thread.start()
@@ -523,12 +497,14 @@ def _setup_active_display(
         pass
 
     ctx_holder: list[DisplayContext] | None = None
-    if _is_display_context_owner(active):
+    if hasattr(active, "_ctx"):
         ctx_holder = [active._ctx]
-        owned_display = active
         _stop = _runner_module.install_width_refresher(
             ctx_holder,
-            on_refresh=lambda ctx: _sync_live_display_context(owned_display, ctx),
+            on_refresh=lambda ctx: _sync_live_display_context(
+                cast("_DisplayContextOwner", active),
+                ctx,
+            ),
         )
 
     _stop = compose_display_stop(_stop, active)
@@ -544,10 +520,8 @@ def _emit_run_start(
     if not hasattr(ctx.active_display, "emit_run_start"):
         return
     with suppress(Exception):
-        _prompt_path_raw: object = read_attr(
-            ctx.effective_pipeline_subscriber, "_prompt_path", None
-        )
-        _prompt_path: str | None = _prompt_path_raw if _is_text(_prompt_path_raw) else None
+        _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
+        _prompt_path: str | None = cast("str | None", _prompt_path_raw)
         _dev_para = next(
             (
                 p.parallelization
@@ -570,8 +544,8 @@ def _emit_run_start(
         target_worktree_path = _target_worktree_path(ctx)
         _orientation = RunStartOrientation(
             prompt_path=_prompt_path,
-            developer_agent=_dev_agent_raw if _is_text(_dev_agent_raw) else None,
-            developer_model=_dev_model_raw if _is_text(_dev_model_raw) else None,
+            developer_agent=cast("str | None", _dev_agent_raw),
+            developer_model=cast("str | None", _dev_model_raw),
             developer_iters=ctx.config.general.developer_iters,
             parallel_max_workers=_parallel_max_workers,
             plan_present=_plan_present,
@@ -915,9 +889,7 @@ def _run_startup_integration(
                 else ()
             ),
         )
-        prior_rebase = (
-            state if state is not None and _is_exact_rebase_state(state) else RebaseState()
-        )
+        prior_rebase = state if state is not None and type(state) is RebaseState else RebaseState()
         from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 
         outcome = integrate_before_planning(
@@ -1081,20 +1053,12 @@ def _resolve_registry(
     registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None,
 ) -> _RegistryLike:
     if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        registry = pipeline_deps.registry_factory(config)
-        if _is_registry_like(registry):
-            return registry
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
     if pro_hooks is not None and pro_hooks.registry_factory is not None:
-        registry = pro_hooks.registry_factory(config)
-        if _is_registry_like(registry):
-            return registry
+        return cast("_RegistryLike", pro_hooks.registry_factory(config))
     if registry_factory is not None:
         return registry_factory(config)
-    from_config = _runner_module.AgentRegistry.from_config(config)
-    if _is_registry_like(from_config):
-        return from_config
-    msg = "agent registry factory did not produce a registry with get()"
-    raise TypeError(msg)
+    return _runner_module.AgentRegistry.from_config(config)
 
 
 def _with_counter_overrides(
@@ -1415,14 +1379,12 @@ def _apply_legacy_heartbeat_override(
         return default_client
     if _module_legacy_obj is _start_pro_marker_watcher or not callable(_module_legacy_obj):
         return default_client
-    patched_heartbeat_raw: object = _module_legacy_obj(workspace_root)
-    if patched_heartbeat_raw is None:
-        return default_client
-    from ralph.pro_support.heartbeat import ProHeartbeatClient as _RuntimeHeartbeatClient
-
-    if isinstance(patched_heartbeat_raw, _RuntimeHeartbeatClient):
-        return patched_heartbeat_raw
-    return default_client
+    _module_legacy = cast(
+        "Callable[[Path], ProHeartbeatClient | None]",
+        _module_legacy_obj,
+    )
+    patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_root)
+    return patched_heartbeat if patched_heartbeat is not None else default_client
 
 
 def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
@@ -1431,7 +1393,7 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
         "agent_waiting_status_interval_seconds",
         WAITING_STATUS_INTERVAL_SECONDS,
     )
-    if _is_positive_interval(raw):
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and float(raw) > 0.0:
         return float(raw)
     return WAITING_STATUS_INTERVAL_SECONDS
 
@@ -1527,9 +1489,13 @@ def _resume_after_cooldown_wait(
         None,
         status_text("RESUMED", "cooldown expired; retrying", "green"),
     )
-    verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
-    if verdict.dispatch_allowed:
-        state = _reselect_preferred_agent(state, ctx, allow_wait=False)
+    from ralph.workspace.scope import WorkspaceScope
+
+    ws_candidate: object = getattr(ctx, "workspace_scope", None)
+    if isinstance(ws_candidate, WorkspaceScope):
+        verdict = inspect_integration_resolution(ws_candidate.root, state.rebase)
+        if verdict.dispatch_allowed:
+            state = _reselect_preferred_agent(state, ctx, allow_wait=False)
     state = state.clear_waiting()
     _log_resumed_state(state, ctx, phase, unavailability_reason, delay_ms)
     return state
@@ -2683,7 +2649,10 @@ def _handoff_retained_failure(
         ):
             _repair_pending_merge_commit(ctx, failure)
         else:
-            config = ctx.config
+            config = cast(
+                "UnifiedConfig | None",
+                getattr(ctx, "config", None),
+            )
             resolved = _resolve_retained_conflict(ctx)
             recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config)
             if (
@@ -2708,7 +2677,10 @@ def _handoff_retained_failure(
         RecordReadOutcomeDisposition.ABSENT,
         RecordReadOutcomeDisposition.UNREADABLE,
     ):
-        config_absent = ctx.config
+        config_absent = cast(
+            "UnifiedConfig | None",
+            getattr(ctx, "config", None),
+        )
         resolved = _resolve_retained_conflict(ctx)
         recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config_absent)
         if (
@@ -3575,8 +3547,9 @@ def _run_inner_loop_after_startup(
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]
         iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
+        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
         planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
-        step_result = _runner_module.run_pipeline_step(
+        step_result = runner_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
             workspace_scope=ctx.workspace_scope,
@@ -3619,9 +3592,9 @@ def _run_inner_loop_after_startup(
             verbosity=ctx.effective_verbosity,
             pipeline_policy=ctx.policy_bundle.pipeline,
         )
-        if _is_phase_aware_display(ctx.active_display):
+        if hasattr(ctx.active_display, "begin_phase"):
             with suppress(Exception):
-                ctx.active_display.begin_phase(state.phase)
+                cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
     return state, prev_phase, None
 
 
@@ -3632,10 +3605,9 @@ def _emit_post_loop_result(
     exit_code: int,
     policy_bundle: PolicyBundle,
 ) -> None:
-    if not is_quiet and _is_run_end_display(active_display):
+    if not is_quiet and hasattr(active_display, "emit_run_end"):
         with suppress(Exception):
-            total_agent_calls_raw: object = read_attr(state.metrics, "total_agent_calls", 0)
-            total_agent_calls = total_agent_calls_raw if _is_plain_int(total_agent_calls_raw) else 0
+            total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
             _exit_trigger = "completed" if exit_code == 0 else "failed"
             _outer_dev = next(
                 (
@@ -3645,7 +3617,7 @@ def _emit_post_loop_result(
                 ),
                 None,
             )
-            active_display.emit_run_end(
+            cast("_RunEndDisplay", active_display).emit_run_end(
                 phase=state.phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=state.pr_url,
@@ -3753,105 +3725,57 @@ def build_recovery_controller(
     )
 
 
-def _log_failure_recovery_event(evt: _FailureEvent) -> None:
-    log = logger.bind(recovery=True)
-    message = (
-        "VALIDATION FAILURE phase={} agent={} category={} counted={}"
-        " chain_cap={} cycle={} delay_ms={}"
-        " unavailability_reason={}"
-        if evt.category == "artifact_validation"
-        else "FAILURE phase={} agent={} category={} counted={}"
-        " chain_cap={} cycle={} delay_ms={}"
-        " unavailability_reason={}"
-    )
-    if evt.category == "artifact_validation":
-        log.error(
-            message,
-            evt.phase,
-            evt.agent,
-            evt.category,
-            evt.counted_against_budget,
-            evt.chain_capacity_remaining,
-            evt.recovery_cycle,
-            evt.retry_delay_ms,
-            evt.unavailability_reason,
-        )
-        return
-    log.info(
-        message,
-        evt.phase,
-        evt.agent,
-        evt.category,
-        evt.counted_against_budget,
-        evt.chain_capacity_remaining,
-        evt.recovery_cycle,
-        evt.retry_delay_ms,
-        evt.unavailability_reason,
-    )
-
-
-def _log_fallover_recovery_event(evt: _FalloverEvent) -> None:
-    logger.bind(recovery=True).info(
-        "FALLOVER phase={} from={} to={} reason={} watchdog_reason={} unavailability_reason={}",
-        evt.phase,
-        evt.from_agent,
-        evt.to_agent,
-        evt.reason,
-        evt.watchdog_reason,
-        evt.unavailability_reason,
-    )
-
-
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
-            _log_failure_recovery_event(evt)
-            return
-        if isinstance(evt, _FalloverEvent):
-            _log_fallover_recovery_event(evt)
+            log = logger.bind(recovery=True)
+            message = (
+                "VALIDATION FAILURE phase={} agent={} category={} counted={}"
+                " chain_cap={} cycle={} delay_ms={}"
+                " unavailability_reason={}"
+                if evt.category == "artifact_validation"
+                else "FAILURE phase={} agent={} category={} counted={}"
+                " chain_cap={} cycle={} delay_ms={}"
+                " unavailability_reason={}"
+            )
+            if evt.category == "artifact_validation":
+                log.error(
+                    message,
+                    evt.phase,
+                    evt.agent,
+                    evt.category,
+                    evt.counted_against_budget,
+                    evt.chain_capacity_remaining,
+                    evt.recovery_cycle,
+                    evt.retry_delay_ms,
+                    evt.unavailability_reason,
+                )
+            else:
+                log.info(
+                    message,
+                    evt.phase,
+                    evt.agent,
+                    evt.category,
+                    evt.counted_against_budget,
+                    evt.chain_capacity_remaining,
+                    evt.recovery_cycle,
+                    evt.retry_delay_ms,
+                    evt.unavailability_reason,
+                )
+        elif isinstance(evt, _FalloverEvent):
+            logger.bind(recovery=True).info(
+                "FALLOVER phase={} from={} to={} reason={}"
+                " watchdog_reason={} unavailability_reason={}",
+                evt.phase,
+                evt.from_agent,
+                evt.to_agent,
+                evt.reason,
+                evt.watchdog_reason,
+                evt.unavailability_reason,
+            )
 
     return controller.event_bus.subscribe(_log_recovery_event)
-
-
-def _failure_display_payload(
-    evt: _FailureEvent,
-) -> tuple[str, str, str, str] | None:
-    if evt.chain_capacity_remaining <= 0:
-        if evt.watchdog_reason is not None:
-            value = (
-                f"agent stalled: {evt.watchdog_reason}; "
-                f"chain exhausted ({evt.category}: "
-                f"{evt.reason or 'no detail'})"
-            )
-        else:
-            value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
-        return "terminal", "STOPPING", value, "red"
-    if evt.category == "artifact_validation":
-        return (
-            "validation_recoverable",
-            "VALIDATION FAILURE",
-            f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}",
-            "red",
-        )
-    if evt.watchdog_reason is not None:
-        return (
-            "watchdog_recoverable",
-            "RECOVERING",
-            f"agent stalled: {evt.watchdog_reason}; resuming",
-            "yellow",
-        )
-    if evt.unavailability_reason is not None:
-        return (
-            "unavailable_recoverable",
-            "RECOVERING",
-            (
-                f"agent unavailable: {evt.unavailability_reason}; "
-                f"cooldown {evt.retry_delay_ms}ms; selecting fallback"
-            ),
-            "yellow",
-        )
-    return None
 
 
 def _subscribe_recovery_display(
@@ -3869,36 +3793,57 @@ def _subscribe_recovery_display(
         cadence_map[tag] = now_ts
         emit_activity_line(display, None, build())
 
-    def _display_fallover_event(evt: _FalloverEvent, now_ts: float) -> None:
-        _maybe_emit(
-            "fallover",
-            now_ts,
-            build=lambda: status_text(
-                "RECOVERING",
-                f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
-                "yellow",
-            ),
-        )
-
-    def _display_failure_event(evt: _FailureEvent, now_ts: float) -> None:
-        payload = _failure_display_payload(evt)
-        if payload is None:
-            return
-        tag, label, value, style = payload
-        _maybe_emit(
-            tag,
-            now_ts,
-            build=lambda: status_text(label, value, style),
-        )
-
     def _display_recovery_event(evt: object) -> None:
         try:
             now_ts = now()
             if isinstance(evt, _FalloverEvent):
-                _display_fallover_event(evt, now_ts)
-                return
-            if isinstance(evt, _FailureEvent):
-                _display_failure_event(evt, now_ts)
+                _maybe_emit(
+                    "fallover",
+                    now_ts,
+                    build=lambda: status_text(
+                        "RECOVERING",
+                        f"falling over from {evt.from_agent} to {evt.to_agent} ({evt.reason})",
+                        "yellow",
+                    ),
+                )
+            elif isinstance(evt, _FailureEvent):
+                if evt.chain_capacity_remaining <= 0:
+                    label = "STOPPING"
+                    if evt.watchdog_reason is not None:
+                        value = (
+                            f"agent stalled: {evt.watchdog_reason}; "
+                            f"chain exhausted ({evt.category}: "
+                            f"{evt.reason or 'no detail'})"
+                        )
+                    else:
+                        value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
+                    style = "red"
+                    tag = "terminal"
+                elif evt.category == "artifact_validation":
+                    label = "VALIDATION FAILURE"
+                    value = f"phase={evt.phase}; {evt.reason or 'artifact validation failed'}"
+                    style = "red"
+                    tag = "validation_recoverable"
+                elif evt.watchdog_reason is not None:
+                    label = "RECOVERING"
+                    value = f"agent stalled: {evt.watchdog_reason}; resuming"
+                    style = "yellow"
+                    tag = "watchdog_recoverable"
+                elif evt.unavailability_reason is not None:
+                    label = "RECOVERING"
+                    value = (
+                        f"agent unavailable: {evt.unavailability_reason}; "
+                        f"cooldown {evt.retry_delay_ms}ms; selecting fallback"
+                    )
+                    style = "yellow"
+                    tag = "unavailable_recoverable"
+                else:
+                    return
+                _maybe_emit(
+                    tag,
+                    now_ts,
+                    build=lambda: status_text(label, value, style),
+                )
         except (OSError, RuntimeError, ValueError, KeyError):
             logger.bind(recovery=True).debug(
                 "Recovery display subscriber raised; swallowing",
@@ -3914,8 +3859,11 @@ def _resolve_effective_subscriber(
     active_display: ParallelDisplay,
 ) -> _PipelineSubscriberProtocol | None:
     effective = dashboard_subscriber or pipeline_subscriber
-    if effective is None:
-        return active_display.subscriber
+    if effective is None and hasattr(active_display, "subscriber"):
+        effective = cast(
+            "_PipelineSubscriberProtocol | None",
+            getattr(active_display, "subscriber", None),
+        )
     return effective
 
 
@@ -3982,11 +3930,10 @@ def _cleanup_pipeline(
         _run_cleanup_step("catchup_worker", "stop", loop_ctx.catchup_worker.stop)
 
     def _emit_summary() -> None:
-        subscriber_raw: object = loop_ctx.effective_pipeline_subscriber
         emit_final_summary(
             state,
             loop_ctx.workspace_scope.root,
-            subscriber=(subscriber_raw if _is_pipeline_subscriber(subscriber_raw) else None),
+            subscriber=cast("PipelineSubscriber | None", loop_ctx.effective_pipeline_subscriber),
             display=loop_ctx.active_display,
             display_context=loop_ctx.display_context,
         )
@@ -4051,9 +3998,9 @@ def _execute_with_cleanup(
         )
         with display_scope:
             _emit_run_start(loop_ctx, state)
-            if _is_phase_aware_display(loop_ctx.active_display):
+            if hasattr(loop_ctx.active_display, "begin_phase"):
                 with suppress(Exception):
-                    loop_ctx.active_display.begin_phase(state.phase)
+                    cast("_PhaseAwareDisplay", loop_ctx.active_display).begin_phase(state.phase)
             _push_status_bar_if_changed(
                 loop_ctx.active_display,
                 state,

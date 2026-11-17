@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -59,7 +60,6 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.tools.text_edits import (
     RejectedTextEdits,
-    TextEdit,
     apply_text_edits,
     parse_text_edits,
     sha256_text,
@@ -67,6 +67,10 @@ from ralph.mcp.tools.text_edits import (
 from ralph.phases.required_artifacts import validation_corrective_action
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.mcp.tools.text_edits import TextEdit
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 REPAIR_HINT: str = (
     f"The submitted document is staged as this artifact's draft. Repair it in place with "

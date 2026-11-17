@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from ralph.pipeline.run_loop import LoopContext
+    from ralph.pipeline.state import PipelineState
+
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,

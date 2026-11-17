@@ -7,8 +7,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
-from ralph.mcp.explore._narrowing import is_int_or_float
-
 _R6_2_METRICS: tuple[str, ...] = (
     "cold_build_wall_seconds",
     "cold_build_cpu_seconds",
@@ -83,7 +81,7 @@ def validate_baseline(baseline_path: Path) -> tuple[str, ...]:
             if metric not in metric_set:
                 errors.append(f"{workload}: unknown metric {metric}")
                 continue
-            if not is_int_or_float(value):
+            if not isinstance(value, (int, float)):
                 errors.append(f"{workload}.{metric}: must be numeric")
                 continue
             seen_metrics.add(metric)
@@ -213,7 +211,7 @@ def _validate_post_matches_report(
         if final_value is None:
             continue
         post_value_obj = post.get(workload, {}).get(metric)
-        if not is_int_or_float(post_value_obj):
+        if not isinstance(post_value_obj, (int, float)):
             errors.append(
                 f"{workload}.{metric}: post JSON missing numeric value",
             )
@@ -224,7 +222,7 @@ def _validate_post_matches_report(
                 f"{workload}.{metric}: Final cell {final_value} != post JSON {post_value}",
             )
         baseline_value_obj = baseline.get(workload, {}).get(metric)
-        if not is_int_or_float(baseline_value_obj):
+        if not isinstance(baseline_value_obj, (int, float)):
             continue
         baseline_value = float(baseline_value_obj)
         if metric in _LOWER_BOUND_METRICS:
@@ -314,12 +312,12 @@ def _validate_report_with_cross_check(
             continue
         baseline_value_obj = baseline.get(workload, {}).get(metric)
         target_value_obj = targets.get(workload, {}).get(metric)
-        if not is_int_or_float(baseline_value_obj):
+        if not isinstance(baseline_value_obj, (int, float)):
             errors.append(
                 f"{workload}.{metric}: baseline JSON missing numeric value",
             )
             continue
-        if not is_int_or_float(target_value_obj):
+        if not isinstance(target_value_obj, (int, float)):
             errors.append(
                 f"{workload}.{metric}: targets JSON missing numeric value",
             )
@@ -395,7 +393,7 @@ def _load_baseline_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
         workload_metrics_dict: dict[object, object] = workload_metrics
         workload_metrics_clean: dict[str, float] = {}
         for metric_obj, value in workload_metrics_dict.items():
-            if not is_int_or_float(value):
+            if not isinstance(value, (int, float)):
                 raise TypeError(
                     f"baseline JSON {workload_obj}.{metric_obj} is not numeric",
                 )
@@ -422,7 +420,7 @@ def _load_targets_metrics(path: Path) -> Mapping[str, Mapping[str, float]]:
         workload_metrics_dict: dict[object, object] = workload_metrics
         workload_metrics_clean: dict[str, float] = {}
         for metric_obj, value in workload_metrics_dict.items():
-            if not is_int_or_float(value):
+            if not isinstance(value, (int, float)):
                 raise TypeError(
                     f"targets JSON {workload_obj}.{metric_obj} is not numeric",
                 )

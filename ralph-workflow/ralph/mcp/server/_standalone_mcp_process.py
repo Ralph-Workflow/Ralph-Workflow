@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from ralph.mcp.server._mcp_server_error import McpServerError
@@ -37,28 +38,13 @@ def _terminate_server_process(process: ProcessLike, *, grace_period_s: float) ->
         )
 
 
+@dataclass
 class StandaloneMcpProcess:
-    __slots__ = (
-        "endpoint",
-        "handover_parent_sock",
-        "process",
-        "session_file",
-        "stage_id",
-    )
-
-    def __init__(
-        self,
-        endpoint: str,
-        process: ProcessLike,
-        session_file: Path,
-        stage_id: str | None = None,
-        handover_parent_sock: object | None = None,
-    ) -> None:
-        self.endpoint = endpoint
-        self.process = process
-        self.session_file = session_file
-        self.stage_id = stage_id
-        self.handover_parent_sock = handover_parent_sock
+    endpoint: str
+    process: ProcessLike
+    session_file: Path
+    stage_id: str | None = None
+    handover_parent_sock: object | None = None
 
     def start(self) -> None:
         return

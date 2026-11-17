@@ -5,8 +5,6 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
-from ralph.mcp.explore._narrowing import is_str_or_bytes
-
 if TYPE_CHECKING:
     from ralph.mcp.explore.store import ExploreStore
 
@@ -472,7 +470,7 @@ def _row_int(row: sqlite3.Row, index: int) -> int:
         return int(v)
     if isinstance(v, int):
         return v
-    if is_str_or_bytes(v):
+    if isinstance(v, (str, bytes, bytearray)):
         try:
             return int(v)
         except (TypeError, ValueError):

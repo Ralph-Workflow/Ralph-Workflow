@@ -386,9 +386,10 @@ def _exception_config_path(exc: BaseException) -> str | None:
 
 
 def _extract_config_path(exc: BaseException) -> str | None:
-    direct = _exception_config_path(exc)
-    if direct is not None:
-        return direct
+    for attr in ("file", "path"):
+        val: object = getattr(exc, attr, None)
+        if val is not None:
+            return str(val)
 
     chain: list[BaseException] = []
     curr: BaseException | None = exc
@@ -397,9 +398,10 @@ def _extract_config_path(exc: BaseException) -> str | None:
         curr = curr.__cause__ or curr.__context__
 
     for e in chain:
-        chain_val = _exception_config_path(e)
-        if chain_val is not None:
-            return chain_val
+        for attr in ("file", "path"):
+            chain_val: object = getattr(e, attr, None)
+            if chain_val is not None:
+                return str(chain_val)
 
     for e in chain:
         msg = str(e)

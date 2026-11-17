@@ -45,17 +45,23 @@ def _branch_from_config_object(config: object) -> str | None:
 
 
 def integration_target_branch(**opts: object) -> str | None:
-    direct = _first_nonempty_str(
-        opts.get("integration_target"),
-        opts.get("auto_integrate_target"),
-        opts.get("target_branch"),
-    )
-    if direct is not None:
-        return direct
+    for key in ("integration_target", "auto_integrate_target", "target_branch"):
+        val = opts.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
     config = opts.get("config")
-    if config is None:
-        return None
-    return _branch_from_config_object(config)
+    if config is not None:
+        for attr in ("auto_integrate_target", "integration_target", "target_branch"):
+            attr_val: object = getattr(config, attr, None)
+            if isinstance(attr_val, str) and attr_val.strip():
+                return attr_val.strip()
+        general_obj: object = getattr(config, "general", None)
+        if general_obj is not None:
+            for gen_attr in ("auto_integrate_target", "integration_target", "target_branch"):
+                target_val: object = getattr(general_obj, gen_attr, None)
+                if isinstance(target_val, str) and target_val.strip():
+                    return target_val.strip()
+    return None
 
 
 class WorktreeOccupancy(frozenset[str]):

@@ -6,12 +6,11 @@ import subprocess
 import threading
 from queue import Empty, Queue
 from subprocess import PIPE as _SUBPROCESS_PIPE
-from typing import IO, TYPE_CHECKING, Final, Protocol
+from typing import IO, TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
 from ralph.mcp.protocol._mcp_message import MCPMessage
-from ralph.mcp.protocol._object_dict import as_object_dict
 from ralph.mcp.protocol._transport_error import TransportError
 from ralph.process.manager import (
     ManagedProcess,
@@ -65,20 +64,6 @@ if TYPE_CHECKING:
 
 
 class StdioTransport:
-    __slots__ = (
-        "_closed",
-        "_command",
-        "_cwd",
-        "_lock",
-        "_process",
-        "_process_factory",
-        "_reader_thread",
-        "_recv_queue",
-        "_send_queue",
-        "_thread_factory",
-        "_writer_thread",
-    )
-
     def __init__(
         self,
         command: list[str],
@@ -98,8 +83,6 @@ class StdioTransport:
         self._recv_queue: Queue[MCPMessage] = Queue()
         self._closed = False
         self._lock = threading.Lock()
-        self._reader_thread: ThreadLike | None = None
-        self._writer_thread: ThreadLike | None = None
 
     def start(self) -> None:
         self._process = self._process_factory(self._command, self._cwd)
@@ -120,21 +103,18 @@ class StdioTransport:
             if not stripped:
                 continue
             try:
-                loaded: object = json.loads(stripped.decode("utf-8"))
-                msg_dict = as_object_dict(loaded)
-                if msg_dict is None:
-                    continue
+                msg_dict = cast("dict[str, object]", json.loads(stripped.decode("utf-8")))
                 method_value = msg_dict.get("method")
                 method = method_value if isinstance(method_value, str) else ""
                 params_value: object | None = msg_dict.get("params")
                 params = (
-                    as_object_dict(params_value)
+                    cast("dict[str, object] | None", params_value)
                     if isinstance(params_value, dict)
                     else None
                 )
                 error_value: object | None = msg_dict.get("error")
                 error = (
-                    as_object_dict(error_value)
+                    cast("dict[str, object] | None", error_value)
                     if isinstance(error_value, dict)
                     else None
                 )
@@ -203,7 +183,8 @@ class StdioTransport:
                     logger.exception("Failed to close stdio transport")
                     raise
                 finally:
-                    for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                    for attr in ("stdin", "stdout", "stderr"):
+                        pipe: IO[bytes] | None = getattr(proc, attr, None)
                         if pipe is not None:
                             with contextlib.suppress(Exception):
                                 pipe.close()
@@ -215,35 +196,32 @@ class StdioTransport:
                     kill_unmanaged(proc, issuer=ProcessTerminationIssuer.MCP_SHUTDOWN)
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         proc.wait(timeout=5.0)
-        self._join_transport_thread(self._reader_thread, "_reader_thread")
-        self._join_transport_thread(self._writer_thread, "_writer_thread")
+        for thread_attr in ("_reader_thread", "_writer_thread"):
+            thread: ThreadLike | None = getattr(self, thread_attr, None)
+            if thread is not None:
+                try:
+                    thread.join(timeout=_CLOSE_THREAD_JOIN_SECONDS)
+                except (RuntimeError, OSError, AttributeError):
+                    logger.warning(
+                        "Failed to join {} during stdio transport close",
+                        thread_attr,
+                    )
+                    continue
+                try:
+                    still_alive = thread.is_alive()
+                except (RuntimeError, OSError, AttributeError):
+                    logger.warning(
+                        "Failed to read is_alive() on {} during stdio transport close",
+                        thread_attr,
+                    )
+                    continue
+                if still_alive:
+                    logger.warning(
+                        "{} did not exit within {}s; daemon will be reaped at interpreter exit",
+                        thread_attr,
+                        _CLOSE_THREAD_JOIN_SECONDS,
+                    )
         logger.info("Closed stdio transport")
-
-    def _join_transport_thread(self, thread: ThreadLike | None, label: str) -> None:
-        if thread is None:
-            return
-        try:
-            thread.join(timeout=_CLOSE_THREAD_JOIN_SECONDS)
-        except (RuntimeError, OSError, AttributeError):
-            logger.warning(
-                "Failed to join {} during stdio transport close",
-                label,
-            )
-            return
-        try:
-            still_alive = thread.is_alive()
-        except (RuntimeError, OSError, AttributeError):
-            logger.warning(
-                "Failed to read is_alive() on {} during stdio transport close",
-                label,
-            )
-            return
-        if still_alive:
-            logger.warning(
-                "{} did not exit within {}s; daemon will be reaped at interpreter exit",
-                label,
-                _CLOSE_THREAD_JOIN_SECONDS,
-            )
 
 
 MCPTransport = StdioTransport

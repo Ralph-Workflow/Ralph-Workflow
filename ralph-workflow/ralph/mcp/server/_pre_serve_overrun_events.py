@@ -8,8 +8,6 @@ if TYPE_CHECKING:
 
 
 class StageEventRecorder:
-    __slots__ = ("_events",)
-
     def __init__(self, *, max_events: int = 64) -> None:
         self._events: deque[str] = deque(maxlen=max_events)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Buffer
+from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.process._agent_launch_error import AgentLaunchError
@@ -84,11 +85,11 @@ def reduce_oversized_inline_prompt(
     if prompt_index >= len(command) or not isinstance(command[prompt_index], str):
         return tuple(command)
     prompt = command[prompt_index]
-    from ralph.agents.invoke._command_builders import materialize_argv_prompt
-
-    if not isinstance(materialize_argv_prompt, _PromptMaterializer):
+    module = import_module("ralph.agents.invoke._command_builders")
+    func: object = getattr(module, "materialize_argv_prompt", None)
+    if not isinstance(func, _PromptMaterializer):
         raise TypeError("prompt materializer is unavailable")
-    replacement = materialize_argv_prompt(prompt, cwd)
+    replacement = func(prompt, cwd)
     reduced = list(command)
     reduced[prompt_index] = replacement
     return tuple(reduced)

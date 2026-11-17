@@ -168,63 +168,51 @@ select = [
 
 
 [tool.ruff.lint.per-file-ignores]
-"ralph/mcp/server/_in_memory_transport.py" = [
-    "N802",
-]
-"ralph/pipeline/__init__.py" = [
-    "N813",
-    "N802",
-    "TC003",
-]
-"ralph/config/__init__.py" = [
-    "N813",
-    "N802",
-    "TC003",
-]
-"ralph/visual/**/*.py" = [
-    "PLR0911",
-    "PLR0912",
-    "PLR2004",
-]
+"ralph/mcp/server/_in_memory_transport.py" = ["N802"]
+"ralph/pipeline/__init__.py" = ["N802", "N813", "TC003"]
+"ralph/config/__init__.py" = ["N802", "N813", "TC003"]
+"ralph/visual/**/*.py" = ["PLR0911", "PLR0912", "PLR2004"]
 "ralph/visual/design_verdict.py" = ["S105"]
-"ralph/agents/multimodal_status.py" = [
-    "PLR0911",
-    "PLR2004",
-]
-"ralph/agents/delegation_capabilities.py" = [
-    "PLR0911",
-    "PLR2004",
-]
+"ralph/agents/multimodal_status.py" = ["PLR0911", "PLR2004"]
+"ralph/agents/delegation_capabilities.py" = ["PLR0911", "PLR2004"]
 "ralph/agents/vision_agent_provisioning.py" = ["PLR0911"]
-"ralph/agents/builtin_spec.py" = [
-    "PLR0911",
-    "PLR0912",
-    "PLC0415",
-]
-"ralph/agents/support.py" = [
-    "PLR0911",
-    "PLC0415",
-]
+"ralph/agents/builtin_spec.py" = ["PLC0415", "PLR0911", "PLR0912"]
+"ralph/agents/support.py" = ["PLC0415", "PLR0911"]
+"ralph/agents/__init__.py" = ["N802", "N811", "N813", "PLC0415", "TC003"]
+"ralph/agents/_agy_upstream_diagnostic.py" = ["PLC0415"]
+"ralph/agents/catalog.py" = ["PLC0415"]
 "ralph/agents/completion_signals.py" = ["PLC0415"]
-"ralph/project_policy/remediation.py" = ["PLC0415"]
-"ralph/project_policy/markers.py" = ["S105"]
-"ralph/prompts/__init__.py" = ["PLC0415"]
 "ralph/agents/execution_state/_helpers.py" = ["PLC0415"]
-"ralph/pipeline/plumbing/smoke_multimodal.py" = [
-    "PLR0911",
-    "PLR0912",
-    "PLC0415",
-]
-"ralph/pipeline/plumbing/smoke_plumbing.py" = [
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-    "PLC0415",
-]
+"ralph/agents/invoke/__init__.py" = ["PLC0415"]
 "ralph/agents/invoke/_pty_line_reader.py" = ["PLR0915"]
+"ralph/agents/invoke/_runtime_resolvers/__init__.py" = ["ANN204"]
+"ralph/agents/invoke/_workspace.py" = ["PLC0415"]
+"ralph/agents/invoke/watchdog_observer.py" = ["PLC0415"]
+"ralph/agents/parsers/__init__.py" = ["PLC0415"]
 "ralph/agents/parsers/_ndjson_base.py" = ["E402", "PLR0911"]
+"ralph/agents/parsers/line_channel.py" = ["PLC0415"]
+"ralph/cli/**/*.py" = ["PLC0415"]
+"ralph/config/**/*.py" = ["PLC0415"]
+"ralph/config/_env.py" = ["PLC0414"]
+"ralph/diagnostics/**/*.py" = ["PLC0415"]
+"ralph/display/**/*.py" = ["PLC0415"]
+"ralph/display/__init__.py" = ["PLR0911"]
+"ralph/display/parallel_display.py" = ["PLR2004"]
 "ralph/display/record_writer.py" = ["PLR0911"]
+"ralph/git/_lock_liveness.py" = ["PLR0911"]
+"ralph/git/_lock_recovery.py" = ["S603"]
 "ralph/git/git_command_queue.py" = ["PLC0415", "PLR0911", "PLR0912"]
+"ralph/git/rebase/rebase_continuation.py" = ["PLC0415"]
+"ralph/git/subprocess_runner.py" = ["PLC0415"]
+"ralph/interrupt/controller.py" = ["PERF401"]
+"ralph/interrupt/dispatcher.py" = ["PLC0415"]
+"ralph/mcp/artifacts/canonical_submit.py" = ["PLC0415"]
+"ralph/mcp/artifacts/commit_message.py" = ["PLC0415"]
+"ralph/mcp/artifacts/commit_message_normalizer.py" = ["PLC0415"]
+"ralph/mcp/artifacts/product_spec.py" = ["PLC0415"]
+"ralph/mcp/artifacts/smoke_test_result.py" = ["PLC0415"]
+"ralph/mcp/explore/**/*.py" = ["PLC0415", "PLR0911", "PLR0912", "PLR0915", "RUF012", "TC003"]
+"ralph/pipeline/plumbing/smoke_plumbing.py" = ["PLC0415", "PLR0911", "PLR0912", "PLR0915"]
 "ralph/recovery/canary_probe.py" = ["PLC0415"]
 "ralph/pipeline/conflict_resolution/rebase_loop.py" = ["PLR0912"]
 "ralph/pipeline/effect_executor.py" = ["PLR0915"]
@@ -235,160 +223,64 @@ select = [
 "ralph/pipeline/plumbing/smoke_evidence.py" = ["S105"]
 "ralph/process/_spawn_env.py" = ["S105"]
 "ralph/mcp/multimodal/capabilities.py" = ["PLR0911"]
-"tests/**/*.py" = [
-    "PLR2004",
-    "TC002",
-    "RUF043",
-    "PERF401",
-    "PLR0124",
-    "N802",
-    "TC003",
-    "ANN001",
-    "ANN201",
-    "ANN202",
-    "ANN204",
-    "E501",
-    "PLC0415",
-    "S101",
-    "S105",
-    "S106",
-    "S108",
-    "S110",
-    "S112",
-    "S311",
-    "S603",
-    "S607",
-    "TRY003",
-    "FBT001",
-    "FBT002",
-    "FBT003",
-]
-"ralph/cli/**/*.py" = ["PLC0415"]
-"ralph/config/**/*.py" = ["PLC0415"]
-"ralph/mcp/tool_contract.py" = ["PLC0415"]
-"ralph/mcp/server/_snapshots.py" = ["PLC0415"]
-"ralph/mcp/upstream/tool_catalog_cache.py" = ["PLC0415"]
-"ralph/workspace/context.py" = ["PLC0415"]
-"tests/test_integration_obstruction_real_git.py" = ["PLR0911"]
-"ralph/display/**/*.py" = ["PLC0415"]
-"ralph/mcp/tools/_validation_retry_hints.py" = ["PLC0415"]
-"ralph/mcp/tools/coordination.py" = [
-    "PLC0415",
-    "S105",
-]
-"ralph/**/*.py" = [
-    "E501",
-    "TRY003",
-    "TRY300",
-    "FBT001",
-    "FBT002",
-]
-"ralph/mcp/server/_http_tools_list.py" = ["S310"]
-"ralph/mcp/server/lifecycle.py" = [
-    "S310",
-    "PLC0415",
-]
-"ralph/mcp/explore/_store_class_file_rows.py" = ["S608"]
-"ralph/process/manager/_supervisor.py" = ["S606"]
-"ralph/process/pty.py" = ["S606"]
-"ralph/testing/_audit_baseline.py" = ["S603"]
-"ralph/testing/audit_comments.py" = ["S603"]
-"ralph/git/_lock_recovery.py" = ["S603"]
-"ralph/mcp/explore/_bench_r6_metrics.py" = ["S603"]
-"ralph/mcp/explore/_bench_r6_subprocess.py" = ["S603"]
-"ralph/mcp/explore/**/*.py" = [
-    "PLC0415",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-    "RUF012",
-    "TC003",
-]
-"ralph/mcp/tools/workspace/**/*.py" = [
-    "PLC0415",
-    "TC003",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"ralph/mcp/server/_host_contention_signal.py" = ["TC003"]
-"ralph/pipeline/**/*.py" = ["PLC0415"]
-"ralph/agents/invoke/_workspace.py" = ["PLC0415"]
-"ralph/diagnostics/**/*.py" = ["PLC0415"]
-"ralph/phases/**/*.py" = ["PLC0415"]
-"ralph/agents/__init__.py" = [
-    "PLC0415",
-    "N813",
-    "N811",
-    "N802",
-    "TC003",
-]
-"ralph/agents/_agy_upstream_diagnostic.py" = ["PLC0415"]
-"ralph/agents/catalog.py" = ["PLC0415"]
-"ralph/agents/invoke/__init__.py" = ["PLC0415"]
-"ralph/agents/invoke/watchdog_observer.py" = ["PLC0415"]
-"ralph/agents/parsers/__init__.py" = ["PLC0415"]
-"ralph/agents/parsers/line_channel.py" = ["PLC0415"]
-"ralph/git/rebase/rebase_continuation.py" = ["PLC0415"]
-"ralph/git/subprocess_runner.py" = ["PLC0415"]
-"ralph/interrupt/dispatcher.py" = ["PLC0415"]
-"ralph/mcp/artifacts/canonical_submit.py" = ["PLC0415"]
-"ralph/mcp/artifacts/commit_message.py" = ["PLC0415"]
-"ralph/mcp/artifacts/commit_message_normalizer.py" = ["PLC0415"]
-"ralph/mcp/artifacts/product_spec.py" = ["PLC0415"]
-"ralph/mcp/artifacts/smoke_test_result.py" = ["PLC0415"]
 "ralph/mcp/protocol/_startup_timeouts.py" = ["PLC0415"]
 "ralph/mcp/protocol/capability_mapping.py" = ["PLC0415"]
 "ralph/mcp/protocol/startup.py" = ["PLC0415"]
-"ralph/mcp/server/__init__.py" = [
-    "PLC0415",
-    "N813",
-    "N811",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-    "SIM116",
-]
+"ralph/mcp/server/__init__.py" = ["N811", "N813", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "SIM116"]
+"ralph/mcp/server/_fallback_standalone_server.py" = ["PLR2004"]
+"ralph/mcp/server/_host_contention_signal.py" = ["TC003"]
+"ralph/mcp/server/_http_tools_list.py" = ["S310"]
 "ralph/mcp/server/_process_secrecy.py" = ["PLC0415"]
+"ralph/mcp/server/_snapshots.py" = ["PLC0415"]
+"ralph/mcp/server/lifecycle.py" = ["PLC0415", "S310"]
+"ralph/mcp/tool_contract.py" = ["PLC0415"]
 "ralph/mcp/tools/_exec_jobs.py" = ["PLC0415"]
+"ralph/mcp/tools/_validation_retry_hints.py" = ["PLC0415"]
 "ralph/mcp/tools/bridge/_lazy_tool_handler.py" = ["PLC0415"]
 "ralph/mcp/tools/bridge/_upstream_proxy_handler.py" = ["PLC0415"]
+"ralph/mcp/tools/coordination.py" = ["PLC0415", "S105"]
 "ralph/mcp/tools/md_artifact.py" = ["PLC0415"]
+"ralph/mcp/tools/workspace/**/*.py" = ["PLC0415", "PLR0911", "PLR0912", "PLR0915", "TC003"]
 "ralph/mcp/transport/common.py" = ["PLC0415"]
 "ralph/mcp/upstream/client.py" = ["PLC0415"]
+"ralph/mcp/upstream/tool_catalog_cache.py" = ["PLC0415"]
 "ralph/mcp/upstream/validation.py" = ["PLC0415"]
 "ralph/mcp/websearch/backends/brave.py" = ["PLC0415"]
-"ralph/mcp/websearch/backends/ddgs.py" = [
-    "PLC0415",
-    "N811",
-]
+"ralph/mcp/websearch/backends/ddgs.py" = ["N811", "PLC0415"]
 "ralph/mcp/websearch/backends/exa.py" = ["PLC0415"]
 "ralph/mcp/websearch/backends/tavily.py" = ["PLC0415"]
 "ralph/onboarding.py" = ["PLC0415"]
-"ralph/policy/__init__.py" = [
-    "PLC0415",
-    "N813",
-    "N811",
-    "N802",
-    "TC003",
-]
+"ralph/phases/**/*.py" = ["PLC0415"]
+"ralph/pipeline/**/*.py" = ["PLC0415"]
+"ralph/pipeline/plumbing/smoke_multimodal.py" = ["PLC0415", "PLR0911", "PLR0912"]
+"ralph/policy/__init__.py" = ["N802", "N811", "N813", "PLC0415", "TC003"]
 "ralph/policy/_policy_validation.py" = ["PLC0415"]
 "ralph/policy/loader.py" = ["PLC0415"]
 "ralph/policy/validation/_api.py" = ["PLC0415"]
 "ralph/policy/validation/_checkpoint_policy_mismatch_error.py" = ["PLC0415"]
 "ralph/process/_spawn_validation.py" = ["PLC0415"]
 "ralph/process/manager/_process_manager.py" = ["PLC0415"]
+"ralph/process/manager/_supervisor.py" = ["S606"]
+"ralph/process/pty.py" = ["S606"]
 "ralph/process/teardown.py" = ["PLC0415"]
+"ralph/project_policy/markers.py" = ["S105"]
+"ralph/project_policy/remediation.py" = ["PLC0415"]
+"ralph/prompts/__init__.py" = ["PLC0415"]
 "ralph/prompts/materialize.py" = ["PLC0415"]
-"ralph/recovery/__init__.py" = [
-    "PLC0415",
-    "N802",
-    "TC003",
-]
+"ralph/recovery/__init__.py" = ["N802", "PLC0415", "TC003"]
 "ralph/recovery/failure_classifier.py" = ["PLC0415"]
 "ralph/skills/__init__.py" = ["PLC0415"]
 "ralph/supervising.py" = ["PLC0415"]
+"ralph/testing/_audit_baseline.py" = ["S603"]
 "ralph/testing/_filesystem_write_scan.py" = ["PLC0415"]
+"ralph/testing/audit_comments.py" = ["S603"]
+"ralph/workspace/context.py" = ["PLC0415"]
+"tests/**/*.py" = ["ANN001", "ANN201", "ANN202", "ANN204", "E501", "FBT001", "FBT002", "FBT003", "N802", "PERF401", "PLC0415", "PLR0124", "PLR2004", "RUF043", "S101", "S105", "S106", "S108", "S110", "S112", "S311", "S603", "S607", "TC002", "TC003", "TRY003"]
+"tests/test_integration_obstruction_real_git.py" = ["PLR0911"]
+"ralph/**/*.py" = ["E501", "FBT001", "FBT002", "TRY003", "TRY300"]
+"ralph/mcp/explore/_store_class_file_rows.py" = ["S608"]
+"ralph/mcp/explore/_bench_r6_metrics.py" = ["S603"]
+"ralph/mcp/explore/_bench_r6_subprocess.py" = ["S603"]
 
 [tool.ruff.lint.pylint]
 max-args = 41

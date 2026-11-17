@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -106,7 +107,7 @@ def normalize_commit_message_content(content: dict[str, object]) -> dict[str, ob
 
 def render_commit_message_content(content: dict[str, object]) -> str:
     normalized = normalize_commit_message_content(content)
-    kind = normalized["type"]
+    kind = cast("str", normalized["type"])
     if kind == _SKIP_KIND:
         return f"{_SKIP_PREFIX} {as_str(normalized['reason'], field='reason')}"
 

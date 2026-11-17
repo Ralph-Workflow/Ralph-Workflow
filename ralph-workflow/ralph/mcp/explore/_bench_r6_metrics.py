@@ -24,12 +24,9 @@ from ralph.mcp.explore._bench_r6_validation import (
     validate_baseline,
     validate_report,
 )
-from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.explore.store import ExploreStore
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.workspace.fs import FsWorkspace
-
-_PAUSE = time.sleep
 
 __all__ = (
     "_R6_3_WORKLOADS",
@@ -55,7 +52,7 @@ def _median_metrics(samples: Sequence[Mapping[str, float]]) -> dict[str, float]:
         values = [
             float(sample[metric])
             for sample in samples
-            if metric in sample and is_int_or_float(sample[metric])
+            if metric in sample and isinstance(sample[metric], (int, float))
         ]
         if not values:
             out[metric] = 0.0
@@ -367,7 +364,7 @@ def _measure_operational(workspace: Path, *, parent_dir: Path) -> dict[str, floa
         store.close()
     peak_fd, peak_watches = _count_proc_fds()
     idle_start = time.process_time()
-    _PAUSE(0.02)
+    time.sleep(0.02)
     idle_cpu = time.process_time() - idle_start
     db = index_dir / "index.sqlite"
     for suffix in ("", "-wal", "-shm"):
@@ -511,7 +508,7 @@ def capture_baseline(
     raw_c = existing.get("file_counts")
     if isinstance(raw_c, dict):
         for k, v in raw_c.items():
-            if is_int_or_float(v):
+            if isinstance(v, (int, float)):
                 existing_counts[str(k)] = float(v)
 
     def _capture_with_repeat(
@@ -655,7 +652,7 @@ def _seed_ralph_self_workspace(parent: Path) -> Path:
 
 
 def _ralph_workflow_source() -> Path:
-    from ralph.config._env import getenv
+    from os import getenv
 
     candidates: list[Path] = []
     override = getenv("RALPH_WORKFLOW_BENCH_SOURCE")

@@ -139,8 +139,6 @@ _MAX_REMOTE_KEYS = 128
 
 
 class _RemotePullThrottle:
-    __slots__ = ("_last_pull", "_max_tracked_keys")
-
     def __init__(self, *, max_tracked_keys: int = _MAX_REMOTE_KEYS) -> None:
         self._max_tracked_keys = max(1, max_tracked_keys)
         self._last_pull: OrderedDict[tuple[str, str, str], float] = OrderedDict()

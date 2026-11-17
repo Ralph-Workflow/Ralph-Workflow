@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import read_attr
 
@@ -12,6 +12,7 @@ def failure_message_parts(exc: BaseException | str) -> list[str]:
     if isinstance(exc, str):
         text = exc.strip()
         return [text] if text else []
+
     parts: list[str] = []
     message = str(exc).strip()
     if message:
@@ -25,7 +26,6 @@ def failure_message_parts(exc: BaseException | str) -> list[str]:
 
 
 class FailureDetailParts(list[str]):
-    __slots__ = ("provider_parts",)
     provider_parts: tuple[str, ...]
 
     def __init__(self, parts: Iterable[str], provider_parts: Iterable[str]) -> None:
@@ -50,6 +50,7 @@ def failure_detail_parts(exc: BaseException | str) -> FailureDetailParts:
     provider_parts = provider_message_parts(exc)
     if isinstance(exc, str):
         return FailureDetailParts(failure_message_parts(exc), provider_parts)
+
     parts = failure_message_parts(exc)
     parsed_output = read_attr(exc, "parsed_output", None)
     if isinstance(parsed_output, list):
@@ -57,6 +58,7 @@ def failure_detail_parts(exc: BaseException | str) -> FailureDetailParts:
             item_text = str(item).strip()
             if item_text:
                 parts.append(item_text)
+
     return FailureDetailParts(parts, provider_parts)
 
 
@@ -69,7 +71,10 @@ def contains_casefolded_marker(parts: Iterable[str], markers: Iterable[str]) -> 
     return False
 
 
-def has_stale_session_details(exc: BaseException | str, markers: Iterable[str]) -> bool:
+def has_stale_session_details(
+    exc: BaseException | str,
+    markers: Iterable[str],
+) -> bool:
     return contains_casefolded_marker(failure_detail_parts(exc), markers)
 
 

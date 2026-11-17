@@ -6,7 +6,7 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.explore._narrowing import coerce_int
 from ralph.mcp.explore.dirty_paths import (
@@ -45,15 +45,6 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
-
-
-
-def _as_stale_flag(value: object) -> bool:
-    if isinstance(value, list):
-        return bool(value)
-    if isinstance(value, bool):
-        return value
-    return bool(value)
 
 
 def _tombstone_replacement(tombstone: sqlite3.Row) -> str | None:
@@ -341,7 +332,7 @@ def handle_read_file(
                 if not isinstance(raw_payload, dict):
                     return result
                 freshness = _freshness_for_read(session)
-                payload_dict: dict[str, object] = raw_payload
+                payload_dict: dict[str, object] = cast("dict[str, object]", raw_payload)
                 payload_dict.update(freshness)
                 return ToolResult(
                     content=[ToolContent.text_content(_tool_json(payload_dict))],
@@ -775,7 +766,7 @@ def _decode_payload(result: ToolResult) -> dict[str, object]:
     except (ValueError, TypeError):
         return {"raw": first_content.text}
     if isinstance(payload, dict):
-        return payload
+        return cast("dict[str, object]", payload)
     return {"raw": first_content.text}
 
 
@@ -900,7 +891,7 @@ def _read_multiple_item(
                 "is_error": single_result.is_error,
                 "content": "",
             }
-        payload_dict: dict[str, object] = payload
+        payload_dict: dict[str, object] = cast("dict[str, object]", payload)
         payload_dict["is_error"] = single_result.is_error
         raw_content = payload_dict.get("content")
         if per_item_max_bytes and isinstance(raw_content, str):
@@ -1174,7 +1165,12 @@ def handle_list_directory(
     is_stale: bool = False
     if raw_store is not None:
         dirty_again_obj: object = getattr(raw_store, "peek_dirty_paths", lambda: [])()
-        is_stale = _as_stale_flag(dirty_again_obj)
+        if isinstance(dirty_again_obj, list):
+            is_stale = bool(dirty_again_obj)
+        elif isinstance(dirty_again_obj, bool):
+            is_stale = dirty_again_obj
+        else:
+            is_stale = bool(dirty_again_obj)
     payload: dict[str, object] = {
         "entries": entries_list,
         "view": view,
@@ -1461,7 +1457,12 @@ def handle_directory_tree(
     is_stale: bool = False
     if raw_tree_store is not None:
         tree_dirty_obj: object = getattr(raw_tree_store, "peek_dirty_paths", lambda: [])()
-        is_stale = _as_stale_flag(tree_dirty_obj)
+        if isinstance(tree_dirty_obj, list):
+            is_stale = bool(tree_dirty_obj)
+        elif isinstance(tree_dirty_obj, bool):
+            is_stale = tree_dirty_obj
+        else:
+            is_stale = bool(tree_dirty_obj)
     payload: dict[str, object] = {
         "tree": decorated,
         "view": view,
@@ -1518,8 +1519,9 @@ def handle_search_files(
 
     _search_handle = resolve_explore_index(session)
     if _search_handle is not None:
-        _search_store: ExploreStore | None = getattr(_search_handle, "store", None)
-
+        _search_store: ExploreStore | None = cast(
+            "ExploreStore | None", getattr(_search_handle, "store", None)
+        )
     else:
         _search_store = None
 

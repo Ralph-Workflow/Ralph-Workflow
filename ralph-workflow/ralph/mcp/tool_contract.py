@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name_prefix
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Iterable
 
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
@@ -72,35 +72,10 @@ def visible_owned_tool_names(
 
 
 _VISIBLE_TOOL_NAME_CACHE_MAXSIZE = 32
-
-
-class _VisibleToolNameCache:
-    __slots__ = ("_by_profile", "_lock")
-
-    def __init__(self) -> None:
-        self._by_profile: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = OrderedDict()
-        self._lock = Lock()
-
-    def get_or_compute(
-        self,
-        key: tuple[tuple[str, ...], str],
-        compute: Callable[[], tuple[str, ...]],
-    ) -> tuple[str, ...]:
-        with self._lock:
-            cached = self._by_profile.get(key)
-            if cached is not None:
-                self._by_profile.move_to_end(key)
-                return cached
-        catalog = compute()
-        with self._lock:
-            self._by_profile[key] = catalog
-            self._by_profile.move_to_end(key)
-            if len(self._by_profile) > _VISIBLE_TOOL_NAME_CACHE_MAXSIZE:
-                self._by_profile.popitem(last=False)
-        return catalog
-
-
-_VISIBLE_TOOL_NAME_CACHE = _VisibleToolNameCache()
+_VISIBLE_TOOL_NAMES_BY_PROFILE: OrderedDict[tuple[tuple[str, ...], str], tuple[str, ...]] = (
+    OrderedDict()
+)
+_VISIBLE_TOOL_NAMES_LOCK = Lock()
 
 
 def _visible_tool_names_for_capabilities(
@@ -110,17 +85,25 @@ def _visible_tool_names_for_capabilities(
     from ralph.workspace.memory import MemoryWorkspace
 
     key = (capability_ids, drain)
+    with _VISIBLE_TOOL_NAMES_LOCK:
+        cached = _VISIBLE_TOOL_NAMES_BY_PROFILE.get(key)
+        if cached is not None:
+            _VISIBLE_TOOL_NAMES_BY_PROFILE.move_to_end(key)
+            return cached
 
-    def compute() -> tuple[str, ...]:
-        session = AgentSession(
-            session_id=f"prompt-{drain}",
-            run_id=f"prompt-{drain}",
-            drain=drain,
-            capabilities=set(capability_ids),
-        )
-        return tuple(visible_owned_tool_names(session, MemoryWorkspace(), include_aliases=False))
-
-    return _VISIBLE_TOOL_NAME_CACHE.get_or_compute(key, compute)
+    session = AgentSession(
+        session_id=f"prompt-{drain}",
+        run_id=f"prompt-{drain}",
+        drain=drain,
+        capabilities=set(capability_ids),
+    )
+    catalog = tuple(visible_owned_tool_names(session, MemoryWorkspace(), include_aliases=False))
+    with _VISIBLE_TOOL_NAMES_LOCK:
+        _VISIBLE_TOOL_NAMES_BY_PROFILE[key] = catalog
+        _VISIBLE_TOOL_NAMES_BY_PROFILE.move_to_end(key)
+        if len(_VISIBLE_TOOL_NAMES_BY_PROFILE) > _VISIBLE_TOOL_NAME_CACHE_MAXSIZE:
+            _VISIBLE_TOOL_NAMES_BY_PROFILE.popitem(last=False)
+    return catalog
 
 
 def visible_tool_names_for_capabilities(capability_ids: Iterable[str], *, drain: str) -> list[str]:

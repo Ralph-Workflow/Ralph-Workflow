@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import os
 import signal
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -16,7 +17,6 @@ from ralph.interrupt.controller import (
     InterruptController,
     controller_from_process_manager,
     install_force_kill_handler,
-    legacy_bridge_pids,
 )
 from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
@@ -24,6 +24,8 @@ from ralph.process.manager import get_process_manager
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from ralph.interrupt.signal_getter import SignalGetter
+    from ralph.interrupt.signal_setter import SignalSetter
     from ralph.process.manager import ProcessManager, ProcessRecord
 
 
@@ -68,10 +70,28 @@ if (
     )
 
 
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+
+
+class _CpuTimes(Protocol):
+    user: float
+    system: float
+
+
+class _PsutilProcess(Protocol):
+    def cpu_times(self) -> _CpuTimes: ...
+
+
+class _PsutilModule(Protocol):
+    Error: type[Exception]
+    Process: Callable[[int], _PsutilProcess]
+
+
 def _psutil_pid_cpu_time(pid: int) -> float:
     try:
-        import psutil
-    except ImportError:
+        psutil = cast("_PsutilModule", importlib.import_module("psutil"))
+    except (ImportError, AttributeError, OSError):
         return 0.0
     try:
         proc = psutil.Process(pid)
@@ -219,7 +239,7 @@ class InterruptDispatcher:
         bridge_pgids: Iterable[int] = (),
         **kwargs: object,
     ) -> None:
-        bridge_pids_legacy = legacy_bridge_pids(kwargs)
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
             logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)

@@ -8,7 +8,7 @@ from ralph.checked_accessors import as_object_dict, as_sequence
 from ralph.config import _env
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.markdown import parse_and_validate
-from ralph.mcp.artifacts.markdown.specs.run_time_report import RUN_TIME_REPORT_SPEC
+from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 
 if TYPE_CHECKING:
@@ -30,8 +30,6 @@ _MAX_DEGRADED_REASON_CHARACTERS = 500
 
 
 class _RunTimeReportValidationError(ValueError):
-    __slots__ = ("reason",)
-
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__(f"run_time_report validation failed: {reason}")
@@ -377,7 +375,9 @@ def _render_degraded_run_time_report(
 
 
 def _submit_validated_markdown(workspace_root: Path, markdown: str) -> None:
-    content, diagnostics = parse_and_validate(markdown, RUN_TIME_REPORT_SPEC)
+    __import__("ralph.mcp.artifacts.markdown.specs")
+
+    content, diagnostics = parse_and_validate(markdown, get_spec("run_time_report"))
     if any(diagnostic.severity == "error" for diagnostic in diagnostics):
         raise _RunTimeReportValidationError(_validation_failure_reason(diagnostics))
     submit_artifact_canonical(

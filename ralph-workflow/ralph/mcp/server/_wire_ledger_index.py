@@ -29,19 +29,6 @@ def parse_ledger_line(line: bytes) -> dict[str, object] | None:
 
 
 class WireLedgerIndex:
-    __slots__ = (
-        "_calls",
-        "_expected_hmac",
-        "_head",
-        "_identity",
-        "_intact",
-        "_lock",
-        "_mtime_ns",
-        "_offset",
-        "_path",
-        "_tail_line",
-    )
-
     def __init__(
         self,
         path: Path,

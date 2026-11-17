@@ -10,8 +10,6 @@ if TYPE_CHECKING:
 
 
 class UpstreamProxyHandler:
-    __slots__ = ("_alias", "_upstream_registry")
-
     def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
         self._alias = alias
         self._upstream_registry = upstream_registry
@@ -30,8 +28,8 @@ class UpstreamProxyHandler:
         result = self._upstream_registry.call_tool(
             self._alias,
             params,
-            session=session,
-            workspace=ws,
+            session=cast("HasMediaManifest | None", host_session),
+            workspace=cast("Workspace | None", workspace),
         )
         if ws is not None and host_session is not None and isinstance(result, dict):
             from ralph.mcp.tools.workspace import persist_upstream_media_artifacts

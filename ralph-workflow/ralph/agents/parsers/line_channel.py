@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import attr_or_none, is_callable_obj
@@ -12,9 +13,12 @@ if TYPE_CHECKING:
     from .agent_output_line import AgentOutputLine
 
 
-def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | None:
-    from ralph.agents.parsers import get_parser
 
+def _parser_tagged_channel(parser_key: str, raw_line: str) -> ContentChannel | None:
+    parsers_pkg = import_module("ralph.agents.parsers")
+    get_parser = cast("Callable[[str], object] | None", getattr(parsers_pkg, "get_parser", None))
+    if get_parser is None:
+        return None
     try:
         parser = get_parser(parser_key)
     except ValueError:

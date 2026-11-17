@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from importlib import import_module
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast
 
 from ralph.project_urls import GETTING_STARTED_URL, GITHUB_REPOSITORY_URL
 from ralph.skills._agent_paths import sibling_agent_skill_roots
@@ -74,10 +75,22 @@ def fresh_workspace_next_steps() -> tuple[str, ...]:
     )
 
 
-def _global_main_config_path() -> Path:
-    from ralph.config._paths import resolve_global_config_dir
+class _GlobalConfigDirResolver(Protocol):
+    def __call__(self) -> Path: ...
 
-    return resolve_global_config_dir() / "ralph-workflow.toml"
+
+def _is_global_config_dir_resolver(value: object) -> TypeGuard[_GlobalConfigDirResolver]:
+    return callable(value)
+
+
+def _global_main_config_path() -> Path:
+    bootstrap = import_module("ralph.config.bootstrap")
+    namespace = cast("dict[str, object]", bootstrap.__dict__)
+    resolver = namespace.get("resolve_global_config_dir")
+    if not _is_global_config_dir_resolver(resolver):
+        msg = "ralph.config.bootstrap.resolve_global_config_dir must be callable"
+        raise RuntimeError(msg)
+    return resolver() / "ralph-workflow.toml"
 
 
 def welcome_panel_next_steps() -> tuple[str, ...]:

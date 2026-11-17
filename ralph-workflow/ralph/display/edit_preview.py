@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.markdown import CodeBlock, Markdown, MarkdownElement
@@ -98,31 +98,30 @@ def preview_record_text(
             for number, line in enumerate(safe.splitlines(), start):
                 lines.append(f"{prefix} {number:>4} {line}")
     content = canonical.content
-    if isinstance(content, str):
-        if _normalize_tool_name(tool_name) in {
-            "grep_files",
-            "search_files",
-        }:
-            search_lines = _search_record_lines(content)
-            if search_lines is not None:
-                source_parts.extend(search_lines)
-                lines.extend(search_lines[:_MAX_PREVIEW_LINES])
-                omitted = len(search_lines) - _MAX_PREVIEW_LINES
-                if omitted > 0:
-                    lines.append(
-                        _elision_line(
-                            omitted,
-                            "..." if not glyphs_enabled else _ELISION_GLYPH,
-                            overflow_ref,
-                            "\n".join(search_lines),
-                        )
+    if isinstance(content, str) and _normalize_tool_name(tool_name) in {
+        "grep_files",
+        "search_files",
+    }:
+        search_lines = _search_record_lines(content)
+        if search_lines is not None:
+            source_parts.extend(search_lines)
+            lines.extend(search_lines[:_MAX_PREVIEW_LINES])
+            omitted = len(search_lines) - _MAX_PREVIEW_LINES
+            if omitted > 0:
+                lines.append(
+                    _elision_line(
+                        omitted,
+                        "..." if not glyphs_enabled else _ELISION_GLYPH,
+                        overflow_ref,
+                        "\n".join(search_lines),
                     )
-        elif content:
-            safe = strip_terminal_control(content)
-            source_parts.append(safe)
-            start = canonical.start_line or 1
-            for number, line in enumerate(safe.splitlines(), start):
-                lines.append(f"  {number:>4} {line}")
+                )
+    elif isinstance(content, str) and content:
+        safe = strip_terminal_control(content)
+        source_parts.append(safe)
+        start = canonical.start_line or 1
+        for number, line in enumerate(safe.splitlines(), start):
+            lines.append(f"  {number:>4} {line}")
     full_source = "\n".join(source_parts) or None
     visible_source_lines = sum(part.count("\n") + 1 for part in source_parts)
     if visible_source_lines > _MAX_PREVIEW_LINES and _normalize_tool_name(tool_name) not in {
@@ -143,8 +142,6 @@ def preview_record_text(
 
 
 class _BackgroundAwareCodeBlock(CodeBlock):
-    __slots__ = ("lexer_name", "surface_hex", "terminal_bg_is_light")
-
     @classmethod
     def create(cls, markdown: Markdown, token: object) -> _BackgroundAwareCodeBlock:
         info_obj: object = read_attr(token, "info", "")
@@ -186,8 +183,6 @@ class _BackgroundAwareCodeBlock(CodeBlock):
 
 
 class _BackgroundAwareMarkdown(Markdown):
-    __slots__ = ("surface_hex", "terminal_bg_is_light")
-
     elements: ClassVar[dict[str, type[MarkdownElement]]] = {
         **Markdown.elements,
         "fence": _BackgroundAwareCodeBlock,
@@ -227,8 +222,6 @@ class _BackgroundAwareMarkdown(Markdown):
 
 
 class _MarkdownContent:
-    __slots__ = ("_content",)
-
     def __init__(self, content: RenderResult) -> None:
         self._content = content
 
@@ -385,8 +378,7 @@ def _search_record_lines(content: str) -> list[str] | None:
     for match in matches:
         if isinstance(match, str):
             lines.append(f"  {strip_terminal_control(match)}")
-            continue
-        if isinstance(match, dict):
+        elif isinstance(match, dict):
             path, line, text = match.get("path"), match.get("line"), match.get("text")
             if isinstance(path, str) and isinstance(line, int) and isinstance(text, str):
                 lines.append(

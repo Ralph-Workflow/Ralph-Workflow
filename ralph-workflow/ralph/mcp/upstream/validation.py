@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -47,9 +48,9 @@ class UpstreamValidationReport:
 
 
 def strict_mode_from_env(env: Mapping[str, str] | None = None) -> bool:
-    from ralph.config._env import getenv
 
-    raw = getenv(_STRICT_ENV_VAR, env)
+    env_map = os.environ if env is None else env
+    raw = env_map.get(_STRICT_ENV_VAR)
     if raw is None:
         return True
     return raw.strip().lower() not in _STRICT_FALSE_VALUES

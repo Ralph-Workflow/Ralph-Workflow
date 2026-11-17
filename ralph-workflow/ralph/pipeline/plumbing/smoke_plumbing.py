@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 import secrets
 import shlex
@@ -10,7 +11,7 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -100,6 +101,7 @@ if TYPE_CHECKING:
     from ralph.agents.support import AgentSupport
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.session_bridge import BridgeFactory
     from ralph.policy.models import PolicyBundle
@@ -132,7 +134,7 @@ def _run_smoke_attempt(
         controller=controller,
         deps=deps,
         state=state,
-        **dict(execute_kwargs),
+        **execute_kwargs,
     )
 
 
@@ -158,8 +160,8 @@ def _invoke_smoke_effect(
         config,
         pipeline_deps,
         workspace_scope,
-        *tuple(args),
-        **dict(kwargs),
+        *args,
+        **kwargs,
     )
     return result
 
@@ -514,17 +516,17 @@ def load_conformance_matrix(
     except (KeyError, OSError, UnicodeDecodeError):
         return {}
     try:
-        payload: object = json.loads(raw)
+        payload = cast("object", json.loads(raw))
     except json.JSONDecodeError:
         return {}
     if not isinstance(payload, dict):
         return {}
     matrix: ConformanceMatrix = {}
-    for transport, row in payload.items():
+    for transport, row in cast("dict[str, object]", payload).items():
         if not isinstance(transport, str) or not isinstance(row, dict):
             continue
         parsed_row: dict[str, Evidence] = {}
-        for fact, cell in row.items():
+        for fact, cell in cast("dict[str, object]", row).items():
             evidence = _evidence_from_json(cell)
             if evidence is not None:
                 parsed_row[fact] = evidence
@@ -898,7 +900,7 @@ def _parser_key_for_config(config: AgentConfig) -> str:
     return resolve_parser_key(
         config.cmd,
         config.json_parser,
-        config.transport,
+        cast("AgentTransport", config.transport),
     )
 
 
@@ -1060,28 +1062,27 @@ def _execute_smoke_turns(
 ) -> tuple[list[str], list[str], str | None, AgentInvocationError | None, Provenance]:
     all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-    final_exception_box: list[AgentInvocationError | None] = [None]
+    final_exception: AgentInvocationError | None = None
     workspace_scope = resolve_workspace_scope(params.workspace_root)
-    ceiling_box: list[object] = [False, Provenance.ABSENT]
+    ceiling_reported = False
+    highest_latched_ceiling: Provenance = Provenance.ABSENT
 
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
         rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-        observed_session_box: list[str | None] = [current_session_id]
+        observed_session_id: str | None = current_session_id
 
-        def _capture_session_id(
-            session_id: str, *, _box: list[str | None] = observed_session_box
-        ) -> None:
-            _box[0] = session_id
+        def _capture_session_id(session_id: str) -> None:
+            nonlocal observed_session_id
+            observed_session_id = session_id
 
         def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
+            nonlocal ceiling_reported, highest_latched_ceiling
             cur_c = transport_evidence_ceiling(params.config, [line])
-            prior_ceiling = ceiling_box[1]
-            if isinstance(prior_ceiling, Provenance):
-                ceiling_box[1] = max(prior_ceiling, cur_c)
-            if ceiling_box[0] is True:
+            highest_latched_ceiling = max(highest_latched_ceiling, cur_c)
+            if ceiling_reported:
                 return
-            ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(_turn_raw_lines))
+            ceiling_reported = _report_evidence_ceiling_once(params.config, list(_turn_raw_lines))
 
         effect = InvokeAgentEffect(
             agent_name=params.agent_name,
@@ -1091,8 +1092,9 @@ def _execute_smoke_turns(
         )
 
         def _capture_invocation_error(exc: Exception) -> None:
+            nonlocal final_exception
             if isinstance(exc, AgentInvocationError):
-                final_exception_box[0] = exc
+                final_exception = exc
 
         pipeline_deps = params.pipeline_deps
         if pipeline_deps is None:
@@ -1127,7 +1129,7 @@ def _execute_smoke_turns(
                 deps=attempt_deps,
                 pipeline_deps=pipeline_deps,
                 workspace_scope=workspace_scope,
-                bridge=params.bridge,
+                bridge=cast("RestartAwareMcpBridge", params.bridge),
                 display_context=params.display_context,
                 display=params.display,
                 run_id=run_id,
@@ -1139,59 +1141,50 @@ def _execute_smoke_turns(
                 raise_resumable_exit=True,
                 agent_invocation_error_sink=_capture_invocation_error,
             )
-            prior_ceiling = ceiling_box[1]
-            if not isinstance(prior_ceiling, Provenance):
-                prior_ceiling = Provenance.ABSENT
-            ceiling_box[1] = _update_smoke_turn_state(
+            highest_latched_ceiling = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                prior_ceiling,
+                highest_latched_ceiling,
             )
-            if ceiling_box[0] is not True:
-                ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(all_lines))
-            current_session_id = observed_session_box[0] or extract_transport_session_id(
+            if not ceiling_reported:
+                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
+            current_session_id = observed_session_id or extract_transport_session_id(
                 tuple(raw_lines)
             )
             if attempt.event == PipelineEvent.AGENT_SUCCESS:
-                final_exception_box[0] = None
+                final_exception = None
             break
         except OpenCodeResumableExitError as exc:
-            prior_ceiling = ceiling_box[1]
-            if not isinstance(prior_ceiling, Provenance):
-                prior_ceiling = Provenance.ABSENT
-            ceiling_box[1] = _update_smoke_turn_state(
+            highest_latched_ceiling = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                prior_ceiling,
+                highest_latched_ceiling,
             )
-            if ceiling_box[0] is not True:
-                ceiling_box[0] = _report_evidence_ceiling_once(params.config, list(all_lines))
+            if not ceiling_reported:
+                ceiling_reported = _report_evidence_ceiling_once(params.config, list(all_lines))
             current_session_id = (
                 exc.resumable_session_id
-                or observed_session_box[0]
+                or observed_session_id
                 or extract_transport_session_id(tuple(raw_lines))
             )
-            final_exception_box[0] = exc
+            final_exception = exc
             if transport_evidence_ceiling(params.config, list(all_lines)) < Provenance.WIRE:
                 break
             continue
         except AgentInvocationError as exc:
-            prior_ceiling = ceiling_box[1]
-            if not isinstance(prior_ceiling, Provenance):
-                prior_ceiling = Provenance.ABSENT
-            ceiling_box[1] = _update_smoke_turn_state(
+            highest_latched_ceiling = _update_smoke_turn_state(
                 raw_lines,
                 rendered_lines,
                 all_lines,
                 live_output_lines,
                 params.config,
-                prior_ceiling,
+                highest_latched_ceiling,
             )
             merged_output = list(raw_lines)
             for line in exc.parsed_output:
@@ -1199,18 +1192,15 @@ def _execute_smoke_turns(
                     merged_output.append(line)
             if merged_output:
                 exc.parsed_output = merged_output
-            final_exception_box[0] = exc
+            final_exception = exc
             break
 
-    final_ceiling = ceiling_box[1]
-    if not isinstance(final_ceiling, Provenance):
-        final_ceiling = Provenance.ABSENT
     return (
         list(all_lines),
         list(live_output_lines),
         current_session_id,
-        final_exception_box[0],
-        final_ceiling,
+        final_exception,
+        highest_latched_ceiling,
     )
 
 
@@ -1228,7 +1218,7 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
 def _mock_negative_selector(env_getter: EnvGetter | None = None) -> str | None:
     if not is_mock_agy_override():
         return None
-    getter = env_getter if env_getter is not None else getenv
+    getter = env_getter if env_getter is not None else os.getenv
     selector = getter("MOCK_AGY_BEHAVIOR") or "normal"
     if selector in {"missing_artifact", "missing_completion"}:
         return selector
@@ -1310,17 +1300,17 @@ def _meaningful_output_error(
 
 
 def _agy_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else getenv
+    getter = env_getter if env_getter is not None else os.environ.get
     return getter("RALPH_AGY_BINARY")
 
 
 def _cursor_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else getenv
+    getter = env_getter if env_getter is not None else os.environ.get
     return getter("RALPH_CURSOR_BINARY")
 
 
 def _kimi_binary_override_env(env_getter: EnvGetter | None = None) -> str | None:
-    getter = env_getter if env_getter is not None else getenv
+    getter = env_getter if env_getter is not None else os.environ.get
     return getter("RALPH_KIMI_BINARY")
 
 
@@ -1351,7 +1341,7 @@ def _agy_upstream_diagnostic(
     if read_smoke_test_result_artifact(workspace_root) is not None:
         return None
     if is_mock_agy_override():
-        getter = env_getter if env_getter is not None else getenv
+        getter = env_getter if env_getter is not None else os.getenv
         behavior = getter("MOCK_AGY_BEHAVIOR") or "normal"
         if behavior in {"no_output", "malformed_stream"}:
             return (
@@ -1651,7 +1641,7 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
         init_info = obj.get("init")
         if not isinstance(init_info, dict):
             return None
-        raw_tools = init_info.get("tools")
+        raw_tools = cast("dict[str, object]", init_info).get("tools")
     elif obj.get("type") == "system" and obj.get("subtype") == "init":
         raw_tools = obj.get("tools")
     else:
@@ -1660,16 +1650,13 @@ def _advertised_tool_names_from_init_frame(obj: dict[str, object]) -> list[str] 
     if not isinstance(raw_tools, list):
         return None
     names: list[str] = []
-    for entry in raw_tools:
-        match entry:
-            case str():
-                names.append(entry)
-            case dict():
-                name = entry.get("name")
-                if isinstance(name, str):
-                    names.append(name)
-            case _:
-                pass
+    for entry in cast("list[object]", raw_tools):
+        if isinstance(entry, str):
+            names.append(entry)
+        elif isinstance(entry, dict):
+            name = cast("dict[str, object]", entry).get("name")
+            if isinstance(name, str):
+                names.append(name)
     return names
 
 
@@ -1719,7 +1706,7 @@ def transport_evidence_ceiling(config: AgentConfig, first_lines: list[str]) -> P
             continue
         if not isinstance(parsed, dict):
             continue
-        names = _advertised_tool_names_from_init_frame({str(k): v for k, v in parsed.items()})
+        names = _advertised_tool_names_from_init_frame(cast("dict[str, object]", parsed))
         if names is None:
             continue
         if any(_tool_name_reaches_ralph(name) for name in names):

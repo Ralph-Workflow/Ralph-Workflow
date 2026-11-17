@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._bridge_with_process import _BridgeWithProcess
-from ralph.mcp.server.factory import McpServerHandle
+from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 if TYPE_CHECKING:
     from ralph.mcp.protocol.startup import WorkspaceLike

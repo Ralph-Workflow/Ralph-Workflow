@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import importlib
 import os
 import signal
 import subprocess
@@ -75,9 +76,6 @@ if TYPE_CHECKING:
             *,
             timeout: float | None,
         ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
-
-
-_sleep: Callable[[float], None] = _time.sleep
 
 
 def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
@@ -196,23 +194,26 @@ def _query_proc_status(proc: _PsutilProcessLike, mod: _PsutilModuleLike) -> str:
 
 def _safe_record_d_state(pid: int) -> None:
     with contextlib.suppress(Exception):
-        from ralph.mcp.server._host_contention_signal import record_d_state
-
-        record_d_state(pid)
+        hcs = importlib.import_module("ralph.mcp.server._host_contention_signal")
+        fn: object = getattr(hcs, "record_d_state", None)
+        if callable(fn):
+            fn(pid)
 
 
 def _safe_record_sigkill_survivor(pid: int) -> None:
     with contextlib.suppress(Exception):
-        from ralph.mcp.server._host_contention_signal import record_sigkill_survivor
-
-        record_sigkill_survivor(pid)
+        hcs = importlib.import_module("ralph.mcp.server._host_contention_signal")
+        fn: object = getattr(hcs, "record_sigkill_survivor", None)
+        if callable(fn):
+            fn(pid)
 
 
 def _safe_record_host_contention_signal(reason: str) -> None:
     with contextlib.suppress(Exception):
-        from ralph.mcp.server._mcp_health_event import record_host_contention_signal
-
-        record_host_contention_signal(reason)
+        mhe = importlib.import_module("ralph.mcp.server._mcp_health_event")
+        fn: object = getattr(mhe, "record_host_contention_signal", None)
+        if callable(fn):
+            fn(reason)
 
 
 def _default_liveness_verifier(
@@ -620,7 +621,7 @@ class ProcessManager:
         except (OSError, ProcessLookupError):
             return
         with contextlib.suppress(Exception):
-            _sleep(max(0.0, git_aware_grace(grace_period_s, (descendant_pid,))))
+            _time.sleep(max(0.0, git_aware_grace(grace_period_s, (descendant_pid,))))
         with contextlib.suppress(OSError, ProcessLookupError):
             os.kill(descendant_pid, signal.SIGKILL)
 
@@ -1097,7 +1098,7 @@ class ProcessManager:
                 os.killpg(pgid, signal.SIGTERM)
             deadline = _time.monotonic() + grace_s
             while _time.monotonic() < deadline and group_pids(pgid):
-                _sleep(0.05)
+                _time.sleep(0.05)
         with contextlib.suppress(OSError, ProcessLookupError):
             os.killpg(pgid, signal.SIGKILL)
 
@@ -1816,7 +1817,7 @@ class ProcessManager:
             and _time.monotonic() < deadline
             and self._liveness_verifier(record.pid, psutil_mod=None) != LivenessResult.GONE
         ):
-            _sleep(0.05)
+            _time.sleep(0.05)
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.kill()
         probe_result = self._liveness_verifier(record.pid, psutil_mod=None)

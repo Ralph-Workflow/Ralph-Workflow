@@ -1,5 +1,7 @@
 from __future__ import annotations
 
-from .tool_error import CapabilityDeniedError
+from .tool_error import ToolError
 
-__all__ = ["CapabilityDeniedError"]
+
+class CapabilityDeniedError(ToolError):
+    pass

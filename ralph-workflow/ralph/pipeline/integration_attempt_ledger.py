@@ -10,7 +10,7 @@ from enum import Enum
 from hashlib import sha256
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 from ralph.pipeline._integration_ladder_evidence import _LADDER_ACTION_VALUES
@@ -249,18 +249,6 @@ def _release_lock(handle: object) -> None:
 
 
 class AttemptLedger:
-    __slots__ = (
-        "_common_dir",
-        "_default_repeat_threshold",
-        "_default_unknown_budget",
-        "_forced_pending",
-        "_global_charged",
-        "_ledger_path",
-        "_saturated_repeats",
-        "_unknowable",
-        "_workspace_root",
-    )
-
     def __init__(
         self,
         workspace_root: Path,
@@ -365,7 +353,7 @@ class AttemptLedger:
             return self._default_state(), LedgerLoadStatus.UNKNOWABLE
 
         try:
-            payload: object = json.loads(raw_text)
+            payload = cast("object", json.loads(raw_text))
         except (ValueError, RecursionError):
             return self._default_state(), LedgerLoadStatus.UNKNOWABLE
 

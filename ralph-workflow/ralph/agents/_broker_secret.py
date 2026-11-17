@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
-
-from ralph.config._env import getenv as config_getenv
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -10,5 +9,5 @@ if TYPE_CHECKING:
 _BROKER_ENV_VAR_NAME = "RALPH_BROKER_SECRET"
 
 
-def parent_broker_secret(getenv: Callable[[str], str | None] = config_getenv) -> str | None:
+def parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> str | None:
     return getenv(_BROKER_ENV_VAR_NAME)

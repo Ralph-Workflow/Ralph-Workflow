@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph._typed_attrs import read_attr
 from ralph.agents.invoke._agent_launch_error import AgentLaunchError

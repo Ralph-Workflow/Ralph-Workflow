@@ -10,16 +10,17 @@ from ralph.display.agent_activity_event import AgentActivityEvent
 from ralph.display.event_options import EventOptions
 from ralph.display.line_sanitizer import strip_terminal_control
 
+_module_sequence_lock = threading.Lock()
+
 
 class _ModuleSequence:
-    __slots__ = ("_counter", "_lock")
+    __slots__ = ("_counter",)
 
     def __init__(self) -> None:
         self._counter = 0
-        self._lock = threading.Lock()
 
     def next(self) -> int:
-        with self._lock:
+        with _module_sequence_lock:
             self._counter += 1
             return self._counter
 

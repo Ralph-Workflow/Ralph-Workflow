@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import psutil
 
-from ralph.config import _env as config_env
 from ralph.exit_pause.exit_outcome import ExitOutcome
 from ralph.exit_pause.pause_on_exit_mode import PauseOnExitMode
 
@@ -73,7 +72,7 @@ def should_pause_before_exit(
 
 def detect_launch_context(*, env: Mapping[str, str] | None = None) -> LaunchContext:
     is_windows = sys.platform == "win32" or os.name == "nt"
-    env_map = config_env.environ() if env is None else env
+    env_map = os.environ if env is None else env
     has_marker = _has_terminal_session_marker(env_map)
     parent_name: str | None = None
 

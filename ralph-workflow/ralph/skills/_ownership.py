@@ -3,9 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from enum import StrEnum
-from typing import TYPE_CHECKING
-
-from ralph.checked_accessors import as_mapping
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,9 +31,11 @@ def read_managed_marker(skill_dir: Path) -> dict[str, object] | None:
         raw: object = json.loads(
             (skill_dir / MANAGED_MARKER_NAME).read_text(encoding="utf-8"),
         )
-        return dict(as_mapping(raw))
-    except (OSError, TypeError, ValueError):
+    except (OSError, ValueError):
         return None
+    if not isinstance(raw, dict):
+        return None
+    return cast("dict[str, object]", raw)
 
 
 def recorded_managed_files(marker: dict[str, object]) -> dict[str, str] | None:

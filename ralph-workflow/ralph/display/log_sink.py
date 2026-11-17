@@ -57,23 +57,17 @@ def _bound_record(text: str) -> str:
     return "\n".join(bounded)
 
 
-class _LiveFlag:
-    __slots__ = ("value",)
-
-    def __init__(self) -> None:
-        self.value = True
-
-
 def _retiring_on_dead_surface(write: Callable[[str], None]) -> Callable[[str], None]:
-    live = _LiveFlag()
+    live = True
 
     def _guarded(text: str) -> None:
-        if not live.value:
+        nonlocal live
+        if not live:
             return
         try:
             write(text)
         except _DEAD_SURFACE_ERRORS:
-            live.value = False
+            live = False
 
     return _guarded
 

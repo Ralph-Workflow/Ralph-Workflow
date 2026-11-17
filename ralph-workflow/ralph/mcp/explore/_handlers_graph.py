@@ -10,7 +10,6 @@ from ralph._typed_attrs import read_attr
 from ralph.mcp.explore import graph as graph_module
 from ralph.mcp.explore import handlers as handlers_module
 from ralph.mcp.explore._bounded_flags import BoundedFlagRegistry
-from ralph.mcp.explore._thread_state import CancelFlagBox
 from ralph.mcp.explore.handlers import (
     ExploreIndex,
     _int_param,
@@ -47,9 +46,8 @@ _VALID_CHANGE_KINDS: tuple[str, ...] = (
 _GRAPH_LIMIT_MAX: int = 100
 _GRAPH_DEFAULT_TIMEOUT_MS: int = 5_000
 _GRAPH_TIMEOUT_MAX_MS: int = 30_000
-_GRAPH_CANCEL = CancelFlagBox(flags=BoundedFlagRegistry())
-_GRAPH_CANCEL_FLAGS: BoundedFlagRegistry = _GRAPH_CANCEL.flags
-_GRAPH_CANCEL_LOCK: threading.Lock = _GRAPH_CANCEL.lock
+_GRAPH_CANCEL_FLAGS: BoundedFlagRegistry = BoundedFlagRegistry()
+_GRAPH_CANCEL_LOCK: threading.Lock = threading.Lock()
 
 
 def _graph_node_to_dict(node: graph_module.GraphNode) -> dict[str, object]:

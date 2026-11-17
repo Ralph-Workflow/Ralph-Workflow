@@ -12,12 +12,8 @@ def terminal_message(message: str) -> str:
 
 
 def critical(message: str, *args: object) -> None:
-    values: tuple[object, ...] = args
-    body = message.format(*values) if values else message
-    logger.critical(terminal_message(body), build_identity())
+    logger.critical(terminal_message(message), *args, build_identity())
 
 
 def terminal(message: str, *args: object) -> None:
-    values: tuple[object, ...] = args
-    body = message.format(*values) if values else message
-    logger.info(terminal_message(body), build_identity())
+    logger.info(terminal_message(message), *args, build_identity())

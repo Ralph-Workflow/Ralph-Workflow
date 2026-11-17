@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Sequence
 from typing import Protocol, cast
@@ -7,7 +8,6 @@ from typing import Protocol, cast
 from ralph._typed_attrs import attr_or_none
 from ralph.mcp.explore._bounded_state import BoundedKeyValueStore
 from ralph.mcp.explore._burst_scheduler import BurstDebounceScheduler
-from ralph.mcp.explore._thread_state import LockBox
 from ralph.mcp.explore.store import ExploreStore, normalize_index_path
 
 
@@ -90,8 +90,7 @@ def resolve_explore_index(session: object) -> ExploreIndexLike | None:
     return handle
 
 
-_PENDING_LOCK_BOX = LockBox()
-_PENDING_LOCK = _PENDING_LOCK_BOX.lock
+_PENDING_LOCK = threading.Lock()
 _PENDING_MARKS: BoundedKeyValueStore[tuple[int, str], tuple[ExploreIndexLike, str, str]] = (
     BoundedKeyValueStore()
 )

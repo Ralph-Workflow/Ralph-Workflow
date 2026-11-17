@@ -97,7 +97,6 @@ class ExploreStore(
     delete_file_rows = _FileRowMethods.delete_file_rows
     _INIT_LOCK_ATTEMPTS = _InitializeMethods._INIT_LOCK_ATTEMPTS
     _INIT_LOCK_BACKOFF_SECONDS = _InitializeMethods._INIT_LOCK_BACKOFF_SECONDS
-    _pause = _InitializeMethods._pause
     _initialize = _InitializeMethods._initialize
     _migrate_schema = _InitializeMethods._migrate_schema
     _schema_version_matches = _InitializeMethods._schema_version_matches

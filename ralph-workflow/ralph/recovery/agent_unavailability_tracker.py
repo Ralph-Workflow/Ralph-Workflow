@@ -18,14 +18,34 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
+    class _UnavailabilityStoreMeta(type):
+        def __instancecheck__(cls, instance: object) -> bool: ...
+else:
+
+    class _UnavailabilityStoreMeta(type(Protocol)):
+        def __instancecheck__(cls, instance: object) -> bool:
+            if super().__instancecheck__(instance):
+                return True
+            return (
+                hasattr(instance, "scope")
+                and hasattr(instance, "mark_unavailable")
+                and hasattr(instance, "is_available")
+                and hasattr(instance, "earliest_unavailable_wait_ms")
+                and hasattr(instance, "reset_backoff")
+                and hasattr(instance, "snapshot")
+            )
+
 
 @runtime_checkable
-class UnavailabilityStore(Protocol):
+class UnavailabilityStore(Protocol, metaclass=_UnavailabilityStoreMeta):
     @property
     def scope(self) -> Literal["session", "persistent"]: ...
 
     def mark_unavailable(
-        self, phase: str, agent: str, reason: UnavailabilityReason | None = None
+        self,
+        phase: str,
+        agent: str,
+        reason: UnavailabilityReason | None = None,
     ) -> UnavailabilityEntry: ...
 
     def is_available(self, phase: str, agent: str) -> bool: ...
@@ -48,21 +68,11 @@ class UnavailabilityEntry:
     max_backoff_ms: int
 
 
-DEFAULT_LEGACY_BACKOFF_MS = 5000
-DEFAULT_LEGACY_MAX_BACKOFF_MS = 300000
+DEFAULT_LEGACY_BACKOFF_MS = 5_000
+DEFAULT_LEGACY_MAX_BACKOFF_MS = 300_000
 
 
 class AgentUnavailabilityTracker:
-    __slots__ = (
-        "_backoff_attempts",
-        "_backoff_policy",
-        "_clock",
-        "_entries",
-        "_failure_ledger",
-        "_lock",
-        "_scope",
-    )
-
     def __init__(
         self,
         clock: Clock | None = None,
@@ -82,6 +92,7 @@ class AgentUnavailabilityTracker:
         )
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
         self._backoff_attempts: dict[str, int] = dict(initial_backoff_attempts or {})
+
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():
                 if key in self._entries:
@@ -95,7 +106,10 @@ class AgentUnavailabilityTracker:
                 )
 
     def mark_unavailable(
-        self, phase: str, agent: str, reason: UnavailabilityReason | None = None
+        self,
+        phase: str,
+        agent: str,
+        reason: UnavailabilityReason | None = None,
     ) -> UnavailabilityEntry:
         with self._lock:
             del phase
@@ -103,21 +117,26 @@ class AgentUnavailabilityTracker:
             current_time_ms = int(self._clock.monotonic() * 1000)
             self.prune_expired(now_ms=current_time_ms)
             attempt: int = self._backoff_attempts.get(key, 0)
+
             if reason is not None and reason in self._backoff_policy:
                 policy = self._backoff_policy[reason]
             else:
                 policy = None
+
             if policy is not None:
                 base_ms = policy.base_backoff_ms
                 cap_ms = policy.max_backoff_ms
             else:
                 base_ms = DEFAULT_LEGACY_BACKOFF_MS
                 cap_ms = DEFAULT_LEGACY_MAX_BACKOFF_MS
+
             base_ms_int: int = int(base_ms)
             cap_ms_int: int = min(int(cap_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
+
             saturated_attempt = ((cap_ms_int - 1) // base_ms_int).bit_length()
             attempt = min(attempt, saturated_attempt)
             backoff_ms = min(base_ms_int << attempt, cap_ms_int)
+
             unavailable_until_ms = current_time_ms + backoff_ms
             self._entries[key] = UnavailabilityEntry(
                 unavailable_until_ms=unavailable_until_ms,
@@ -193,11 +212,17 @@ class AgentUnavailabilityTracker:
 
 
 __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
+
+
 _ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset(
     {"mark_unavailable", "reset_backoff", "prune_expired"}
 )
 _READONLY_PUBLIC_METHODS: frozenset[str] = frozenset(
-    {"is_available", "earliest_unavailable_wait_ms", "snapshot"}
+    {
+        "is_available",
+        "earliest_unavailable_wait_ms",
+        "snapshot",
+    }
 )
 _READONLY_PROPERTIES: frozenset[str] = frozenset({"scope", "clock"})
 
@@ -241,7 +266,12 @@ def _find_tracker_class_node(tree: ast.Module) -> ast.ClassDef:
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "AgentUnavailabilityTracker":
             return node
-    msg = "No-permanent-skip invariant violated: AgentUnavailabilityTracker class not found in ralph.recovery.agent_unavailability_tracker. Restore the class definition or update the import-time invariant in ralph.recovery.agent_unavailability_tracker."
+    msg = (
+        "No-permanent-skip invariant violated: AgentUnavailabilityTracker"
+        " class not found in ralph.recovery.agent_unavailability_tracker."
+        " Restore the class definition or update the import-time"
+        " invariant in ralph.recovery.agent_unavailability_tracker."
+    )
     raise RuntimeError(msg)
 
 
@@ -250,7 +280,12 @@ def _parse_tracker_source(source_path: Path) -> ast.Module:
     try:
         return ast.parse(source)
     except SyntaxError as exc:
-        msg = f"agent_unavailability_tracker.py failed to parse during the no-permanent-skip invariant check. The tracker source is broken; the no-permanent-skip rule cannot be verified. Source: {source_path}. Parser error: {exc}"
+        msg = (
+            "agent_unavailability_tracker.py failed to parse during the"
+            " no-permanent-skip invariant check. The tracker source is"
+            " broken; the no-permanent-skip rule cannot be verified."
+            f" Source: {source_path}. Parser error: {exc}"
+        )
         raise RuntimeError(msg) from exc
 
 
@@ -258,7 +293,7 @@ def _collect_unknown_public_methods(class_node: ast.ClassDef) -> list[str]:
     unknown: list[str] = []
     for member in class_node.body:
         kind = _classify_member(member)
-        if kind == "unknown" and isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef):
+        if kind == "unknown" and isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
             unknown.append(member.name)
     return unknown
 
@@ -270,7 +305,17 @@ def _assert_no_permanent_skip_invariant() -> None:
     unknown = _collect_unknown_public_methods(class_node)
     if unknown:
         methods = ", ".join(sorted(unknown))
-        msg = f"No-permanent-skip invariant violated: AgentUnavailabilityTracker has public method(s) that are not in the allowlist: {methods}. The only public mutators on the unavailable set are mark_unavailable, reset_backoff, and prune_expired. Every other public method must be read-only (is_available, earliest_unavailable_wait_ms, snapshot) or a read-only property (scope). Adding a new mutator is a deliberate contract change; update the import-time invariant and the test in tests/recovery/test_two_state_invariant.py in the same commit."
+        msg = (
+            "No-permanent-skip invariant violated: AgentUnavailabilityTracker"
+            f" has public method(s) that are not in the allowlist: {methods}."
+            " The only public mutators on the unavailable set are"
+            " mark_unavailable, reset_backoff, and prune_expired. Every other public method"
+            " must be read-only (is_available, earliest_unavailable_wait_ms,"
+            " snapshot) or a read-only property (scope). Adding a new mutator"
+            " is a deliberate contract change; update the import-time"
+            " invariant and the test in"
+            " tests/recovery/test_two_state_invariant.py in the same commit."
+        )
         raise RuntimeError(msg)
 
 

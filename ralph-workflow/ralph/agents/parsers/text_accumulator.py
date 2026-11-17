@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from .agent_output_line import AgentOutputLine
@@ -12,12 +13,10 @@ _MAX_RAW_LINES: int = 512
 _MAX_BUFFER_CHARS: int = 1 << 20
 
 
+@dataclass(slots=True)
 class TextAccumulator:
-    __slots__ = ("buffer", "raw_lines")
-
-    def __init__(self) -> None:
-        self.buffer: str = ""
-        self.raw_lines: list[str] = []
+    buffer: str = ""
+    raw_lines: list[str] = field(default_factory=list)
 
     def accumulate(
         self,

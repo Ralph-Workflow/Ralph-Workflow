@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
@@ -185,7 +185,9 @@ def capture_pre_write_contents(
         for path in paths:
             recorded[path] = _git_blob_sha(repo, path)
     finally:
-        _close_if_possible(repo)
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
     return recorded
 
 
@@ -243,7 +245,9 @@ def classify_target_for_commit(repo_root: Path | str, path: Path | str) -> Targe
             return untracked_class
         return "not_repo"
     finally:
-        _close_if_possible(repo)
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
 
 
 def commit_deterministic_writes(
@@ -286,7 +290,10 @@ def commit_deterministic_writes(
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_snapshots = _snapshot_pre_staged_index(repo, pre_staged_paths)
             if pre_staged_paths:
-                route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths))
+                _ = cast(
+                    "None",
+                    route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths)),
+                )
 
             try:
                 selected = _deterministic._select_deterministic_paths(
@@ -311,7 +318,9 @@ def commit_deterministic_writes(
                 if pre_staged_snapshots:
                     _restore_pre_staged_index(repo, pre_staged_snapshots)
         finally:
-            _close_if_possible(repo)
+            close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+            if callable(close):
+                close()
     except (OSError, GitCommandError, ValueError) as exc:
         logger.warning("commit_deterministic_writes: outer guard caught (non-fatal): {}", exc)
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
@@ -341,7 +350,7 @@ def _scoped_commit_failure(
     result: CommitCreationResult,
 ) -> ScopedCommitResult:
     try:
-        route_git_method(repo, "reset", ("HEAD", "--", *all_dirty))
+        _ = cast("None", route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)))
     except (OSError, GitCommandError) as reset_exc:
         logger.debug(
             "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
@@ -388,7 +397,10 @@ def commit_scoped_updates(
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_blobs = _snapshot_pre_staged_index(repo, pre_staged_paths)
             if pre_staged_paths:
-                route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths))
+                _ = cast(
+                    "None",
+                    route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths)),
+                )
             try:
                 stage_fn(repo_root_path, all_dirty)
                 message = f"{subject}\n\n{body_builder(all_dirty)}"
@@ -399,7 +411,10 @@ def commit_scoped_updates(
                 return ScopedCommitResult(status=ScopedCommitStatus.CREATED, sha=result.sha)
             except (OSError, GitCommandError, ValueError):
                 try:
-                    route_git_method(repo, "reset", ("HEAD", "--", *all_dirty))
+                    _ = cast(
+                        "None",
+                        route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)),
+                    )
                 except (OSError, GitCommandError, ValueError) as reset_exc:
                     logger.warning(
                         "commit_scoped_updates: failed-attempt unstage failed "
@@ -421,7 +436,9 @@ def commit_scoped_updates(
             logger.warning("commit_scoped_updates: auto-commit failed (non-fatal): {}", exc)
             return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))
         finally:
-            _close_if_possible(repo)
+            close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+            if callable(close):
+                close()
     except (OSError, GitCommandError, ValueError) as exc:
         logger.warning("commit_scoped_updates: outer guard caught (non-fatal): {}", exc)
         return ScopedCommitResult(status=ScopedCommitStatus.FAILED, error=str(exc))

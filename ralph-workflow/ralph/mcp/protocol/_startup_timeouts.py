@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time as _time_module
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
@@ -90,10 +91,8 @@ if not (_OVERRUN_DIAGNOSTIC_BUDGET_S < _PROBE_SAFETY_S):
     )
 
 
-def _timeout_ms_from_env(name: str, env: Mapping[str, str] | None = None) -> timedelta | None:
-    from ralph.config._env import getenv
-
-    raw = getenv(name, env)
+def _timeout_ms_from_env(env: Mapping[str, str], name: str) -> timedelta | None:
+    raw = env.get(name)
     if raw is None:
         return None
     try:
@@ -105,7 +104,8 @@ def _timeout_ms_from_env(name: str, env: Mapping[str, str] | None = None) -> tim
 
 def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
 
-    preflight = _timeout_ms_from_env(MCP_PREFLIGHT_TIMEOUT_MS_ENV, env) or _DEFAULT_PREFLIGHT
+    env_map = os.environ if env is None else env
+    preflight = _timeout_ms_from_env(env_map, MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
     ceiling = preflight * _PROBE_BUDGET_SHARE
     if ceiling.total_seconds() <= _PROBE_SAFETY_S:
         raise RuntimeError(
@@ -121,15 +121,18 @@ def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> time
 
 def mcp_boot_allowance_from_env(env: Mapping[str, str] | None = None) -> timedelta:
 
-    return _timeout_ms_from_env(MCP_BOOT_ALLOWANCE_MS_ENV, env) or _DEFAULT_BOOT_ALLOWANCE
+    env_map = os.environ if env is None else env
+    return _timeout_ms_from_env(env_map, MCP_BOOT_ALLOWANCE_MS_ENV) or _DEFAULT_BOOT_ALLOWANCE
 
 
 def mcp_upstream_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    ceiling = mcp_preflight_timeout_from_env(env) * _PROBE_BUDGET_SHARE
+
+    env_map = os.environ if env is None else env
+    ceiling = mcp_preflight_timeout_from_env(env_map) * _PROBE_BUDGET_SHARE
     if ceiling.total_seconds() <= _PROBE_SAFETY_S:
         raise RuntimeError(
             f"probe timeout budget ({ceiling.total_seconds():.1f}s = "
-            f"{mcp_preflight_timeout_from_env(env).total_seconds():.0f}s * "
+            f"{mcp_preflight_timeout_from_env(env_map).total_seconds():.0f}s * "
             f"{_PROBE_BUDGET_SHARE} share) must exceed _PROBE_SAFETY_S "
             f"({_PROBE_SAFETY_S}s) to give the child time to report a stalled "
             f"upstream before the supervisor SIGKILLs it. "
@@ -137,7 +140,7 @@ def mcp_upstream_probe_timeout_from_env(env: Mapping[str, str] | None = None) ->
             f"{int(_PROBE_SAFETY_S / _PROBE_BUDGET_SHARE * 1000)} ms, "
             f"or lower _PROBE_BUDGET_SHARE."
         )
-    requested = _timeout_ms_from_env(MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV, env)
+    requested = _timeout_ms_from_env(env_map, MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV)
     if requested is None:
         return ceiling
     return min(requested, ceiling)
@@ -149,7 +152,8 @@ def mcp_upstream_probe_timeout_seconds(env: Mapping[str, str] | None = None) -> 
 
 
 def mcp_pre_serve_budget_from_env(env: Mapping[str, str] | None = None) -> timedelta:
-    requested = _timeout_ms_from_env(_MCP_PRE_SERVE_TIMEOUT_MS_ENV, env)
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, _MCP_PRE_SERVE_TIMEOUT_MS_ENV)
     if requested is not None:
         return requested
     return timedelta(seconds=_PRE_SERVE_BUDGET_S)
@@ -179,7 +183,8 @@ def mcp_pre_serve_timeout_from_env(
 def mcp_overrun_diagnostic_timeout_from_env(
     env: Mapping[str, str] | None = None,
 ) -> timedelta:
-    requested = _timeout_ms_from_env(_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV, env)
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, _MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV)
     if requested is not None:
         return requested
     return timedelta(seconds=_OVERRUN_DIAGNOSTIC_BUDGET_S)
@@ -200,8 +205,9 @@ def mcp_discovery_budget_from_env(env: Mapping[str, str] | None = None) -> timed
 def mcp_real_startup_deadline_from_env(
     env: Mapping[str, str] | None = None,
 ) -> float:
+    env_map = os.environ if env is None else env
     return (
-        mcp_preflight_timeout_from_env(env) - timedelta(seconds=_PROBE_SAFETY_S)
+        mcp_preflight_timeout_from_env(env_map) - timedelta(seconds=_PROBE_SAFETY_S)
     ).total_seconds()
 
 
@@ -360,7 +366,7 @@ def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = N
 
 
 _configured_preflight: timedelta = (
-    _timeout_ms_from_env(MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
+    _timeout_ms_from_env(os.environ, MCP_PREFLIGHT_TIMEOUT_MS_ENV) or _DEFAULT_PREFLIGHT
 )
 _configured_ceiling: timedelta = _configured_preflight * _PROBE_BUDGET_SHARE
 if not (_configured_ceiling.total_seconds() > _PROBE_SAFETY_S):
@@ -407,7 +413,8 @@ def mcp_registry_read_timeout_from_env(
     *,
     remaining_s: float | None = None,
 ) -> float:
-    requested = _timeout_ms_from_env("RALPH_MCP_REGISTRY_READ_TIMEOUT_MS", env)
+    env_map = os.environ if env is None else env
+    requested = _timeout_ms_from_env(env_map, "RALPH_MCP_REGISTRY_READ_TIMEOUT_MS")
     if requested is not None:
         timeout = requested.total_seconds()
         if remaining_s is not None:
@@ -415,7 +422,7 @@ def mcp_registry_read_timeout_from_env(
         return timeout
     if remaining_s is not None:
         return max(0.0, remaining_s)
-    return mcp_real_startup_deadline_from_env(env)
+    return mcp_real_startup_deadline_from_env(env_map)
 
 
 def mcp_whole_startup_budget_from_env(
