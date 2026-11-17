@@ -155,14 +155,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "names that match the exported CapWords symbols."
         ),
     },
-    "E402": {
-        "pattern": "ralph/agents/parsers/_ndjson_base.py",
-        "reason": (
-            "Parser sections share one module with deferred imports between "
-            "transport-specific blocks so section order stays readable without "
-            "pulling every parser dependency at module import time."
-        ),
-    },
     "TC002": {
         "pattern": "tests/**/*.py",
         "reason": "Tests import pytest at runtime for fixtures and markers; type-only annotations live in TYPE_CHECKING where applicable.",
@@ -240,7 +232,6 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/invoke/__init__.py",
             "ralph/agents/invoke/_pty_line_reader.py",
             "ralph/agents/invoke/watchdog_observer.py",
-
             "ralph/agents/parsers/__init__.py",
             "ralph/agents/parsers/line_channel.py",
             "ralph/git/git_command_queue.py",

@@ -10,25 +10,13 @@ from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.failure_category import FailureCategory
-from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.recovery.unavailability_reason import AGENT_EXIT_UNAVAILABILITY_REASONS
 
 if TYPE_CHECKING:
     from ralph.recovery.classified_failure import ClassifiedFailure
 
 _TRANSPORT_LOOP = "transport_loop_detected"
 _RELAY_FAULT = "SUPERVISION_INFRASTRUCTURE_FAILURE"
-
-_EXIT_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
-    {
-        UnavailabilityReason.NO_OUTPUT_AT_START,
-        UnavailabilityReason.PROCESS_EXITED,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
-        UnavailabilityReason.STALE_CHILD_QUIET,
-        UnavailabilityReason.STRICTLY_STUCK,
-        UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT,
-        UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
-    }
-)
 
 
 class AttemptFault(StrEnum):
@@ -117,7 +105,7 @@ def classify_ralph_origin_fault(payload: str) -> ResolutionTerminationReason | N
 def _fault_from_classified(classified: ClassifiedFailure) -> AttemptFault:
     if classified.reset_tool_registry:
         return AttemptFault.AGENT_TOOL_DEAD
-    if classified.unavailability_reason in _EXIT_UNAVAILABILITY_REASONS:
+    if classified.unavailability_reason in AGENT_EXIT_UNAVAILABILITY_REASONS:
         return AttemptFault.AGENT_EXITED
     if classified.category is FailureCategory.ENVIRONMENTAL:
         return AttemptFault.AGENT_INFRASTRUCTURE_FAILURE

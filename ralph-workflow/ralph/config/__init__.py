@@ -4,8 +4,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.config._toml_fallback import (
         describe_config_failure,
         emit_config_failure_warning,

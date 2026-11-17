@@ -251,10 +251,7 @@ def _record_retry_later_on_session(
     outcome: RetryLaterOutcome,
     active_session: ResolutionSession,
 ) -> None:
-    if (
-        outcome.failure_cause is not None
-        and outcome.failure_cause != ResolutionFailureCause.NONE
-    ):
+    if outcome.failure_cause is not None and outcome.failure_cause != ResolutionFailureCause.NONE:
         active_session.last_failure_cause = outcome.failure_cause
     raw_reason: object = (
         outcome.terminal_reason if outcome.terminal_reason is not None else outcome.reason

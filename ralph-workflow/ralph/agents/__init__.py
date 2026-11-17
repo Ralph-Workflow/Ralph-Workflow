@@ -4,8 +4,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.agents.catalog import AgentCatalog, default_catalog
     from ralph.agents.chain import AgentChain
     from ralph.agents.invoke import invoke_agent

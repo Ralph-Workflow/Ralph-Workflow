@@ -75,9 +75,7 @@ def derive_attempt_facts(fixture: Mapping[str, object]) -> AttemptFacts:
     return AttemptFacts(
         event_kinds=event_kinds,
         tool_calls=tool_calls,
-        workspace_changed_by_tool=_tri_state(
-            fixture.get("workspace_changed_by_tool", "unknown")
-        ),
+        workspace_changed_by_tool=_tri_state(fixture.get("workspace_changed_by_tool", "unknown")),
         artifact_valid=bool(fixture.get("artifact_valid", False)),
         outcome_exists=bool(fixture.get("outcome_exists", False)),
         workspace_changed=derive_workspace_change(fixture),

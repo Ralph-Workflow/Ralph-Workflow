@@ -155,9 +155,7 @@ def _is_dead_process_os_error(e: OSError) -> bool:
     )
 
 
-def _fd_path_is_lock(
-    fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None
-) -> bool:
+def _fd_path_is_lock(fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
     path = Path(fd_path)
     try:
         target = str(path.readlink())

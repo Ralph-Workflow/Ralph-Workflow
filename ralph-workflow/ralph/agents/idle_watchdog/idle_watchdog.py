@@ -5,7 +5,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -140,6 +140,16 @@ if _actual != EXPECTED_FIRE_REASONS:
     )
 
 
+class _ClassifyStuckProvider(Protocol):
+    def __call__(
+        self,
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None,
+    ) -> StuckKind: ...
+
+
 @dataclass
 class IdleWatchdog:
     _config: TimeoutPolicy
@@ -191,6 +201,7 @@ class IdleWatchdog:
     _classify_quiet_provider: Callable[[], AgentExecutionState] | None = field(
         default=None, init=False
     )
+    _classify_stuck_provider: _ClassifyStuckProvider | None = field(default=None, init=False)
     _tick_corroboration: CorroborationSnapshot | None = field(default=None, init=False)
     _evaluate_tick_active: bool = field(default=False, init=False)
     _stall_active: bool = field(default=False, init=False)

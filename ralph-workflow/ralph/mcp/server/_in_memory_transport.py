@@ -103,7 +103,7 @@ def drive_request(
 
 def _invoke_http_method(handler: _HandlerWithBaseAttrs, method: str) -> None:
     attr_name = "do_POST" if method == "POST" else "do_GET"
-    action = getattr(handler, attr_name, None)
+    action: object = getattr(handler, attr_name, None)
     if not callable(action):
         raise TypeError(f"handler must provide {attr_name}")
     action()

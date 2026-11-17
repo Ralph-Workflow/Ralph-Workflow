@@ -267,9 +267,9 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
         "controller-level eligibility must keep the agent selectable after an "
         f"inconclusive probe (observed: {eligibility!r})"
     )
-    assert (
-        controller.preferred_agent_index(_PROBE_PHASE, [_AGENT_NAME]).agent == _AGENT_NAME
-    ), "preferred_agent_index must still select the agent after an inconclusive probe"
+    assert controller.preferred_agent_index(_PROBE_PHASE, [_AGENT_NAME]).agent == _AGENT_NAME, (
+        "preferred_agent_index must still select the agent after an inconclusive probe"
+    )
     ledger_status = controller.ledger.status(_PROBE_PHASE, _AGENT_NAME)
     assert ledger_status.is_spent is False
     assert ledger_status.is_eligible is True

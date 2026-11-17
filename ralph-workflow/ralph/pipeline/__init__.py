@@ -4,8 +4,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline._auto_integrate_rebase_resolve import (
         resolve_conflicted_rebase,

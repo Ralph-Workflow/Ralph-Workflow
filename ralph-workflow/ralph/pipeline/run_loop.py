@@ -577,7 +577,7 @@ def log_waiting_state(
     ctx.last_waiting_state_phase = phase_str
     chain = state.chain_for_phase(state.phase)
     agent_cooldowns: list[tuple[str, int, int]] = []
-    controller = getattr(ctx, "controller", None)
+    controller: RecoveryController | None = getattr(ctx, "controller", None)
     if chain is not None and controller is not None:
         agent_cooldowns = controller.waiting_state_payload(phase_str, chain.agents)
 
@@ -613,7 +613,7 @@ def _log_resumed_state(
     ctx.last_waiting_state_phase = None
     chain = state.chain_for_phase(state.phase)
     agents_now_available: list[str] = []
-    controller = getattr(ctx, "controller", None)
+    controller: RecoveryController | None = getattr(ctx, "controller", None)
     if chain is not None and controller is not None:
         agents_now_available = controller.agents_now_available(phase_str, chain.agents)
     logger.bind(recovery=True).info(
@@ -3446,7 +3446,8 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
 
         ctx.sleep(delay_ms / 1000.0)
 
-        if is_all_unavailable and getattr(ctx, "workspace_scope", None) is not None:
+        scope: object = getattr(ctx, "workspace_scope", None)
+        if is_all_unavailable and scope is not None:
             state = _resume_after_cooldown_wait(
                 state, ctx, current_phase_str, unavail_reason, delay_ms
             )

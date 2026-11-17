@@ -159,8 +159,7 @@ def test_attempt_failed_classifies_through_failure_classifier(
     monkeypatch.setattr(FailureClassifier, "classify_outcome", _spy)
 
     assert (
-        classify_attempt_fault(ResolutionTerminationReason.ATTEMPT_FAILED)
-        is AttemptFault.UNKNOWN
+        classify_attempt_fault(ResolutionTerminationReason.ATTEMPT_FAILED) is AttemptFault.UNKNOWN
     )
     assert outcomes == [ConflictAttemptOutcome.ATTEMPT_FAILED]
 

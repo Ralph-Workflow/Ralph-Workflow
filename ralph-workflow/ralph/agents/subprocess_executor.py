@@ -327,7 +327,7 @@ def _session_pgid_for_reap(handle: ManagedAsyncProcess) -> int | None:
     verified = _verified_session_pgid(handle.pid)
     if verified is not None:
         return verified
-    recorded = getattr(handle.record, "pgid", None)
+    recorded: object = getattr(handle.record, "pgid", None)
     if not isinstance(recorded, int) or recorded <= 1 or recorded != handle.pid:
         return None
     try:

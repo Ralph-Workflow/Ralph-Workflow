@@ -123,9 +123,7 @@ def optional_float(value: object, *, field: str | None = None) -> float | None:
     del field
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if isinstance(value, int | float):
-        return float(value)
-    return None
+    return float(value)
 
 
 def optional_bool(value: object, *, field: str | None = None) -> bool | None:

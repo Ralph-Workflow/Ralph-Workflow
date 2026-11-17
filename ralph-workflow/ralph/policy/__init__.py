@@ -4,8 +4,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.policy.loader import load_policy, load_policy_or_die
     from ralph.policy.models import (
         AgentChainConfig,

@@ -85,7 +85,6 @@ def after_agent_refresh(
     )
 
 
-
 def _run_hook(
     *,
     workspace_root: Path,

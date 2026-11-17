@@ -114,7 +114,9 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
         def shutdown(self) -> None:
             return None
 
-    monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root, **_kwargs: FakeBridge())
+    monkeypatch.setattr(
+        commit_module, "start_commit_bridge", lambda _repo_root, **_kwargs: FakeBridge()
+    )
 
 
 def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Path) -> None:

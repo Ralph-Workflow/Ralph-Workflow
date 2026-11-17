@@ -8237,7 +8237,6 @@ def test_silent_subagent_emits_stalled_event() -> None:
     captured: list[WaitingStatusEvent] = []
     watchdog, clock = _stall_status_events_make_watchdog(listener=captured.append)
 
-
     def _silent_subagent_now(
         *,
         now: float,

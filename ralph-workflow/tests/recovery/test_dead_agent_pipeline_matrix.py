@@ -610,9 +610,7 @@ def test_ac7_probe_cannot_run_keeps_unknown_with_ordinary_ledger_entry(
     entry_point: AgentEntryPoint,
     scenario_name: str,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario(scenario_name)
-    )
+    observation, controller, _clock = run_matrix_scenario(entry_point, _scenario(scenario_name))
 
     assert observation.outcome_kind == "unknown"
     assert observation.availability is True
@@ -633,9 +631,7 @@ def test_ac7_probe_cannot_run_keeps_unknown_with_ordinary_ledger_entry(
 def test_ac8_identical_peers_first_peer_is_not_benched(
     entry_point: AgentEntryPoint,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario("identical_peers")
-    )
+    observation, controller, _clock = run_matrix_scenario(entry_point, _scenario("identical_peers"))
 
     assert observation.outcome_kind == "task_or_environment_failure"
     assert observation.invocations == (AGENT_A, AGENT_B)

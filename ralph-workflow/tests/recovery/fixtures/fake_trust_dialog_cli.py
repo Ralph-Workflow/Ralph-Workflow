@@ -13,9 +13,7 @@ BLOCK_ENV = "STUB_BLOCK"
 EXIT_DELAY_ENV = "STUB_EXIT_DELAY_SECONDS"
 ARGV_RECORD_ENV = "STUB_ARGV_RECORD"
 
-DIALOG_LINE = (
-    "This workspace has not been confirmed yet. Press the Return key to proceed."
-)
+DIALOG_LINE = "This workspace has not been confirmed yet. Press the Return key to proceed."
 
 
 def _within(candidate: Path, parent: Path) -> bool:

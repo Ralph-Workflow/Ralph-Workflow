@@ -360,9 +360,7 @@ def _write_terminal_marker(root: Path, record: IntegrationRecord) -> None:
 
     current = read_record(root) or record
     gate = current.resolution_gate_key
-    attempt_key = (
-        None if gate is None else ResolutionAttemptKey(gate[0], tuple(gate[1]), gate[2])
-    )
+    attempt_key = None if gate is None else ResolutionAttemptKey(gate[0], tuple(gate[1]), gate[2])
     marker = ResolutionTerminalMarker(
         attempt_key,
         "complete_in_place",
@@ -439,7 +437,6 @@ def _handle_completion_in_place_escalation(
         observed_head=plumbing.head_sha(root),
         target_tip=plumbing.target_sha(root, effective_target),
     )
-    _write_terminal_marker(root, cip_record)
 
     logger.info(
         "escalated autonomously to completion-in-place; resolved work preserved, "

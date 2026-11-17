@@ -340,9 +340,7 @@ def _execute_injected_agent_runner(
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded | None:
     if injected.agent_runner is None:
         return None
-    injected_controller, injected_ledger = _controller_and_ledger_from_deps(
-        pipeline_deps, injected
-    )
+    injected_controller, injected_ledger = _controller_and_ledger_from_deps(pipeline_deps, injected)
     if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
         logger.error(
             "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
@@ -466,9 +464,7 @@ def execute_agent_effect(
         phase=str(effect.phase),
         agent=effect.agent_name,
     )
-    active_ledger, active_clock = _resolve_active_ledger_and_clock(
-        active_rec, pipeline_deps, state
-    )
+    active_ledger, active_clock = _resolve_active_ledger_and_clock(active_rec, pipeline_deps, state)
     if not _agent_launch_is_available(effect, active_rec, active_ledger):
         return _agent_unavailable_failure(effect.agent_name)
     effective_agents_policy = (

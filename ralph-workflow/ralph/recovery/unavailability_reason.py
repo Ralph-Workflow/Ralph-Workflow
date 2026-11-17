@@ -19,6 +19,19 @@ class UnavailabilityReason(StrEnum):
     DEAD_AGENT_NO_PROGRESS = "dead_agent_no_progress"
 
 
+AGENT_EXIT_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
+    {
+        UnavailabilityReason.NO_OUTPUT_AT_START,
+        UnavailabilityReason.PROCESS_EXITED,
+        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+        UnavailabilityReason.STALE_CHILD_QUIET,
+        UnavailabilityReason.STRICTLY_STUCK,
+        UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT,
+        UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ReasonBackoffPolicy:
     base_backoff_ms: int
@@ -87,6 +100,7 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {
 }
 
 __all__ = [
+    "AGENT_EXIT_UNAVAILABILITY_REASONS",
     "DEFAULT_UNAVAILABILITY_BACKOFF_POLICY",
     "_UNIVERSAL_COOLDOWN_CAP_MS",
     "ReasonBackoffPolicy",

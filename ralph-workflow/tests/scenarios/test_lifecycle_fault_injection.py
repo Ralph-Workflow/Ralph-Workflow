@@ -112,9 +112,7 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
     )
     target_before = git(tmp_git_repo, "rev-parse", "main")
     fail_at_launch = _TWO_COMMIT_BUDGET_STOP_CAP_PLUS_ONE // 2 + 1
-    runner = FakeAgentRunner(
-        AgentMode.EDITS_AND_STAGES, fail_at_launch=fail_at_launch, clock=clock
-    )
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES, fail_at_launch=fail_at_launch, clock=clock)
     run1 = drive_integration(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
     assert run1.error is None, f"large finite work must survive one resolver failure: {run1.error}"
     assert runner.launches == fail_at_launch
