@@ -155,34 +155,6 @@ def continue_retained_resolution(
         from ralph.pipeline.effect_executor import current_agent_effect_dependencies
 
         effective_controller = current_agent_effect_dependencies().recovery_controller
-    if effective_controller is None:
-        from ralph.agents.system_clock import SystemClock
-        from ralph.pipeline.agent_entry_point import AgentEntryPoint
-        from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
-        from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
-        from ralph.pipeline.runner import load_policy_bundle_for_run
-        from ralph.workspace.scope import WorkspaceScope
-
-        try:
-            policy_bundle = (
-                load_policy_bundle_for_run(WorkspaceScope(root=root), config)
-                if config is not None
-                else None
-            )
-        except (OSError, RuntimeError, ValueError, KeyError):
-            policy_bundle = None
-        effective_controller = build_entry_point_recovery_controller(
-            AgentEntryPoint.INTEGRATION_CONTINUATION,
-            config=config,
-            policy_bundle=policy_bundle,
-            deps=AttemptRunnerDeps(
-                clock=SystemClock(),
-                invoke=PRODUCTION_INVOKE,
-                probe_runner=None,
-                workspace_probe=None,
-                connectivity=None,
-            ),
-        )
     return _continue_retained_resolution(
         root,
         record,

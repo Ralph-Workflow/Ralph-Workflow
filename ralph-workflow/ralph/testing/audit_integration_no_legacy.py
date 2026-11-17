@@ -500,6 +500,51 @@ def resolve_repository_root(start: Path) -> Path:
     return current
 
 
+def _sealed_outcome_tuple_protocol_violations(
+    rel: str, node: ast.ClassDef
+) -> list[Violation]:
+    if node.name not in _SEALED_OUTCOME_CLASSES:
+        return []
+    legacy_member = _legacy_protocol_member(node)
+    if legacy_member is None or not legacy_member.startswith("tuple protocol"):
+        return []
+    return [
+        Violation(
+            rel,
+            node.lineno,
+            "sealed outcome retains legacy tuple vocabulary",
+            detail=(
+                f"{node.name} exposes {legacy_member}; sealed variants must not "
+                "implement tuple unpacking, indexing, or length"
+            ),
+        )
+    ]
+
+
+def _classdef_pipeline_violations(rel: str, node: ast.ClassDef) -> list[Violation]:
+    violations: list[Violation] = []
+    if node.name == "RebaseResolutionResult" and _tuple_subclass(node):
+        violations.append(
+            Violation(rel, node.lineno, "resolution result retains legacy tuple vocabulary")
+        )
+    if node.name in _RESULT_RESULT_CLASS_NAMES:
+        legacy_member = _legacy_protocol_member(node)
+        if legacy_member is not None:
+            violations.append(
+                Violation(
+                    rel,
+                    node.lineno,
+                    "resolution result retains legacy tuple vocabulary",
+                    detail=(
+                        f"{node.name} exposes {legacy_member}; results must expose only the "
+                        "typed sealed-outcome surface"
+                    ),
+                )
+            )
+    violations.extend(_sealed_outcome_tuple_protocol_violations(rel, node))
+    return violations
+
+
 def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
     violations: list[Violation] = []
     package_key = _package_key(rel)
@@ -510,28 +555,8 @@ def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
                 for target in node.targets
                 if isinstance(target, ast.Tuple)
             )
-        if (
-            isinstance(node, ast.ClassDef)
-            and node.name == "RebaseResolutionResult"
-            and _tuple_subclass(node)
-        ):
-            violations.append(
-                Violation(rel, node.lineno, "resolution result retains legacy tuple vocabulary")
-            )
-        if isinstance(node, ast.ClassDef) and node.name in _RESULT_RESULT_CLASS_NAMES:
-            legacy_member = _legacy_protocol_member(node)
-            if legacy_member is not None:
-                violations.append(
-                    Violation(
-                        rel,
-                        node.lineno,
-                        "resolution result retains legacy tuple vocabulary",
-                        detail=(
-                            f"{node.name} exposes {legacy_member}; results must expose only the "
-                            "typed sealed-outcome surface"
-                        ),
-                    )
-                )
+        if isinstance(node, ast.ClassDef):
+            violations.extend(_classdef_pipeline_violations(rel, node))
         if isinstance(node, ast.Compare) and _string_cause_match(node):
             violations.append(Violation(rel, node.lineno, "string matching on failure cause"))
         if isinstance(node, ast.Call):
@@ -789,6 +814,16 @@ def selftest() -> int:
             "ralph/pipeline/planted_tuple_protocol.py",
             ("class RebaseResolutionResult:\n    def __len__(self) -> int:\n        return 3\n"),
             "resolution result retains legacy tuple vocabulary",
+        ),
+        (
+            "ralph/pipeline/planted_sealed_tuple_protocol.py",
+            ("class ResolvedOutcome:\n    def __iter__(self):\n        return iter((True, ''))\n"),
+            "sealed outcome retains legacy tuple vocabulary",
+        ),
+        (
+            "ralph/pipeline/planted_waiting_tuple_len.py",
+            ("class WaitingOutcome:\n    def __len__(self) -> int:\n        return 2\n"),
+            "sealed outcome retains legacy tuple vocabulary",
         ),
         (
             "ralph/pipeline/planted_succeeded_property.py",

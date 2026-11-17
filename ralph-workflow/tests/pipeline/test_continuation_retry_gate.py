@@ -38,6 +38,19 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
         "hook and every caller are removed as dead code"
     ),
+    "test_no_shared_controller_returns_typed_no_launch_without_building_fallback": (
+        "retained continuation must not invent a second RecoveryController; with no "
+        "session/pipeline/ambient controller it returns the typed key-unavailable "
+        "no-launch result"
+    ),
+    "test_process_local_ambient_controller_shares_eligibility_with_ordinary_phase": (
+        "process-local reconstruction must reuse the ambient shared RecoveryController "
+        "ledger so continuation eligibility matches the ordinary phase cooldown state"
+    ),
+    "test_shared_controller_identity_links_ordinary_finalize_to_continuation_gate": (
+        "ordinary-phase finalize on the shared controller must change the continuation "
+        "retry-gate eligible-agent set through the same ledger"
+    ),
 }
 
 
@@ -786,3 +799,164 @@ def test_recorded_failure_cause_is_not_inferred_from_the_reason_text(
     stored = read_record(root)
     assert stored is not None
     assert stored.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+
+def test_no_shared_controller_returns_typed_no_launch_without_building_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import ralph.pipeline.attempt_runner as attempt_runner_mod
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    _setup_rebase_state(root, "feat1", "target1", "stop_sha_1")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+    write_record(root, record)
+
+    build_calls: list[object] = []
+
+    def fail_build(*_args: object, **_kwargs: object) -> RecoveryController:
+        build_calls.append((_args, _kwargs))
+        pytest.fail("must not invent a second RecoveryController for retained continuation")
+
+    monkeypatch.setattr(attempt_runner_mod, "build_entry_point_recovery_controller", fail_build)
+
+    launch_calls = [0]
+
+    def counting_resolver(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
+        launch_calls[0] += 1
+        return RebaseResolutionResult(
+            succeeded=False,
+            reason="should not launch",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+
+    result = continue_retained_resolution(
+        root,
+        record,
+        None,
+        None,
+        counting_resolver,
+    )
+
+    assert build_calls == []
+    assert launch_calls[0] == 0
+    assert isinstance(result, str)
+    assert "WAITING: continuation retry key unavailable" in result
+    assert "recovery controller required" in result
+
+
+def test_process_local_ambient_controller_shares_eligibility_with_ordinary_phase(
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+    from ralph.pipeline.key_unavailable import KeyUnavailable
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
+    from ralph.recovery.attempt_facts import AttemptFacts
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    ctrl, _clk = _setup_controller()
+    ctrl.register_phase_chain("development", ["agent1", "agent2"])
+    ctrl.finalize_attempt(
+        "development",
+        "agent1",
+        facts=AttemptFacts(artifact_valid=False),
+        attempt_failed=True,
+    )
+    ctrl.unavailability_store.mark_unavailable(
+        "rebase_conflict_resolution", "agent1", UnavailabilityReason.PROCESS_EXITED
+    )
+
+    ordinary_eligible = tuple(
+        agent
+        for agent, status in ctrl.chain_eligibility(
+            "rebase_conflict_resolution", ["agent1", "agent2"]
+        )
+        if status.is_eligible
+    )
+    assert ordinary_eligible == ("agent2",)
+
+    token = install_agent_effect_dependencies(recovery_controller=ctrl)
+    try:
+        key = compute_continuation_retry_gate_key(
+            root,
+            IntegrationRecord(
+                phase="integrating",
+                target="main",
+                pre_feature_sha="feat1",
+                pre_target_sha="target1",
+                resolving_rebase=True,
+            ),
+            stop_identity="stop_sha_1",
+        )
+    finally:
+        reset_agent_effect_dependencies(token)
+
+    assert isinstance(key, ResolutionAttemptKey)
+    assert not isinstance(key, KeyUnavailable)
+    assert key.eligible_agents == ordinary_eligible
+
+
+def test_shared_controller_identity_links_ordinary_finalize_to_continuation_gate(
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.attempt_facts import AttemptFacts
+
+    root, _cfg = _setup_repo_and_config(tmp_path)
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    ctrl = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
+    )
+    ctrl.register_phase_chain("rebase_conflict_resolution", ["agent1", "agent2"])
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
+    )
+
+    before = compute_continuation_retry_gate_key(
+        root,
+        record,
+        recovery_controller=ctrl,
+        stop_identity="stop_shared",
+    )
+    assert isinstance(before, ResolutionAttemptKey)
+    assert before.eligible_agents == ("agent1", "agent2")
+
+    ctrl.finalize_attempt(
+        "rebase_conflict_resolution",
+        "agent1",
+        facts=AttemptFacts(artifact_valid=False),
+        attempt_failed=True,
+    )
+    ordinary_after = tuple(
+        agent
+        for agent, status in ctrl.chain_eligibility(
+            "rebase_conflict_resolution", ["agent1", "agent2"]
+        )
+        if status.is_eligible
+    )
+
+    after = compute_continuation_retry_gate_key(
+        root,
+        record,
+        recovery_controller=ctrl,
+        stop_identity="stop_shared",
+    )
+    assert isinstance(after, ResolutionAttemptKey)
+    assert after.eligible_agents == ordinary_after
+    assert after.eligible_agents == ("agent2",)
+    assert after != before

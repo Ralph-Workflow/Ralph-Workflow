@@ -57,6 +57,9 @@ _LANDED_DEFINITIONS = frozenset(
         "_landing_reached",
     }
 )
+_RETIRED_PORCELAIN_PATH_EXTRACTORS = frozenset({"porcelain_unmerged_paths"})
+_UNMERGED_PATH_SET_OWNER = "ralph/git/merge.py"
+_UNMERGED_PATH_SET_DEFINITIONS = frozenset({"observe_unmerged_paths", "unmerged_paths"})
 
 
 def _string_literals(node: ast.AST) -> set[str]:
@@ -114,6 +117,80 @@ def _imported_xy_aliases(tree: ast.AST) -> set[str]:
     return aliases
 
 
+def _module_level_functions(
+    tree: ast.AST,
+) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    if not isinstance(tree, ast.Module):
+        return []
+    return [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+
+def _call_unmerged_index_violations(rel: str, node: ast.Call) -> list[Violation]:
+    literals = _string_literals(node)
+    if rel in _UNMERGED_LS_FILES_READERS:
+        return []
+    found: list[Violation] = []
+    if "ls-files" in literals and ({"-u", "--unmerged"} & literals):
+        found.append(Violation(rel, node.lineno, "unmerged index read outside git owner"))
+    if any(
+        isinstance(value, str) and value.lstrip().startswith("--diff-filter=" + "U")
+        for value in literals
+    ):
+        found.append(Violation(rel, node.lineno, "unmerged index read outside git owner"))
+    return found
+
+
+def _xy_set_violations(rel: str, node: ast.AST, xy_names: set[str]) -> list[Violation]:
+    if (
+        isinstance(node, ast.Compare)
+        and rel not in _SANCTIONED_XY_CONSUMERS
+        and _unmerged_xy_comparisons(node, xy_names)
+    ):
+        return [
+            Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")
+        ]
+    if (
+        isinstance(node, ast.Assign)
+        and rel not in _XY_DEFINITION_OWNERS
+        and _unmerged_xy_set_definition(node)
+    ):
+        return [
+            Violation(rel, node.lineno, "porcelain unmerged XY set has a second definition")
+        ]
+    return []
+
+
+def _named_function_violations(
+    rel: str, node: ast.FunctionDef | ast.AsyncFunctionDef
+) -> list[Violation]:
+    found: list[Violation] = []
+    if node.name in _OPERATION_DEFINITIONS and rel != _OPERATION_OWNER:
+        found.append(Violation(rel, node.lineno, "operation state has a second reader"))
+    if node.name in _ELIGIBILITY_DEFINITIONS and rel != _ELIGIBILITY_OWNER:
+        found.append(Violation(rel, node.lineno, "agent eligibility owner is the ledger"))
+    if node.name in _LANDED_DEFINITIONS and rel != _LANDED_OWNER:
+        found.append(Violation(rel, node.lineno, "operation landed has a second predicate"))
+    if node.name in _RETIRED_PORCELAIN_PATH_EXTRACTORS:
+        found.append(
+            Violation(rel, node.lineno, "porcelain unmerged path extraction is retired")
+        )
+    return found
+
+
+def _module_level_unmerged_path_set_violations(rel: str, tree: ast.AST) -> list[Violation]:
+    if rel == _UNMERGED_PATH_SET_OWNER:
+        return []
+    return [
+        Violation(rel, node.lineno, "unmerged path set has a second reader")
+        for node in _module_level_functions(tree)
+        if node.name in _UNMERGED_PATH_SET_DEFINITIONS
+    ]
+
+
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     violations: list[Violation] = []
     for rel, source in sorted(modules.items()):
@@ -126,59 +203,11 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
         xy_names = _imported_xy_aliases(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                literals = _string_literals(node)
-                if (
-                    rel not in _UNMERGED_LS_FILES_READERS
-                    and "ls-files" in literals
-                    and ({"-u", "--unmerged"} & literals)
-                ):
-                    violations.append(
-                        Violation(rel, node.lineno, "unmerged index read outside git owner")
-                    )
-                if rel not in _UNMERGED_LS_FILES_READERS and any(
-                    isinstance(value, str) and value.lstrip().startswith("--diff-filter=" + "U")
-                    for value in literals
-                ):
-                    violations.append(
-                        Violation(rel, node.lineno, "unmerged index read outside git owner")
-                    )
-            if (
-                isinstance(node, ast.Compare)
-                and rel not in _SANCTIONED_XY_CONSUMERS
-                and _unmerged_xy_comparisons(node, xy_names)
-            ):
-                violations.append(
-                    Violation(
-                        rel,
-                        node.lineno,
-                        "porcelain unmerged XY set has a second definition",
-                    )
-                )
-            if (
-                isinstance(node, ast.Assign)
-                and rel not in _XY_DEFINITION_OWNERS
-                and _unmerged_xy_set_definition(node)
-            ):
-                violations.append(
-                    Violation(
-                        rel,
-                        node.lineno,
-                        "porcelain unmerged XY set has a second definition",
-                    )
-                )
+                violations.extend(_call_unmerged_index_violations(rel, node))
+            violations.extend(_xy_set_violations(rel, node, xy_names))
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                if node.name in _OPERATION_DEFINITIONS and rel != _OPERATION_OWNER:
-                    violations.append(
-                        Violation(rel, node.lineno, "operation state has a second reader")
-                    )
-                if node.name in _ELIGIBILITY_DEFINITIONS and rel != _ELIGIBILITY_OWNER:
-                    violations.append(
-                        Violation(rel, node.lineno, "agent eligibility owner is the ledger")
-                    )
-                if node.name in _LANDED_DEFINITIONS and rel != _LANDED_OWNER:
-                    violations.append(
-                        Violation(rel, node.lineno, "operation landed has a second predicate")
-                    )
+                violations.extend(_named_function_violations(rel, node))
+        violations.extend(_module_level_unmerged_path_set_violations(rel, tree))
     return violations
 
 
@@ -199,6 +228,7 @@ def selftest() -> int:
         "ralph/git/operation_snapshot.py": "def operation_state(): pass\n",
         "ralph/recovery/agent_failure_ledger.py": "def is_agent_eligible(): pass\n",
         "ralph/pipeline/_landed_predicate.py": "def operation_landed(): pass\n",
+        "ralph/git/merge.py": "def observe_unmerged_paths(): pass\ndef unmerged_paths(): pass\n",
     }
     clean_violations = audit_modules(clean_modules)
     if clean_violations:
@@ -265,6 +295,21 @@ def selftest() -> int:
             "ralph/pipeline/unmerged_xy_reader.py",
             'LOCAL_XY = frozenset({"UU", "AA"})\nentry.xy in LOCAL_XY\n',
             "porcelain unmerged XY set has a second definition",
+        ),
+        (
+            "ralph/pipeline/_porcelain_records.py",
+            "def porcelain_unmerged_paths(text):\n    return ()\n",
+            "porcelain unmerged path extraction is retired",
+        ),
+        (
+            "ralph/pipeline/integration_resolution.py",
+            "def observe_unmerged_paths(root):\n    return ()\n",
+            "unmerged path set has a second reader",
+        ),
+        (
+            "ralph/pipeline/integration_resolution.py",
+            "def unmerged_paths(root):\n    return []\n",
+            "unmerged path set has a second reader",
         ),
     ]
 

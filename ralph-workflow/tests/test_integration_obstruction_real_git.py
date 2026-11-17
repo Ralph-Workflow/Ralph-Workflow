@@ -74,6 +74,26 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
+def _shared_recovery_controller() -> Generator[None, None, None]:
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+    from ralph.policy.loader import default_dir, load_policy
+    from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(policy_bundle=load_policy(default_dir()))
+    )
+    token = install_agent_effect_dependencies(recovery_controller=controller)
+    try:
+        yield
+    finally:
+        reset_agent_effect_dependencies(token)
+
+
+@pytest.fixture(autouse=True)
 def _close_cached_repos_fixture() -> Generator[None, None, None]:
     yield
     close_cached_repos()

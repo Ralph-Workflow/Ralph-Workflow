@@ -5,86 +5,92 @@ from pathlib import Path
 import pytest
 
 import ralph.pipeline.attempt_runner as attempt_runner_mod
-from ralph.pipeline.agent_entry_point import AgentEntryPoint
-from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_recovery_record import continue_retained_resolution
 from ralph.pipeline.effect_executor import (
     install_agent_effect_dependencies,
     reset_agent_effect_dependencies,
 )
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 
-def test_continue_retained_resolution_fallback_uses_entry_point_seam(
+def _setup_repo_with_rebase(tmp_path: Path) -> Path:
+    cfg_dir = tmp_path / ".agent"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (cfg_dir / "ralph-workflow.toml").write_text("[general]\nmodel = 'test'\n", encoding="utf-8")
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "config").write_text("[core]\n\trepositoryformatversion = 0\n", encoding="utf-8")
+    (git_dir / "objects").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads" / "main").write_text("0" * 40 + "\n", encoding="utf-8")
+    rebase_dir = git_dir / "rebase-merge"
+    rebase_dir.mkdir(parents=True, exist_ok=True)
+    (rebase_dir / "head-name").write_text("refs/heads/feature\n", encoding="utf-8")
+    (rebase_dir / "orig-head").write_text("feat1\n", encoding="utf-8")
+    (rebase_dir / "onto").write_text("target1\n", encoding="utf-8")
+    (rebase_dir / "stopped-sha").write_text("stop_sha_1\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_continue_retained_resolution_without_shared_controller_does_not_invent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[AgentEntryPoint, dict[str, object]]] = []
-    real_builder = attempt_runner_mod.build_entry_point_recovery_controller
+    root = _setup_repo_with_rebase(tmp_path)
+    build_calls: list[object] = []
 
-    def spy_build(
-        entry_point: AgentEntryPoint,
-        *,
-        config: attempt_runner_mod.UnifiedConfig | None,
-        policy_bundle: attempt_runner_mod.PolicyBundle | None,
-        deps: AttemptRunnerDeps,
-        **kwargs: object,
-    ) -> RecoveryController:
-        call_kwargs: dict[str, object] = {
-            "config": config,
-            "policy_bundle": policy_bundle,
-            "deps": deps,
-            **kwargs,
-        }
-        calls.append((entry_point, call_kwargs))
-        return real_builder(
-            entry_point,
-            config=config,
-            policy_bundle=policy_bundle,
-            deps=deps,
-            **kwargs,
-        )
+    def fail_build(*_args: object, **_kwargs: object) -> RecoveryController:
+        build_calls.append((_args, _kwargs))
+        pytest.fail("must not invent a RecoveryController for retained continuation")
 
-    monkeypatch.setattr(attempt_runner_mod, "build_entry_point_recovery_controller", spy_build)
+    monkeypatch.setattr(attempt_runner_mod, "build_entry_point_recovery_controller", fail_build)
 
     record = IntegrationRecord(
         phase="integrating",
-        target="",
-        pre_feature_sha="feature-sha",
-        pre_target_sha=None,
+        target="main",
+        pre_feature_sha="feat1",
+        pre_target_sha="target1",
+        resolving_rebase=True,
     )
 
+    launch_calls = [0]
+
+    def counting_resolver(*_args: object, **_kwargs: object) -> RebaseResolutionResult:
+        launch_calls[0] += 1
+        return RebaseResolutionResult(
+            succeeded=False,
+            reason="should not launch",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+
     result = continue_retained_resolution(
-        tmp_path,
+        root,
         record,
         None,
         None,
-        None,
+        counting_resolver,
     )
 
+    assert build_calls == []
+    assert launch_calls[0] == 0
     assert isinstance(result, str)
-    assert len(calls) == 1
-    entry_point, kwargs = calls[0]
-    assert entry_point is AgentEntryPoint.INTEGRATION_CONTINUATION
-    assert kwargs.get("config") is None
-    deps = kwargs.get("deps")
-    assert isinstance(deps, AttemptRunnerDeps)
-    assert deps.invoke is PRODUCTION_INVOKE
-    assert deps.probe_runner is None
-    assert deps.workspace_probe is None
-    assert deps.connectivity is None
+    assert "WAITING: continuation retry key unavailable" in result
+    assert "recovery controller required" in result
 
 
-def test_continue_retained_resolution_explicit_controller_bypasses_seam(
+def test_continue_retained_resolution_explicit_controller_bypasses_builder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[AgentEntryPoint, dict[str, object]]] = []
+    build_calls: list[object] = []
 
-    def fail_build(entry_point: AgentEntryPoint, **kwargs: object) -> RecoveryController:
-        calls.append((entry_point, kwargs))
+    def fail_build(*_args: object, **_kwargs: object) -> RecoveryController:
+        build_calls.append((_args, _kwargs))
         pytest.fail(
             "build_entry_point_recovery_controller should not be called when explicit controller is passed"
         )
@@ -110,17 +116,17 @@ def test_continue_retained_resolution_explicit_controller_bypasses_seam(
     )
 
     assert isinstance(result, str)
-    assert len(calls) == 0
+    assert build_calls == []
 
 
-def test_continue_retained_resolution_ambient_controller_bypasses_seam(
+def test_continue_retained_resolution_ambient_controller_bypasses_builder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[AgentEntryPoint, dict[str, object]]] = []
+    build_calls: list[object] = []
 
-    def fail_build(entry_point: AgentEntryPoint, **kwargs: object) -> RecoveryController:
-        calls.append((entry_point, kwargs))
+    def fail_build(*_args: object, **_kwargs: object) -> RecoveryController:
+        build_calls.append((_args, _kwargs))
         pytest.fail(
             "build_entry_point_recovery_controller should not be called when ambient controller exists"
         )
@@ -146,6 +152,6 @@ def test_continue_retained_resolution_ambient_controller_bypasses_seam(
         )
 
         assert isinstance(result, str)
-        assert len(calls) == 0
+        assert build_calls == []
     finally:
         reset_agent_effect_dependencies(token)

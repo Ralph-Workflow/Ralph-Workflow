@@ -266,6 +266,7 @@ def diagnose_retained_integration(
         invoke_resolution_agent,
         resolution_chain_agents,
     )
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
     from ralph.workspace.scope import WorkspaceScope
 
     pipeline_deps = ctx.pipeline_deps
@@ -304,7 +305,7 @@ def diagnose_retained_integration(
                 attempt_session.last_attempt_failure = None
                 try:
                     with workspace_context(operation_root):
-                        return bool(
+                        return isinstance(
                             invoke_resolution_agent(
                                 agent_name=agent,
                                 prompt_path=prompt,
@@ -316,7 +317,8 @@ def diagnose_retained_integration(
                                 display_context=ctx.display_context,
                                 require_completion_evidence=True,
                                 session=attempt_session,
-                            )
+                            ),
+                            ResolvedOutcome,
                         )
                 except WorkspaceContextError as exc:
                     reason_text = exc.fix

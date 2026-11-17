@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from loguru import logger
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -152,10 +153,12 @@ def test_rebase_resolution_result_typed_surface() -> None:
         ResolutionFailureCause.CONFIG_FAILURE,
     )
     assert isinstance(res.outcome, RetryLaterOutcome)
-    assert res.outcome.succeeded is False
+    assert res.outcome.on_change == "reason text"
     assert res.reason == "reason text"
     assert res.failure_cause == ResolutionFailureCause.CONFIG_FAILURE
     assert not hasattr(res, "succeeded")
+    with pytest.raises(TypeError):
+        _a, _b = res.outcome
 
 
 def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> None:

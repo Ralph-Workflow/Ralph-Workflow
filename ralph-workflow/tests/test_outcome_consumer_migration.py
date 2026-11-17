@@ -7,6 +7,7 @@ from typing import get_args
 import pytest
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
+from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
 from ralph.pipeline.auto_integrate_resolve import (
     ConflictResolver,
@@ -18,6 +19,7 @@ from ralph.pipeline.conflict_resolution.driver import (
 )
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_outcome import (
+    STOP_RESOLUTION_OUTCOMES,
     ConfigFailureOutcome,
     NextStrategyOutcome,
     ResolvedOutcome,
@@ -26,6 +28,17 @@ from ralph.pipeline.resolution_outcome import (
     UnknownOutcome,
     WaitingOutcome,
 )
+
+
+def _sealed_variant_samples() -> tuple[StopResolutionOutcome, ...]:
+    return (
+        ResolvedOutcome(),
+        WaitingOutcome("gate", "key changes"),
+        RetryLaterOutcome(on_change="gate changed"),
+        NextStrategyOutcome("completion_in_place"),
+        ConfigFailureOutcome(Path("broken.toml"), "invalid value"),
+        UnknownOutcome(RuntimeError("boom")),
+    )
 
 
 def test_fast_forward_producer_returns_sealed_outcome() -> None:
@@ -53,6 +66,34 @@ def test_rebase_result_exposes_no_legacy_boolean_decision() -> None:
     assert not hasattr(result, "__len__")
     assert not hasattr(result, "__iter__")
     assert not hasattr(result, "__getitem__")
+
+
+@pytest.mark.parametrize("outcome", _sealed_variant_samples())
+def test_sealed_variants_reject_tuple_unpack_index_and_len(
+    outcome: StopResolutionOutcome,
+) -> None:
+    with pytest.raises(TypeError):
+        _first, _second = outcome
+    with pytest.raises(TypeError):
+        _ = outcome[0]
+    with pytest.raises(TypeError):
+        len(outcome)
+    assert outcome != (True, "")
+    assert outcome != (False, "")
+
+
+def test_sealed_outcome_catalog_matches_samples() -> None:
+    samples = _sealed_variant_samples()
+    assert len(samples) == len(STOP_RESOLUTION_OUTCOMES)
+    assert {type(sample) for sample in samples} == set(STOP_RESOLUTION_OUTCOMES)
+
+
+def test_run_loop_has_no_tuple_outcome_transport() -> None:
+    assert not hasattr(run_loop, "_typed_outcome_transport")
+    assert not hasattr(run_loop, "_retry_later_cause")
+    source = inspect.getsource(run_loop.resolve_paused_rebase)
+    assert "_typed_outcome_transport" not in source
+    assert "resolved, reason, failure_cause =" not in source
 
 
 @pytest.mark.parametrize(

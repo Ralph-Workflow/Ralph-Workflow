@@ -33,6 +33,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the real conflict resolution pipeline with mock boundaries, verifying cooldown "
         "enforcement end-to-end"
     ),
+    "test_retained_continuation_and_ordinary_phase_share_one_controller_ledger": (
+        "retained continuation must observe the same RecoveryController ledger cooldown "
+        "as the ordinary phase, including when the controller is reconstructed process-locally "
+        "from the ambient effect dependencies"
+    ),
 }
 
 
@@ -328,3 +333,100 @@ def test_resolver_and_ordinary_phase_multi_candidate_selection_parity() -> None:
 def test_controller_has_no_secondary_conflict_classifier() -> None:
     assert not hasattr(RecoveryController, "classify_conflict_attempt")
     assert not hasattr(RecoveryController, "_typed_conflict_attempt_reason")
+
+
+def test_retained_continuation_and_ordinary_phase_share_one_controller_ledger(
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
+    from ralph.pipeline.auto_integrate_recovery_record import (
+        compute_continuation_retry_gate_key,
+        continue_retained_resolution,
+    )
+    from ralph.pipeline.effect_executor import (
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
+    from ralph.recovery.attempt_facts import AttemptFacts
+
+    phase = "rebase_conflict_resolution"
+    clock = FakeClock(start=10.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    shared = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, ledger=ledger)
+    )
+    shared.register_phase_chain(phase, ["resolver-1", "resolver-2"])
+
+    shared.finalize_attempt(
+        phase,
+        "resolver-1",
+        facts=AttemptFacts(artifact_valid=False),
+        attempt_failed=True,
+    )
+    ordinary_eligible = tuple(
+        agent
+        for agent, status in shared.chain_eligibility(phase, ["resolver-1", "resolver-2"])
+        if status.is_eligible
+    )
+    assert ordinary_eligible == ("resolver-2",)
+    assert not shared.agent_eligibility(phase, "resolver-1").is_eligible
+
+    cfg_dir = tmp_path / ".agent"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git_dir / "objects").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads").mkdir(parents=True, exist_ok=True)
+    (git_dir / "refs" / "heads" / "main").write_text("0" * 40 + "\n", encoding="utf-8")
+    rebase_dir = git_dir / "rebase-merge"
+    rebase_dir.mkdir(parents=True, exist_ok=True)
+    (rebase_dir / "head-name").write_text("refs/heads/feature\n", encoding="utf-8")
+    (rebase_dir / "orig-head").write_text("feat\n", encoding="utf-8")
+    (rebase_dir / "onto").write_text("onto\n", encoding="utf-8")
+    (rebase_dir / "stopped-sha").write_text("stop-shared\n", encoding="utf-8")
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="feat",
+        pre_target_sha="onto",
+        resolving_rebase=True,
+    )
+    write_record(tmp_path, record)
+
+    explicit_key = compute_continuation_retry_gate_key(
+        tmp_path,
+        record,
+        recovery_controller=shared,
+        phase=phase,
+        stop_identity="stop-shared",
+    )
+    assert isinstance(explicit_key, ResolutionAttemptKey)
+    assert explicit_key.eligible_agents == ordinary_eligible
+
+    token = install_agent_effect_dependencies(recovery_controller=shared)
+    try:
+        ambient_key = compute_continuation_retry_gate_key(
+            tmp_path,
+            record,
+            phase=phase,
+            stop_identity="stop-shared",
+        )
+        blocked = continue_retained_resolution(
+            tmp_path,
+            record,
+            None,
+            None,
+            None,
+            phase=phase,
+        )
+    finally:
+        reset_agent_effect_dependencies(token)
+
+    assert isinstance(ambient_key, ResolutionAttemptKey)
+    assert ambient_key.eligible_agents == ordinary_eligible
+    assert ambient_key == explicit_key
+    assert isinstance(blocked, str)
+    assert "continuation resolver required" in blocked or "WAITING" in blocked

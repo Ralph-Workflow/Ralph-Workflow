@@ -50,6 +50,9 @@ class _LiveRebaseContinuationExecutor:
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        controller = current_agent_effect_dependencies().recovery_controller
         outcome = attempt_stop_resolution(
             None,
             StopResolutionTrigger(
@@ -59,6 +62,8 @@ class _LiveRebaseContinuationExecutor:
                 resolver=resolver,
                 record=resolution_gate_record(root, target),
                 conflict_config=config,
+                recovery_controller=controller,
+                eligible_agents=() if controller is None else None,
             ),
         )
         if isinstance(outcome, StopResolutionBlocked):

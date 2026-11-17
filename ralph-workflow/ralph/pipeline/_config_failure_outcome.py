@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
     from ralph.git.resolution_failure_cause import ResolutionFailureCause
@@ -32,18 +31,6 @@ class ConfigFailureOutcome:
         from ralph.git.resolution_failure_cause import ResolutionFailureCause
 
         return ResolutionFailureCause.CONFIG_FAILURE
-
-    def __iter__(self) -> Iterator[object]:
-        return iter((False, str(self.parse_error)))
-
-    def __getitem__(self, index: int) -> object:
-        return (False, str(self.parse_error))[index]
-
-    def __len__(self) -> int:
-        return 2
-
-    def __bool__(self) -> bool:
-        return False
 
     @classmethod
     def from_error(cls, error: object) -> ConfigFailureOutcome:

@@ -46,10 +46,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "bounded silent tick iterations from 2 to 1 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
     ),
     "test_config_corrupt_agents_toml_surfaces_file_and_check_config": (
-        "verify corrupt config with load_toml so ConfigFailureOutcome is returned on syntax error; "
-        "the post-repair continuation is read as the typed RetryLaterOutcome carrying "
-        "CANDIDATE_EXHAUSTED that replaced the ExhaustedResolutionFailure string, and the "
-        "terminal reason is now asserted as well as the non-WAITING message"
+        "pass an explicit recovery_controller so the continuation retry gate can compute a key "
+        "and consult the resolver; without it the attempt returns WAITING before ConfigFailureOutcome "
+        "can surface the agents.toml path and ralph --check-config; verify corrupt config with "
+        "load_toml so ConfigFailureOutcome is returned on syntax error; the post-repair continuation "
+        "is read as the typed RetryLaterOutcome carrying CANDIDATE_EXHAUSTED that replaced the "
+        "ExhaustedResolutionFailure string, and the terminal reason is now asserted as well as the "
+        "non-WAITING message"
     ),
 }
 
@@ -258,6 +261,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     root = _copy_repo(conflicted_repo, tmp_path / "repo")
     feature, target, stop = _repo_identity(root)
     record = _record_for_stop(root, feature, target, stop)
+    controller = _controller(FakeClock())
 
     consulted: list[str] = []
 
@@ -280,6 +284,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
             None,
             None,
             _resolver,
+            recovery_controller=controller,
             stop_identity=stop,
         )
         second = continue_retained_resolution(
@@ -288,6 +293,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
             None,
             None,
             _resolver,
+            recovery_controller=controller,
             stop_identity=stop,
         )
     finally:
@@ -310,6 +316,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
         None,
         None,
         _resolver,
+        recovery_controller=controller,
         stop_identity=stop,
     )
 

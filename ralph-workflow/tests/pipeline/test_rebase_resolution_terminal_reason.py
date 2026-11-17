@@ -131,7 +131,7 @@ def test_rebase_resolution_result_keeps_typed_contract() -> None:
     for result in (positional, defaulted):
         assert isinstance(result.outcome, RetryLaterOutcome)
         assert result.reason == _PENDING_REASON
-        assert result.outcome.succeeded is False
+        assert result.outcome.on_change == _PENDING_REASON
 
     assert defaulted.terminal_reason is None
     assert positional.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED

@@ -76,6 +76,7 @@ def test_startup_seam_returns_injected_integration_outcome(
         display_context=MagicMock(),
         active_display=MagicMock(),
         latest_state=[PipelineState(phase="planning")],
+        controller=None,
     )
 
     actual = run_loop._run_startup_integration(ctx)
@@ -84,6 +85,7 @@ def test_startup_seam_returns_injected_integration_outcome(
     assert integration.call_args.args == (ctx.config, scope, RebaseState())
     assert integration.call_args.kwargs["conflict_resolver"] is conflict_resolver
     assert integration.call_args.kwargs["rebase_stop_resolver"] is stop_resolver
+    assert integration.call_args.kwargs["recovery_controller"] is None
 
 
 def test_startup_seam_forwards_restored_strategy_history(
@@ -104,6 +106,7 @@ def test_startup_seam_forwards_restored_strategy_history(
         registry=MagicMock(),
         display_context=MagicMock(),
         active_display=MagicMock(),
+        controller=None,
     )
 
     run_loop._run_startup_integration(

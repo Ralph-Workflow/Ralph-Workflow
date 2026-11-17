@@ -341,6 +341,9 @@ def _resolve_rebase_stop(
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+    controller = current_agent_effect_dependencies().recovery_controller
     attempt_result = attempt_stop_resolution(
         None,
         StopResolutionTrigger(
@@ -350,6 +353,8 @@ def _resolve_rebase_stop(
             resolver=resolver,
             record=read_record(owner) or record,
             conflict_config=None if config is None else config.conflict_resolution,
+            recovery_controller=controller,
+            eligible_agents=() if controller is None else None,
         ),
     )
     if isinstance(attempt_result, StopResolutionBlocked):

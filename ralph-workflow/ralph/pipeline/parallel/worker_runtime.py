@@ -242,12 +242,16 @@ def run_worker_auto_integration(
                 state,
             ).dispatch_allowed
         )
+        recovery_controller = (
+            pipeline_deps.recovery_controller if pipeline_deps is not None else None
+        )
         if recover_first or unresolved:
             recovered = recover_incomplete_integration(
                 workspace_scope,
                 config=config,
                 conflict_resolver=conflict_resolver,
                 rebase_stop_resolver=rebase_stop_resolver,
+                recovery_controller=recovery_controller,
             )
             if recovered is not None:
                 logger.info(
@@ -275,6 +279,7 @@ def run_worker_auto_integration(
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
+            recovery_controller=recovery_controller,
         )
     except (OSError, RuntimeError, ValueError, KeyError) as integrate_exc:
         logger.warning(

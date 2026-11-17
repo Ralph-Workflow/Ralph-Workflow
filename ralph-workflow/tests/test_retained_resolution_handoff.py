@@ -176,11 +176,13 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     )
     config = retained_resolution_config(target, enabled=True)
 
+    controller = make_resolver_controller()
     declined = recover_incomplete_integration(
         WorkspaceScope(root),
         config=config,
         rebase_stop_resolver=lambda _root, _target, _stop: False,
         conflict_resolver=lambda _root, _target: False,
+        recovery_controller=controller,
     )
     assert declined is not None and not declined.fast_forwarded
     assert read_record(root) is not None
@@ -208,6 +210,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
         WorkspaceScope(root),
         config=config,
         rebase_stop_resolver=resolve,
+        recovery_controller=controller,
     )
     assert outcome is not None and outcome.fast_forwarded
     assert read_record(root) is None
@@ -492,6 +495,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     feature = tmp_path / "feature"
     assert _git(owner, "worktree", "add", "-b", "feature", str(feature)).returncode == 0
     _commit(feature, "feature.txt", "valuable completed feature\n")
+    controller = make_resolver_controller()
     initial = auto_integrate_after_commit(
         UnifiedConfig.model_validate({"general": {"auto_integrate_target": target}}),
         WorkspaceScope(feature),
@@ -499,6 +503,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         rebase_stop_resolver=lambda *_args: False,
         sleep=lambda _s: None,
         jitter=lambda: 0.0,
+        recovery_controller=controller,
     )
     assert initial is not None and read_record(feature) is not None
 
@@ -517,6 +522,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         WorkspaceScope(feature),
         config=config,
         rebase_stop_resolver=resolve,
+        recovery_controller=controller,
     )
     assert blocked is not None and blocked.recovery_record_retained
     assert _git(owner, "rev-parse", "HEAD").stdout == before
@@ -527,6 +533,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         WorkspaceScope(feature),
         config=config,
         rebase_stop_resolver=resolve,
+        recovery_controller=controller,
     )
     assert recovered is not None
     assert not inspect_integration_resolution(feature, recovered).dispatch_allowed
@@ -535,6 +542,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         WorkspaceScope(feature),
         config=config,
         rebase_stop_resolver=resolve,
+        recovery_controller=controller,
     )
     assert landed is not None and landed.fast_forwarded
     assert _git(feature, "rev-parse", "HEAD").stdout == _git(feature, "rev-parse", target).stdout
@@ -686,6 +694,7 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
             RebaseState(),
             conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
+            recovery_controller=deps.recovery_controller,
         )
     assert calls == ["agent"]
     assert outcome is not None and outcome.fast_forwarded

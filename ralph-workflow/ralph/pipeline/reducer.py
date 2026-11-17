@@ -41,7 +41,6 @@ from ralph.pipeline._fan_out_authority import (
     handle_workers_resumed as _handle_workers_resumed,
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
-from ralph.pipeline._wait_reason import WaitReason
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     AgentRetryIntent,
@@ -809,11 +808,15 @@ def _all_agents_unavailable_wait_state(
     wait_ms = recovery.earliest_available_wait_ms(state.phase, chain.agents)
     if wait_ms <= 0:
         return None
-    reason = "all agents unavailable; waiting for cooldown expiry"
-    return state.copy_with(
-        last_error=reason,
-        last_retry_delay_ms=wait_ms,
-    ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None), []
+    return (
+        recovery.apply_all_agents_unavailable_wait(
+            state,
+            state.phase,
+            wait_ms=wait_ms,
+            unavailability_reason=state.last_unavailability_reason,
+        ),
+        [],
+    )
 
 
 def _selection_attempt(

@@ -13,7 +13,7 @@ from git import Actor, Repo
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.branch_relation import BranchRelation
-from ralph.git.merge import MERGE_STATE_NONE
+from ralph.git.merge import MERGE_STATE_NONE, UnmergedPathsObservation
 from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_planning as planning
 from ralph.pipeline._planning_obstruction import PlanningObstructionKind
@@ -28,6 +28,19 @@ from ralph.pipeline.integration_resolution import (
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
+
+
+def _empty_unmerged(_root: Path) -> UnmergedPathsObservation:
+    return UnmergedPathsObservation((), query_ok=True)
+
+
+def _unmerged_paths(*paths: str) -> Callable[[Path], UnmergedPathsObservation]:
+    observation = UnmergedPathsObservation(paths, query_ok=True)
+
+    def _observe(_root: Path) -> UnmergedPathsObservation:
+        return observation
+
+    return _observe
 
 
 def _config() -> UnifiedConfig:
@@ -171,6 +184,7 @@ def test_clean_tree_matrix(tmp_path: Path) -> None:
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, ""),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -182,6 +196,7 @@ def test_clean_tree_matrix(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -197,6 +212,7 @@ def test_untracked_only_matrix(tmp_path: Path) -> None:
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -208,6 +224,7 @@ def test_untracked_only_matrix(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -223,6 +240,7 @@ def test_modified_tracked_matrix(tmp_path: Path) -> None:
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -234,6 +252,7 @@ def test_modified_tracked_matrix(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -249,6 +268,7 @@ def test_staged_tracked_matrix(tmp_path: Path) -> None:
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -262,6 +282,7 @@ def test_staged_tracked_matrix(tmp_path: Path) -> None:
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -273,10 +294,10 @@ def test_staged_tracked_matrix(tmp_path: Path) -> None:
 
 
 def test_unmerged_conflicts_matrix(tmp_path: Path) -> None:
-    porcelain_out = "UU src/foo.py\n"
     readiness = assess_tree_readiness(
         tmp_path,
-        porcelain=lambda _: (True, porcelain_out),
+        porcelain=lambda _: (True, ""),
+        observe_unmerged=_unmerged_paths("src/foo.py"),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -287,7 +308,8 @@ def test_unmerged_conflicts_matrix(tmp_path: Path) -> None:
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
-        porcelain=lambda _: (True, porcelain_out),
+        porcelain=lambda _: (True, ""),
+        observe_unmerged=_unmerged_paths("src/foo.py"),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -311,6 +333,7 @@ def test_in_progress_rebase_merge_matrix(
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, ""),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: rebase_active,
         merge_status=lambda _: merge_status,
     )
@@ -322,6 +345,7 @@ def test_in_progress_rebase_merge_matrix(
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, ""),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: rebase_active,
         merge_status=lambda _: merge_status,
     )
@@ -351,6 +375,7 @@ def test_staged_work_does_not_falsely_claim_clean_live_tree(
         tmp_path,
         stale_conflict,
         porcelain=lambda _: (True, "M  src/foo.py\n"),
+        observe_unmerged=_empty_unmerged,
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -633,6 +658,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
     (
         "state_name",
         "porcelain_out",
+        "unmerged_paths",
         "rebase_active",
         "merge_status",
         "expected_ready",
@@ -643,6 +669,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         (
             "clean",
             "",
+            (),
             False,
             MERGE_STATE_NONE,
             True,
@@ -652,6 +679,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         (
             "modified-tracked",
             " M src/foo.py\n",
+            (),
             False,
             MERGE_STATE_NONE,
             False,
@@ -661,6 +689,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         (
             "staged",
             "M  src/foo.py\n",
+            (),
             False,
             MERGE_STATE_NONE,
             False,
@@ -669,7 +698,8 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         ),
         (
             "unmerged",
-            "UU src/foo.py\n",
+            "",
+            ("src/foo.py",),
             False,
             MERGE_STATE_NONE,
             False,
@@ -679,6 +709,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         (
             "rebase-active",
             "",
+            (),
             True,
             MERGE_STATE_NONE,
             False,
@@ -688,6 +719,7 @@ def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
         (
             "merge-active",
             "",
+            (),
             False,
             "in_progress",
             False,
@@ -701,6 +733,7 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
     monkeypatch: pytest.MonkeyPatch,
     state_name: str,
     porcelain_out: str,
+    unmerged_paths: tuple[str, ...],
     rebase_active: bool,
     merge_status: str,
     expected_ready: bool,
@@ -710,10 +743,12 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
     (tmp_path / ".git").mkdir(exist_ok=True)
     cfg = _config()
     scope = WorkspaceScope(tmp_path)
+    observe = _unmerged_paths(*unmerged_paths) if unmerged_paths else _empty_unmerged
 
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=observe,
         rebase_active=lambda _: rebase_active,
         merge_status=lambda _: merge_status,
     )
@@ -721,6 +756,7 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
         tmp_path,
         RebaseState(),
         porcelain=lambda _: (True, porcelain_out),
+        observe_unmerged=observe,
         rebase_active=lambda _: rebase_active,
         merge_status=lambda _: merge_status,
     )

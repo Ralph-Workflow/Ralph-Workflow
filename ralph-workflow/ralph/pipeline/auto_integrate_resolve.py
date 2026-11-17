@@ -122,6 +122,9 @@ def _launch_stop_resolution(
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        recovery_controller = current_agent_effect_dependencies().recovery_controller
         raw_resolution = attempt_stop_resolution(
             None,
             StopResolutionTrigger(
@@ -130,6 +133,8 @@ def _launch_stop_resolution(
                 target=target,
                 resolver=resolver,
                 record=resolution_gate_record(root, target),
+                recovery_controller=recovery_controller,
+                eligible_agents=() if recovery_controller is None else None,
                 launcher=lambda: _merge_resolution_result(
                     root,
                     target,

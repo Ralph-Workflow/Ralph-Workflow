@@ -236,8 +236,45 @@ def _continue_target_record(
         return resume_pending_rebase(owner, record)
     from ralph.pipeline.auto_integrate_recovery_record import continue_retained_resolution
 
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+    controller = current_agent_effect_dependencies().recovery_controller
+    if controller is None:
+        from ralph.agents.system_clock import SystemClock
+        from ralph.pipeline.agent_entry_point import AgentEntryPoint
+        from ralph.pipeline.attempt_runner import build_entry_point_recovery_controller
+        from ralph.pipeline.attempt_runner_deps import PRODUCTION_INVOKE, AttemptRunnerDeps
+        from ralph.pipeline.runner import load_policy_bundle_for_run
+        from ralph.workspace.scope import WorkspaceScope
+
+        try:
+            policy_bundle = (
+                load_policy_bundle_for_run(WorkspaceScope(root=owner), config)
+                if config is not None
+                else None
+            )
+        except (OSError, RuntimeError, ValueError, KeyError):
+            policy_bundle = None
+        controller = build_entry_point_recovery_controller(
+            AgentEntryPoint.INTEGRATION_CONTINUATION,
+            config=config,
+            policy_bundle=policy_bundle,
+            deps=AttemptRunnerDeps(
+                clock=SystemClock(),
+                invoke=PRODUCTION_INVOKE,
+                probe_runner=None,
+                workspace_probe=None,
+                connectivity=None,
+            ),
+        )
+
     continued = continue_retained_resolution(
-        owner, record, config, conflict_resolver, rebase_stop_resolver
+        owner,
+        record,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
+        recovery_controller=controller,
     )
     return continued
 

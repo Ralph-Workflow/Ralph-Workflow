@@ -50,7 +50,7 @@ from tests._conflict_resolution_phase_parity_seams import (
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_structural_parity_resolver_and_ordinary_phase_same_fake_agent": (
-        "moved to tests/scenarios/test_integration_scenario_matrix.py because it drives a "
+        "moved to tests/scenarios/test_integration_parity_matrix.py because it drives a "
         "real paused rebase, which crosses the Git boundary only subprocess_e2e files may "
         "cross"
     ),

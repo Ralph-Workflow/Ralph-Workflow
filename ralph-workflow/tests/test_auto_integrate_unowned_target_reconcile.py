@@ -13,7 +13,12 @@ from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
 from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_remote_sync import reconcile_after_rejected_push
 from ralph.pipeline.auto_integrate_sync import REFRESH_DIVERGED
+from ralph.pipeline.effect_executor import (
+    install_agent_effect_dependencies,
+    reset_agent_effect_dependencies,
+)
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
+from tests._resolver_controller import make_resolver_controller
 from tests._scenario_harness import commit_file, git
 
 pytestmark = [
@@ -52,12 +57,16 @@ def test_unowned_target_reconciles_via_temporary_workspace_and_cleans_up(
             (root / relative).write_text("resolved remote and local\n", encoding="utf-8")
         return True
 
-    outcome = remote_reconcile.reconcile_target_onto_remote(
-        tmp_git_repo,
-        "release/tacos",
-        "tacos",
-        rebase_stop_resolver=resolve,
-    )
+    token = install_agent_effect_dependencies(recovery_controller=make_resolver_controller())
+    try:
+        outcome = remote_reconcile.reconcile_target_onto_remote(
+            tmp_git_repo,
+            "release/tacos",
+            "tacos",
+            rebase_stop_resolver=resolve,
+        )
+    finally:
+        reset_agent_effect_dependencies(token)
 
     assert outcome.reconciled is True
     assert outcome.reason == ""

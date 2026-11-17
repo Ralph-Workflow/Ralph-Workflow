@@ -1132,7 +1132,10 @@ def _maybe_auto_integrate(
     registry: _RegistryLike | None = None,
     pipeline_deps: PipelineDeps | None = None,
     display_context: DisplayContext | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
+    if recovery_controller is None and pipeline_deps is not None:
+        recovery_controller = pipeline_deps.recovery_controller
     if not (
         isinstance(effect, (CommitEffect, EmptyCommitEffect))
         and commit_phase_def is not None
@@ -1149,6 +1152,7 @@ def _maybe_auto_integrate(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
+            recovery_controller=recovery_controller,
         )
     clear_cycle_baseline(workspace_scope.root)
     if isinstance(effect, EmptyCommitEffect):
@@ -1162,6 +1166,7 @@ def _maybe_auto_integrate(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
+            recovery_controller=recovery_controller,
         )
     if event != PipelineEvent.COMMIT_SUCCESS:
         return _integrate_on_phase_transition(
@@ -1174,6 +1179,7 @@ def _maybe_auto_integrate(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
+            recovery_controller=recovery_controller,
         )
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
         return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
@@ -1214,6 +1220,7 @@ def _maybe_auto_integrate(
                     ),
                 ),
                 display=display,
+                recovery_controller=recovery_controller,
             )
     except (OSError, RuntimeError, ValueError, KeyError) as auto_integrate_exc:
         logger.warning(
@@ -1322,9 +1329,12 @@ def _integrate_on_phase_transition(
     registry: _RegistryLike | None,
     pipeline_deps: PipelineDeps | None = None,
     display_context: DisplayContext | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     if not _is_phase_transition_integration_event(event):
         return None
+    if recovery_controller is None and pipeline_deps is not None:
+        recovery_controller = pipeline_deps.recovery_controller
     if pipeline_deps is not None and pipeline_deps.auto_integrate_resolver is not None:
         return pipeline_deps.auto_integrate_resolver(config, workspace_scope, state.rebase)
     conflict_resolver = _build_seam_conflict_resolver(
@@ -1353,6 +1363,7 @@ def _integrate_on_phase_transition(
                     display_context=display_context,
                 ),
                 display=display,
+                recovery_controller=recovery_controller,
             )
     except (OSError, RuntimeError, ValueError, KeyError) as transition_exc:
         logger.warning(
@@ -2233,6 +2244,7 @@ def _run_pipeline_step(
             registry=registry,
             pipeline_deps=pipeline_deps,
             display_context=display_context,
+            recovery_controller=recovery_controller,
         )
         if (
             isinstance(_auto_integrate_outcome, RebaseState)

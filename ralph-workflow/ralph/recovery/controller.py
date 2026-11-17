@@ -1953,29 +1953,15 @@ class RecoveryController:
             chain_wait = self.eligibility_wait(phase, chain.agents)
             if chain_wait.kind is WaitKind.COOLING_DOWN:
                 wait_ms = chain_wait.wait_ms or 0
-                unavail_reason = (
-                    failure.unavailability_reason.value
-                    if failure.unavailability_reason
-                    else "unknown"
-                )
-                reason = (
-                    f"all agents unavailable (last reason: {unavail_reason});"
-                    " waiting for cooldown expiry"
-                )
-                logger.info(
-                    "{} in phase={} (wait_ms={} unavailability_reason={})",
-                    reason,
-                    phase,
-                    wait_ms,
-                    failure.unavailability_reason,
-                )
                 updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
                 self._bus.publish(updated_evt)
                 return (
-                    state.copy_with(
-                        last_error=reason,
-                        last_retry_delay_ms=wait_ms,
-                    ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None),
+                    self.apply_all_agents_unavailable_wait(
+                        state,
+                        phase,
+                        wait_ms=wait_ms,
+                        unavailability_reason=failure.unavailability_reason,
+                    ),
                     [],
                     updated_evt,
                 )
@@ -2014,6 +2000,41 @@ class RecoveryController:
                 failure_evt,
             )
         return failed_state, [], failure_evt
+
+    def apply_all_agents_unavailable_wait(
+        self,
+        state: PipelineState,
+        phase: str,
+        *,
+        wait_ms: int,
+        unavailability_reason: UnavailabilityReason | str | None = None,
+    ) -> PipelineState:
+        if isinstance(unavailability_reason, UnavailabilityReason):
+            unavail_reason = unavailability_reason.value
+            logged_reason: object = unavailability_reason
+        elif isinstance(unavailability_reason, str) and unavailability_reason:
+            unavail_reason = unavailability_reason
+            logged_reason = unavailability_reason
+        else:
+            unavail_reason = "unknown"
+            logged_reason = None
+        reason = (
+            f"all agents unavailable (last reason: {unavail_reason});"
+            " waiting for cooldown expiry"
+            if logged_reason is not None
+            else "all agents unavailable; waiting for cooldown expiry"
+        )
+        logger.info(
+            "{} in phase={} (wait_ms={} unavailability_reason={})",
+            reason,
+            phase,
+            wait_ms,
+            logged_reason,
+        )
+        return state.copy_with(
+            last_error=reason,
+            last_retry_delay_ms=wait_ms,
+        ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None)
 
     def earliest_eligible_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         if not agents:

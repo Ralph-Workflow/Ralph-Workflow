@@ -3,16 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.git.resolution_failure_cause import ResolutionFailureCause
-
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from ralph.git.resolution_failure_cause import ResolutionFailureCause
 
 __all__ = ["RetryLaterOutcome"]
-
-_TUPLE_PAIR_LEN = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,41 +32,3 @@ class RetryLaterOutcome:
         if self.until is not None:
             return f"retry after {self.until}"
         return self.terminal_reason
-
-    def __iter__(self) -> Iterator[object]:
-        return iter((False, self.on_change or ""))
-
-    def __getitem__(self, index: int) -> object:
-        return (False, self.on_change or "")[index]
-
-    def __len__(self) -> int:
-        return 2
-
-    def __bool__(self) -> bool:
-        return False
-
-    def __hash__(self) -> int:
-        return hash(
-            (
-                self.until,
-                self.on_change,
-                self.terminal_reason,
-                self.unresolved_paths,
-                self.failure_cause,
-            )
-        )
-
-    def __eq__(self, other: object) -> bool:
-        if (
-            isinstance(other, tuple)
-            and len(other) == _TUPLE_PAIR_LEN
-            and isinstance(other[0], bool)
-            and isinstance(other[1], str)
-        ):
-            return other == (False, self.on_change or "")
-        return (
-            isinstance(other, RetryLaterOutcome)
-            and (self.until, self.on_change) == (other.until, other.on_change)
-            and (self.terminal_reason, self.unresolved_paths, self.failure_cause)
-            == (other.terminal_reason, other.unresolved_paths, other.failure_cause)
-        )

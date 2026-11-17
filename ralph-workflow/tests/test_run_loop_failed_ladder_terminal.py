@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.config.models import UnifiedConfig
 from ralph.git import merge, merge_obstructions
-from ralph.git.merge import MERGE_STATE_NONE
+from ralph.git.merge import MERGE_STATE_NONE, UnmergedPathsObservation
 from ralph.pipeline import run_loop, runner
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
@@ -92,7 +92,11 @@ def run_recovery_scenario(
         verdict = inspect_integration_resolution(
             root,
             rebase,
-            porcelain=lambda _root: (True, "" if recovered else "UU shared.txt\n"),
+            porcelain=lambda _root: (True, ""),
+            observe_unmerged=lambda _root: UnmergedPathsObservation(
+                () if recovered else ("shared.txt",),
+                query_ok=True,
+            ),
             rebase_active=lambda _root: False,
             merge_status=lambda _root: MERGE_STATE_NONE,
             write_back=write_back,

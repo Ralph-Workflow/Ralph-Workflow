@@ -2,9 +2,31 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
+from ralph.pipeline.conflict_resolution.sight import ConflictKind
 
 _CONFLICTED = ("src/alpha.py", "docs/beta.md")
+
+
+def _conflicted_section(rendered: str) -> str:
+    marker = "## Conflicted files"
+    start = rendered.index(marker) + len(marker)
+    rest = rendered[start:]
+    next_heading = rest.find("\n## ")
+    return rest if next_heading < 0 else rest[:next_heading]
+
+
+def _stub_kinds(
+    monkeypatch: pytest.MonkeyPatch, kinds: dict[str, ConflictKind]
+) -> None:
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.sight.classify_conflict_kinds",
+        lambda _root, paths, entries=None: {
+            path: kinds[path] for path in paths if path in kinds
+        },
+    )
 
 
 def _render(
@@ -186,6 +208,39 @@ def test_unlistable_conflicts_fall_back_to_a_search_instruction(
 ) -> None:
     rendered = _render(tmp_path, conflicted=())
     assert "could not be listed" in rendered
+
+
+def test_prompt_includes_text_delete_modify_and_declared_decision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kinds = {
+        "text.py": ConflictKind.TEXT,
+        "deleted.py": ConflictKind.DELETE_MODIFY,
+        "mode.py": ConflictKind.DECLARED_DECISION,
+    }
+    _stub_kinds(monkeypatch, kinds)
+    section = _conflicted_section(_render(tmp_path, conflicted=tuple(kinds)))
+    assert "`text.py`" in section
+    assert "`deleted.py`" in section
+    assert "choose delete or keep the modified content" in section
+    assert "`mode.py`" in section
+
+
+def test_prompt_excludes_gitlink_binary_append_only_and_other(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kinds = {
+        "keep.py": ConflictKind.TEXT,
+        "vendor": ConflictKind.GITLINK,
+        "blob.bin": ConflictKind.BINARY,
+        "log.txt": ConflictKind.APPEND_ONLY,
+        "odd": ConflictKind.OTHER,
+    }
+    _stub_kinds(monkeypatch, kinds)
+    section = _conflicted_section(_render(tmp_path, conflicted=tuple(kinds)))
+    assert "`keep.py`" in section
+    for path in ("vendor", "blob.bin", "log.txt", "odd"):
+        assert f"`{path}`" not in section
 
 
 def test_the_agent_is_told_not_to_run_git(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,7 @@ from ralph.pipeline.plumbing.commit_integration import prepare_commit_integratio
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._resolver_controller import make_resolver_controller
 from tests.scenarios._integration_scenario_fixtures import (
     interrupted_resolution_repo,
     retained_resolution_config,
@@ -108,6 +110,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     root = tmp_path / f"repo-{operation}-{seam}"
     target, _, _ = interrupted_resolution_repo(root, operation)
     calls: list[str] = []
+    controller = make_resolver_controller()
 
     def merge_resolver(repo: Path, branch: str) -> bool:
         calls.append(branch)
@@ -129,10 +132,14 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     outcome: RebaseState | None
     if seam == "standalone_commit":
         context = make_display_context()
+        deps = dataclasses.replace(
+            make_test_pipeline_deps(context),
+            recovery_controller=controller,
+        )
         verdict = prepare_commit_integration(
             root,
             config,
-            make_test_pipeline_deps(context),
+            deps,
             AgentRegistry.from_config(config),
             context,
             conflict_resolver=merge_resolver,
@@ -149,6 +156,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
             rebase_stop_resolver=rebase_resolver,
             sleep=lambda _s: None,
             jitter=lambda: 0.0,
+            recovery_controller=controller,
         )
     else:
         outcome = auto_integrate_after_commit(
@@ -159,6 +167,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
             rebase_stop_resolver=rebase_resolver,
             sleep=lambda _s: None,
             jitter=lambda: 0.0,
+            recovery_controller=controller,
         )
     assert calls == [target]
     assert outcome is not None and outcome.fast_forwarded

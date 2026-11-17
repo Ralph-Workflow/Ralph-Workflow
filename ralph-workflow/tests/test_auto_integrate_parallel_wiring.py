@@ -65,7 +65,12 @@ def test_fan_out_join_invokes_auto_integrate_when_enabled(monkeypatch: MonkeyPat
     )
     assert calls == [(config, scope, state.rebase)]
     assert options == [
-        {"conflict_resolver": None, "rebase_stop_resolver": None, "display": display}
+        {
+            "conflict_resolver": None,
+            "rebase_stop_resolver": None,
+            "display": display,
+            "recovery_controller": None,
+        }
     ]
     assert result.phase == state.phase and result.rebase == outcome
 

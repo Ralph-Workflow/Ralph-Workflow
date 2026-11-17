@@ -482,5 +482,6 @@ def test_integrate_before_planning_retained_integration_reason_forces_retry(
             config=mock_config,
             conflict_resolver=mock_conflict_resolver,
             rebase_stop_resolver=mock_stop_resolver,
+            recovery_controller=None,
             force_retry=True,
         )

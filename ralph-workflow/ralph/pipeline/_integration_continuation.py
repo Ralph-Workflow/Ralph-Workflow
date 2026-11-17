@@ -384,10 +384,15 @@ def continue_retained_resolution(
     force_retry: bool = False,
     stop_identity: str | None = None,
 ) -> IntegrationRecord | str | RetryLaterOutcome:
-    if recovery_controller is None:
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+    from ralph.pipeline.effect_executor import (
+        current_agent_effect_dependencies,
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
 
+    if recovery_controller is None:
         recovery_controller = current_agent_effect_dependencies().recovery_controller
+    ambient_token = None
     if recovery_controller is not None:
         resolver_available = (
             conflict_resolver is not None
@@ -398,6 +403,46 @@ def continue_retained_resolution(
             phase,
             available=resolver_available,
         )
+        current = current_agent_effect_dependencies()
+        if current.recovery_controller is not recovery_controller:
+            ambient_token = install_agent_effect_dependencies(
+                agent_runner=current.agent_runner,
+                recovery_controller=recovery_controller,
+                pipeline_deps=current.pipeline_deps,
+            )
+    try:
+        return _run_retained_resolution(
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            force_retry=force_retry,
+            stop_identity=stop_identity,
+        )
+    finally:
+        if ambient_token is not None:
+            reset_agent_effect_dependencies(ambient_token)
+
+
+def _run_retained_resolution(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    *,
+    recovery_controller: RecoveryController | None,
+    phase: str,
+    chain_agents: list[str] | tuple[str, ...] | None,
+    config_path: Path | None,
+    force_retry: bool,
+    stop_identity: str | None,
+) -> IntegrationRecord | str | RetryLaterOutcome:
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
         return "retained resolution target unreadable; progress preserved"
@@ -577,6 +622,8 @@ def recover_before_attempt(
     prior_attempt: RebaseState | None,
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    *,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     from ralph.pipeline.auto_integrate_recovery import (
         recover_incomplete_integration,
@@ -584,6 +631,10 @@ def recover_before_attempt(
     )
     from ralph.pipeline.integration_resolution import retained_integration_reason
 
+    if recovery_controller is None:
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        recovery_controller = current_agent_effect_dependencies().recovery_controller
     if retained_integration_reason(scope.root) is None:
         return None
     recovered = recover_incomplete_integration(
@@ -591,6 +642,7 @@ def recover_before_attempt(
         config=config,
         conflict_resolver=conflict_resolver,
         rebase_stop_resolver=rebase_stop_resolver,
+        recovery_controller=recovery_controller,
     )
     if recovery_retained_record(recovered):
         if prior_attempt is not None:
@@ -609,6 +661,7 @@ def recover_before_attempt(
             recovered,
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
+            recovery_controller=recovery_controller,
         )
     return None
 

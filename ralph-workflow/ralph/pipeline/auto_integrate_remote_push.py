@@ -402,6 +402,9 @@ def _reconcile_in_progress_rebase(
         from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
         from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        controller = current_agent_effect_dependencies().recovery_controller
         result = attempt_stop_resolution(
             None,
             StopResolutionTrigger(
@@ -411,6 +414,8 @@ def _reconcile_in_progress_rebase(
                 resolver=rebase_stop_resolver,
                 record=read_record(repo_root) or resolution_gate_record(repo_root, target),
                 conflict_config=None if config is None else config.conflict_resolution,
+                recovery_controller=controller,
+                eligible_agents=() if controller is None else None,
             ),
         )
         if isinstance(result, StopResolutionBlocked):

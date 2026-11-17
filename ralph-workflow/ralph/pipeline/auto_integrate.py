@@ -151,6 +151,8 @@ def _recover_before_attempt_probe(
     record: RebaseState | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
+    *,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     fn = (
         recover_before_attempt
@@ -167,6 +169,7 @@ def _recover_before_attempt_probe(
         record,
         conflict_resolver,
         rebase_stop_resolver,
+        recovery_controller=recovery_controller,
     )
 
 
@@ -273,6 +276,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_actions import AgentRunner, GitOps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -290,11 +294,29 @@ def auto_integrate_after_commit(
     agent_runner: AgentRunner | None = None,
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
+    from ralph.pipeline.effect_executor import (
+        current_agent_effect_dependencies,
+        install_agent_effect_dependencies,
+        reset_agent_effect_dependencies,
+    )
+
     executors_token = install_executors(git_ops, agent_runner)
+    ambient_token = None
     try:
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
+        if recovery_controller is None:
+            recovery_controller = current_agent_effect_dependencies().recovery_controller
+        if recovery_controller is not None:
+            current = current_agent_effect_dependencies()
+            if current.recovery_controller is not recovery_controller:
+                ambient_token = install_agent_effect_dependencies(
+                    agent_runner=current.agent_runner,
+                    recovery_controller=recovery_controller,
+                    pipeline_deps=current.pipeline_deps,
+                )
         root = Path(workspace_scope.root)
         target = resolve_integration_target(config, root) if (root / ".git").exists() else None
         state = containment_release(root, target, state)
@@ -338,6 +360,7 @@ def auto_integrate_after_commit(
             None,
             effective_resolver,
             rebase_stop_resolver if allowed else None,
+            recovery_controller=recovery_controller,
         )
         if recovered is not None:
             if target:
@@ -379,6 +402,7 @@ def auto_integrate_after_commit(
                 jitter=jitter,
                 ledger=effective_ledger,
                 candidates=candidates,
+                recovery_controller=recovery_controller,
             ),
             prior=state,
         )
@@ -396,6 +420,8 @@ def auto_integrate_after_commit(
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
     finally:
+        if ambient_token is not None:
+            reset_agent_effect_dependencies(ambient_token)
         reset_executors(executors_token)
 
 
@@ -411,6 +437,7 @@ def auto_integrate_on_phase_transition(
     jitter: Callable[[], float] | None = None,
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     executors_token = install_executors(git_ops, agent_runner)
     try:
@@ -424,6 +451,7 @@ def auto_integrate_on_phase_transition(
                 display=display,
                 sleep=sleep,
                 jitter=jitter,
+                recovery_controller=recovery_controller,
             ),
             prior=state,
         )
@@ -441,7 +469,12 @@ def _auto_integrate_on_phase_transition_inner(
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
+    if recovery_controller is None:
+        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+        recovery_controller = current_agent_effect_dependencies().recovery_controller
     try:
         root = Path(workspace_scope.root)
         if not (root / ".git").exists():
@@ -452,6 +485,7 @@ def _auto_integrate_on_phase_transition_inner(
             None,
             conflict_resolver,
             rebase_stop_resolver,
+            recovery_controller=recovery_controller,
         )
         if recovered is not None:
             return recovered
@@ -488,16 +522,35 @@ def _auto_integrate_on_phase_transition_inner(
         display=display,
         sleep=sleep,
         jitter=jitter,
+        recovery_controller=recovery_controller,
     )
 
 
-def _attempt_loop_seams() -> AttemptLoopSeams:
+def _attempt_loop_seams(
+    recovery_controller: RecoveryController | None = None,
+) -> AttemptLoopSeams:
+    def recover_before_attempt_bound(
+        config: UnifiedConfig,
+        workspace_scope: WorkspaceScope,
+        record: RebaseState | None,
+        conflict_resolver: ConflictResolver | None,
+        rebase_stop_resolver: RebaseStopResolver | None,
+    ) -> RebaseState | None:
+        return _recover_before_attempt_probe(
+            config,
+            workspace_scope,
+            record,
+            conflict_resolver,
+            rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+        )
+
     return AttemptLoopSeams(
         resolve_context=_auto_integrate_resolve_context,
         early_skips=_check_early_skips,
         observe_conflict_identity=observe_conflict_identity,
         configured_resolver_allowed=_configured_resolver_allowed,
-        recover_before_attempt=_recover_before_attempt_probe,
+        recover_before_attempt=recover_before_attempt_bound,
         freshen_target=_freshen_attempt_target,
         integrate_once=_integrate_once,
         wait_before_retry=wait_before_retry,
@@ -518,6 +571,7 @@ def _auto_integrate_after_commit_inner(
     jitter: Callable[[], float] | None = None,
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     return run_attempt_loop(
         config,
@@ -530,7 +584,7 @@ def _auto_integrate_after_commit_inner(
         jitter=jitter,
         ledger=ledger,
         candidates=candidates,
-        seams=_attempt_loop_seams(),
+        seams=_attempt_loop_seams(recovery_controller),
     )
 
 

@@ -13,6 +13,7 @@ from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge import (
     MERGE_STATE_NONE,
     MERGE_STATE_UNKNOWN,
+    UnmergedPathsObservation,
     merge_state,
     observe_branch_sha,
 )
@@ -147,13 +148,17 @@ def _is_probe_error(exc: BaseException) -> bool:
     return type(exc).__name__ in {"TimeoutExpired", "SubprocessError"}
 
 
+def _default_observe_unmerged(root: Path) -> UnmergedPathsObservation:
+    from ralph.git.merge import observe_unmerged_paths
+
+    return observe_unmerged_paths(root)
+
+
 def _probe_porcelain(
     root: Path,
     probe: Callable[[Path], tuple[bool, str]],
+    observe_unmerged: Callable[[Path], UnmergedPathsObservation],
 ) -> tuple[ProbeOutcome, str]:
-    from ralph.git.merge import UNMERGED_PATH_QUERY_FAILED, observe_unmerged_paths
-    from ralph.pipeline._porcelain_records import porcelain_unmerged_paths
-
     try:
         readable, porcelain_output = probe(root)
     except Exception as exc:
@@ -163,14 +168,10 @@ def _probe_porcelain(
         raise
     if not readable:
         return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
-    observed = observe_unmerged_paths(root)
-    unmerged_paths: tuple[str, ...] = (
-        tuple(sorted(observed.paths))
-        if observed.query_ok
-        else porcelain_unmerged_paths(porcelain_output)
-    )
-    if not observed.query_ok and UNMERGED_PATH_QUERY_FAILED in unmerged_paths:
-        return Unknown(UnknownKind.PORCELAIN_UNREADABLE), ""
+    observed = observe_unmerged(root)
+    if not observed.query_ok:
+        return Unknown(UnknownKind.PORCELAIN_UNREADABLE), porcelain_output
+    unmerged_paths = tuple(sorted(observed.paths))
     if unmerged_paths:
         return (
             KnownBlocked(
@@ -218,10 +219,15 @@ def _live_probe_outcomes(
     root: Path,
     *,
     porcelain: Callable[[Path], tuple[bool, str]] | None,
+    observe_unmerged: Callable[[Path], UnmergedPathsObservation] | None,
     rebase_active: Callable[[Path], bool],
     merge_status: Callable[[Path], str],
 ) -> tuple[tuple[ProbeOutcome, ...], str]:
-    porcelain_outcome, porcelain_output = _probe_porcelain(root, porcelain or _full_porcelain)
+    porcelain_outcome, porcelain_output = _probe_porcelain(
+        root,
+        porcelain or _full_porcelain,
+        observe_unmerged or _default_observe_unmerged,
+    )
     return (
         porcelain_outcome,
         _probe_rebase(root, rebase_active),
@@ -234,6 +240,7 @@ def assess_tree_readiness(
     state: RebaseState | None = None,
     *,
     porcelain: Callable[[Path], tuple[bool, str]] | None = None,
+    observe_unmerged: Callable[[Path], UnmergedPathsObservation] | None = None,
     rebase_active: Callable[[Path], bool] = rebase_in_progress,
     merge_status: Callable[[Path], str] = merge_state,
 ) -> TreeReadinessAssessment:
@@ -266,6 +273,7 @@ def assess_tree_readiness(
     outcomes, porcelain_output = _live_probe_outcomes(
         root,
         porcelain=porcelain,
+        observe_unmerged=observe_unmerged,
         rebase_active=rebase_active,
         merge_status=merge_status,
     )
@@ -409,6 +417,7 @@ def inspect_integration_resolution(
     state: RebaseState,
     *,
     porcelain: Callable[[Path], tuple[bool, str]] | None = None,
+    observe_unmerged: Callable[[Path], UnmergedPathsObservation] | None = None,
     rebase_active: Callable[[Path], bool] = rebase_in_progress,
     merge_status: Callable[[Path], str] = merge_state,
     write_back: Callable[[RebaseState], None] | None = None,
@@ -418,6 +427,7 @@ def inspect_integration_resolution(
         root,
         state=state,
         porcelain=porcelain,
+        observe_unmerged=observe_unmerged,
         rebase_active=rebase_active,
         merge_status=merge_status,
     )

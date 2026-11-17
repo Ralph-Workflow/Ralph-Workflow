@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ralph.git.git_run_result import GitRunResult
-from ralph.git.merge import MERGE_STATE_NONE
+from ralph.git.merge import MERGE_STATE_NONE, UnmergedPathsObservation
 from ralph.pipeline import effect_executor, runner
 from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -28,24 +28,23 @@ from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
 
-@pytest.mark.parametrize(
-    "porcelain",
-    (
-        "UU src/a.py\n",
-        "AA src/a.py\n",
-        "DD src/a.py\n",
-        "AU src/a.py\n",
-        "UD src/a.py\n",
-        "DU src/a.py\n",
-        "UA src/a.py\n",
-        " M other.py\nUU src/a.py\n?? scratch.txt\n",
-    ),
-)
-def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain: str) -> None:
+def _observe_unmerged(
+    monkeypatch: pytest.MonkeyPatch, observation: UnmergedPathsObservation
+) -> None:
+    monkeypatch.setattr(
+        "ralph.git.merge.observe_unmerged_paths",
+        lambda _root: observation,
+    )
+
+
+def test_unmerged_paths_block_non_resolution_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation(("src/a.py",), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
-        porcelain=lambda _: (True, porcelain),
+        porcelain=lambda _: (True, ""),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -56,19 +55,26 @@ def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain:
         assert_non_resolution_dispatch_allowed("development_commit", verdict)
 
 
-def test_c_quoted_unmerged_path_is_decoded_in_blocking_reason(tmp_path: Path) -> None:
+def test_unmerged_query_failure_is_unknown_without_porcelain_path_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation(query_ok=False))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
-        porcelain=lambda _: (True, 'UU "conf\\303\\251lict.py"\n'),
+        porcelain=lambda _: (True, "UU fallback-derived.py\n"),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is RECOVERABLE
-    reason = "unmerged paths remain from an unfinished rebase or merge: conf\u00e9lict.py"
-    assert reason in verdict.reasons
-    assert "conf\\303\\251lict.py" not in verdict.reasons[0]
+    assert verdict.integration_state is IntegrationState.UNKNOWN
+    assert verdict.status is RESOLVED
+    assert verdict.dispatch_allowed
+    assert verdict.unknown_kinds == (UnknownKind.PORCELAIN_UNREADABLE,)
+    assert verdict.block_kinds == ()
+    assert "fallback-derived.py" not in " ".join(verdict.reasons)
+    assert "fallback-derived.py" not in " ".join(verdict.blocking_reasons)
+    assert "unmerged paths remain" not in " ".join(verdict.reasons)
 
 
 @pytest.mark.parametrize(
@@ -84,7 +90,10 @@ def test_c_quoted_unmerged_path_is_decoded_in_blocking_reason(tmp_path: Path) ->
         " M src/a.py\nM  src/b.py\n?? scratch.txt\nA  src/c.py\n",
     ),
 )
-def test_ordinary_uncommitted_work_never_blocks_dispatch(tmp_path: Path, porcelain: str) -> None:
+def test_ordinary_uncommitted_work_never_blocks_dispatch(
+    tmp_path: Path, porcelain: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -107,8 +116,13 @@ def test_ordinary_uncommitted_work_never_blocks_dispatch(tmp_path: Path, porcela
     ),
 )
 def test_in_progress_integration_blocks_even_with_clean_porcelain(
-    tmp_path: Path, rebase_active: bool, merge_status: str, expected_reason: str
+    tmp_path: Path,
+    rebase_active: bool,
+    merge_status: str,
+    expected_reason: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -140,7 +154,10 @@ def test_unreadable_porcelain_is_unknown_not_blocking(tmp_path: Path) -> None:
     assert verdict.unknown_kinds == (UnknownKind.PORCELAIN_UNREADABLE,)
 
 
-def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Path) -> None:
+def test_clean_live_inspection_reconciles_stale_resolution_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     stale = RebaseState(
         last_action="conflict",
         unresolved_integration_carried=True,
@@ -278,8 +295,13 @@ def test_final_fence_ignores_auto_integration_toggle(
     ),
 )
 def test_unresolved_evidence_blocks_dispatch(
-    tmp_path: Path, state: RebaseState, rebase_active: bool, merge_status: str
+    tmp_path: Path,
+    state: RebaseState,
+    rebase_active: bool,
+    merge_status: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         state,
@@ -318,6 +340,12 @@ def test_live_git_evidence_blocks_stale_resolved_state(
         "ralph.pipeline.integration_resolution.run_git",
         lambda *_args, **_kwargs: GitRunResult((), 0, porcelain, ""),
     )
+    if "UU" in porcelain:
+        _observe_unmerged(
+            monkeypatch, UnmergedPathsObservation(("src/a.py",), query_ok=True)
+        )
+    else:
+        _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -343,13 +371,16 @@ def test_unreadable_git_inspection_is_unknown(tmp_path: Path) -> None:
     assert verdict.integration_ready is False
 
 
-def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path) -> None:
+def test_exhaustion_is_terminal_while_the_conflict_is_still_there(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation(("src/a.py",), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(
             resolution_exhausted=True, resolution_exhaustion_reason="all candidates failed"
         ),
-        porcelain=lambda _: (True, "UU src/a.py\n"),
+        porcelain=lambda _: (True, ""),
         rebase_active=lambda _: False,
         merge_status=lambda _: MERGE_STATE_NONE,
     )
@@ -359,7 +390,10 @@ def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path
         assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
-def test_exhaustion_does_not_outlive_the_conflict_it_describes(tmp_path: Path) -> None:
+def test_exhaustion_does_not_outlive_the_conflict_it_describes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(
@@ -388,7 +422,10 @@ def test_a_stale_record_still_blocks_when_the_tree_cannot_be_read(tmp_path: Path
     assert verdict.status is EXHAUSTED
 
 
-def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:
+def test_clean_repository_permits_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -401,7 +438,10 @@ def test_clean_repository_permits_dispatch(tmp_path: Path) -> None:
     assert_non_resolution_dispatch_allowed("planning", verdict)
 
 
-def test_tree_readiness_assessment_fields(tmp_path: Path) -> None:
+def test_tree_readiness_assessment_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     assessment = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _: (True, "M  staged.py\n"),
@@ -429,8 +469,9 @@ def test_tree_readiness_assessment_fields(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("code", (" M file.py\n", "M  file.py\n", "A  new.py\n", "D  gone.py\n"))
 def test_uncommitted_work_allows_development_dispatch_but_not_integration(
-    tmp_path: Path, code: str
+    tmp_path: Path, code: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _observe_unmerged(monkeypatch, UnmergedPathsObservation((), query_ok=True))
     readiness = assess_tree_readiness(
         tmp_path,
         porcelain=lambda _root: (True, code),

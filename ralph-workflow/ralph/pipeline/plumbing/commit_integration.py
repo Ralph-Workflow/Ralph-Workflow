@@ -76,6 +76,7 @@ def prepare_commit_integration(
                     display_context=display_context,
                 ),
                 display=display,
+                recovery_controller=deps.recovery_controller,
             )
             or state
         )

@@ -10,9 +10,18 @@ from ralph.git.branch_relation import BranchRelation, branch_relation
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.policy.loader import default_dir, load_policy
+from ralph.recovery.controller import RecoveryController
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 _TARGET = "main"
+
+
+def _controller() -> RecoveryController:
+    return RecoveryController(
+        options=RecoveryControllerOptions(policy_bundle=load_policy(default_dir()))
+    )
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -85,6 +94,7 @@ def _integrate(repo: Path, resolver: _Resolver) -> RebaseState | None:
         RebaseState(),
         conflict_resolver=lambda _root, _target: False,
         rebase_stop_resolver=resolver,
+        recovery_controller=_controller(),
     )
 
 

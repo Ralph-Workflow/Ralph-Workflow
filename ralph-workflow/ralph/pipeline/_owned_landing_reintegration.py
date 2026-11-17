@@ -359,8 +359,16 @@ def _resume_owned_operation(
     write_record(root, resumed)
     from ralph.pipeline.auto_integrate_recovery_record import _recover_pending_merge
 
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
     return _recover_pending_merge(
-        root, resumed, config, conflict_resolver, rebase_stop_resolver, force_retry=force_retry
+        root,
+        resumed,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
+        recovery_controller=current_agent_effect_dependencies().recovery_controller,
+        force_retry=force_retry,
     )
 
 

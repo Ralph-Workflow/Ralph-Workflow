@@ -136,6 +136,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_resolution_types import (
         IntegrationResolutionVerdict,
     )
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -905,6 +906,7 @@ def _run_startup_integration(
                 strategy_history=prior_rebase.conflict_strategies_tried,
             ),
             display=ctx.active_display,
+            recovery_controller=ctx.controller,
         )
     except (
         GitError,
@@ -1928,26 +1930,19 @@ def _resolve_paused_rebase_with_history(
     return _resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
-def _retry_later_cause(outcome: object, default_cause: str) -> str:
-    from ralph.git.resolution_failure_cause import ResolutionFailureCause
-    from ralph.pipeline.config_file_fingerprint import extract_config_path_from_reason
-    from ralph.pipeline.resolution_outcome import RetryLaterOutcome
-
-    if default_cause != "UNRESOLVED_CONFLICT":
-        return default_cause
-    fc: object = getattr(outcome, "failure_cause", None)
-    if isinstance(fc, ResolutionFailureCause) and fc is not ResolutionFailureCause.NONE:
-        return fc.value
-    on_change: str | None = outcome.on_change if isinstance(outcome, RetryLaterOutcome) else None
-    if on_change and extract_config_path_from_reason(on_change):
-        return "CONFIG_FAILURE"
-    if on_change and "context failed" in on_change:
-        return "CONTEXT_FAILURE"
-    return "AGENT_FAILURE"
-
-
-def _typed_outcome_transport(outcome: object) -> tuple[bool, str | None, str]:
+def _unwrap_stop_resolution_outcome(outcome: object) -> StopResolutionOutcome | object:
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
+
+    if isinstance(outcome, RebaseResolutionResult):
+        return outcome.outcome
+    return outcome
+
+
+def _paused_rebase_failure_details(
+    outcome: StopResolutionOutcome,
+) -> tuple[str | None, str]:
+    from typing import assert_never
+
     from ralph.pipeline.resolution_outcome import (
         ConfigFailureOutcome,
         NextStrategyOutcome,
@@ -1957,46 +1952,32 @@ def _typed_outcome_transport(outcome: object) -> tuple[bool, str | None, str]:
         WaitingOutcome,
     )
 
-    result = outcome.outcome if isinstance(outcome, RebaseResolutionResult) else outcome
-    if isinstance(result, ResolvedOutcome):
-        return True, None, "UNRESOLVED_CONFLICT"
-    reason = _sealed_outcome_reason(result)
-    cause = "UNRESOLVED_CONFLICT"
-    if isinstance(result, RetryLaterOutcome):
-        cause = _retry_later_cause(result, cause)
-    elif isinstance(result, ConfigFailureOutcome):
-        cause = "CONFIG_FAILURE"
-    elif isinstance(
-        result,
-        (NextStrategyOutcome, UnknownOutcome, WaitingOutcome),
-    ):
-        record_cause: object = getattr(result, "failure_cause", None)
-        if record_cause is not None:
-            cause = str(getattr(record_cause, "value", record_cause)).upper()
-    return False, reason, cause
-
-
-def _sealed_outcome_reason(result: object) -> str | None:
-    from ralph.pipeline.resolution_outcome import (
-        ConfigFailureOutcome,
-        NextStrategyOutcome,
-        RetryLaterOutcome,
-        UnknownOutcome,
-        WaitingOutcome,
-    )
-
-    if isinstance(result, RetryLaterOutcome):
-        return result.on_change
-    if isinstance(result, WaitingOutcome):
-        return result.external_condition
-    if isinstance(result, NextStrategyOutcome):
-        return result.strategy
-    if isinstance(result, ConfigFailureOutcome):
-        fix_prefix = f"fix {result.file} then run ralph --check-config"
-        return f"{fix_prefix}: {result.parse_error}" if result.parse_error else fix_prefix
-    if isinstance(result, UnknownOutcome):
-        return str(result.error)
-    return None
+    match outcome:
+        case ResolvedOutcome():
+            return None, ResolutionFailureCause.NONE.value
+        case WaitingOutcome(external_condition=condition):
+            return condition, ResolutionFailureCause.CONTEXT_FAILURE.value
+        case RetryLaterOutcome(until=until, on_change=on_change, failure_cause=failure_cause):
+            reason = on_change or (f"retry after {until}" if until is not None else None)
+            cause = (
+                failure_cause.value
+                if (
+                    failure_cause is not None
+                    and failure_cause is not ResolutionFailureCause.NONE
+                )
+                else ResolutionFailureCause.AGENT_FAILURE.value
+            )
+            return reason, cause
+        case NextStrategyOutcome(strategy=strategy):
+            return strategy, ResolutionFailureCause.UNRESOLVED_CONFLICT.value
+        case ConfigFailureOutcome(file=file, parse_error=parse_error):
+            fix_prefix = f"fix {file} then run ralph --check-config"
+            reason = f"{fix_prefix}: {parse_error}" if parse_error else fix_prefix
+            return reason, ResolutionFailureCause.CONFIG_FAILURE.value
+        case UnknownOutcome(error=error):
+            return str(error), ResolutionFailureCause.CONTEXT_FAILURE.value
+        case _ as unreachable:
+            assert_never(unreachable)
 
 
 def resolve_paused_rebase(
@@ -2007,6 +1988,10 @@ def resolve_paused_rebase(
     executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
     from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
+    from ralph.pipeline.resolution_outcome import (
+        ResolvedOutcome,
+        is_stop_resolution_outcome,
+    )
 
     try:
         stop_resolver = build_agent_rebase_stop_resolver(
@@ -2027,25 +2012,34 @@ def resolve_paused_rebase(
         active_executor = (
             executor if executor is not None else default_rebase_continuation_executor()
         )
-        outcome: object = active_executor.continue_rebase(
+        raw_outcome: object = active_executor.continue_rebase(
             ctx.workspace_scope.root,
             target,
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        resolved, reason, failure_cause = _typed_outcome_transport(outcome)
+        sealed = _unwrap_stop_resolution_outcome(raw_outcome)
+        if not is_stop_resolution_outcome(sealed):
+            logger.warning(
+                "integration resolution: the paused rebase for '{}' was not resolved: {}",
+                target,
+                "no terminal evidence",
+            )
+            return False
+        if isinstance(sealed, ResolvedOutcome):
+            return True
+        reason, failure_cause = _paused_rebase_failure_details(sealed)
     except (OSError, RuntimeError, ValueError, KeyError) as resolve_exc:
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
-    if not resolved:
-        cause_suffix = f" (cause: {failure_cause})" if failure_cause is not None else ""
-        logger.warning(
-            "integration resolution: the paused rebase for '{}' was not resolved: {}{}",
-            target,
-            reason or "no terminal evidence",
-            cause_suffix,
-        )
-    return bool(resolved)
+    cause_suffix = f" (cause: {failure_cause})" if failure_cause else ""
+    logger.warning(
+        "integration resolution: the paused rebase for '{}' was not resolved: {}{}",
+        target,
+        reason or "no terminal evidence",
+        cause_suffix,
+    )
+    return False
 
 
 def _resolve_paused_rebase(

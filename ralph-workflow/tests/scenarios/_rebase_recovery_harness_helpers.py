@@ -24,16 +24,35 @@ pytestmark = pytest.mark.subprocess_e2e
 
 __all__ = [
     "FakeAgentRunner",
+    "StatusCaptureDisplay",
     "_capture_log_records",
     "capture_operator_lines",
     "corrupted_config",
     "empty_resolution_stop_snapshot",
+    "log_status_outcome",
     "paused_partial_out_of_reach_rebase",
     "paused_three_commit_first_stop_rebase",
     "scenario_config",
     "shared_executor_seam",
     "supervisor_restart",
 ]
+
+
+class StatusCaptureDisplay:
+    def __init__(self) -> None:
+        self.lines: list[OperatorLine] = []
+
+    def emit_warn_line(self, _unit_id: str, _tag: str, message: str) -> None:
+        self.lines.append(OperatorLine("WARNING", message))
+
+    def emit(self, _unit_id: str | None, message: str) -> None:
+        self.lines.append(OperatorLine("INFO", str(message)))
+
+
+def log_status_outcome(display: StatusCaptureDisplay, outcome: object, *, root: Path) -> None:
+    from ralph.pipeline.runner import log_auto_integrate_outcome
+
+    log_auto_integrate_outcome(display, outcome, root=root)
 
 
 @contextmanager

@@ -31,6 +31,7 @@ from ralph.pipeline.integration_diagnostic import (
 )
 from ralph.pipeline.operation_evidence import InMemoryOperationEvidenceCollector, OperationFact
 from ralph.pipeline.plumbing import commit_plumbing
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
 from ralph.policy.models import AgentsPolicy
 from ralph.project_policy import cli_integration, remediation
 from ralph.project_policy.cli_integration import LoadResult
@@ -80,7 +81,7 @@ def _resolver_invoke(
     bundle = policy_invocation_bundle()
 
     def invoke(agent: str, prompt: Path) -> bool:
-        return bool(
+        return isinstance(
             invoke_resolution_agent(
                 agent_name=agent,
                 prompt_path=prompt,
@@ -92,7 +93,8 @@ def _resolver_invoke(
                 display_context=display_context,
                 session=session,
                 require_completion_evidence=True,
-            )
+            ),
+            ResolvedOutcome,
         )
 
     return invoke

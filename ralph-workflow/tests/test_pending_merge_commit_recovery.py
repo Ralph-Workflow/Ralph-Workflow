@@ -16,6 +16,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests._resolver_controller import make_resolver_controller
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -347,6 +348,7 @@ def test_successful_hook_cannot_publish_changed_verified_merge(tmp_git_repo: Pat
         WorkspaceScope(root),
         RebaseState(),
         conflict_resolver=resolve,
+        recovery_controller=make_resolver_controller(),
     )
     assert outcome is not None and not outcome.fast_forwarded
     assert outcome.recovery_record_retained
