@@ -22,8 +22,8 @@ from ralph.git.commit_review import (
     add_to_git_exclude,
     is_recognized_secret_path,
 )
+from ralph.git.errors import CommitTreeMismatchError
 from ralph.git.operations import (
-    CommitTreeMismatchError,
     create_commit,
     create_commit_with_hooks,
     get_head_sha,

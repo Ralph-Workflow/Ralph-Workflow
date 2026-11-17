@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 from functools import lru_cache
-from typing import Final, Protocol, TypedDict, cast, runtime_checkable
+from typing import Final, Protocol, TypedDict, runtime_checkable
 
 import pygments.token as pygments_token
 from pygments.style import Style as PygmentsStyle
@@ -20,7 +15,6 @@ from pygments.token import (
     Punctuation,
     String,
     Text,
-    _TokenType,
 )
 
 from ralph.display._palette import (
@@ -243,6 +237,6 @@ def _style(colors: dict[str, str]) -> type[PygmentsStyle]:
 
     class RalphSyntaxTheme(PygmentsStyle):
         default_style = namespace["default_style"]
-        styles = cast("Mapping[_TokenType, str]", namespace["styles"])
+        styles = namespace["styles"]
 
     return RalphSyntaxTheme

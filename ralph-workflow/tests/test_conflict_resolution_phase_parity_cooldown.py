@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -32,6 +33,10 @@ from tests._conflict_resolution_phase_parity_seams import (
     _policy_bundle,
 )
 
+if TYPE_CHECKING:
+    from ralph.pipeline.run_loop import LoopContext
+    from ralph.pipeline.state import PipelineState
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_shared_eligibility_governs_run_loop_escalation_and_cooldown": (
         "launch permission and cold-capped escalation follow shared any_eligible / "
@@ -42,8 +47,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "handle_cooldown_delay rather than an integration-only advance/_sleep fork"
     ),
     "test_revive_cooling_candidates_uses_shared_handle_cooldown_delay": (
-        "in-round revive waits for cooling candidates must sleep through ordinary "
-        "handle_cooldown_delay rather than a hasattr(advance)/_sleep fork"
+        "removed: it imported the private _driver_rounds module, called "
+        "_revive_cooling_candidates directly and grepped its source, which the frozen "
+        "white-box baseline rejects; the shared handle_cooldown_delay wait is asserted "
+        "through run_conflict_resolution_pipeline by "
+        "test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay"
     ),
 }
 
@@ -165,59 +173,6 @@ def test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay(
     assert clock.monotonic() == 7.0
     assert controller.agent_eligibility("rebase_conflict_resolution", "one").is_eligible
     assert not hasattr(driver_module, "_wait_for_candidates_if_cooling_down")
-
-
-def test_revive_cooling_candidates_uses_shared_handle_cooldown_delay(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from ralph.pipeline.conflict_resolution import _driver_rounds as rounds_module
-
-    clock = _CooldownClock(start=0.0)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            clock=clock,
-            unavailability_entries={
-                "one": UnavailabilityEntry(
-                    unavailable_until_ms=5000,
-                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-                    attempt=1,
-                    base_backoff_ms=5000,
-                    max_backoff_ms=18000000,
-                )
-            },
-        )
-    )
-    session = ResolutionSession(recovery_controller=controller)
-    delay_ms_seen: list[int] = []
-    real_handle = run_loop.handle_cooldown_delay
-
-    def _spy_handle(state: PipelineState, ctx: LoopContext) -> PipelineState:
-        delay = state.last_retry_delay_ms
-        if isinstance(delay, int) and delay > 0:
-            delay_ms_seen.append(delay)
-        return real_handle(state, ctx)
-
-    monkeypatch.setattr(run_loop, "handle_cooldown_delay", _spy_handle)
-    if hasattr(rounds_module, "handle_cooldown_delay"):
-        monkeypatch.setattr(rounds_module, "handle_cooldown_delay", _spy_handle)
-
-    revived = rounds_module._revive_cooling_candidates(
-        session,
-        ("one",),
-        set(),
-        frozenset(),
-        cohort_wait_ms=5000,
-    )
-
-    assert revived is True
-    assert delay_ms_seen == [5000]
-    assert clock.monotonic() == 5.0
-    assert controller.agent_eligibility("rebase_conflict_resolution", "one").is_eligible
-    import inspect
-
-    source = inspect.getsource(rounds_module._revive_cooling_candidates)
-    assert "handle_cooldown_delay" in source
-    assert 'hasattr(controller._clock, "advance")' not in source
 
 
 @pytest.mark.parametrize(

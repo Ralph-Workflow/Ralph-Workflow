@@ -200,6 +200,15 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class CooldownWaitContext:
+    sleep: Callable[[float], None]
+    controller: RecoveryController
+    active_display: ParallelDisplay | None = None
+    last_waiting_state_phase: str | None = None
+    last_waiting_state_sig: tuple[str, str] | None = None
+
+
+@dataclass
 class LoopContext:
     policy_bundle: PolicyBundle
     workspace_scope: WorkspaceScope
@@ -564,7 +573,7 @@ def _target_worktree_path(ctx: LoopContext) -> str | None:
 
 def log_waiting_state(
     state: PipelineState,
-    ctx: LoopContext,
+    ctx: LoopContext | CooldownWaitContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
@@ -592,7 +601,7 @@ def log_waiting_state(
 
 def _log_waiting_state(
     state: PipelineState,
-    ctx: LoopContext,
+    ctx: LoopContext | CooldownWaitContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
@@ -602,7 +611,7 @@ def _log_waiting_state(
 
 def _log_resumed_state(
     state: PipelineState,
-    ctx: LoopContext,
+    ctx: LoopContext | CooldownWaitContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
@@ -1477,7 +1486,7 @@ def _reselect_preferred_agent(
 
 def _resume_after_cooldown_wait(
     state: PipelineState,
-    ctx: LoopContext,
+    ctx: LoopContext | CooldownWaitContext,
     phase: str,
     unavailability_reason: str,
     delay_ms: int,
@@ -1490,7 +1499,7 @@ def _resume_after_cooldown_wait(
     from ralph.workspace.scope import WorkspaceScope
 
     ws_candidate: object = getattr(ctx, "workspace_scope", None)
-    if isinstance(ws_candidate, WorkspaceScope):
+    if isinstance(ws_candidate, WorkspaceScope) and not isinstance(ctx, CooldownWaitContext):
         verdict = inspect_integration_resolution(ws_candidate.root, state.rebase)
         if verdict.dispatch_allowed:
             state = _reselect_preferred_agent(state, ctx, allow_wait=False)
@@ -1636,7 +1645,11 @@ def _cold_capped_escalation_due(
             return False
         if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
             return False
-    elif not rebase.resolution_exhausted or resolver_allowed(rebase, target, identity) or _firm_conflict_identity_bound(rebase, identity):
+    elif (
+        not rebase.resolution_exhausted
+        or resolver_allowed(rebase, target, identity)
+        or _firm_conflict_identity_bound(rebase, identity)
+    ):
         return False
     session_attempted: object = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -3372,7 +3385,9 @@ def _handle_pending_retry(
     return handle_pending_retry(state, ctx, rebase, detail, backend)
 
 
-def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineState:
+def _handle_cooldown_delay(
+    state: PipelineState, ctx: LoopContext | CooldownWaitContext
+) -> PipelineState:
     delay_ms = state.last_retry_delay_ms
     if not isinstance(delay_ms, int) or delay_ms <= 0:
         return state

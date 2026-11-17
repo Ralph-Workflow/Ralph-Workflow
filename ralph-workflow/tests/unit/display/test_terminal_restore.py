@@ -16,6 +16,15 @@ from ralph.display.terminal_restore import (
     terminal_restore_sequence,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_previous": (
+        "fa91f65f0 widened the pinned set to SIGINT without installing a SIGINT handler; "
+        "the gated set stays SIGTERM, SIGHUP and SIGQUIT because Ctrl-C restores the "
+        "terminal through KeyboardInterrupt and atexit, which the sigint subprocess "
+        "regression test already proves"
+    ),
+}
+
 
 class _FakeStream:
     def __init__(self, *, is_tty: bool, fd: int) -> None:
@@ -190,12 +199,7 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
         set_global_snapshot(saved_modes)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)
-        assert set(installed) == {
-            signal.SIGINT,
-            signal.SIGTERM,
-            signal.SIGHUP,
-            signal.SIGQUIT,
-        }
+        assert set(installed) == {signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT}
         handler = installed[signal.SIGTERM]
         assert callable(handler)
         handler(signal.SIGTERM, None)

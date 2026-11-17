@@ -1159,8 +1159,6 @@ def _wait_for_eligible_agent(
     session: ResolutionSession,
     candidates: Sequence[str],
 ) -> int:
-    from types import SimpleNamespace
-
     from ralph.pipeline import run_loop
 
     controller = session.recovery_controller
@@ -1169,33 +1167,15 @@ def _wait_for_eligible_agent(
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
     if wait_ms <= 0:
         return 0
-    state = (
-        session.recovery_state
-        if isinstance(session.recovery_state, PipelineState)
-        else PipelineState(phase=PHASE_RESOLUTION)
-    )
-    state = state.copy_with(last_retry_delay_ms=wait_ms)
-
-    def _shared_sleep(seconds: float) -> None:
-        _sleep_seconds(seconds)
-
+    tracked = session.recovery_state
+    state = tracked if isinstance(tracked, PipelineState) else PipelineState(phase=PHASE_RESOLUTION)
     state = run_loop.handle_cooldown_delay(
-        state,
-        cast(
-            "run_loop.LoopContext",
-            SimpleNamespace(
-                sleep=_shared_sleep,
-                active_display=None,
-                last_waiting_state_phase=None,
-                last_waiting_state_sig=None,
-                controller=controller,
-            ),
-        ),
+        state.copy_with(last_retry_delay_ms=wait_ms),
+        run_loop.CooldownWaitContext(sleep=_sleep_seconds, controller=controller),
     )
     controller.prune_expired()
-    if state.is_waiting_state:
-        state = state.clear_waiting()
-    session.recovery_state = state
+    if isinstance(tracked, PipelineState):
+        session.recovery_state = state.clear_waiting() if state.is_waiting_state else state
     return wait_ms
 
 

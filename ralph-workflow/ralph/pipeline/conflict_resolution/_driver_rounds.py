@@ -457,8 +457,6 @@ def _revive_cooling_candidates(
     skipped: frozenset[str],
     cohort_wait_ms: int,
 ) -> bool:
-    from types import SimpleNamespace
-
     from ralph.pipeline import run_loop
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
@@ -487,18 +485,11 @@ def _revive_cooling_candidates(
         else PipelineState(phase=PHASE_RESOLUTION)
     )
     state = state.copy_with(last_retry_delay_ms=wait_ms)
-    state = run_loop.handle_cooldown_delay(
+    from ralph.pipeline.conflict_resolution import driver as _driver_mod
+
+    run_loop.handle_cooldown_delay(
         state,
-        cast(
-            "run_loop.LoopContext",
-            SimpleNamespace(
-                sleep=controller.clock.sleep,
-                active_display=None,
-                last_waiting_state_phase=None,
-                last_waiting_state_sig=None,
-                controller=controller,
-            ),
-        ),
+        run_loop.CooldownWaitContext(sleep=_driver_mod._sleep_seconds, controller=controller),
     )
     controller.prune_expired()
     return any(

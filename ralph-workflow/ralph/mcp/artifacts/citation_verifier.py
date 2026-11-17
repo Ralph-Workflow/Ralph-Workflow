@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Sequence
 
 
 @runtime_checkable
@@ -342,7 +342,6 @@ def _entry_tracked_paths(entry: object) -> frozenset[str]:
     items = _path_collection(raw)
     if items is None:
         return frozenset()
-    items = cast("Iterable[object]", raw)
     return frozenset(str(item) for item in items)
 
 
