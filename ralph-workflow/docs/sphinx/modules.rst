@@ -886,6 +886,13 @@ ralph.pipeline.checkpoint
    :members:
    :show-inheritance:
 
+ralph.pipeline.cooldown_wait_context
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.cooldown_wait_context
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.cycle_baseline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1883,6 +1890,20 @@ ralph.git.commit_review
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.commit_review
+   :members:
+   :show-inheritance:
+
+ralph.git.git_operation_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.git_operation_error
+   :members:
+   :show-inheritance:
+
+ralph.git.commit_tree_mismatch_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.commit_tree_mismatch_error
    :members:
    :show-inheritance:
 

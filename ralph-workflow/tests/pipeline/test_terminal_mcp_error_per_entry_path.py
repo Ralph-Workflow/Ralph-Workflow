@@ -19,6 +19,7 @@ from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
+from ralph.pipeline.conflict_resolution.driver import stop_outcome_from_attempt_result
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
@@ -26,7 +27,7 @@ from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
-from ralph.pipeline.resolution_outcome import RetryLaterOutcome
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome, StopResolutionOutcome
 from ralph.pipeline.runner import load_policy_bundle_for_run
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import cli_integration
@@ -63,9 +64,9 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": (
-        "invoke_resolution_agent reports a typed outcome instead of a boolean; "
-        "the conflict-session case asserts the RetryLaterOutcome that carries "
-        "the MCP server error"
+        "the conflict-session API returns the raw attempt result; the typed "
+        "resolution outcome is produced by the driver's single conversion "
+        "stop_outcome_from_attempt_result, so the case asserts that conversion"
     ),
 }
 
@@ -308,7 +309,7 @@ class _WorkerOutcome:
 
 @dataclass(frozen=True)
 class _ConflictOutcome:
-    launched: bool
+    launched: StopResolutionOutcome
     last_attempt_evidence: str | None
 
 
@@ -472,7 +473,7 @@ def _drive_conflict_session(
     prompt_path = tmp_path / "resolution_prompt.md"
     prompt_path.write_text("resolve", encoding="utf-8")
     session = ResolutionSession()
-    launched = invoke_resolution_agent(
+    attempt = invoke_resolution_agent(
         agent_name="resolver",
         prompt_path=prompt_path,
         config=UnifiedConfig.model_validate({"general": {"agent_idle_timeout_seconds": 300.0}}),
@@ -483,7 +484,8 @@ def _drive_conflict_session(
         display_context=make_display_context(),
         session=session,
     )
-    return _ConflictOutcome(launched=launched, last_attempt_evidence=session.last_attempt_evidence)
+    outcome = stop_outcome_from_attempt_result(session, attempt, agent_name="resolver")
+    return _ConflictOutcome(launched=outcome, last_attempt_evidence=session.last_attempt_evidence)
 
 
 def _assert_conflict_outcome(outcome: object) -> None:
