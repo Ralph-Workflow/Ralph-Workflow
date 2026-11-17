@@ -1,5 +1,5 @@
 {
-  "note": "R1 (S1 baseline arm, round 1) was invalid: ENOSPC, agent commands never started, no source change. Per DA-04 exactly one treatment-blind replacement arm R1b was run; R1b is valid, so S1 is evaluable. R1's round-1 scores are discarded and no treatment effect is inferred from R1. R3 (S2 baseline arm) failed with agent_exit 124 after wall_seconds 720 (harness timeout); per replay-plan §6 a timed-out run is a failure on the pack, not a replaceable sample, so S2 is excluded from scored treatment effects. Pilot remains below the replay-plan section-6 minimum (n=1 per category); no disposition changed; full replay outstanding.",
+  "note": "Hand-authored reconstruction of a policy-v6 pilot replay, not raw captured output from ralph-workflow/scripts/policy_v5_replay_run.sh; ralph-workflow/tests/fixtures/policy_v6_replay_runs/provenance.json records that status for every file in this fixture. R1 (S1 baseline arm, round 1) was invalid: ENOSPC, agent commands never started, no source change. Under paired-replay §6 (ralph-workflow/docs/agents/policy-v5-paired-replay-plan.md), one treatment-blind replacement arm R1b was run; R1b is valid, so S1 is evaluable. R1's round-1 scores are discarded and no treatment effect is inferred from R1. R3 (S2 baseline arm) failed with agent_exit 124 after wall_seconds 720 (harness timeout); per §6 a timed-out run is a failure on the pack, not a replaceable sample, so S2 is excluded from scored treatment effects. The R1 invalid reason's transcript.jsonl reference resolves to the provenance-only transcript.jsonl notice in this directory; no raw transcript is claimed. Every ledger scores_path is null because no raw cold-scoring artifact is shipped; the metric values and pack digests in this file are reconstruction values, not captured evidence. Pilot remains below the §6 minimum (n=1 per category); no disposition changed; full replay outstanding.",
   "r1_invalid_reason": "ENOSPC: agent commands never started; no source change (see transcript.jsonl)",
   "r3_failed_reason": "agent_exit 124 / wall_seconds 720 (harness timeout 720); §6 failure on the S2 pack",
   "excluded_from_scored_treatment_effects": ["S2"],
@@ -11,42 +11,42 @@
       "treatment_pack_sha256": "2874065a7ad5141546d5a505205b0bf6586eeef613f0f4e67e3246d63080f55e",
       "rules": [
         {
-          "rule": "check first",
+          "rule": "Check first",
           "baseline_score": 2,
           "treatment_score": 2,
           "difference": 0,
           "n_per_category": 1
         },
         {
-          "rule": "real-artifact evidence",
+          "rule": "Real-artifact evidence",
           "baseline_score": 1,
           "treatment_score": 1,
           "difference": 0,
           "n_per_category": 1
         },
         {
-          "rule": "test integrity",
+          "rule": "Test integrity",
           "baseline_score": 2,
           "treatment_score": 2,
           "difference": 0,
           "n_per_category": 1
         },
         {
-          "rule": "regression test from spec",
+          "rule": "Regression tests from spec",
           "baseline_score": 2,
           "treatment_score": 2,
           "difference": 0,
           "n_per_category": 1
         },
         {
-          "rule": "smallest change",
+          "rule": "Smallest change",
           "baseline_score": 2,
           "treatment_score": 2,
           "difference": 0,
           "n_per_category": 1
         },
         {
-          "rule": "handoff by artifact",
+          "rule": "Handoff by artifact",
           "baseline_score": 2,
           "treatment_score": 2,
           "difference": 0,

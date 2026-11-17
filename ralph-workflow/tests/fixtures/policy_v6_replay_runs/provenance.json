@@ -1,0 +1,15 @@
+{
+  "fixture": "policy_v6_replay_runs",
+  "provenance": "hand-authored reconstruction of a policy-v6 pilot replay",
+  "raw_capture_available": false,
+  "runner_reference": "ralph-workflow/scripts/policy_v5_replay_run.sh",
+  "plan_reference": "ralph-workflow/docs/agents/policy-v5-paired-replay-plan.md",
+  "plan_section": "§6",
+  "pinned_test_reference": "ralph-workflow/tests/test_paired_replay_plan_sync.py",
+  "reconstructed_artifacts": {
+    "ledger.jsonl": "Reconstruction of the section-6 run outcomes; the R1 invalid reason is the unchanged test-pinned contract, and no raw cold-scoring artifact is claimed.",
+    "unblinded.json": "Reconstruction of the S1 aggregate and S2 exclusion; its metric values and pack digests are not captured evidence.",
+    "R3/agent_exit": "Reconstruction of the pinned R3 exit code 124.",
+    "transcript.jsonl": "Provenance notice only; no raw R1 harness transcript was captured."
+  }
+}

@@ -65,23 +65,26 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_remote_reconciliation_preserves_and_resumes_target_agent_work": (
         "consolidated the raises parameter cases into the raising case which verifies that interrupted resolvers preserve partial repairs on disk and allow subsequent transaction recovery"
     ),
-    "test_verified_resolution_using_target_version_lands_and_synchronizes": (
-        "MERGE: fold into test_rebase_continuation_rejection_retains_resolved_stop, which "
-        "lands via stop-resolver target content, keeps nonconflicting feature.txt, and "
-        "clears the in-progress rebase after recovery"
-    ),
-    "test_interrupted_merge_resolver_preserves_edits_for_next_agent": (
-        "MERGE: keep merge raise-path and merge_marker path so both interrupt styles remain "
-        "covered on merge; interrupted rebase-stop raise/resume stays covered by "
-        "test_remote_reconciliation_preserves_and_resumes_target_agent_work"
-    ),
     "test_saved_rebase_stop_recovers_empty_replay_or_next_conflict": (
-        "MERGE: keep the next_conflict retention path; empty and rename successful-continue "
-        "cases are covered by rebase_continuation's final landed recovery of a pending continue"
+        "the next_conflict retention path and the rename successful-continue path are both "
+        "kept: the rename case proves that a target-side file rename is carried onto the "
+        "renamed path when the pending rebase continues, which no other case observes"
     ),
     "test_planning_lands_commits_without_committing_dirty_edits": (
-        "MERGE: keep the target-advanced dirty-worktree skip path; the non-advanced case "
-        "asserted the same deferred catch-up outcome"
+        "both the target-advanced and the non-advanced dirty-worktree skip paths are kept: "
+        "the non-advanced case proves the deferred catch-up outcome when the integration "
+        "target still sits at the branch fork point"
+    ),
+    "test_verified_resolution_using_target_version_lands_and_synchronizes": (
+        "the rebase-stop landing path stays covered by "
+        "test_rebase_continuation_rejection_retains_resolved_stop; the no-rebase-stop path "
+        "is restored here because it is the only case proving that a conflict resolved "
+        "without a rebase stop resolver still lands and synchronises the target"
+    ),
+    "test_interrupted_merge_resolver_preserves_edits_for_next_agent": (
+        "the merge raise path, the merge marker path and the rebase marker path are all "
+        "kept: the rebase marker path is the only case proving that an interrupted rebase "
+        "resolver that leaves conflict markers behind is re-driven by the next agent"
     ),
     "rejected merge reuses diverged session template": (
         "rejected-merge still starts from diverged feature/target shared.txt tips; only "
@@ -109,6 +112,8 @@ class _TemplateMeta(TypedDict, total=False):
     remote_meta: tuple[str, str]
     feature_base: str
     planning_base: str
+    planning_seed: str
+    verified_base: str
     bare_base: str
 
 
@@ -361,7 +366,7 @@ def _register_feature_template(root: Path) -> None:
 
 def _register_planning_template(root: Path) -> None:
     planning_base = _base_branch(root)
-    _commit_file(root, "tracked.txt", "base\n", "seed tracked")
+    planning_seed = _commit_file(root, "tracked.txt", "base\n", "seed tracked")
     assert _run(root, "checkout", "-b", "feature").returncode == 0
     _commit_file(root, "feature.txt", "feature\n", "feature work")
     assert _run(root, "checkout", planning_base).returncode == 0
@@ -369,6 +374,20 @@ def _register_planning_template(root: Path) -> None:
     assert _run(root, "checkout", "feature").returncode == 0
     _TEMPLATES["planning"] = root
     _TEMPLATE_META["planning_base"] = planning_base
+    _TEMPLATE_META["planning_seed"] = planning_seed
+
+
+def _register_verified_template(root: Path) -> None:
+    verified_base = _base_branch(root)
+    _commit_file(root, "shared.txt", "original\n", "seed")
+    assert _run(root, "checkout", "-b", "feature").returncode == 0
+    _commit_file(root, "shared.txt", "feature work\n", "feature work")
+    _commit_file(root, "feature.txt", "nonconflicting feature\n", "additional feature")
+    assert _run(root, "checkout", verified_base).returncode == 0
+    _commit_file(root, "shared.txt", "mainline\n", "mainline")
+    assert _run(root, "checkout", "feature").returncode == 0
+    _TEMPLATES["verified"] = root
+    _TEMPLATE_META["verified_base"] = verified_base
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -386,6 +405,7 @@ def _obstruction_templates(
     _register_remote_template(_new("remote"))
     _register_feature_template(_new("feature"))
     _register_planning_template(_new("planning"))
+    _register_verified_template(_new("verified"))
     bare = _new("bare")
     _TEMPLATES["bare"] = bare
     _TEMPLATE_META["bare_base"] = _base_branch(bare)

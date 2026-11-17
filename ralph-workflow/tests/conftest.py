@@ -513,10 +513,29 @@ def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return template_root
 
 
+_GIT_OBJECTS_PATH_SEGMENT = os.sep + ".git" + os.sep + "objects" + os.sep
+_GIT_OBJECTS_INFO_SEGMENT = os.sep + ".git" + os.sep + "objects" + os.sep + "info" + os.sep
+
+
+def _link_git_objects_or_copy(src: str, dst: str) -> None:
+    if (
+        _GIT_OBJECTS_PATH_SEGMENT in src
+        and _GIT_OBJECTS_INFO_SEGMENT not in src
+        and not Path(src).is_symlink()
+    ):
+        try:
+            os.link(src, dst)
+        except OSError:
+            pass
+        else:
+            return
+    shutil.copy2(src, dst)
+
+
 @pytest.fixture
 def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     repo_path = tmp_path / "repo"
-    shutil.copytree(_git_repo_template, repo_path)
+    shutil.copytree(_git_repo_template, repo_path, copy_function=_link_git_objects_or_copy)
     return repo_path
 
 

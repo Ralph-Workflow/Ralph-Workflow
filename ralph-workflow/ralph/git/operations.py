@@ -46,7 +46,6 @@ from ralph.git._lock_recovery import (
 )
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.commit_tree_mismatch_error import CommitTreeMismatchError
-from ralph.git.errors import GitOperationError
 from ralph.git.git_command_queue import (
     _classify_exception as _queue_outcome_kind,
 )
@@ -54,6 +53,7 @@ from ralph.git.git_command_queue import (
     get_queue_for_repo,
     route_git_method,
 )
+from ralph.git.git_operation_error import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 

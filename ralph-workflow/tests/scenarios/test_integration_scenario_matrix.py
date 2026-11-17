@@ -35,6 +35,7 @@ from tests.scenarios._ralphsite_worktree_copy import (
     setup_ralphsite_wt04_worktree,
 )
 from tests.scenarios._rebase_recovery_harness import (
+    run_empty_resolution_stop_anchor_ancestry,
     run_empty_resolution_stop_landed_by_tree,
     run_three_commit_rebase_landed_anchor_chain,
     run_three_commit_rebase_unrelated_head_rejected_once,
@@ -67,15 +68,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "proven-landed verdict assertion unchanged"
     ),
     "test_symptom_5_empty_resolution_stop_proven_landed_by_tree": (
-        "MERGE: one empty-resolution stop lands once; asserts both proven-landed-by-tree "
-        "and proven-landed-by-anchor-ancestry verdicts on the same ScenarioResult"
+        "KEEP: one empty-resolution stop pins the recorded-tree landing verdict and "
+        "requires HEAD to equal the target"
     ),
     "test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry": (
-        "MERGE: folded into test_symptom_5_empty_resolution_stop_proven_landed_by_tree"
+        "KEEP: restore a separate empty-resolution stop that pins the "
+        "proven-landed-by-anchor-ancestry operator verdict"
     ),
     "test_symptom_5_unrelated_head_rejected_once_then_quiet": (
-        "paused three-commit fixture is cached; rejected-once still requires further quiet "
-        "supervisor ticks with no resolver launch (probe depth two, same quietness signal)"
+        "paused three-commit fixture is cached; rejected-once still requires ten quiet "
+        "supervisor ticks with no resolver launch"
     ),
     "test_symptom_6_unstaged_text_and_gitlink_conflict_staged_and_continued": (
         "paused_sixth_symptom_unstaged_gitlink_rebase materializes a cached paused rebase; "
@@ -633,6 +635,20 @@ def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
         "empty-resolution landing must also place HEAD on the target so anchor-ancestry "
         f"proof holds; HEAD={head} target={target}"
     )
+
+
+def test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry(
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    result = run_empty_resolution_stop_anchor_ancestry(repo_dir)
+
+    assert result.resolver_launches >= 1
+    assert result.terminal_state == "landed"
+    verdict = [
+        line for line in result.operator_lines if "proven landed by anchor ancestry" in line.content
+    ]
+    assert verdict
 
 
 def test_symptom_5_unrelated_head_rejected_once_then_quiet(

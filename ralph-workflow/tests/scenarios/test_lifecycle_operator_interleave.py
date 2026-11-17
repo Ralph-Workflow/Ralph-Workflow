@@ -36,12 +36,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "feature tip reads use GitPython instead of git rev-parse subprocess"
     ),
     "operator_preland_merge_covers_cherry_pick": (
-        "MERGE: keep continue/reset/manual-land; cherry-pick's next-tick observation of "
-        "operator-prelanded feature content is covered by manual-land's content-equivalence"
+        "KEEP: restore the cherry-pick interleave and its next-tick content-equivalence "
+        "assertion; manual landing remains a separate operator action"
     ),
     "operator_abort_covered_by_diverged_conflict": (
-        "MERGE: keep continue/reset/manual-land; abort-then-reintegrate of a conflicted "
-        "divergence is covered by test_diverged_with_conflicts_lands_the_resolved_feature"
+        "KEEP: restore the abort interleave and its next-tick content-equivalence "
+        "assertion; a conflict-free relation case does not exercise rebase abort"
     ),
 }
 
@@ -134,20 +134,31 @@ def _drive(root: Path) -> object:
     return drive_integration(root, resolver=runner, clock=clock)
 
 
-@pytest.mark.parametrize("action", ["continue", "reset", "manual-land"])
+@pytest.mark.parametrize(
+    "action", ["abort", "continue", "reset", "cherry-pick", "manual-land"]
+)
 def test_operator_action_between_ticks_is_observed(tmp_path: Path, action: str) -> None:
-    if action == "continue":
-        root = _materialize(_paused_rebase_template(), tmp_path / "repo")
-    else:
-        root = _materialize(_diverged_template(), tmp_path / "repo")
+    root = _materialize(_paused_rebase_template(), tmp_path / "repo")
     feature_sha = _sha(root, "feature")
-    if action == "continue":
+    if action == "abort":
+        git(root, "rebase", "--abort")
+    elif action == "continue":
         (root / "shared.txt").write_text("operator resolution\n", encoding="utf-8")
         git(root, "add", "shared.txt")
         git(root, "-c", "core.editor=:", "rebase", "--continue")
     elif action == "reset":
+        git(root, "rebase", "--abort")
         git(root, "reset", "--hard", "main")
+    elif action == "cherry-pick":
+        git(root, "rebase", "--abort")
+        git(root, "checkout", "-q", "main")
+        git(root, "cherry-pick", feature_sha, check=False)
+        (root / "shared.txt").write_text("operator resolution\n", encoding="utf-8")
+        git(root, "add", "shared.txt")
+        git(root, "-c", "core.editor=:", "cherry-pick", "--continue")
+        git(root, "checkout", "-q", "feature")
     else:
+        git(root, "rebase", "--abort")
         git(root, "checkout", "-q", "main")
         git(root, "merge", "-q", "--no-ff", "-m", "manual landing", "feature", check=False)
         (root / "shared.txt").write_text("operator resolution\n", encoding="utf-8")

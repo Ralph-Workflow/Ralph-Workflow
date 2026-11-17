@@ -62,8 +62,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "run_three_commit_rebase_unrelated_head_rejected_once": (
         "HEAD is moved to the unrelated commit before the ticks run, the rejection line "
         "is appended only when that commit shares no history with the anchor chain, and "
-        "two further supervisor ticks must launch no resolver; the prior ten-tick probe "
-        "duplicated the same quietness signal at eight times the git cost"
+        "ten further supervisor ticks must launch no resolver or emit another operator line"
     ),
 }
 
@@ -536,10 +535,11 @@ def run_three_commit_rebase_unrelated_head_rejected_once(root: Path) -> Scenario
     )
     launches_before_ticks = runner.launches
     followup_lines: list[OperatorLine] = []
-    with shared_executor_seam(runner), capture_operator_lines() as tick_lines:
-        for tick in range(2):
-            _force_retry_stop(root, f"scenario-five-symptom-unrelated-head-tick-{tick}", runner)
-        followup_lines.extend(tick_lines)
+    with shared_executor_seam(runner):
+        for tick in range(10):
+            with capture_operator_lines() as tick_lines:
+                _force_retry_stop(root, f"scenario-five-symptom-unrelated-head-tick-{tick}", runner)
+            followup_lines.extend(tick_lines)
     quiet_afterwards = not followup_lines and runner.launches == launches_before_ticks
     terminal = "rejected-once" if unrelated_to_chain and quiet_afterwards else "repeats"
     return ScenarioResult(

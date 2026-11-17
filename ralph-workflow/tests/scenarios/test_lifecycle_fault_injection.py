@@ -53,10 +53,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "equivalence tree reads is replaced with GitPython"
     ),
     "test_fault_injection_paired_cells_land_autonomously": (
-        "MERGE: keep every stale-marker pair (SKIPPED external-rebase oracle) and a "
-        "spanning non-stale pair set where each perturbation appears at least once; "
-        "single-cell coverage already proves each perturbation alone, and removed "
-        "pairs asserted the same autonomous-land content equivalence"
+        "KEEP: restore all 36 paired perturbation cells; each stale-marker pair "
+        "pins the SKIPPED external-rebase oracle and every other pair pins "
+        "autonomous landing with content equivalence"
     ),
 }
 
@@ -523,19 +522,39 @@ def test_fault_injection_cell_lands_autonomously(tmp_git_repo: Path, perturbatio
         ("wrong-version-ledger", "target-moved"),
         ("older-record", "dirty-untracked"),
         ("agent-stages-nothing", "failing-hook"),
-        ("sibling-vendor", "cleanup-crash"),
-        ("agent-stages-nothing", "older-record"),
-        ("target-moved", "failing-hook"),
-        ("wrong-version-ledger", "sibling-vendor"),
-        ("dirty-untracked", "cleanup-crash"),
+        ("sibling-vendor", "older-record"),
+        ("agent-stages-nothing", "target-moved"),
+        ("agent-stages-nothing", "wrong-version-ledger"),
+        ("agent-stages-nothing", "sibling-vendor"),
         ("agent-stages-nothing", "stale-marker"),
+        ("agent-stages-nothing", "cleanup-crash"),
+        ("dirty-untracked", "sibling-vendor"),
+        ("target-moved", "failing-hook"),
         ("dirty-untracked", "stale-marker"),
+        ("dirty-untracked", "cleanup-crash"),
+        ("wrong-version-ledger", "failing-hook"),
         ("wrong-version-ledger", "stale-marker"),
+        ("older-record", "cleanup-crash"),
+        ("failing-hook", "sibling-vendor"),
         ("failing-hook", "stale-marker"),
+        ("failing-hook", "cleanup-crash"),
         ("stale-marker", "sibling-vendor"),
         ("stale-marker", "cleanup-crash"),
+        ("sibling-vendor", "cleanup-crash"),
+        ("agent-stages-nothing", "older-record"),
+        ("agent-stages-nothing", "dirty-untracked"),
         ("older-record", "stale-marker"),
+        ("older-record", "wrong-version-ledger"),
+        ("older-record", "target-moved"),
+        ("older-record", "failing-hook"),
+        ("wrong-version-ledger", "sibling-vendor"),
+        ("wrong-version-ledger", "dirty-untracked"),
+        ("wrong-version-ledger", "cleanup-crash"),
         ("target-moved", "stale-marker"),
+        ("target-moved", "sibling-vendor"),
+        ("target-moved", "dirty-untracked"),
+        ("target-moved", "cleanup-crash"),
+        ("dirty-untracked", "failing-hook"),
     ],
 )
 def test_fault_injection_paired_cells_land_autonomously(

@@ -8,6 +8,7 @@ import pytest
 from ralph.testing import repo_structure_boundary_rules as boundary_rules
 from ralph.testing.repo_structure_boundary_rules import (
     B4_ALLOWLIST,
+    B5_ALLOWLIST,
     B11_ALLOWLIST,
     B12_ALLOWLIST,
     RULE_PAIRINGS,
@@ -17,6 +18,7 @@ from ralph.testing.repo_structure_boundary_rules import (
 )
 
 _CONTROLLER_PATH = "ralph/recovery/controller.py"
+_PROJECT_POLICY_CLI_INTEGRATION_PATH = "ralph/project_policy/cli_integration.py"
 
 _REAL_CONTROLLER_SPENT_AGENTS_SNAPSHOT = """
 class RecoveryController:
@@ -726,6 +728,41 @@ def test_b11_regression_accepts_allowlisted_agent_dispatch(
     source = _b11_nested_dispatch_source(function_name, call_line)
     violations = collect_boundary_violations(path, source)
     assert not any(" B11 " in item for item in violations)
+
+
+def _b5_allowlist_without(path: str) -> MappingProxyType[str, str]:
+    return MappingProxyType({key: value for key, value in B5_ALLOWLIST.items() if key != path})
+
+
+def test_b5_allowlist_has_no_entry_for_the_project_policy_cli_integration() -> None:
+    assert _PROJECT_POLICY_CLI_INTEGRATION_PATH not in B5_ALLOWLIST
+    assert allowlist_justification("B5", _PROJECT_POLICY_CLI_INTEGRATION_PATH) is None
+
+
+def test_b5_detector_reports_no_violation_for_the_project_policy_cli_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        boundary_rules,
+        "B5_ALLOWLIST",
+        _b5_allowlist_without(_PROJECT_POLICY_CLI_INTEGRATION_PATH),
+    )
+    source = (_REPO_ROOT / _PROJECT_POLICY_CLI_INTEGRATION_PATH).read_text(encoding="utf-8")
+    violations = collect_boundary_violations(_PROJECT_POLICY_CLI_INTEGRATION_PATH, source)
+    assert not any(" B5 " in item for item in violations)
+
+
+def test_b5_detector_flags_a_low_level_agent_import_in_the_project_policy_cli_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        boundary_rules,
+        "B5_ALLOWLIST",
+        _b5_allowlist_without(_PROJECT_POLICY_CLI_INTEGRATION_PATH),
+    )
+    source = "from ralph.agents.invoke import invoke_agent\n"
+    violations = collect_boundary_violations(_PROJECT_POLICY_CLI_INTEGRATION_PATH, source)
+    assert any(" B5 " in item for item in violations)
 
 
 def test_b9_leaves_module_level_signalling_to_b4() -> None:

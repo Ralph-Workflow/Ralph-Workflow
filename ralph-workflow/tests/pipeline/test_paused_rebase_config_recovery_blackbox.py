@@ -44,6 +44,20 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "retained-round presentation cache that 6a173a2f8 deleted and left as a no-op; the "
         "hook and every caller are removed as dead code"
     ),
+    "hardlink_paused_rebase_template_objects": (
+        "paused rebase templates still materialize distinct workspaces; immutable git "
+        "object payloads are hardlinked when the filesystem allows it"
+    ),
+    "production_git_seam_paused_rebase_template": (
+        "paused rebase template seeds through the production run_git seam instead of "
+        "importing GitPython in the test, so the test keeps the real paused-rebase "
+        "fixture without crossing the Git boundary through a test-only library; "
+        "CONFIG_FAILURE / WAITING / RECOVERED asserts unchanged"
+    ),
+    "FakeClock_install_executors_on_recover": (
+        "recover_pending_merge drives install FakeClock via install_executors; "
+        "CONFIG_FAILURE / WAITING / RECOVERED asserts unchanged"
+    ),
 }
 
 
