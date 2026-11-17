@@ -1,26 +1,27 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-@dataclass
 class JavaGuidelines:
-    frameworks: tuple[str, ...] = ()
-    quality_checks: tuple[str, ...] = field(init=False)
-    security_checks: tuple[str, ...] = field(init=False)
-    performance_checks: tuple[str, ...] = field(init=False)
-    testing_checks: tuple[str, ...] = field(init=False)
-    documentation_checks: tuple[str, ...] = field(init=False)
-    idioms: tuple[str, ...] = field(init=False)
-    anti_patterns: tuple[str, ...] = field(init=False)
-    concurrency_checks: tuple[str, ...] = field(init=False)
-    resource_checks: tuple[str, ...] = field(init=False)
-    observability_checks: tuple[str, ...] = field(init=False)
-    api_design_checks: tuple[str, ...] = field(init=False)
+    __slots__ = (
+        "anti_patterns",
+        "api_design_checks",
+        "concurrency_checks",
+        "documentation_checks",
+        "frameworks",
+        "idioms",
+        "observability_checks",
+        "performance_checks",
+        "quality_checks",
+        "resource_checks",
+        "secrets_checks",
+        "security_checks",
+        "testing_checks",
+    )
 
     frameworks: tuple[str, ...]
     quality_checks: tuple[str, ...]
