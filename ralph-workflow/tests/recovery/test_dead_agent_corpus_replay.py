@@ -15,8 +15,14 @@ from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.attempt_facts import TerminationIssuer
+from ralph.recovery.attribution import attribute_attempt
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.dead_agent_verdict import (
+    decide_dead_agent_verdict,
+    verdict_benches_agent,
+    verdict_record,
+)
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
@@ -184,3 +190,68 @@ def test_a_new_fixture_is_replayed_without_editing_the_test() -> None:
         "claude_live_session_end_no_completion",
         "opencode_post_exit_watchdog_descendant_hang",
     } <= ids
+
+
+def test_the_labelled_corpus_covers_incidents_1_through_7() -> None:
+    fixtures = load_fixtures()
+    incidents: set[int] = set()
+    for fixture in fixtures:
+        declared = fixture.get("incidents") or [fixture.get("incident")]
+        assert isinstance(declared, list)
+        incidents.update(value for value in declared if isinstance(value, int))
+
+    assert set(range(1, 8)) <= incidents, (
+        f"the corpus lacks incidents {sorted(set(range(1, 8)) - incidents)}"
+    )
+    assert any(fixture.get("incident") == 7 for fixture in fixtures), (
+        "the corpus must hold the incident 7 probe half (trust dialog)"
+    )
+
+
+def test_the_replay_sample_covers_every_negative_under_every_applicable_probe_outcome() -> None:
+    negatives = [case for case in load_corpus() if case.label == "negative"]
+
+    assert negatives
+    unattributed = [
+        case
+        for case in negatives
+        if case.facts.termination is None
+        or case.facts.termination.issuer is TerminationIssuer.UNKNOWN
+    ]
+    unattributed_ids = {case.id for case in unattributed}
+    attributed = [case for case in negatives if case.id not in unattributed_ids]
+    expected_total = len(unattributed) * len(HEALTHY_AGENT_PROBE_OUTCOMES) + len(attributed) * len(
+        EVERY_PROBE_OUTCOME
+    )
+
+    assert expected_total == len(_negative_replays()), (
+        "the reported false-bench rate must cover the full negative-by-outcome cross-product"
+    )
+    replayed_counts: dict[str, int] = {}
+    for replay in _negative_replays():
+        replayed_counts[replay.case_id] = replayed_counts.get(replay.case_id, 0) + 1
+    assert replayed_counts == {case.id: len(_outcomes_for(case)) for case in negatives}
+
+
+def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination() -> None:
+    for case in load_corpus():
+        for outcome in _outcomes_for(case):
+            verdict = decide_dead_agent_verdict(
+                case.facts,
+                attribute_attempt(case.facts),
+                outcome,
+            )
+            record = verdict_record(PHASE, case.id, verdict)
+
+            assert record["schema_version"] == 2
+            assert record["verdict"] == verdict.verdict.value
+            assert record["probe_outcome"] == (outcome.value if outcome is not None else None)
+            assert (record["termination"] is None) is (case.facts.termination is None)
+            assert verdict.termination is case.facts.termination
+            assert record["return_code_discrepancy"] == verdict.return_code_discrepancy
+            if case.label == "negative":
+                assert verdict_benches_agent(verdict.verdict) is False
+                assert record["verdict"] != "agent_dead"
+            else:
+                expected_bench = outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK
+                assert verdict_benches_agent(verdict.verdict) is expected_bench

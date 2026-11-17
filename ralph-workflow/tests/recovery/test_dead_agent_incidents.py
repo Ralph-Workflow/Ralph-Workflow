@@ -835,3 +835,73 @@ def test_incident_5_live_session_without_completion_evidence_records_unknown_iss
     assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
         "an unknown verdict must never bench the agent"
     )
+
+
+def test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_spent() -> None:
+    from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
+    from ralph.recovery.attribution import Attribution, RuntimeCause, attribute_attempt
+    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.dead_agent_verdict import (
+        DeadAgentVerdict,
+        decide_dead_agent_verdict,
+        verdict_benches_agent,
+    )
+    from ralph.recovery.typed_signal import runtime_issued_termination_is_not_agent_fault
+
+    facts = AttemptFacts(
+        event_kinds=("tool_result",),
+        tool_calls=("Read",),
+        artifact_valid=False,
+        workspace_changed=None,
+        elapsed_to_terminal_ms=97_900,
+        exit_status="exit_0",
+        liveness_observed=True,
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=0,
+            reported_returncode=0,
+            liveness_observed=True,
+        ),
+    )
+
+    verdict = attribute_attempt(facts)
+    assert verdict.attribution is Attribution.RUNTIME, (
+        "an unattributed end of a visibly live session must be attributed to runtime "
+        f"(observed attribution: {verdict.attribution!r})"
+    )
+    assert verdict.runtime_cause is RuntimeCause.KILL_UNATTRIBUTED, (
+        f"the runtime cause must stay the unattributed kill (observed: {verdict.runtime_cause!r})"
+    )
+    assert runtime_issued_termination_is_not_agent_fault(facts) is False, (
+        "an unattributed (unknown-issuer) end must stay distinguishable from a "
+        "runtime-issued kill: criterion 14 records an unattributed end, criterion 15 "
+        "records a runtime-attributed end, and the two must never collapse"
+    )
+
+    dead_agent_verdict = decide_dead_agent_verdict(
+        facts, verdict, probe_outcome=ProbeOutcome.PASSED
+    )
+    assert dead_agent_verdict.verdict is DeadAgentVerdict.HEALTHY, (
+        "with a passing canary probe the agent is healthy, never convicted "
+        f"(observed: {dead_agent_verdict.verdict!r})"
+    )
+    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+        "a passing probe must never bench the agent "
+        f"(observed verdict: {dead_agent_verdict.verdict!r})"
+    )
+
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    outcome = controller.finalize_attempt(PHASE, "claude", facts=facts, attempt_failed=True)
+    assert outcome.kind.value in ("runtime_ended", "unknown"), (
+        f"the unattributed end stays a non-agent failure (observed: {outcome.kind.value!r})"
+    )
+    assert controller.snapshot()["spent_agents"] == {}, (
+        "an unattributed exit-0 after tool work must never be marked spent "
+        f"(observed: {controller.snapshot()['spent_agents']!r})"
+    )
+    assert controller.unavailability_store.is_available(PHASE, "claude") is True, (
+        "an unattributed exit-0 after tool work must not be benched"
+    )
+    assert controller.ledger.is_available(PHASE, "claude") is True, (
+        "the agent must remain selectable in the failure ledger"
+    )

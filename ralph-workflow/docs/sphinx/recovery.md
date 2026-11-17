@@ -88,7 +88,7 @@ Unavailable-agent cooldowns double on repeated failures, retaining history acros
 - Each call to `AgentUnavailabilityTracker.mark_unavailable` doubles the reason-specific base delay (`base_backoff_ms`) using the agent's prior attempt counter.
 - The computed delay is clamped at the smaller of the per-reason `max_backoff_ms` and the **universal 5-hour ceiling** (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000 ms`).
 - The recorded attempt counter is also clamped at the saturation threshold so repeated failures cannot construct arbitrarily large integers — the counter and the cooldown both stabilize at the cap.
-- Per-agent failure history is independent: claude failing in `development` does not affect claude's first failure in `review`. The base delay for the reason applies on the first failure in any phase.
+- Per-agent failure history is keyed by agent alone, with no phase scoping: claude failing in `development` escalates the same backoff counter and cooldown in `review`. The reason-specific base delay applies only on the first failure for that agent; a success clears the counter via `reset_backoff`.
 
 ### Custom policy caps
 

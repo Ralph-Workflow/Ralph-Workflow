@@ -311,6 +311,57 @@ def test_incident_6_hung_descendant_is_ordinary_child_and_kill_is_runtime_attrib
     )
 
 
+def test_incident_6_watchdog_kill_with_a_passing_probe_is_still_not_the_agents_failure() -> None:
+    from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
+    from ralph.recovery.attribution import Attribution, attribute_attempt
+    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.dead_agent_verdict import (
+        DeadAgentVerdict,
+        decide_dead_agent_verdict,
+        verdict_benches_agent,
+        verdict_counts_toward_agent_state,
+    )
+
+    facts = AttemptFacts(
+        event_kinds=("tool_result",),
+        tool_calls=("read_file",),
+        artifact_valid=False,
+        workspace_changed=None,
+        elapsed_to_terminal_ms=48_600,
+        exit_status="exit_0",
+        liveness_observed=True,
+        termination=TerminationRecord.create(
+            TerminationIssuer.POST_EXIT_WATCHDOG,
+            observed_returncode=0,
+            reported_returncode=0,
+            liveness_observed=True,
+        ),
+    )
+
+    verdict = attribute_attempt(facts)
+    assert verdict.attribution is Attribution.RUNTIME, (
+        "a watchdog kill of leftover descendants must be attributed to runtime "
+        f"(observed attribution: {verdict.attribution!r})"
+    )
+    dead_agent_verdict = decide_dead_agent_verdict(
+        facts, verdict, probe_outcome=ProbeOutcome.PASSED
+    )
+
+    assert dead_agent_verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT, (
+        "even with a passing canary probe the post-exit watchdog kill must stay "
+        "not_agent_fault: the watchdog's own kill is never counted as the agent's "
+        f"failure (observed: {dead_agent_verdict.verdict!r})"
+    )
+    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+        "a passing probe must never convert the watchdog kill into a bench "
+        f"(observed verdict: {dead_agent_verdict.verdict!r})"
+    )
+    assert verdict_counts_toward_agent_state(dead_agent_verdict.verdict) is False, (
+        "the watchdog kill must never count toward the agent's failure state "
+        f"(observed verdict: {dead_agent_verdict.verdict!r})"
+    )
+
+
 def test_incident_6_code_0_route_flags_discrepancy_only_when_conflicting() -> None:
     from ralph.recovery.attempt_facts import TerminationRecord
 

@@ -16,14 +16,20 @@ from ralph.agents.execution_state.claude_interactive_execution_strategy import (
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.spec import AgentSpec
 from ralph.agents.support import AgentSupport
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
+from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import (
     CANARY_MARKER_FILENAME,
     PROBE_INCONCLUSIVE_VERDICT,
     ProbeOutcome,
+    ProbeResult,
     run_canary_probe,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -166,3 +172,82 @@ def test_stub_refuses_pipe_route(tmp_path: Path) -> None:
         check=False,
     )
     assert proc.returncode == 2
+
+
+_PROBE_PHASE = "development"
+_AGENT_NAME = "fake-trust-dialog-cli"
+
+
+def _dead_attempt_facts() -> AttemptFacts:
+    return AttemptFacts(
+        event_kinds=("error",),
+        artifact_valid=False,
+        workspace_changed=False,
+        exit_status="exit_1",
+        liveness_observed=False,
+        termination=TerminationRecord.create(
+            TerminationIssuer.AGENT_EXIT,
+            observed_returncode=1,
+            reported_returncode=1,
+            liveness_observed=False,
+        ),
+    )
+
+
+@pytest.mark.timeout_seconds(20)
+@pytest.mark.parametrize("block", [True, False], ids=["blocks_forever", "exits_rc1"])
+def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+    block: bool,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    untrusted_parent = tmp_path / "untrusted-parent"
+    extra = {"STUB_BLOCK": "1"} if block else {}
+
+    def probe(config: AgentConfig) -> ProbeResult:
+        return run_canary_probe(
+            config,
+            timeout_s=3,
+            trusted_parent=untrusted_parent,
+            extra_env=_probe_env(trusted_root, **extra),
+        )
+
+    probe_runner = build_dead_agent_probe_runner(
+        lambda name: stub_agent_config if name == _AGENT_NAME else None,
+        probe,
+        max_probes=1,
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=0.0),
+            dead_agent_probe_runner=probe_runner,
+            agent_max_consecutive_unproductive=1,
+        )
+    )
+
+    outcome = controller.finalize_attempt(
+        _PROBE_PHASE,
+        _AGENT_NAME,
+        facts=_dead_attempt_facts(),
+        attempt_failed=True,
+    )
+
+    assert outcome.kind is AttemptOutcomeKind.UNKNOWN, (
+        "a probe that could not run (blocked first-run dialog) must keep the attempt "
+        f"verdict unknown, not agent_dead (observed: {outcome.kind})"
+    )
+    assert outcome.benches_agent is False
+    store = controller.unavailability_store
+    assert store.is_available(_PROBE_PHASE, _AGENT_NAME) is True, (
+        "after a probe that could not run, the agent must be selectable again; "
+        f"observed tracker snapshot: {store.snapshot()!r}"
+    )
+    assert store.earliest_unavailable_wait_ms(_PROBE_PHASE, [_AGENT_NAME]) == 0
+    reasons = store.snapshot().get("unavailability_reasons", {})
+    assert _AGENT_NAME not in reasons
+    assert controller.ledger.status(_PROBE_PHASE, _AGENT_NAME).is_spent is False
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.false_bench_feedback.count == 0
+    assert list(tmp_path.rglob(CANARY_MARKER_FILENAME)) == []

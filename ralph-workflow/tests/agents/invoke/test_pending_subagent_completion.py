@@ -185,6 +185,112 @@ def test_session_exits_exactly_once_after_pending_dispatch_completes(
             os.close(master_fd)
 
 
+def test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fault(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    transcript_path = _prepare_transcript(monkeypatch, tmp_path)
+    del transcript_path
+    master_fd, child, sentinel_path = _spawn_stub(tmp_path)
+    handle = _StubCliHandle(master_fd, child)
+    supervisor = AttemptSupervisor(handle)
+    reader = _reader(tmp_path, handle, supervisor, sentinel_path)
+    lines, reader_thread = _start_reader(reader)
+    termination = None
+    try:
+        _wait_until(lambda: _DISPATCH_ID in "".join(lines), detail="dispatch was not observed")
+        _wait_until(
+            lambda: time.monotonic() > 0 and not sentinel_path.exists(),
+            detail="interim Stop sentinel was not consumed",
+            timeout=1.2,
+        )
+        threading.Event().wait(0.7)
+        assert child.poll() is None
+        assert handle.terminal_reasons == []
+
+        os.write(master_fd, b"/exit\n")
+        reader_thread.join(timeout=3)
+        assert not reader_thread.is_alive(), (
+            "the reader did not finish after the session ended with the dispatch pending"
+        )
+        assert child.wait(timeout=3) == 0, (
+            "the stub CLI must exit on its own, not be killed as a fault"
+        )
+
+        termination = supervisor.recorder.termination()
+        assert termination.issuer is TerminationIssuer.UNKNOWN, (
+            "a session that ends with subagents still pending must never be attributed to "
+            f"the agent as a fault (observed issuer: {termination.issuer!r})"
+        )
+        assert handle.terminate_issuers == [], (
+            "the session end must not terminate the process as a fault "
+            f"(observed issuers: {handle.terminate_issuers!r})"
+        )
+        assert handle.terminal_reasons == [], (
+            "a session that ends with pending subagents must not carry a fault terminal reason "
+            f"(observed: {handle.terminal_reasons!r})"
+        )
+    finally:
+        _cleanup(child, master_fd, reader_thread)
+
+    assert termination is not None
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.attempt_facts import AttemptFacts
+    from ralph.recovery.attribution import Attribution, RuntimeCause, attribute_attempt
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+    from ralph.recovery.dead_agent_verdict import (
+        DeadAgentVerdict,
+        decide_dead_agent_verdict,
+        verdict_benches_agent,
+    )
+
+    facts = AttemptFacts(
+        event_kinds=("tool_use",),
+        tool_calls=("Agent",),
+        artifact_valid=False,
+        workspace_changed=None,
+        elapsed_to_terminal_ms=1_000,
+        exit_status="exit_0",
+        liveness_observed=True,
+        termination=termination,
+    )
+    verdict = attribute_attempt(facts)
+    assert verdict.attribution is Attribution.RUNTIME, (
+        "an end with pending subagents must not be attributed to the agent "
+        f"(observed attribution: {verdict.attribution!r})"
+    )
+    assert verdict.runtime_cause is RuntimeCause.KILL_UNATTRIBUTED, (
+        "an end with pending subagents is an unattributed end, not an agent fault "
+        f"(observed: {verdict.runtime_cause!r})"
+    )
+    dead_agent_verdict = decide_dead_agent_verdict(facts, verdict, probe_outcome=None)
+    assert dead_agent_verdict.verdict in (
+        DeadAgentVerdict.UNKNOWN,
+        DeadAgentVerdict.NOT_AGENT_FAULT,
+    ), (
+        "an end with pending subagents must never convict the agent "
+        f"(observed: {dead_agent_verdict.verdict!r})"
+    )
+    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+        "an end with pending subagents must never bench the agent"
+    )
+
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    outcome = controller.finalize_attempt("development", "claude", facts=facts, attempt_failed=True)
+    assert outcome.kind.value in ("runtime_ended", "unknown"), (
+        f"the end stays a non-agent failure (observed: {outcome.kind.value!r})"
+    )
+    assert controller.snapshot()["spent_agents"] == {}, (
+        "an end with pending subagents must never mark the agent spent "
+        f"(observed: {controller.snapshot()['spent_agents']!r})"
+    )
+    assert controller.unavailability_store.is_available("development", "claude") is True, (
+        "an end with pending subagents must not be benched"
+    )
+    assert controller.ledger.is_available("development", "claude") is True, (
+        "the agent must remain selectable in the failure ledger"
+    )
+
+
 def test_unrelated_tool_result_does_not_clear_pending_dispatch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
