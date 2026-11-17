@@ -197,9 +197,7 @@ def run_attempt_loop(
     )
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
-    if conflict_resolver is not None and (
-        resolver_suppressed or state.conflict_strategy_index > 0
-    ):
+    if conflict_resolver is not None and (resolver_suppressed or state.conflict_strategy_index > 0):
         strategy_index = min(state.conflict_strategy_index, len(CONFLICT_RESOLUTION_STRATEGIES) - 1)
         logger.warning(
             "auto_integrate: conflict resolution budget exhausted for '{}'; "

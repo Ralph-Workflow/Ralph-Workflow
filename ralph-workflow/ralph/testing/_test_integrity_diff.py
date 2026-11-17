@@ -44,6 +44,16 @@ DELETED_TEST_MODULES: dict[str, str] = {
         "mirrored bundle; the retired package stays absent under "
         "tests/test_retired_skills_package_absent.py"
     ),
+    "ralph-workflow/tests/pipeline/test_conflict_resolution_invocation_parity.py": (
+        "every test pinned the 4959fb143 conflict-session redesign (AttemptResult return, "
+        "removed finalize_resolution_attempt_failure and timing keys), which is reverted to "
+        "the gated e6e382c62 behaviour pinned by tests/test_conflict_resolution_phase_parity.py"
+    ),
+    "ralph-workflow/tests/pipeline/test_conflict_resolution_u9_residuals.py": (
+        "every test pinned 4959fb143 conflict-driver residuals (marker-only completion "
+        "evidence, unavailable-wait ordering, lifecycle status channel) that are reverted "
+        "to the gated e6e382c62 behaviour"
+    ),
     "ralph-workflow/tests/scenarios/test_integration_scenario_matrix_rebase_landing.py": (
         "the module duplicated the gated symptom-4 and symptom-5 rebase-landing "
         "scenarios; those tests now live unchanged in "

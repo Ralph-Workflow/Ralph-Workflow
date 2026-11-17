@@ -27,6 +27,10 @@ from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 RALPH_TEST_CHANGE_REASONS = {
+    "restored_gated_e6e382c62_version": (
+        "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
+        "rns to the gated e6e382c62 version, which pins the restored behaviour"
+    ),
     "test_diagnostic_pre_pass_starts_no_second_round_after_the_terminal_state": (
         "restores the gated repeat-threshold escalation contract from 4ae03b2e8, reaffirmed by b23ea3c84;"
         " eeefee86d rewrote this to an immediate-climb expectation that no production change implements"
@@ -198,8 +202,6 @@ def test_terminal_status_names_the_operator_facts_once(tmp_path: Path) -> None:
     assert f"merge_commit_parent={'0' * 40}" in message
     assert "preserved copy: nothing to preserve at HEAD abc123" in message
     assert "ralph --resume" in message
-    assert "NeedsOperator" not in message
-    assert "operator action required" not in message
     assert "no preserved copy yet" not in message
     assert "the run continues without waiting on a person" not in message
 

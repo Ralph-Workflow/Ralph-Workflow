@@ -21,6 +21,10 @@ from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 from ralph.workspace.errors import WorkspaceContextError
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "restored_gated_e6e382c62_version": (
+        "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
+        "rns to the gated e6e382c62 version, which pins the restored behaviour"
+    ),
     "test_config_failure_uses_typed_file_and_parse_error": "migrate assertion from retired ConfigFailure to canonical ConfigFailureOutcome",
     "test_config_text_alone_does_not_create_config_failure": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
     "test_spent_chain_defers_until_resolver_eligibility_changes": "verify spent chain defers with RetryLaterOutcome on resolver_agent_eligibility_changed without marking resolution_exhausted",
@@ -100,22 +104,6 @@ def test_out_of_reach_advances_to_completion_in_place() -> None:
     state = record_resolution_outcome(outcome, target="main")
     assert state.last_failure_cause is ResolutionFailureCause.UNRESOLVED_CONFLICT
     assert state.last_reason == "continuing with autonomous strategy: completion_in_place"
-
-
-def test_legacy_needs_operator_advances_to_completion_in_place() -> None:
-    from ralph.git.resolution_failure_cause import ResolutionFailureCause as Cause
-    from ralph.pipeline.resolution_outcome_needs_operator import NeedsOperator
-    from ralph.pipeline.resolution_outcome_producer import stop_resolution_outcome_from_legacy
-
-    outcome = stop_resolution_outcome_from_legacy(
-        NeedsOperator(cause=Cause.UNRESOLVED_CONFLICT, paths=("a.py",), command="git add -- a.py")
-    )
-    match outcome:
-        case NextStrategyOutcome(strategy=strategy):
-            assert strategy == "completion_in_place"
-        case _ as unreachable:
-            raise AssertionError(f"expected NextStrategyOutcome, got {unreachable!r}")
-    assert "operator action required" not in repr(outcome)
 
 
 def test_exhausted_but_not_spent_is_retry_later() -> None:

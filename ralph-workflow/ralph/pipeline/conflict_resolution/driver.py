@@ -17,13 +17,8 @@ from ralph.git.merge import (
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
-from ralph.pipeline.agent_chain_state import AgentChainState
-from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
-)
-from ralph.pipeline.conflict_resolution._driver_events import (
-    emit_attempt_outcome,
 )
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success as _emit_success,
@@ -84,6 +79,7 @@ from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     begin_resolution_stop,
     ensure_session_controller,
+    finalize_resolution_attempt_failure,
     invoke_resolution_agent,
     resolution_chain_agents,
 )
@@ -100,72 +96,19 @@ from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
 )
 from ralph.pipeline.conflict_resolution.status import (
-    emit_agent_lifecycle_status as _status_emit_agent_lifecycle_status,
-)
-from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
 )
-from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import Clock as IntegrationClock
 from ralph.pipeline.integration_actions import current_clock, install_executors
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
-    ResolvedOutcome,
     RetryLaterOutcome,
     StopResolutionOutcome,
 )
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.attempt_facts import AttemptFacts
-from ralph.recovery.classifier import FailureContext
-from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
-from ralph.recovery.failure_classifier import typed_outcome_reason
 
 _ACTIVE_SESSION: list[ResolutionSession | None] = [None]
-
-
-def stop_outcome_from_attempt_result(
-    session: ResolutionSession,
-    attempt: AttemptResult,
-    *,
-    agent_name: str | None = None,
-) -> StopResolutionOutcome:
-    if attempt.event == PipelineEvent.AGENT_SUCCESS:
-        return ResolvedOutcome(
-            terminal_reason=session.terminal_reason,
-            unresolved_paths=session.unresolved_paths,
-        )
-    controller = session.recovery_controller
-    until: float | None = None
-    if controller is not None:
-        agents: list[str] = []
-        if agent_name is not None:
-            agents.append(agent_name)
-        state = session.recovery_state
-        if isinstance(state, PipelineState):
-            chain = state.chain_for_phase(PHASE_RESOLUTION)
-            if chain is not None:
-                agents.extend(name for name in chain.agents if name not in agents)
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, agents) if agents else 0
-        if wait_ms > 0:
-            until = float(controller.clock.epoch()) + (wait_ms / 1000.0)
-    failure_cause = (
-        session.last_failure_cause
-        if session.last_failure_cause is not ResolutionFailureCause.NONE
-        else None
-    )
-    if until is not None:
-        return RetryLaterOutcome(
-            until=until,
-            terminal_reason=session.terminal_reason,
-            unresolved_paths=session.unresolved_paths,
-            failure_cause=failure_cause,
-        )
-    return RetryLaterOutcome(
-        on_change="resolver_agent_eligibility_changed",
-        terminal_reason=session.terminal_reason,
-        unresolved_paths=session.unresolved_paths,
-        failure_cause=failure_cause,
-    )
 
 
 def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
@@ -232,12 +175,6 @@ def build_session_integration_status(
     )
 
 
-def emit_agent_lifecycle_status(
-    display: ParallelDisplay | None, label: str, value: str, style: str = "cyan"
-) -> None:
-    _status_emit_agent_lifecycle_status(display, label, value, style)
-
-
 def emit_conflict_phase_line(
     display: object, message: str, *, channel: str = "rebase-conflict"
 ) -> None:
@@ -286,7 +223,7 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome | AttemptResult | bool]
+type ResolutionInvoker = Callable[[str, "Path", int], StopResolutionOutcome | bool]
 
 _QUERY_FAILED_SENTINEL = "<unmerged-path-query-failed>"
 
@@ -295,14 +232,6 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
         ResolutionTerminationReason.TOOL_SURFACE_DEAD,
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
-        ResolutionTerminationReason.CANDIDATE_EXITED,
-    }
-)
-
-_LAUNCH_PRESERVED_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = frozenset(
-    {
-        ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
     }
 )
 
@@ -339,9 +268,8 @@ __all__ = [
     "can_continue_rounds",
     "classify_unmerged_conflicts",
     "declared_decision_paths",
-    "emit_agent_lifecycle_status",
-    "emit_attempt_outcome",
     "emit_conflict_phase_line",
+    "finalize_resolution_attempt_failure",
     "invoke_resolution_agent",
     "out_of_reach_escalation_message",
     "out_of_reach_reasons",
@@ -354,7 +282,6 @@ __all__ = [
     "run_rebase_conflict_resolution_pipeline",
     "select_resolution_action",
     "stage_mechanical_conflicts",
-    "stop_outcome_from_attempt_result",
     "unmerged_paths",
 ]
 
@@ -453,9 +380,7 @@ def run_conflict_resolution_outcome(
         return outcome
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: pipeline failed: {}", exc)
-        emit_agent_lifecycle_status(
-            display, "FAILED", f"conflict resolution failed: {exc}", "yellow"
-        )
+        emit_conflict_phase_line(display, f"conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         outcome = _resolution_outcome(active_session, succeeded=False)
@@ -519,9 +444,7 @@ def run_rebase_conflict_resolution_outcome(
         return outcome
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.warning("conflict_resolution: rebase stop {} failed: {}", stop.stop_index, exc)
-        emit_agent_lifecycle_status(
-            display, "FAILED", f"rebase conflict resolution failed: {exc}", "yellow"
-        )
+        emit_conflict_phase_line(display, f"rebase conflict resolution failed: {exc}")
         active_session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         active_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         outcome = _resolution_outcome(active_session, succeeded=False)
@@ -636,8 +559,8 @@ def _prepare_conflicted_paths(
         session.unresolved_paths = tuple(conflicted)
         session.initial_conflicted_count = len(conflicted)
         session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
-        emit_agent_lifecycle_status(
-            display, "FAILED", "conflicted paths unreadable; nothing a resolver can repair"
+        emit_conflict_phase_line(
+            display, "conflicted paths unreadable; nothing a resolver can repair"
         )
         return (), False, (), None
     if not conflicted:
@@ -686,9 +609,8 @@ def _prepare_conflicted_paths(
         )
         session.exhaustion_reason = msg
         session.operator_action_message = msg
-        emit_agent_lifecycle_status(
+        emit_conflict_phase_line(
             display,
-            "FAILED",
             "OUT_OF_REACH: escalating on sight without spending the chain; " + msg,
         )
         return (), False, (), None
@@ -822,11 +744,8 @@ def _bootstrap_resolution_session(
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.exhaustion_reason = "recovery controller unavailable"
-        emit_agent_lifecycle_status(
-            display,
-            "FAILED",
-            "conflict resolution blocked: recovery controller unavailable",
-            "yellow",
+        emit_conflict_phase_line(
+            display, "conflict resolution blocked: recovery controller unavailable"
         )
         return True
     _bind_session_workspace(session, effective_scope)
@@ -933,6 +852,7 @@ def _run_rounds(
         stop=stop,
         root=root,
         target=target,
+        require_completion_evidence=bool(decision_paths),
     )
 
     entry_scope = (
@@ -974,11 +894,9 @@ def _run_rounds(
         return True
     unresolved = session.unresolved_paths
     session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
-    emit_agent_lifecycle_status(
+    emit_conflict_phase_line(
         display,
-        "FAILED",
         "abandoning conflict resolution; " + session.exhaustion_reason,
-        "yellow",
     )
     return False
 
@@ -1004,110 +922,6 @@ def _handle_repaired_or_fast_forward(
     return True
 
 
-def _charge_followup_attempt_failure(
-    session: ResolutionSession | None,
-    agent_name: str,
-    *,
-    facts: AttemptFacts,
-    exc: BaseException | None = None,
-    outcome: ConflictAttemptOutcome | None = None,
-    policy_bundle: PolicyBundle | None = None,
-    candidates: Sequence[str] = (),
-    failed_index: int = 0,
-) -> None:
-    controller = ensure_session_controller(session, policy_bundle)
-    if session is None:
-        return
-    agents = list(candidates) if candidates else [agent_name]
-    bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
-    recovery_state = (
-        session.recovery_state
-        if isinstance(session.recovery_state, PipelineState)
-        else PipelineState(
-            phase=PHASE_RESOLUTION,
-            phase_chains={
-                PHASE_RESOLUTION: AgentChainState(
-                    agents=agents,
-                    current_index=bounded_index,
-                    retries=0,
-                )
-            },
-        )
-    )
-    typed_outcome = (
-        outcome if outcome is not None and outcome is not ConflictAttemptOutcome.RAW else None
-    )
-    unresolved_count = facts.unresolved_count or 0
-    typed_reason = (
-        typed_outcome_reason(typed_outcome, unresolved_count) if typed_outcome is not None else None
-    )
-    if typed_outcome is not None:
-        logger.info(
-            "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
-            typed_outcome.value,
-            agent_name,
-            PHASE_RESOLUTION,
-            typed_reason,
-        )
-        session.last_attempt_outcome = typed_outcome
-    raw_failure: BaseException | str = exc if exc is not None else (typed_reason or "")
-    new_state, _effects, _failure_event = controller.handle(
-        recovery_state,
-        raw_failure,
-        FailureContext(
-            phase=PHASE_RESOLUTION,
-            agent=agent_name,
-            facts=facts,
-            outcome=typed_outcome,
-            unresolved_count=unresolved_count,
-        ),
-        workspace_changed=bool(facts.workspace_changed),
-        artifact_valid=bool(facts.artifact_valid),
-        facts=facts,
-    )
-    session.recovery_state = new_state
-    attempt_outcome = controller.last_attempt_outcome
-    if attempt_outcome is not None:
-        session.last_attempt_result = AttemptResult(
-            PipelineEvent.AGENT_FAILURE,
-            facts,
-            attempt_outcome,
-            ((1, attempt_outcome),),
-        )
-        evidence = typed_reason or attempt_outcome.reason
-        if evidence:
-            session.last_recovery_reason = evidence
-            session.last_attempt_evidence = evidence
-    if exc is not None:
-        session.last_attempt_failure = exc
-    candidates_tuple = tuple(agents)
-    selection = controller.preferred_agent_index(
-        PHASE_RESOLUTION,
-        candidates_tuple,
-        current_index=failed_index,
-        exclude_current=True,
-    )
-    if selection.agent is not None and selection.index is not None:
-        next_cursor = failed_index if selection.index < failed_index else selection.index
-    elif candidates:
-        next_cursor = controller.next_conflict_candidate(candidates, failed_index=failed_index)
-    else:
-        next_cursor = failed_index
-    session.chain_cursor = next_cursor
-    chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
-    chain_agents = list(chain_state.agents) if chain_state is not None else list(candidates_tuple)
-    same_candidate = chain_state is not None and chain_state.current_index == next_cursor
-    next_retries = chain_state.retries if (chain_state is not None and same_candidate) else 0
-    session.recovery_state = new_state.with_phase_chain(
-        PHASE_RESOLUTION,
-        AgentChainState(
-            agents=chain_agents,
-            current_index=min(next_cursor, max(len(chain_agents) - 1, 0)),
-            retries=next_retries,
-        ),
-    )
-
-
 def _classify_incomplete_success(
     attempt: RoundAttempt,
     session: ResolutionSession,
@@ -1123,25 +937,12 @@ def _classify_incomplete_success(
         attempt.agent_name,
     )
     unresolved_count = len(session.unresolved_paths)
-    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
-    from ralph.recovery.failure_classifier import typed_outcome_reason
-
-    typed = (
-        ConflictAttemptOutcome.STALLED_NO_PROGRESS
-        if not (attempt.probe_changed or attempt.count_dropped)
-        else ConflictAttemptOutcome.UNRESOLVED_REMAINING
-    )
-    logger.info(
-        "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
-        typed.value,
-        attempt.agent_name,
-        PHASE_RESOLUTION,
-        typed_outcome_reason(typed, unresolved_count),
-    )
     made_progress = attempt.probe_changed or attempt.count_dropped
     session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
     session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-    _charge_followup_attempt_failure(
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+
+    finalize_resolution_attempt_failure(
         session,
         attempt.agent_name,
         facts=AttemptFacts(
@@ -1184,18 +985,11 @@ def _execute_round_loop(
         round_index = session.rounds_spent
         last_invoked_reason: ResolutionTerminationReason | None = session.terminal_reason
         last_invoked_charge: bool = session.charge_conflict_budget
-        invoked_any = False
         if round_index >= round_cap:
             _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
         while round_index < round_cap:
             if not can_continue_rounds(session, candidates):
-                _handle_dead_candidate_chain(
-                    session,
-                    conflicted,
-                    display,
-                    candidates=candidates,
-                    preserve_launch_reasons=invoked_any,
-                )
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
             round_index += 1
             _push_round_status(display, root, target, round_index, round_cap, stop)
@@ -1213,9 +1007,7 @@ def _execute_round_loop(
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
                 session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
                 session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
-                emit_agent_lifecycle_status(
-                    display, "FAILED", "could not materialize the resolution prompt", "yellow"
-                )
+                emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()
             _reset_round_reporting(session)
@@ -1230,7 +1022,7 @@ def _execute_round_loop(
                     observer=observer,
                 )
 
-            cohort_wait_ms = _wait_for_eligible_agent(session, candidates, display=display)
+            cohort_wait_ms = _wait_for_eligible_agent(session, candidates)
 
             attempt = _run_one_round(
                 runner,
@@ -1275,35 +1067,17 @@ def _execute_round_loop(
                     session.charge_conflict_budget = last_invoked_charge
                 else:
                     _handle_dead_candidate_chain(
-                        session,
-                        conflicted,
-                        display,
-                        candidates=candidates,
-                        preserve_launch_reasons=invoked_any,
+                        session, conflicted, display, candidates=candidates
                     )
                 break
-            invoked_any = True
             session.rounds_spent = round_index
             last_invoked_reason = session.terminal_reason
             last_invoked_charge = session.charge_conflict_budget
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
-                if not _escalate_unreachable_remainder(session, display):
-                    _handle_dead_candidate_chain(
-                        session,
-                        conflicted,
-                        display,
-                        candidates=candidates,
-                        preserve_launch_reasons=True,
-                    )
+                _escalate_unreachable_remainder(session, display)
                 break
             if not can_continue_rounds(session, candidates):
-                _handle_dead_candidate_chain(
-                    session,
-                    conflicted,
-                    display,
-                    candidates=candidates,
-                    preserve_launch_reasons=True,
-                )
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
     finally:
         if prompt_path is not None:
@@ -1381,49 +1155,27 @@ def can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...])
     return False
 
 
-def _enter_unavailable_wait_and_sleep(
-    session: ResolutionSession,
-    wait_ms: int,
-    display: ParallelDisplay | None,
-    *,
-    sleep: Callable[[float], None],
-) -> None:
-    from ralph.pipeline import run_loop
-    from ralph.recovery.controller import RecoveryController
-
-    controller = session.recovery_controller
-    if not isinstance(controller, RecoveryController) or wait_ms <= 0:
-        return
-    tracked = session.recovery_state
-    state = tracked if isinstance(tracked, PipelineState) else PipelineState(phase=PHASE_RESOLUTION)
-    state = controller.apply_all_agents_unavailable_wait(
-        state,
-        PHASE_RESOLUTION,
-        wait_ms=wait_ms,
-    )
-    state = run_loop.handle_cooldown_delay(
-        state,
-        run_loop.CooldownWaitContext(sleep=sleep, controller=controller, active_display=display),
-    )
-    controller.prune_expired()
-    if isinstance(tracked, PipelineState):
-        session.recovery_state = state.clear_waiting() if state.is_waiting_state else state
-
-
 def _wait_for_eligible_agent(
     session: ResolutionSession,
     candidates: Sequence[str],
-    display: ParallelDisplay | None = None,
 ) -> int:
-    from ralph.recovery.controller import RecoveryController
+    from ralph.pipeline import run_loop
 
     controller = session.recovery_controller
-    if not isinstance(controller, RecoveryController):
+    if controller is None:
         return 0
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
     if wait_ms <= 0:
         return 0
-    _enter_unavailable_wait_and_sleep(session, wait_ms, display, sleep=controller.clock.sleep)
+    tracked = session.recovery_state
+    state = tracked if isinstance(tracked, PipelineState) else PipelineState(phase=PHASE_RESOLUTION)
+    state = run_loop.handle_cooldown_delay(
+        state.copy_with(last_retry_delay_ms=wait_ms),
+        run_loop.CooldownWaitContext(sleep=_sleep_seconds, controller=controller),
+    )
+    controller.prune_expired()
+    if isinstance(tracked, PipelineState):
+        session.recovery_state = state.clear_waiting() if state.is_waiting_state else state
     return wait_ms
 
 
@@ -1437,9 +1189,7 @@ def _record_unconfigured_resolver(
     session.unresolved_paths = conflicted
     session.initial_conflicted_count = len(conflicted)
     session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
-    emit_agent_lifecycle_status(
-        display, "FAILED", "no agent bound to the rebase-conflict-resolution drain", "yellow"
-    )
+    emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
 
 
 def _dead_chain_reason(
@@ -1484,8 +1234,6 @@ def _handle_dead_candidate_chain(
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
     candidates: Sequence[str] = (),
-    *,
-    preserve_launch_reasons: bool = False,
 ) -> None:
     from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
@@ -1499,10 +1247,10 @@ def _handle_dead_candidate_chain(
     barred = skipped_candidates(session, tuple(candidates))
     live_candidates = [agent for agent in candidates if agent not in barred]
 
-    current = session.terminal_reason
-    if preserve_launch_reasons and current in _LAUNCH_PRESERVED_TERMINATION_REASONS:
-        pass
-    elif current in _CHAIN_STATE_TERMINATION_REASONS or current is None:
+    if (
+        session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS
+        or session.terminal_reason is None
+    ):
         session.terminal_reason = _dead_chain_reason(
             live_candidates,
             controller,
@@ -1512,23 +1260,12 @@ def _handle_dead_candidate_chain(
     if session.last_failure_cause == ResolutionFailureCause.NONE:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
-    wait_pool = list(candidates) if candidates else list(live_candidates)
-    wait_ms = 0
-    if controller is not None and wait_pool:
-        wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, wait_pool)
-    if controller is not None and wait_ms > 0:
-        state = (
-            session.recovery_state
-            if isinstance(session.recovery_state, PipelineState)
-            else PipelineState(phase=PHASE_RESOLUTION)
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
+        emit_conflict_phase_line(
+            display,
+            "all resolution candidates are unavailable or on cooldown; conflict resolution remains pending",
         )
-        session.recovery_state = controller.apply_all_agents_unavailable_wait(
-            state,
-            PHASE_RESOLUTION,
-            wait_ms=wait_ms,
-        )
-
-    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED and wait_ms <= 0:
+    elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         reasons_list = [
             f"{agent}: {_agent_unavailability_reason(agent, ledger, controller)}"
             for agent in candidates
@@ -1542,23 +1279,11 @@ def _handle_dead_candidate_chain(
             f"conflict on {paths_str} needs operator action: {cmd}"
         )
         session.operator_action_message = msg
-        emit_agent_lifecycle_status(display, "FAILED", msg, "yellow")
-    elif (
-        session.terminal_reason == ResolutionTerminationReason.CANDIDATE_UNAVAILABLE or wait_ms > 0
-    ):
-        emit_agent_lifecycle_status(
-            display,
-            "WAITING",
-            "all resolution candidates are unavailable or on cooldown; "
-            "conflict resolution remains pending",
-            "yellow",
-        )
+        emit_conflict_phase_line(display, msg)
     else:
-        emit_agent_lifecycle_status(
+        emit_conflict_phase_line(
             display,
-            "FAILED",
             "every resolution candidate is a dead tool surface; no further round can spend one",
-            "yellow",
         )
 
 
@@ -1584,9 +1309,8 @@ def _escalate_unreachable_remainder(
     )
     session.exhaustion_reason = msg
     session.operator_action_message = msg
-    emit_agent_lifecycle_status(
+    emit_conflict_phase_line(
         display,
-        "FAILED",
         f"the resolvable conflicts are repaired, but no resolver can repair {paths}",
     )
     return True

@@ -146,7 +146,7 @@ def _repair_owned_merge(
     )
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
-    from ralph.pipeline.events import PipelineEvent
+    from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     if pipeline_deps.recovery_controller is None and controller is not None:
         import dataclasses
@@ -154,18 +154,20 @@ def _repair_owned_merge(
         pipeline_deps = dataclasses.replace(pipeline_deps, recovery_controller=controller)
 
     def invoke(agent: str, prompt: Path) -> bool:
-        attempt = invoke_resolution_agent(
-            agent_name=agent,
-            prompt_path=prompt,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=workspace_scope,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            require_completion_evidence=True,
+        return isinstance(
+            invoke_resolution_agent(
+                agent_name=agent,
+                prompt_path=prompt,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                workspace_scope=workspace_scope,
+                policy_bundle=policy_bundle,
+                display=display,
+                display_context=display_context,
+                require_completion_evidence=True,
+            ),
+            ResolvedOutcome,
         )
-        return attempt.event == PipelineEvent.AGENT_SUCCESS
 
     root = workspace_scope.root
     record = read_record(root)

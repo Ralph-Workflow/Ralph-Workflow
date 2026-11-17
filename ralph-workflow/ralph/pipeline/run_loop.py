@@ -135,6 +135,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.integration_decision import CleanupLadderRung
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -1622,6 +1623,12 @@ def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIden
         return ConflictIdentity()
 
 
+def _firm_conflict_identity_bound(rebase: RebaseState, identity: ConflictIdentity) -> bool:
+    recorded = (rebase.last_conflict_feature_sha, rebase.last_conflict_target_sha)
+    observed = (identity.feature_sha, identity.target_sha)
+    return None not in recorded and None not in observed
+
+
 def _cold_capped_escalation_due(
     ctx: LoopContext,
     rebase: RebaseState,
@@ -1631,12 +1638,18 @@ def _cold_capped_escalation_due(
     ledger: AgentFailureLedger | None = None,
     candidates: tuple[str, ...] = (),
 ) -> bool:
-    del rebase, identity
-    if ledger is None or not candidates:
-        return False
-    if ledger.any_eligible("rebase_conflict_resolution", candidates):
-        return False
-    if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
+    if ledger is not None and candidates:
+        if ledger.any_eligible("rebase_conflict_resolution", candidates):
+            return False
+        if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
+            return False
+    elif (
+        not rebase.resolution_exhausted
+        or resolver_allowed(rebase, target, identity)
+        or _firm_conflict_identity_bound(rebase, identity)
+    ):
         return False
     session_attempted: object = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1696,6 +1709,8 @@ def _run_owned_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
     target = _integration_target_or_none(ctx)
     if not target:
         return False
@@ -1724,13 +1739,19 @@ def _run_owned_integration_conflict_resolution(
         return _run_cold_capped_escalation(ctx, target, rebase)
     all_exhausted = (
         ledger is not None
-        and bool(installed)
+        and installed
         and ledger.all_exhausted("rebase_conflict_resolution", installed)
     )
     allowed = (
-        ledger is None
-        or not installed
-        or ledger.any_eligible("rebase_conflict_resolution", installed)
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
     )
     if rebase is not None and (all_exhausted or not allowed):
         logger.warning(
@@ -2510,7 +2531,7 @@ _public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
 
     if rebase is None:
         return True
@@ -2526,13 +2547,6 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
-    if rebase.last_target != target or not identity.matches(rebase):
-        logger.info(
-            "integration resolution: the recorded exhaustion does not bind the conflict "
-            "now on disk for '{}'; giving the resolver another attempt",
-            target,
-        )
-        return False
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
     installed = tuple(
@@ -2546,11 +2560,23 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    if (
-        installed
-        and ledger is not None
-        and ledger.any_eligible("rebase_conflict_resolution", installed)
-    ):
+    allowed = (
+        resolver_allowed(
+            rebase,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        )
+        if rebase is not None
+        else True
+    )
+    can_resolve = allowed and (
+        ledger is None
+        or not installed
+        or not ledger.all_exhausted("rebase_conflict_resolution", installed)
+    )
+    if can_resolve:
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",
@@ -2781,6 +2807,8 @@ def _block_unresolved_integration(
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
+
     record, busy_expired = _blocking_record(ctx)
     if busy_expired:
         state = state.copy_with(
@@ -2838,24 +2866,13 @@ def _block_unresolved_integration(
         ctx, state.rebase
     )
     if exhausted_still_binds:
-        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
         _announce_blocked_dispatch(ctx, verdict)
         _announce_deferred_startup_integration(ctx, state.rebase)
-        return None
+        return state, prev_phase, 1
 
     post = _post_recovery_verdict(ctx, state, prev_phase, verdict)
     if not isinstance(post, IntegrationResolutionVerdict):
         return post
-
-    if post.status is EXHAUSTED and state.rebase.resolution_exhausted:
-        state = state.copy_with(rebase=state.rebase.with_complete_in_place_decision())
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        _announce_blocked_dispatch(ctx, post)
-        _announce_deferred_startup_integration(ctx, state.rebase)
-        return None
 
     _announce_blocked_dispatch(ctx, post)
     _announce_deferred_startup_integration(ctx, state.rebase)

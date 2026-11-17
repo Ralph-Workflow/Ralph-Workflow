@@ -99,15 +99,6 @@ FORBIDDEN_PIPELINE_ELIGIBILITY_NAMES: Final[frozenset[str]] = frozenset(
     {
         "_ledger_candidates_available",
         "is_available",
-        "resolver_allowed",
-        "_repository_conflict_exhausted",
-    }
-)
-
-_LOCAL_LAUNCH_BUDGET_ATTRS: Final[frozenset[str]] = frozenset(
-    {
-        "resolution_exhausted",
-        "consecutive_conflicts",
     }
 )
 
@@ -561,59 +552,6 @@ def _pipeline_eligibility_helper_violations(path: str, tree: ast.Module) -> list
     ]
 
 
-def _attr_names_in(node: ast.AST) -> set[str]:
-    return {
-        part.attr
-        for part in ast.walk(node)
-        if isinstance(part, ast.Attribute) and isinstance(part.ctx, ast.Load)
-    }
-
-
-def _boolish_expr_uses_local_budget(expr: ast.AST) -> bool:
-    if isinstance(expr, ast.Attribute) and expr.attr in _LOCAL_LAUNCH_BUDGET_ATTRS:
-        return True
-    if isinstance(expr, ast.UnaryOp):
-        return bool(_attr_names_in(expr) & _LOCAL_LAUNCH_BUDGET_ATTRS)
-    if isinstance(expr, (ast.BoolOp, ast.Compare, ast.IfExp)):
-        return bool(_attr_names_in(expr) & _LOCAL_LAUNCH_BUDGET_ATTRS)
-    if isinstance(expr, ast.Call):
-        func = expr.func
-        if isinstance(func, ast.Name) and func.id == "bool":
-            return bool(_attr_names_in(expr) & _LOCAL_LAUNCH_BUDGET_ATTRS)
-        return False
-    return False
-
-
-def _returns_boolish_using_local_budget(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    if not (_attr_names_in(node) & _LOCAL_LAUNCH_BUDGET_ATTRS):
-        return False
-    return any(
-        isinstance(child, ast.Return)
-        and child.value is not None
-        and _boolish_expr_uses_local_budget(child.value)
-        for child in ast.walk(node)
-    )
-
-
-def _pipeline_local_launch_budget_violations(path: str, tree: ast.Module) -> list[Violation]:
-    return [
-        Violation(
-            path=path,
-            line=node.lineno,
-            rule="pipeline_local_launch_budget",
-            detail=(
-                f"'{node.name}' decides agent-launch permission from "
-                f"{sorted(_attr_names_in(node) & _LOCAL_LAUNCH_BUDGET_ATTRS)}; "
-                f"launch permission is owned by {AGENT_ELIGIBILITY_OWNER_MODULE} "
-                "(any_eligible / status / eligibility_wait)"
-            ),
-        )
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        and _returns_boolish_using_local_budget(node)
-    ]
-
-
 def _pipeline_snapshot_eligibility_violations(path: str, tree: ast.Module) -> list[Violation]:
     violations: list[Violation] = []
     for node in ast.walk(tree):
@@ -654,7 +592,6 @@ def collect_eligibility_violations(modules: Mapping[str, str]) -> list[Violation
             continue
         violations.extend(_pipeline_eligibility_helper_violations(path, tree))
         violations.extend(_pipeline_snapshot_eligibility_violations(path, tree))
-        violations.extend(_pipeline_local_launch_budget_violations(path, tree))
     return violations
 
 

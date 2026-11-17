@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-import ast
-import inspect
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution import session as conflict_session
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
+    finalize_resolution_attempt_failure,
     invoke_resolution_agent,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.resolution_outcome import RetryLaterOutcome
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
@@ -28,29 +25,21 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_session_has_no_finalize_resolution_attempt_failure": (
-        "dual finalization via finalize_resolution_attempt_failure was removed; "
-        "shared finalize_attempt ownership stays pinned here and in "
-        "tests/pipeline/test_conflict_resolution_invocation_parity.py"
-    ),
-    "test_a_failed_attempt_is_charged_to_recovery_exactly_once": (
-        "the finalize_resolution_attempt_failure helper this spy wrapped was removed; "
-        "the shared one-attempt/one-charge contract is pinned in "
-        "tests/pipeline/test_conflict_resolution_invocation_parity.py"
-    ),
-    "test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate": (
-        "invoke_resolution_agent returns the sealed AttemptResult, so the resolver-local "
-        "RetryLaterOutcome flags this test used to assert are gone"
-    ),
-    "test_work_that_ran_and_did_not_finish_is_incomplete_not_refused": (
-        "the terminal reason now reaches the operator through the agent-lifecycle channel"
-    ),
     "test_the_executor_names_a_missing_agent_instead_of_failing_anonymously": (
         "the agent-not-found branch names the cause and the missing agent inline; "
         "the retired helper it used to delegate to is gone"
     ),
+    "test_work_that_ran_and_did_not_finish_is_incomplete_not_refused": (
+        "FakeClock advances shared cooldown waits so incomplete-success cannot wall-hang"
+    ),
+    "test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate": (
+        "the sealed StopResolutionOutcome contract replaces boolean truthiness and deleted resolver-local retry flags"
+    ),
     "test_one_stop_cannot_exceed_its_configured_invocation_ceiling": (
         "R0 permits each shared-controller-selected candidate once per round rather than resolver-local same-agent retries"
+    ),
+    "test_a_failed_attempt_is_charged_to_recovery_exactly_once": (
+        "the shared one-attempt/one-charge contract attributes each failed candidate exactly once"
     ),
     "test_an_unavailable_candidate_does_not_answer_for_the_one_after_it": (
         "the unavailable candidate is followed once by the next shared-eligible candidate without resolver-local retries"
@@ -59,6 +48,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 if TYPE_CHECKING:
     import pytest
+
+    from ralph.policy.models import PolicyBundle
+    from ralph.recovery.attempt_facts import AttemptFacts
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 
 def test_a_stop_never_inherits_the_previous_stops_verdict(
@@ -151,11 +144,71 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         assert [a for _, a in called].count(agent) == 3
 
 
+def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
+    monkeypatch.setattr(
+        "ralph.pipeline.effect_executor.execute_agent_effect",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError("provider unavailable")),
+    )
+    charged: list[str] = []
+    original = finalize_resolution_attempt_failure
+
+    def _spy(
+        session: ResolutionSession | None,
+        agent_name: str,
+        *,
+        facts: AttemptFacts,
+        exc: BaseException | None = None,
+        outcome: ConflictAttemptOutcome | None = None,
+        candidates: tuple[str, ...] = (),
+        failed_index: int = 0,
+        policy_bundle: PolicyBundle | None = None,
+    ) -> None:
+        charged.append(agent_name)
+        original(
+            session,
+            agent_name,
+            facts=facts,
+            exc=exc,
+            outcome=outcome,
+            candidates=candidates,
+            failed_index=failed_index,
+            policy_bundle=policy_bundle,
+        )
+
+    monkeypatch.setattr(driver_module, "finalize_resolution_attempt_failure", _spy)
+    session = ResolutionSession(
+        max_rounds_per_stop=1,
+        recovery_controller=RecoveryController(options=RecoveryControllerOptions()),
+    )
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            session=session,
+        )
+        is False
+    )
+    assert charged == ["one", "two"]
+
+
 def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
+    from ralph.pipeline.events import PipelineEvent
 
     effect_executor_module._set_last_captured_retry_intent(
         AgentRetryIntent(
@@ -185,8 +238,9 @@ def test_one_candidates_exit_reason_is_not_pinned_on_the_next_candidate(
         display_context=None,
         session=session,
     )
-    assert isinstance(outcome, AttemptResult)
-    assert outcome.event is PipelineEvent.AGENT_FAILURE
+    assert isinstance(outcome, RetryLaterOutcome)
+    assert outcome.on_change == "resolver_agent_eligibility_changed"
+    assert outcome.until is None
     assert session.last_attempt_failure == "conflict attempt failed"
     assert session.last_attempt_evidence != "PiProviderFailureExitError"
 
@@ -203,11 +257,6 @@ def test_work_that_ran_and_did_not_finish_is_incomplete_not_refused(
     lines: list[str] = []
     monkeypatch.setattr(
         driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
-    )
-    monkeypatch.setattr(
-        driver_module,
-        "emit_agent_lifecycle_status",
-        lambda _display, _label, line, _style="cyan": lines.append(line),
     )
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(
@@ -319,15 +368,3 @@ def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously() -> 
     assert "failed_agent_name=effect.agent_name" in branch, (
         "the agent-not-found branch must name the missing agent"
     )
-
-
-def test_session_has_no_finalize_resolution_attempt_failure() -> None:
-    source = Path(inspect.getsourcefile(conflict_session) or "").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    names = {
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert "finalize_resolution_attempt_failure" not in names
-    assert "finalize_resolution_attempt_failure" not in conflict_session.__all__

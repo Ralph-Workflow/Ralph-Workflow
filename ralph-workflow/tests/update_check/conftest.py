@@ -24,7 +24,7 @@ def _isolate_update_check_user_config(
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     monkeypatch.setattr(Path, "home", lambda _home=home: _home)
 
-    import ralph.skills._state_store as state_store
+    from ralph.skills import state_store
 
     capabilities = config / "ralph-workflow-capabilities.json"
     monkeypatch.setattr(state_store, "DEFAULT_STATE_PATH", capabilities)

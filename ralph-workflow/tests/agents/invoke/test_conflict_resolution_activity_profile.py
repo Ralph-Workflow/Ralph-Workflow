@@ -19,6 +19,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.enums import AgentTransport
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -34,6 +35,13 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "restored_gated_e6e382c62_version": (
+        "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
+        "rns to the gated e6e382c62 version, which pins the restored behaviour"
+    ),
+}
 
 
 @pytest.mark.parametrize(
@@ -194,12 +202,13 @@ def test_conflict_resolution_regression_initial_activity_keeps_its_provenance(
     assert watchdog.diagnostic_snapshot(now=10.0)["last_activity_kind"] == expected_kind
 
 
-def test_conflict_resolution_regression_wu_a4_followup_uses_configured_general_idle(
+def test_conflict_resolution_regression_wu_a4_followup_uses_configured_inactivity_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configured_timeout = 47.0
     config = UnifiedConfig(
-        general=GeneralConfig(agent_idle_timeout_seconds=configured_timeout),
+        general=GeneralConfig(agent_idle_timeout_seconds=13.0),
+        conflict_resolution=ConflictResolutionConfig(inactivity_timeout_seconds=configured_timeout),
     )
     captured_options: list[InvokeOptions] = []
 
@@ -267,4 +276,4 @@ def test_conflict_resolution_regression_wu_a4_followup_uses_configured_general_i
 
     assert captured_options[0].idle_timeout_seconds == configured_timeout
     assert policy_from_options(captured_options[0]).idle_timeout_seconds == configured_timeout
-    assert config.general.agent_idle_timeout_seconds == configured_timeout
+    assert config.general.agent_idle_timeout_seconds == 13.0

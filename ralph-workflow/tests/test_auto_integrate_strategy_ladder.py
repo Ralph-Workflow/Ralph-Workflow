@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.auto_integrate import configured_resolver_allowed
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
     apply_conflict_budget,
+    resolver_allowed,
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_auto_integrate_regression_next_persisted_strategy_receives_budget": (
-        "budget spend advances the strategy rung atomically; launch permission follows "
-        "shared eligibility rather than resolution_exhausted"
+    "restored_gated_e6e382c62_version": (
+        "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
+        "rns to the gated e6e382c62 version, which pins the restored behaviour"
     ),
 }
 
@@ -59,28 +59,13 @@ def test_auto_integrate_regression_next_persisted_strategy_receives_budget() -> 
         attempts=1,
     )
 
-    assert spent.conflict_strategy_index == 1
-    assert (
-        configured_resolver_allowed(
-            spent,
-            "main",
-            identity,
-            ledger=_available_ledger(),
-            candidates=("resolver",),
-        )
-        is True
+    exhausted = spent.model_copy(update={"resolution_exhausted": True})
+    assert resolver_allowed(exhausted, "main", identity) is False
+
+    restored = RebaseState.model_validate(
+        spent.model_copy(
+            update={"conflict_strategy_index": 1, "resolution_exhausted": True}
+        ).model_dump(mode="json")
     )
 
-    restored = RebaseState.model_validate(spent.model_dump(mode="json"))
-
-    assert restored.conflict_strategy_index == 1
-    assert (
-        configured_resolver_allowed(
-            restored,
-            "main",
-            identity,
-            ledger=_available_ledger(),
-            candidates=("resolver",),
-        )
-        is True
-    )
+    assert resolver_allowed(restored, "main", identity) is True

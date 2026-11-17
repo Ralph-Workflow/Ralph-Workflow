@@ -25,17 +25,19 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 
-def _make_controller(clock: object, **kwargs: object) -> RecoveryController:
+def _make_controller(clock: FakeClock, **kwargs: object) -> RecoveryController:
     return RecoveryController(options=RecoveryControllerOptions(clock=clock, **kwargs))
 
 
 def _session_with_controller(
     clock: object,
     ledger: AgentFailureLedger,
-    **session_kwargs: object,
+    **kwargs: object,
 ) -> ResolutionSession:
-    session_kwargs.setdefault("recovery_controller", _make_controller(clock, ledger=ledger))
-    return ResolutionSession(**session_kwargs)
+    controller = RecoveryController(ledger=ledger, options=RecoveryControllerOptions(clock=clock))
+    kwargs.setdefault("ledger", ledger)
+    kwargs.setdefault("recovery_controller", controller)
+    return ResolutionSession(**kwargs)
 
 
 def test_resolver_falls_over_after_three_failures(

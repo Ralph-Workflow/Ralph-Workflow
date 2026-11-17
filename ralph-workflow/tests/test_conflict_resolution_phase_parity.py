@@ -1,25 +1,31 @@
 from __future__ import annotations
 
-import ast
-import inspect
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.policy.models import PolicyBundle
+    from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 from ralph.agents.clock import Clock
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.pipeline.attempt_result import AttemptResult
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution import session as conflict_session
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.conflict_resolution.session import (
+    ResolutionSession,
+    finalize_resolution_attempt_failure,
+)
 from ralph.pipeline.conflict_resolution.session import (
     invoke_resolution_agent as _orig_invoke_resolution_agent,
 )
@@ -32,6 +38,7 @@ from ralph.pipeline.resolution_outcome import (
 )
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
@@ -42,14 +49,6 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_session_has_no_finalize_resolution_attempt_failure": (
-        "4959fb143 removed finalize_resolution_attempt_failure; this guard pins that removal"
-    ),
-    "invoke_resolution_agent": (
-        "4959fb143 made invoke_resolution_agent return the attempt's AttemptResult; the "
-        "parity wrapper maps it through the driver's public stop_outcome_from_attempt_result "
-        "so the restored gated tests keep asserting the same stop outcomes"
-    ),
     "test_structural_parity_resolver_and_ordinary_phase_same_fake_agent": (
         "moved to tests/scenarios/test_integration_parity_matrix.py because it drives a "
         "real paused rebase, which crosses the Git boundary only subprocess_e2e files may "
@@ -145,6 +144,34 @@ def _ensure_parity_session_controller(
         session.ledger = controller.ledger
 
 
+_orig_finalize_resolution_attempt_failure = finalize_resolution_attempt_failure
+
+
+def finalize_resolution_attempt_failure(
+    session: ResolutionSession | None,
+    agent_name: str,
+    *,
+    facts: AttemptFacts,
+    exc: BaseException | None = None,
+    outcome: ConflictAttemptOutcome | None = None,
+    policy_bundle: PolicyBundle | None = None,
+    candidates: Sequence[str] = (),
+    failed_index: int = 0,
+) -> None:
+    if session is not None:
+        _ensure_parity_session_controller(session, _config(), policy_bundle)
+    _orig_finalize_resolution_attempt_failure(
+        session,
+        agent_name,
+        facts=facts,
+        exc=exc,
+        outcome=outcome,
+        candidates=candidates,
+        failed_index=failed_index,
+        policy_bundle=policy_bundle,
+    )
+
+
 def run_conflict_resolution_pipeline(
     *,
     root: Path,
@@ -230,10 +257,6 @@ def invoke_resolution_agent(
         session=active_session,
         **kwargs,
     )
-    if isinstance(res, AttemptResult):
-        res = driver_module.stop_outcome_from_attempt_result(
-            active_session, res, agent_name=agent_name
-        )
     if isinstance(res, bool):
         return (
             ResolvedOutcome()
@@ -318,6 +341,41 @@ def test_four_agent_chain_tries_every_candidate(
         assert seen[:4] == ["one", "two", "three", "four"]
     finally:
         reset_executors(token)
+
+
+def test_transient_failure_retries_the_same_agent_using_recovery_controller_handle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    monkeypatch.setattr(
+        "ralph.pipeline.conflict_resolution.driver._sleep_seconds", lambda _seconds: None
+    )
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        if agent_name == "one":
+            raise ConnectionError("provider unavailable")
+        return False
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+        )
+        is False
+    )
+    assert called[:2] == ["one", "two"]
+    assert called.count("one") == 1
+    assert called.count("two") == 3
 
 
 def test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay(
@@ -633,6 +691,64 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
         reset_executors(token)
 
 
+def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    clock = FakeClock()
+    session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
+    called: list[tuple[int, str]] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append((round_index, agent_name))
+        return agent_name == "two"
+
+    config = UnifiedConfig.model_validate(
+        {
+            "conflict_resolution": {"max_rounds_per_stop": 3},
+        }
+    )
+
+    class _FakeClockAdapter:
+        def now(self) -> float:
+            return clock.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            clock.sleep(seconds)
+
+    token = install_executors(clock=_FakeClockAdapter())
+    try:
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=config,
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=clock.monotonic,
+                session=session,
+            )
+            is False
+        )
+    finally:
+        reset_executors(token)
+
+    cap = config.conflict_resolution.max_rounds_per_stop
+    invoked_rounds = sorted({round_index for round_index, _ in called})
+    assert invoked_rounds == list(range(1, cap + 1))
+    assert called == [
+        (1, "one"),
+        (1, "two"),
+        (2, "one"),
+        (3, "one"),
+    ]
+
+
 def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -687,6 +803,56 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
         is True
     )
     assert second_stop == ["one"]
+
+
+def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    for agent in ("one", "two"):
+        ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    session = ResolutionSession(ledger=ledger)
+    lines: list[str] = []
+    monkeypatch.setattr(
+        driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
+    )
+    called: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        called.append(agent_name)
+        return True
+
+    assert (
+        run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            session=session,
+        )
+        is False
+    )
+    assert called == []
+    assert not any(
+        line.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value) for line in lines
+    )
+    assert any(
+        line.startswith(ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value) for line in lines
+    )
 
 
 def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -920,6 +1086,27 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
     assert called == ["pi", "claude"]
     assert "pi" in skipped_candidates(session, ("pi", "claude"))
     assert "claude" not in skipped_candidates(session, ("pi", "claude"))
+
+
+def test_shared_controller_advances_past_a_cooling_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_canary_probe_boundary(monkeypatch)
+    session = ResolutionSession()
+    finalize_resolution_attempt_failure(
+        session,
+        "pi",
+        facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+        exc=ConnectionError("provider unavailable"),
+        candidates=("pi", "claude"),
+        failed_index=0,
+        policy_bundle=_policy_bundle(),
+    )
+    assert session.chain_cursor == 1
+    controller = session.recovery_controller
+    assert controller is not None
+    assert not controller.agent_eligibility(PHASE_RESOLUTION, "pi").is_eligible
+    assert controller.preferred_agent_index(PHASE_RESOLUTION, ("pi", "claude")).agent == "claude"
 
 
 def test_a_live_candidate_behind_the_cursor_is_still_invoked(
@@ -1190,15 +1377,3 @@ def test_ordinary_phase_two_agent_fall_over_then_wait(
         assert invoked == [("first", 0.0), ("second", 0.0), ("first", 60.1)]
     finally:
         reset_agent_effect_dependencies(token)
-
-
-def test_session_has_no_finalize_resolution_attempt_failure() -> None:
-    source = inspect.getsource(conflict_session)
-    tree = ast.parse(source)
-    names = {
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert "finalize_resolution_attempt_failure" not in names
-    assert "finalize_resolution_attempt_failure" not in conflict_session.__all__

@@ -607,6 +607,7 @@ def _create_resolution_session(
     if config is None:
         return ResolutionSession()
     return ResolutionSession(
+        inactivity_timeout_seconds=config.inactivity_timeout_seconds,
         max_rounds_per_stop=config.max_rounds_per_stop,
         max_rebase_conflict_stops=config.max_rebase_conflict_stops,
         max_fallback_agents=config.max_fallback_agents,

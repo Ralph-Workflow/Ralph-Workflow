@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from ralph.checked_accessors import as_object_dict
 from ralph.project_policy import evidence, markers
 from ralph.project_policy._assessment import parse_execution_evidence
 from ralph.project_policy._assessment_error import EvidenceParseError
@@ -46,12 +47,12 @@ def _read_cache(workspace: Workspace) -> dict[str, object] | None:
         return None
     parsed: object
     try:
-        parsed: object = json.loads(raw)
+        parsed = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
         return None
     if not isinstance(parsed, dict):
         return None
-    return {str(key): value for key, value in parsed.items()}
+    return as_object_dict(parsed)
 
 
 def _assessment_from_cache(payload: dict[str, object]) -> ReadinessAssessment:
