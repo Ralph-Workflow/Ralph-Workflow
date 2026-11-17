@@ -65,7 +65,7 @@ def end_attempt(
     if attribution.attribution is Attribution.TASK_OR_ENVIRONMENT:
         kind = (
             AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
-            if facts.artifact_valid or peer_failures_identical
+            if facts.artifact_valid or facts.outcome_exists or peer_failures_identical
             else AttemptOutcomeKind.UNKNOWN
         )
         return AttemptOutcome(

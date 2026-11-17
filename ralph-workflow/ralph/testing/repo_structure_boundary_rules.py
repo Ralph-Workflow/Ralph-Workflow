@@ -22,13 +22,13 @@ __all__ = (
 )
 
 RULE_PAIRINGS: Final[tuple[tuple[str, str], ...]] = (
-    ("B1", "U6"),
+    ("B1", "AC-matrix-completeness"),
     ("B2", "AC16"),
     ("B3", "AC16"),
-    ("B4", "U3a/U10"),
-    ("B5", "U6"),
+    ("B4", "AC3/AC15"),
+    ("B5", "AC-matrix-completeness"),
     ("B6", "AC4"),
-    ("B7", "U6"),
+    ("B7", "AC4"),
     ("B8", "AC4"),
     ("B9", "AC3/AC15"),
     ("B9b", "AC3/AC15"),

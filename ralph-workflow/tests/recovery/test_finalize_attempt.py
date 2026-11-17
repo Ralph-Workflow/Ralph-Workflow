@@ -102,14 +102,13 @@ def test_ac3_a_runtime_issued_end_with_liveness_is_runtime_ended_and_never_charg
     assert isinstance(controller.ledger.status(PHASE, AGENT_A), Eligible)
 
 
-def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charged() -> None:
+def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_runtime_ended_uncharged() -> None:
+    from tests.recovery.pipeline_matrix_scenarios import unattributed_live_end_facts
+
     controller = _controller()
-    facts = AttemptFacts(
-        artifact_valid=False,
-        exit_status="exit_0",
-        liveness_observed=True,
-        elapsed_to_terminal_ms=97900,
-    )
+    facts = unattributed_live_end_facts()
+    assert facts.termination is not None
+    assert facts.termination.issuer is TerminationIssuer.UNKNOWN
 
     outcome = controller.finalize_attempt(
         PHASE,
@@ -118,11 +117,15 @@ def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charg
         attempt_failed=True,
     )
 
-    assert outcome.kind is AttemptOutcomeKind.UNKNOWN
+    assert outcome.kind is AttemptOutcomeKind.RUNTIME_ENDED
+    assert outcome.issuer is TerminationIssuer.UNKNOWN
     assert outcome.benches_agent is False
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
-    assert _cooldown_until_ms(controller, AGENT_A) is not None
+    assert _cooldown_until_ms(controller, AGENT_A) is None
+    assert isinstance(controller.ledger.status(PHASE, AGENT_A), Eligible)
     assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.ledger.snapshot()["entries"] == {}
 
 
 def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() -> None:
@@ -169,6 +172,8 @@ def test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_fai
     second = controller.finalize_attempt(PHASE, AGENT_B, facts=facts, attempt_failed=True)
 
     assert first.kind is AttemptOutcomeKind.UNKNOWN
+    assert first.benches_agent is False
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert second.kind is AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
     assert second.benches_agent is False
     assert _cooldown_until_ms(controller, AGENT_A) is not None

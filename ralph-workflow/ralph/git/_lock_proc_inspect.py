@@ -4,12 +4,20 @@ import errno
 import functools
 import os
 import shutil
+import threading
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _UNPROVABLE_LOCK_CEILING_S = 3600.0
+_FD_HOLDER_SCAN_LOCK = threading.Lock()
+_FD_HOLDER_SCAN_QUEUE_SLACK_S = 2.0
 _INFRASTRUCTURE_DAEMONS = (
     "systemd",
     "(sd-pam)",
@@ -144,9 +152,9 @@ def _is_dead_process_os_error(e: OSError) -> bool:
     return any(isinstance(e, _t) for _t in (FileNotFoundError, ProcessLookupError)) or e.errno in (errno.ENOENT, errno.ESRCH)
 
 
-def _fd_path_is_lock(fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
+def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
     try:
-        target = str(Path(fd_path).readlink())
+        target = str(fd_link.readlink())
     except OSError:
         return False
     if target == lock_resolved:
@@ -156,14 +164,10 @@ def _fd_path_is_lock(fd_path: str, lock_resolved: str, lock_ident: tuple[int, in
     if not (target.endswith(".lock") or ".lock" in target):
         return False
     try:
-        st = Path(fd_path).stat()
+        st = fd_link.stat()
     except OSError:
         return False
     return (st.st_dev, st.st_ino) == lock_ident
-
-
-def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
-    return _fd_path_is_lock(str(fd_link), lock_resolved, lock_ident)
 
 
 def _pid_holds_lock_fd(
@@ -191,31 +195,82 @@ def _pid_holds_lock_fd(
     return "not_live"
 
 
+def _fd_scan_aborted(
+    deadline: float | None,
+    cancelled: Callable[[], bool] | None,
+) -> bool:
+    if cancelled is not None and cancelled():
+        return True
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _scan_lock_fd_holders_unlocked(
+    proc_root: Path,
+    lock_resolved: str,
+    lock_ident: tuple[int, int] | None,
+    *,
+    deadline: float | None,
+    cancelled: Callable[[], bool] | None,
+) -> Literal["live", "not_live", "incomplete"]:
+    if _fd_scan_aborted(deadline, cancelled):
+        return "incomplete"
+    try:
+        pid_names = FsWorkspace(proc_root, allowed_roots=(proc_root,)).list_dir(".")
+    except (OSError, ValueError):
+        return "incomplete"
+    for name in pid_names:
+        if _fd_scan_aborted(deadline, cancelled):
+            return "incomplete"
+        if not name.isdigit():
+            continue
+        try:
+            fd_links = (proc_root / name / "fd").iterdir()
+        except OSError:
+            continue
+        for fd_link in fd_links:
+            if _fd_is_lock(fd_link, lock_resolved, lock_ident):
+                return "live"
+    return "not_live"
+
+
+def _acquire_fd_holder_scan_lock(
+    deadline: float | None,
+    cancelled: Callable[[], bool] | None,
+) -> tuple[bool, float | None]:
+    wait_started = time.monotonic()
+    if deadline is None:
+        _FD_HOLDER_SCAN_LOCK.acquire()
+        return True, None
+    scan_budget = deadline - wait_started
+    if scan_budget <= 0 or _fd_scan_aborted(deadline, cancelled):
+        return False, None
+    wait_cap = scan_budget + _FD_HOLDER_SCAN_QUEUE_SLACK_S
+    if not _FD_HOLDER_SCAN_LOCK.acquire(timeout=wait_cap):
+        return False, None
+    return True, time.monotonic() + scan_budget
+
+
 def _scan_lock_fd_holders(
     proc_root: Path,
     lock_resolved: str,
     lock_ident: tuple[int, int] | None,
     *,
     deadline: float | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Literal["live", "not_live", "incomplete"]:
-    try:
-        entries = os.scandir(proc_root)
-    except OSError:
+    acquired, extended = _acquire_fd_holder_scan_lock(deadline, cancelled)
+    if not acquired:
         return "incomplete"
-    with entries:
-        for ent in entries:
-            if deadline is not None and time.monotonic() >= deadline:
-                return "incomplete"
-            if not ent.name.isdigit():
-                continue
-            try:
-                with os.scandir(f"{ent.path}/fd") as fds:
-                    for fd in fds:
-                        if _fd_path_is_lock(fd.path, lock_resolved, lock_ident):
-                            return "live"
-            except OSError:
-                continue
-    return "not_live"
+    try:
+        return _scan_lock_fd_holders_unlocked(
+            proc_root,
+            lock_resolved,
+            lock_ident,
+            deadline=extended,
+            cancelled=cancelled,
+        )
+    finally:
+        _FD_HOLDER_SCAN_LOCK.release()
 
 
 def _pid_in_repo_cwd(

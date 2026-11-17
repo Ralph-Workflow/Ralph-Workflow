@@ -53,15 +53,19 @@ def termination_facts(
     reported: int | None = 1,
     liveness: bool | None = False,
     artifact_valid: bool = False,
+    outcome_exists: bool = False,
     workspace_changed: bool | None = False,
     event_kinds: tuple[str, ...] = (),
     tool_calls: tuple[str, ...] = (),
+    elapsed_to_terminal_ms: int | None = None,
 ) -> AttemptFacts:
     return AttemptFacts(
         event_kinds=event_kinds,
         tool_calls=tool_calls,
         artifact_valid=artifact_valid,
+        outcome_exists=outcome_exists,
         workspace_changed=workspace_changed,
+        elapsed_to_terminal_ms=elapsed_to_terminal_ms,
         exit_status=f"exit_{reported}" if reported is not None else None,
         liveness_observed=liveness,
         termination=TerminationRecord.create(
@@ -69,6 +73,34 @@ def termination_facts(
             observed_returncode=observed,
             reported_returncode=reported,
             liveness_observed=liveness,
+        ),
+    )
+
+
+def existing_outcome_facts() -> AttemptFacts:
+    return termination_facts(
+        observed=0,
+        reported=0,
+        artifact_valid=False,
+        outcome_exists=True,
+        elapsed_to_terminal_ms=700,
+    )
+
+
+def unattributed_live_end_facts() -> AttemptFacts:
+    return AttemptFacts(
+        event_kinds=("tool_result",),
+        tool_calls=("read_file",),
+        artifact_valid=False,
+        workspace_changed=None,
+        elapsed_to_terminal_ms=97_900,
+        exit_status="exit_0",
+        liveness_observed=True,
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=-15,
+            reported_returncode=0,
+            liveness_observed=True,
         ),
     )
 
@@ -152,11 +184,21 @@ class MatrixScenario:
     corpus_id: str | None = None
 
 
+_C1_C2_ELAPSED_MS = 500
+
 SCENARIOS = (
     MatrixScenario(
         "failed_probe_benches",
         ("AC1", "AC2", "AC5", "AC10", "AC13", "AC16", "AC18"),
-        (MatrixScenario.Script(facts=termination_facts(reported=0), returncode=0),),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    reported=0,
+                    elapsed_to_terminal_ms=_C1_C2_ELAPSED_MS,
+                ),
+                returncode=0,
+            ),
+        ),
         ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
         expected_kind="agent_dead",
     ),
@@ -169,6 +211,7 @@ SCENARIOS = (
                     observed=0,
                     reported=0,
                     event_kinds=("error",),
+                    elapsed_to_terminal_ms=_C1_C2_ELAPSED_MS,
                 ),
                 returncode=0,
                 message="provider rejected this request for an unprecedented reason",
@@ -193,6 +236,7 @@ SCENARIOS = (
                     reported=137,
                     liveness=False,
                     event_kinds=("error",),
+                    elapsed_to_terminal_ms=_C1_C2_ELAPSED_MS,
                 ),
                 returncode=137,
                 message="provider stopped for a never-before-seen reason",
@@ -218,6 +262,7 @@ SCENARIOS = (
                     reported=1,
                     liveness=False,
                     event_kinds=("error",),
+                    elapsed_to_terminal_ms=_C1_C2_ELAPSED_MS,
                 ),
                 returncode=1,
                 message="agent crashed with ordinary exit code 1",
@@ -370,7 +415,7 @@ SCENARIOS = (
     MatrixScenario(
         "existing_outcome",
         ("AC8",),
-        (MatrixScenario.Script(facts=termination_facts(artifact_valid=True)),),
+        (MatrixScenario.Script(facts=existing_outcome_facts()),),
         expected_kind="task_or_environment_failure",
         no_ledger_charge=True,
     ),
@@ -388,21 +433,7 @@ SCENARIOS = (
         ("AC2", "AC13", "AC14"),
         (
             MatrixScenario.Script(
-                facts=AttemptFacts(
-                    event_kinds=("tool_result",),
-                    tool_calls=("read_file",),
-                    artifact_valid=False,
-                    workspace_changed=None,
-                    elapsed_to_terminal_ms=97_900,
-                    exit_status="exit_0",
-                    liveness_observed=True,
-                    termination=TerminationRecord.create(
-                        TerminationIssuer.UNKNOWN,
-                        observed_returncode=-15,
-                        reported_returncode=0,
-                        liveness_observed=True,
-                    ),
-                ),
+                facts=unattributed_live_end_facts(),
                 returncode=0,
             ),
         ),
@@ -458,7 +489,12 @@ SCENARIOS = (
     MatrixScenario(
         "silent_exit_passing_probe_never_benched",
         ("AC5",),
-        (MatrixScenario.Script(facts=termination_facts(reported=0), returncode=0),),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(observed=0, reported=0),
+                returncode=0,
+            ),
+        ),
         ProbeOutcome.PASSED,
         expected_kind="unknown",
         no_ledger_charge=True,

@@ -30,10 +30,12 @@ from tests.recovery.pipeline_matrix_scenarios import (
     MatrixScenario,
     corpus_cases,
     corpus_scenarios,
+    existing_outcome_facts,
     matrix_entry_points,
     run_matrix_scenario,
     run_matrix_scenario_with_selection,
     run_via_finalize_attempt,
+    unattributed_live_end_facts,
 )
 
 if TYPE_CHECKING:
@@ -401,9 +403,14 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     entry_point: AgentEntryPoint,
     scenario_name: str,
 ) -> None:
+    scenario = _scenario(scenario_name)
+    first_facts = scenario.attempts[0].facts
+    assert first_facts.elapsed_to_terminal_ms is not None
+    assert first_facts.elapsed_to_terminal_ms <= 1_000
+
     observation, controller, _clock, selected = run_matrix_scenario_with_selection(
         entry_point,
-        _scenario(scenario_name),
+        scenario,
     )
 
     assert selected == AGENT_B
@@ -417,6 +424,23 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     assert reasons.get(AGENT_A) == DEAD
     assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
     assert controller.snapshot()["spent_agents"] == {}
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac1_failed_probe_benches_exits_within_one_second(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = _scenario("failed_probe_benches")
+    facts = scenario.attempts[0].facts
+    assert facts.elapsed_to_terminal_ms is not None
+    assert facts.elapsed_to_terminal_ms <= 1_000
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+    assert observation.outcome_kind == "agent_dead"
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is False
 
 
 @pytest.mark.parametrize(
@@ -538,23 +562,109 @@ def test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
+def test_ac5_silent_exit_zero_with_passing_probe_is_never_benched(
     entry_point: AgentEntryPoint,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario("probe_budget_exhausted")
-    )
+    scenario = _scenario("silent_exit_passing_probe_never_benched")
+    facts = scenario.attempts[0].facts
+    assert facts.termination is not None
+    assert facts.termination.observed_returncode == 0
+    assert facts.termination.reported_returncode == 0
+
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
 
     assert observation.outcome_kind == "unknown"
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert observation.probe_calls == (AGENT_A,)
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert controller.snapshot()["spent_agents"] == {}
+
+
+def _assert_ordinary_ledger_entry(
+    observation: MatrixScenario.Observation,
+    controller: RecoveryController,
+    agent: str,
+) -> None:
+    assert observation.ledger_status == "eligible"
+    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.ledger.status(PHASE, agent).is_spent is False
+    entry = observation.ledger_entries.get(f"{PHASE}:{agent}")
+    assert isinstance(entry, dict), f"ordinary ledger entry missing for {agent}"
+    assert entry.get("consecutive_unproductive") == 1
+    assert entry.get("total_unproductive") == 1
+    assert entry.get("is_spent") is False
+    assert entry.get("cooldown_until_ms") is None
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+@pytest.mark.parametrize(
+    "scenario_name",
+    ("probe_budget_exhausted", "probe_unavailable"),
+)
+def test_ac7_probe_cannot_run_keeps_unknown_with_ordinary_ledger_entry(
+    entry_point: AgentEntryPoint,
+    scenario_name: str,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario(scenario_name)
+    )
+
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.probe_calls == (AGENT_A,)
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    _assert_ordinary_ledger_entry(observation, controller, AGENT_A)
     record = observation.verdict_record
     if isinstance(record, dict):
         assert as_mapping(record).get("probe_outcome") is None
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac8_identical_peers_first_peer_is_not_benched(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point, _scenario("identical_peers")
+    )
+
+    assert observation.outcome_kind == "task_or_environment_failure"
+    assert observation.invocations == (AGENT_A, AGENT_B)
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+    assert controller.unavailability_store.is_available(PHASE, AGENT_B) is True
+    assert AGENT_A not in controller.unavailability_store.snapshot().get(
+        "unavailability_reasons", {}
+    )
+    assert controller.snapshot()["spent_agents"] == {}
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac8_existing_outcome_is_task_or_environment_without_bench(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = _scenario("existing_outcome")
+    facts = scenario.attempts[0].facts
+    assert facts.artifact_valid is False
+    assert facts.outcome_exists is True
+    assert facts == existing_outcome_facts()
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+    assert observation.outcome_kind == "task_or_environment_failure"
+    assert observation.availability is True
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+    assert controller.snapshot()["spent_agents"] == {}
 
 
 @pytest.mark.parametrize(
@@ -824,13 +934,24 @@ def test_ac14_unattributed_live_session_end_parity(
     entry_point: AgentEntryPoint,
 ) -> None:
     scenario = _scenario("unattributed_live_end")
+    facts = unattributed_live_end_facts()
+    assert facts.termination is not None
+    assert facts.termination.issuer is TerminationIssuer.UNKNOWN
+    assert facts.liveness_observed is True
+
     observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
 
-    assert observation.outcome_kind in ("runtime_ended", "unknown")
+    if entry_point is AgentEntryPoint.CANARY_PROBE:
+        assert observation.outcome_kind in ("runtime_ended", "unknown")
+    else:
+        assert observation.outcome_kind == "runtime_ended"
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
+    assert observation.ledger_entries == {}
     assert controller.snapshot()["spent_agents"] == {}
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
 
     script = scenario.attempts[-1]
     assert script.facts.liveness_observed is True
@@ -856,6 +977,7 @@ def test_ac14_unattributed_live_session_end_parity(
         attrib = as_mapping(typed_record.get("attribution", {}))
         assert attrib.get("attribution") == "runtime"
         assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
+        assert attrib.get("counts_toward_agent_state") is False
 
 
 @pytest.mark.parametrize(

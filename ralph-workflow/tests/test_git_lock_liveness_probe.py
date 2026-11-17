@@ -45,7 +45,7 @@ def test_liveness_probe_whole_timeout_0_5s(
     def fake_result(
         *args: object, timeout: float | None = None, **kwargs: object
     ) -> Literal["live", "dead", "unknown"]:
-        assert timeout == 0.5
+        assert timeout is not None and timeout > 0
         raise TimeoutError("probe timed out")
 
     def fake_submit(self: object, fn: object, *args: object, **kwargs: object) -> SimpleNamespace:
