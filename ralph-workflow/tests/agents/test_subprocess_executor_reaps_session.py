@@ -18,7 +18,7 @@ _REAP_DEADLINE_SECONDS = 3.0
 
 
 def _tag(case: str) -> str:
-    return f"{_GRANDCHILD_SECONDS}.{os.getpid() % 1000:03d}{case}"
+    return f"{_GRANDCHILD_SECONDS}.{os.getpid()}{case}"
 
 
 def _sleepers(tag: str) -> list[psutil.Process]:

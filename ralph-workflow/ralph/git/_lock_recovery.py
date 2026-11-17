@@ -93,6 +93,7 @@ from ralph.git._lock_proc_inspect import (
     _read_proc_status,
     _resolve_environ_gitdir,
     _rule_out_unreadable,
+    _scan_lock_fd_holders,
 )
 from ralph.git.errors import GitOperationError
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
@@ -206,6 +207,8 @@ def _lock_has_no_live_holder(
             proc_status = "unknown"
         if proc_status == "live":
             return "live"
+        if proc_status == "dead":
+            return "dead"
 
         remaining_s = probe_start + probe_timeout_s - time.monotonic()
         external: Literal["live", "dead", "unknown"] = "unknown"
@@ -684,6 +687,7 @@ __all__ = [
     "_resolve_repo_identity",
     "_rule_out_unreadable",
     "_run_git_operation_with_stale_lock_recovery",
+    "_scan_lock_fd_holders",
     "_scan_proc",
     "_sleep_fn",
     "_stale_age_or_none",

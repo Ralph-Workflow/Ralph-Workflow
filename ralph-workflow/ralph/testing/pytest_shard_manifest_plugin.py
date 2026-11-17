@@ -31,7 +31,12 @@ class ShardManifest:
         candidate = PurePosixPath(path)
         if not candidate.parts or candidate.parts[0] != "tests":
             return False
-        return path not in self._path_set
+        if path in self._path_set:
+            return False
+        prefix = f"{path}/"
+        if any(selected == path or selected.startswith(prefix) for selected in self._path_set):
+            return False
+        return True
 
 
 def _is_collectable_test_module(path: str) -> bool:

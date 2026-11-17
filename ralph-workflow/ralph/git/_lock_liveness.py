@@ -10,7 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ralph.git._lock_proc_inspect import _check_pid_liveness, _list_pids
+from ralph.git._lock_proc_inspect import (
+    _UNPROVABLE_LOCK_CEILING_S,
+    _check_pid_liveness,
+    _list_pids,
+    _scan_lock_fd_holders,
+)
 
 _PROBE_TIMEOUT_S = 0.5
 _PROBE_MAX_WORKERS: int = 4
@@ -132,6 +137,16 @@ def _scan_proc(
     lock_uid = lock_stat.st_uid if lock_stat is not None else None
     lock_ident = (lock_stat.st_dev, lock_stat.st_ino) if lock_stat is not None else None
     lock_mtime = lock_stat.st_mtime if lock_stat is not None else None
+    lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
+    aged_orphan = lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S
+
+    fd_status = _scan_lock_fd_holders(
+        proc_root, lock_resolved, lock_ident, deadline=deadline
+    )
+    if fd_status == "live":
+        return "live"
+    if aged_orphan:
+        return "dead" if fd_status == "not_live" else "unknown"
 
     for pid in pids:
         if deadline is not None and time.monotonic() >= deadline:

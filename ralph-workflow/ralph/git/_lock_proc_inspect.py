@@ -147,9 +147,11 @@ def _is_dead_process_os_error(e: OSError) -> bool:
     )
 
 
-def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
+def _fd_path_is_lock(
+    fd_path: str, lock_resolved: str, lock_ident: tuple[int, int] | None
+) -> bool:
     try:
-        target = str(fd_link.readlink())
+        target = os.readlink(fd_path)
     except OSError:
         return False
     if target == lock_resolved:
@@ -159,10 +161,14 @@ def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] |
     if not (target.endswith(".lock") or ".lock" in target):
         return False
     try:
-        st = fd_link.stat()
+        st = os.stat(fd_path)
     except OSError:
         return False
     return (st.st_dev, st.st_ino) == lock_ident
+
+
+def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] | None) -> bool:
+    return _fd_path_is_lock(str(fd_link), lock_resolved, lock_ident)
 
 
 def _pid_holds_lock_fd(
@@ -187,6 +193,33 @@ def _pid_holds_lock_fd(
         else:
             if is_lock:
                 return "live"
+    return "not_live"
+
+
+def _scan_lock_fd_holders(
+    proc_root: Path,
+    lock_resolved: str,
+    lock_ident: tuple[int, int] | None,
+    *,
+    deadline: float | None = None,
+) -> Literal["live", "not_live", "incomplete"]:
+    try:
+        entries = os.scandir(proc_root)
+    except OSError:
+        return "incomplete"
+    with entries:
+        for ent in entries:
+            if deadline is not None and time.monotonic() >= deadline:
+                return "incomplete"
+            if not ent.name.isdigit():
+                continue
+            try:
+                with os.scandir(f"{ent.path}/fd") as fds:
+                    for fd in fds:
+                        if _fd_path_is_lock(fd.path, lock_resolved, lock_ident):
+                            return "live"
+            except OSError:
+                continue
     return "not_live"
 
 
@@ -417,11 +450,13 @@ def _check_pid_liveness(
         return "dead"
 
     fd_status = _pid_holds_lock_fd(pid_dir, lock_resolved, lock_ident)
+    lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
     if fd_status == "live":
         return "live"
     if fd_status == "unknown":
-        lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
         return _rule_out_unreadable(proc_root, pid_str, uids, lock_uid, lock_age_s)
+    if lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S:
+        return "dead"
     is_non_git = _can_rule_out_non_git_process(proc_root, pid_str)
     if is_non_git and not _non_git_touches_repo(
         proc_root, pid_str, pid_dir, live_cwds, common_worktrees_dir, gitdir, gitdir_common

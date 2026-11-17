@@ -39,31 +39,40 @@ ACTIVE_AGENT_DRAINS = {
 
 def _install_test_dependency_stubs() -> None:
     if "loguru" not in sys.modules:
-        loguru_module = types.ModuleType("loguru")
-        loguru_module.logger = types.SimpleNamespace(
-            info=lambda *args, **kwargs: None,
-            warning=lambda *args, **kwargs: None,
-            error=lambda *args, **kwargs: None,
-            exception=lambda *args, **kwargs: None,
-        )
-        sys.modules["loguru"] = loguru_module
+        try:
+            importlib.import_module("loguru")
+        except ImportError:
+            loguru_module = types.ModuleType("loguru")
+            loguru_module.logger = types.SimpleNamespace(
+                info=lambda *args, **kwargs: None,
+                warning=lambda *args, **kwargs: None,
+                error=lambda *args, **kwargs: None,
+                exception=lambda *args, **kwargs: None,
+                trace=lambda *args, **kwargs: None,
+            )
+            sys.modules["loguru"] = loguru_module
 
     if "rich.console" not in sys.modules:
-        rich_module = sys.modules.setdefault("rich", types.ModuleType("rich"))
-        console_module = types.ModuleType("rich.console")
+        try:
+            importlib.import_module("rich.console")
+            importlib.import_module("rich.style")
+        except ImportError:
+            rich_module = sys.modules.setdefault("rich", types.ModuleType("rich"))
+            console_module = types.ModuleType("rich.console")
 
-        class Console:
-            def print(self, *args: object, **kwargs: object) -> None:
-                return None
+            class Console:
+                def print(self, *args: object, **kwargs: object) -> None:
+                    return None
 
-        console_module.Console = Console
-        rich_module.console = console_module
-        sys.modules["rich.console"] = console_module
+            console_module.Console = Console
+            rich_module.console = console_module
+            sys.modules["rich.console"] = console_module
 
 
 _install_test_dependency_stubs()
 
 runner_module = importlib.import_module("ralph.pipeline.runner")
+run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
 interrupt_module = importlib.import_module("ralph.interrupt")
 config_models = importlib.import_module("ralph.config.models")
 pipeline_effects = importlib.import_module("ralph.pipeline.effects")
@@ -146,6 +155,11 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
         runner_module.ckpt,
         "save",
         lambda state, *_args, **_kwargs: saved_states.append(state),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_capture_planning_baseline_if_entry",
+        lambda *_args, **_kwargs: None,
     )
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     monkeypatch.setattr(

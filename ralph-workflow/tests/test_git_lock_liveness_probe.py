@@ -57,6 +57,183 @@ def test_liveness_probe_whole_timeout_0_5s(
     assert result == "unknown", "Probe timeout must return 'unknown', not 'live' or 'dead'"
 
 
+def test_aged_orphan_skips_cwd_scan_when_no_fd_holder(
+    tmp_path: Path,
+) -> None:
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("orphan", encoding="utf-8")
+    aged = time.time() - 5000.0
+    os.utime(lock_path, (aged, aged))
+
+    fake_proc = tmp_path / "proc"
+    fake_proc.mkdir()
+    busy = fake_proc / "77"
+    busy.mkdir()
+    (busy / "fd").mkdir()
+    (busy / "comm").write_text("git\n", encoding="utf-8")
+    (busy / "cmdline").write_bytes(b"git\x00status\x00")
+    (busy / "cwd").symlink_to(str(tmp_path.resolve()))
+    (busy / "environ").write_bytes(b"PATH=/bin\x00")
+    (busy / "status").write_text(
+        "Name:\tgit\nState:\tS\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8"
+    )
+
+    result = lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc)
+    assert result == "dead", (
+        "An orphan lock older than the unprovable ceiling with no open FD holder "
+        "must classify as 'dead' without requiring a full cwd/git binding scan"
+    )
+
+
+def _populate_large_idle_proc(fake_proc: Path, count: int, *, fd_noise: Path) -> None:
+    fake_proc.mkdir(parents=True, exist_ok=True)
+    for pid in range(1, count + 1):
+        pid_dir = fake_proc / str(pid)
+        pid_dir.mkdir()
+        fd_dir = pid_dir / "fd"
+        fd_dir.mkdir()
+        for fd_n in range(8):
+            (fd_dir / str(fd_n)).symlink_to(str(fd_noise))
+        (pid_dir / "comm").write_text("python3\n", encoding="utf-8")
+        (pid_dir / "cmdline").write_bytes(b"/usr/bin/python3\x00")
+        (pid_dir / "status").write_text(
+            "Name:\tpython3\nState:\tS\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8"
+        )
+
+
+def test_aged_orphan_large_proc_stays_dead_when_full_walk_would_miss_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("orphan", encoding="utf-8")
+    aged = time.time() - 5000.0
+    os.utime(lock_path, (aged, aged))
+
+    noise = tmp_path / "noise.txt"
+    noise.write_text("x", encoding="utf-8")
+    fake_proc = tmp_path / "proc"
+    _populate_large_idle_proc(fake_proc, 400, fd_noise=noise)
+
+    import ralph.git._lock_liveness as lock_liveness
+
+    def budget_breaking_pid_check(*_a: object, **_k: object) -> Literal["dead"]:
+        time.sleep(0.01)
+        return "dead"
+
+    monkeypatch.setattr(lock_liveness, "_check_pid_liveness", budget_breaking_pid_check)
+
+    result = lock_has_no_live_holder(
+        lock_path,
+        gitdir,
+        proc_root=fake_proc,
+        probe_timeout_s=0.5,
+        probe_lsof_fuser_fn=lambda *_a, **_k: "unknown",
+    )
+    assert result == "dead", (
+        "Aged orphan with no FD holder must classify 'dead' from a bounded FD-only "
+        "pass even when a full per-PID liveness walk of a large /proc would exceed "
+        "the 0.5s probe budget"
+    )
+
+
+def test_live_fd_holder_found_in_large_proc_before_full_walk_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("held", encoding="utf-8")
+
+    noise = tmp_path / "noise.txt"
+    noise.write_text("x", encoding="utf-8")
+    fake_proc = tmp_path / "proc"
+    _populate_large_idle_proc(fake_proc, 400, fd_noise=noise)
+
+    holder = fake_proc / "401"
+    holder.mkdir()
+    holder_fd = holder / "fd"
+    holder_fd.mkdir()
+    (holder_fd / "3").symlink_to(str(lock_path.resolve()))
+    (holder / "comm").write_text("python3\n", encoding="utf-8")
+    (holder / "status").write_text(
+        "Name:\tpython3\nState:\tS\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8"
+    )
+
+    import ralph.git._lock_liveness as lock_liveness
+
+    def budget_breaking_pid_check(*_a: object, **_k: object) -> Literal["dead"]:
+        time.sleep(0.01)
+        return "dead"
+
+    monkeypatch.setattr(lock_liveness, "_check_pid_liveness", budget_breaking_pid_check)
+
+    result = lock_has_no_live_holder(
+        lock_path,
+        gitdir,
+        proc_root=fake_proc,
+        probe_timeout_s=0.5,
+        probe_lsof_fuser_fn=lambda *_a, **_k: "unknown",
+    )
+    assert result == "live", (
+        "A live open-FD holder must be discovered by the FD-first pass among a large "
+        "/proc before any full per-PID walk can exhaust the 0.5s probe budget"
+    )
+
+
+def test_proven_dead_proc_scan_is_not_discarded_by_slow_external_probe(
+    tmp_path: Path,
+) -> None:
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("orphan", encoding="utf-8")
+
+    fake_proc = tmp_path / "proc"
+    fake_proc.mkdir()
+    idle = fake_proc / "99"
+    idle.mkdir()
+    (idle / "fd").mkdir()
+    (idle / "comm").write_text("python3\n", encoding="utf-8")
+    (idle / "cmdline").write_bytes(b"/usr/bin/python3\x00")
+    (idle / "cwd").symlink_to(str(tmp_path.resolve()))
+    (idle / "environ").write_bytes(b"PATH=/bin\x00")
+    (idle / "status").write_text(
+        "Name:\tpython3\nState:\tS\nUid:\t1000\t1000\t1000\t1000\n", encoding="utf-8"
+    )
+
+    gate = threading.Event()
+    external_calls = {"count": 0}
+
+    def hung_external(_lock: Path, _timeout: float) -> Literal["live", "dead", "unknown"]:
+        external_calls["count"] += 1
+        gate.wait(timeout=60)
+        return "unknown"
+
+    try:
+        result = lock_has_no_live_holder(
+            lock_path,
+            gitdir,
+            proc_root=fake_proc,
+            probe_timeout_s=0.5,
+            probe_lsof_fuser_fn=hung_external,
+        )
+        assert result == "dead", (
+            "A completed /proc scan that proved no live holder must return 'dead' "
+            "even when the secondary lsof/fuser probe would exhaust the budget"
+        )
+        assert external_calls["count"] == 0, (
+            "External lsof/fuser must not run after /proc already proved 'dead'"
+        )
+    finally:
+        gate.set()
+
+
 def test_liveness_probe_or_predicate_cwd_only(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

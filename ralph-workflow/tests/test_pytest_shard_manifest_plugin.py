@@ -70,3 +70,16 @@ def test_manifest_filters_only_collectable_test_modules() -> None:
     assert manifest.should_ignore("tests/_support/helper.py") is True
     assert manifest.should_ignore("tests/conftest.py") is True
     assert manifest.should_ignore("ralph/testing/test_helper.py") is False
+
+
+def test_manifest_keeps_ancestor_directories_of_nested_selected_files() -> None:
+    manifest = manifest_plugin.ShardManifest(
+        ("tests/agents/test_terminal_state_restored_on_exit.py",)
+    )
+
+    assert manifest.should_ignore("tests") is False
+    assert manifest.should_ignore("tests/agents") is False
+    assert manifest.should_ignore("tests/agents/test_terminal_state_restored_on_exit.py") is False
+    assert manifest.should_ignore("tests/agents/test_other.py") is True
+    assert manifest.should_ignore("tests/test_other.py") is True
+    assert manifest.should_ignore("tests/unit") is True

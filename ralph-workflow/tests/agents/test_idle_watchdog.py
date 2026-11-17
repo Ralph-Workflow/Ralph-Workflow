@@ -1266,6 +1266,16 @@ def _errored_tool_line(path: str, *, call_id: str, error: str) -> str:
     )
 
 
+def _line_activity_reader(strategy: object, *, parser_key: str = "generic") -> SimpleNamespace:
+    return SimpleNamespace(
+        _strategy=strategy,
+        _last_activity_kind="",
+        _last_activity_meaningful=[False],
+        _input_prompt=None,
+        _parser_key=parser_key,
+    )
+
+
 def _harness() -> tuple[FakeClock, IdleWatchdog, object]:
     clock = FakeClock()
     watchdog = IdleWatchdog(
@@ -1279,11 +1289,9 @@ def _harness() -> tuple[FakeClock, IdleWatchdog, object]:
         ),
         clock,
     )
-    reader = SimpleNamespace(
-        _strategy=strategy_for_transport(AgentTransport.OPENCODE),
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
+    reader = _line_activity_reader(
+        strategy_for_transport(AgentTransport.OPENCODE),
+        parser_key="opencode",
     )
     return clock, watchdog, MethodType(ProcessLineReader._record_line_activity, reader)
 
@@ -2222,12 +2230,7 @@ def _probe_tombstone_cap() -> int:
 
 
 def _reader() -> object:
-    return SimpleNamespace(
-        _strategy=_ResultThenCallStrategy(),
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    return _line_activity_reader(_ResultThenCallStrategy())
 
 
 def _read(path: Path) -> str:
@@ -5234,12 +5237,7 @@ def test_pty_line_reader_silently_skips_unrecognised_envelopes() -> None:
 def test_process_line_reader_routes_tool_use_to_record_tool_call_activity() -> None:
     raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls"}})
     strategy = _ToolUseStrategy(raw)
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
@@ -5257,12 +5255,7 @@ def test_process_line_reader_routes_tool_use_to_record_tool_call_activity() -> N
 def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
     raw = json.dumps({"type": "tool_use", "name": "Bash", "input": {"command": "ls -la"}})
     strategy = _ToolUseStrategy(raw)
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
@@ -5284,12 +5277,7 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
 def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
     raw = json.dumps({"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}})
     strategy = _ToolUseStrategy(raw)
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
@@ -5316,12 +5304,7 @@ def test_process_line_reader_repeated_tool_use_trips_real_watchdog() -> None:
 def test_repeated_tool_call_timeout_diagnostic_identifies_command() -> None:
     raw = json.dumps({"type": "tool_use", "name": "exec", "input": {"cmd": "long silent command"}})
     strategy = _ToolUseStrategy(raw)
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
@@ -5372,12 +5355,7 @@ def test_repeated_tool_call_timeout_messages_identify_command() -> None:
 
 def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
     strategy = _ToolUseStrategy("claude tool: Bash")
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
@@ -5394,12 +5372,7 @@ def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
 
 def test_process_line_reader_silently_skips_unrecognised_tool_envelopes() -> None:
     strategy = _JunkToolUseStrategy()
-    reader_like = SimpleNamespace(
-        _strategy=strategy,
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
-    )
+    reader_like = _line_activity_reader(strategy)
     bound_method = MethodType(ProcessLineReader._record_line_activity, reader_like)
     watchdog = _RecordingWatchdog()
 
@@ -5903,11 +5876,9 @@ def test_wedge_trips_on_the_real_interleaved_stream() -> None:
         ),
         clock,
     )
-    reader = SimpleNamespace(
-        _strategy=strategy_for_transport(AgentTransport.OPENCODE),
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
+    reader = _line_activity_reader(
+        strategy_for_transport(AgentTransport.OPENCODE),
+        parser_key="opencode",
     )
     record = MethodType(ProcessLineReader._record_line_activity, reader)
 
@@ -5936,11 +5907,9 @@ def test_distinct_calls_on_the_real_stream_do_not_trip() -> None:
         ),
         clock,
     )
-    reader = SimpleNamespace(
-        _strategy=strategy_for_transport(AgentTransport.OPENCODE),
-        _last_activity_kind="",
-        _last_activity_meaningful=[False],
-        _input_prompt=None,
+    reader = _line_activity_reader(
+        strategy_for_transport(AgentTransport.OPENCODE),
+        parser_key="opencode",
     )
     record = MethodType(ProcessLineReader._record_line_activity, reader)
 
