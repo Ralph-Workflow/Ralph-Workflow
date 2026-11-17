@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import uuid4
 
 from loguru import logger
@@ -550,7 +550,11 @@ def invoke_agent(
             (
                 _subagent_pid_registry,
                 subagent_pid_source,
-            ) = _registry_module()().build_subagent_pid_registry(transport_for_registry)
+            ) = (
+                _registry_module()
+                .AgentRegistry()
+                .build_subagent_pid_registry(transport_for_registry)
+            )
         execution_strategy = strategy_for_command(
             config.cmd,
             transport_for_registry,

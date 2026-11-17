@@ -370,10 +370,7 @@ def _run_canary_probe_attempt(
     controller: RecoveryController,
     deps: AttemptRunnerDeps,
     state: object | None = None,
-    phase: str | None = None,
-    agent: str | None = None,
-    prompt_file: str | None = None,
-    options: InvokeOptions | None = None,
+    **execute_kwargs: object,
 ) -> AttemptResult:
 
     from ralph.pipeline.attempt_runner import run_agent_attempt
@@ -387,10 +384,7 @@ def _run_canary_probe_attempt(
             controller=controller,
             deps=deps,
             state=state,
-            phase=phase,
-            agent=agent,
-            prompt_file=prompt_file,
-            options=options,
+            **execute_kwargs,
         )
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -68,8 +68,6 @@ from ralph.phases.required_artifacts import validation_corrective_action
 from ralph.recovery.retry_prompt import build_validation_retry_footer
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.mcp.tools.text_edits import TextEdit
 _PLAN_READ_CAPABILITY = "artifact.plan_read"
 REPAIR_HINT: str = (

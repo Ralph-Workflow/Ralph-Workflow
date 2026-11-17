@@ -28,7 +28,6 @@ from ralph.agents.execution_state import (
     AgentExecutionState,
     BaseExecutionStrategy,
     GenericExecutionStrategy,
-    OpenCodeExecutionStrategy,
     with_prompt_echo_flag,
 )
 from ralph.agents.idle_watchdog import (
@@ -322,6 +321,7 @@ class PtyLineReader:
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
         self._subagent_tails: ClaudeSubagentTranscriptTails | None = None
+        self._subagent_sink_holder: dict[str, Callable[[str], None]] = {}
 
     def _bind_optional_ctx_hooks(self, ctx: AgentRunCtx) -> None:
         self._pre_output_listener = cast(
