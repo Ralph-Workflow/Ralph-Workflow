@@ -1498,8 +1498,10 @@ def _check_forbidden_integration_classifier(
 ) -> list[SingleOwnerViolation]:
     violations: list[SingleOwnerViolation] = []
     for node in ast.walk(tree):
-        if (any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))):
-            if node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES:
+        if (
+            any(isinstance(node, _t) for _t in (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES
+        ):
                 violations.append(
                     SingleOwnerViolation(
                         path=rel_path,

@@ -1065,8 +1065,12 @@ def _execute_smoke_turns(
         rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
         observed_session_box: list[str | None] = [current_session_id]
 
-        def _capture_session_id(session_id: str) -> None:
-            observed_session_box[0] = session_id
+        def _capture_session_id(
+            session_id: str,
+            *,
+            _observed_session_box: list[str | None] = observed_session_box,
+        ) -> None:
+            _observed_session_box[0] = session_id
 
         def _observe_raw_line(line: str, *, _turn_raw_lines: deque[str] = raw_lines) -> None:
             cur_c = transport_evidence_ceiling(params.config, [line])

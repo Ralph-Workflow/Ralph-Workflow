@@ -112,6 +112,13 @@ def after_agent_refresh(
     )
 
 
+
+def _require_reindex_result(raw_result: object) -> ReindexResult:
+    if isinstance(raw_result, ReindexResult):
+        return raw_result
+    msg = f"reindex runner returned {type(raw_result).__name__}, expected ReindexResult"
+    raise TypeError(msg)
+
 def _run_hook(
     *,
     workspace_root: Path,
@@ -168,10 +175,7 @@ def _run_hook(
             workspace_root,
             **{kwargs_name: options_value},
         )
-        if not isinstance(raw_result, ReindexResult):
-            msg = f"reindex runner returned {type(raw_result).__name__}, expected ReindexResult"
-            raise TypeError(msg)
-        result = raw_result
+        result = _require_reindex_result(raw_result)
     except (
         OSError,
         RuntimeError,

@@ -313,10 +313,7 @@ def _get_content_list(result: JsonObject, server_name: str, tool_name: str) -> l
     if content is None:
         return None
     if any(isinstance(content, _t) for _t in (list, tuple)):
-        blocks: list[object] = []
-        for item in content:
-            blocks.append(item)
-        return blocks
+        return list(content)
     msg = (
         f"upstream server {server_name!r} tool {tool_name!r} returned a 'content' "
         f"field that is not a list of blocks (got {type(content).__name__}); "

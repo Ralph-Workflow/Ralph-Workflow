@@ -293,9 +293,12 @@ def _edge_declared_in_normalized(normalized: dict[str, object], source: str, tar
         for route in routes:
             if isinstance(route, Mapping):
                 when_val = route.get("when")
-                if isinstance(when_val, Mapping):
-                    if when_val.get("phase") == source and route.get("target") == target:
-                        return True
+                if (
+                    isinstance(when_val, Mapping)
+                    and when_val.get("phase") == source
+                    and route.get("target") == target
+                ):
+                    return True
     return False
 
 

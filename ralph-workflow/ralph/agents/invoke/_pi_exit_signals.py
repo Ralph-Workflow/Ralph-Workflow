@@ -10,11 +10,7 @@ _PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if isinstance(key, str):
-            result[key] = item
-    return result
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _is_pi_agent(agent_name: str) -> bool:

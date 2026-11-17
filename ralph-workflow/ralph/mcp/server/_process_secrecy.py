@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 import sys
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents._broker_secret import parent_broker_secret
 from ralph.checked_accessors import as_int
@@ -17,6 +17,13 @@ class _Prctl(Protocol):
     def __call__(self, option: int, value: int) -> int: ...
 
 
+class _CtypesFn(Protocol):
+    argtypes: list[object]
+    restype: object
+
+    def __call__(self, *args: object) -> object: ...
+
+
 def _native_ctypes() -> ModuleType:
     if "ctypes" not in sys.modules:
         import ralph.process.manager._supervisor as _native_bridge
@@ -28,10 +35,10 @@ def _native_ctypes() -> ModuleType:
     return module
 
 
-def _require_native_fn(value: object, *, label: str) -> object:
+def _require_native_fn(value: object, *, label: str) -> _CtypesFn:
     if not callable(value):
-        raise RuntimeError(f"MCP broker secret process protection failed: missing {label}")
-    return value
+        raise TypeError(f"MCP broker secret process protection failed: missing {label}")
+    return cast("_CtypesFn", value)
 
 
 def _protect_darwin_process() -> None:

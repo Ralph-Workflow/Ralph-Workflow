@@ -38,10 +38,6 @@ class _HandlerWithBaseAttrs(Protocol):
     client_address: tuple[str, int]
     close_connection: bool
 
-    def do_POST(self) -> None: ...
-
-    def do_GET(self) -> None: ...
-
 
 class _InMemoryFallbackServer:
     __slots__ = (
@@ -153,11 +149,16 @@ def drive_request(
     handler, wfile, _server = _build_handler(
         mcp_server, payload_bytes, headers=headers, method=method, path=path
     )
-    if method == "POST":
-        handler.do_POST()
-    else:
-        handler.do_GET()
+    _invoke_http_method(handler, method)
     return _parse_sse_envelope(wfile.getvalue())
+
+
+def _invoke_http_method(handler: _HandlerWithBaseAttrs, method: str) -> None:
+    attr_name = "do_POST" if method == "POST" else "do_GET"
+    action = getattr(handler, attr_name, None)
+    if not callable(action):
+        raise TypeError(f"handler must provide {attr_name}")
+    action()
 
 
 def drive_streamed_request(
@@ -169,7 +170,7 @@ def drive_streamed_request(
     handler, wfile, server = _build_handler(
         mcp_server, payload_bytes, headers=headers, method="POST", path="/mcp"
     )
-    handler.do_POST()
+    _invoke_http_method(handler, "POST")
     server.shutdown_event.set()
     body = wfile.getvalue()
     for chunk in _split_sse_frames(body):

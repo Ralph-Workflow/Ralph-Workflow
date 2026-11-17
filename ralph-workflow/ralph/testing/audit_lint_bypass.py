@@ -112,6 +112,14 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
         "pattern": "tests/**/*.py",
         "reason": "Tests preserve externally defined API names exactly.",
     },
+    "E402": {
+        "pattern": "ralph/agents/parsers/_ndjson_base.py",
+        "reason": (
+            "Parser sections share one module with deferred imports between "
+            "transport-specific blocks so section order stays readable without "
+            "pulling every parser dependency at module import time."
+        ),
+    },
     "TC002": {
         "pattern": "tests/**/*.py",
         "reason": "Tests import pytest at runtime for fixtures and markers; type-only annotations live in TYPE_CHECKING where applicable.",
@@ -164,7 +172,9 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/_agy_upstream_diagnostic.py",
             "ralph/agents/catalog.py",
             "ralph/agents/invoke/__init__.py",
+            "ralph/agents/invoke/_pty_line_reader.py",
             "ralph/agents/invoke/watchdog_observer.py",
+
             "ralph/agents/parsers/__init__.py",
             "ralph/agents/parsers/line_channel.py",
             "ralph/git/git_command_queue.py",
@@ -204,6 +214,7 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/process/teardown.py",
             "ralph/prompts/materialize.py",
             "ralph/recovery/__init__.py",
+            "ralph/recovery/canary_probe.py",
             "ralph/recovery/failure_classifier.py",
             "ralph/skills/__init__.py",
             "ralph/supervising.py",

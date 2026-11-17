@@ -56,11 +56,7 @@ def _mapping(value: object) -> dict[str, object] | None:
                 return None
     if not isinstance(parsed, dict):
         return None
-    result: dict[str, object] = {}
-    for key, item in parsed.items():
-        if isinstance(key, str):
-            result[key] = item
-    return result
+    return {key: item for key, item in parsed.items() if isinstance(key, str)}
 
 
 def _tool_info_parameters(mapping: dict[str, object]) -> dict[str, object] | None:

@@ -289,9 +289,9 @@ __all__ = [
 
 def __getattr__(name: str) -> object:
     if name == "graph_module":
-        import ralph.mcp.explore.graph as graph_module
+        import sys
 
-        return graph_module
+        return sys.modules[__name__]
     if name == "hubs":
         from ralph.mcp.explore._graph_impact import hubs
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config._toml_fallback import (
         describe_config_failure,
         emit_config_failure_warning,
@@ -58,35 +58,35 @@ __all__ = [
 ]
 
 
-def _load_AgentConfig() -> object:
+def _load_agentconfig() -> object:
     from ralph.config.models import AgentConfig
     return AgentConfig
 
-def _load_BootstrapResult() -> object:
+def _load_bootstrapresult() -> object:
     from ralph.config.bootstrap import BootstrapResult
     return BootstrapResult
 
-def _load_GeneralConfig() -> object:
+def _load_generalconfig() -> object:
     from ralph.config.models import GeneralConfig
     return GeneralConfig
 
-def _load_JsonParserType() -> object:
+def _load_jsonparsertype() -> object:
     from ralph.config.enums import JsonParserType
     return JsonParserType
 
-def _load_PauseOnExit() -> object:
+def _load_pauseonexit() -> object:
     from ralph.config.enums import PauseOnExit
     return PauseOnExit
 
-def _load_RecoveryStrategy() -> object:
+def _load_recoverystrategy() -> object:
     from ralph.config.enums import RecoveryStrategy
     return RecoveryStrategy
 
-def _load_UnifiedConfig() -> object:
+def _load_unifiedconfig() -> object:
     from ralph.config.models import UnifiedConfig
     return UnifiedConfig
 
-def _load_Verbosity() -> object:
+def _load_verbosity() -> object:
     from ralph.config.enums import Verbosity
     return Verbosity
 
@@ -139,14 +139,14 @@ def _load_validate_or_default() -> object:
     return validate_or_default
 
 _LOADERS: dict[str, Callable[[], object]] = {
-    "AgentConfig": _load_AgentConfig,
-    "BootstrapResult": _load_BootstrapResult,
-    "GeneralConfig": _load_GeneralConfig,
-    "JsonParserType": _load_JsonParserType,
-    "PauseOnExit": _load_PauseOnExit,
-    "RecoveryStrategy": _load_RecoveryStrategy,
-    "UnifiedConfig": _load_UnifiedConfig,
-    "Verbosity": _load_Verbosity,
+    "AgentConfig": _load_agentconfig,
+    "BootstrapResult": _load_bootstrapresult,
+    "GeneralConfig": _load_generalconfig,
+    "JsonParserType": _load_jsonparsertype,
+    "PauseOnExit": _load_pauseonexit,
+    "RecoveryStrategy": _load_recoverystrategy,
+    "UnifiedConfig": _load_unifiedconfig,
+    "Verbosity": _load_verbosity,
     "describe_config_failure": _load_describe_config_failure,
     "emit_config_failure_warning": _load_emit_config_failure_warning,
     "emit_first_run_welcome": _load_emit_first_run_welcome,

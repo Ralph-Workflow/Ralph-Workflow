@@ -92,7 +92,7 @@ def _read_workspace_policy(
 ) -> str:
     read_method = getattr(workspace, "read", None)
     if not callable(read_method):
-        raise AttributeError("Workspace object has no 'read' method")
+        raise TypeError("Workspace object has no 'read' method")
     effective_clock = clock_fn if clock_fn is not None else _clock
 
     result: list[str] = []

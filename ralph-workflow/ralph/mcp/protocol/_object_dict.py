@@ -9,11 +9,7 @@ if TYPE_CHECKING:
 def as_object_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if isinstance(key, str):
-            result[key] = item
-    return result
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def require_object_dict(value: object, *, error: str) -> dict[str, object]:
@@ -24,11 +20,7 @@ def require_object_dict(value: object, *, error: str) -> dict[str, object]:
 
 
 def mapping_as_object_dict(value: Mapping[object, object]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if isinstance(key, str):
-            result[key] = item
-    return result
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 __all__ = ["as_object_dict", "mapping_as_object_dict", "require_object_dict"]

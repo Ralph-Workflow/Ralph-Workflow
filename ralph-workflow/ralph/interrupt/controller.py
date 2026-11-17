@@ -34,11 +34,7 @@ def legacy_bridge_pids(kwargs: dict[str, object]) -> list[int]:
     raw = kwargs.pop("bridge_pids", ())
     if not isinstance(raw, list) and not isinstance(raw, tuple):
         return []
-    result: list[int] = []
-    for item in raw:
-        if isinstance(item, int) and not isinstance(item, bool):
-            result.append(item)
-    return result
+    return [item for item in raw if isinstance(item, int) and not isinstance(item, bool)]
 
 INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130

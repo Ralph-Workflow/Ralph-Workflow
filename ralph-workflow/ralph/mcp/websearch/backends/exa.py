@@ -78,11 +78,7 @@ def _object_payload(value: object) -> Mapping[str, object]:
     dunder_dict = getattr(value, "__dict__", None)
     if not isinstance(dunder_dict, dict):
         return {}
-    payload: dict[str, object] = {}
-    for key, item in dunder_dict.items():
-        if isinstance(key, str):
-            payload[key] = item
-    return payload
+    return {key: item for key, item in dunder_dict.items() if isinstance(key, str)}
 
 
 def _string_value(payload: Mapping[str, object], *keys: str) -> str:

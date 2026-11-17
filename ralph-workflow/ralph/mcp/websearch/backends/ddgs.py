@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
 def _load_ddgs_factory() -> Callable[[], _DdgsTextClient] | None:
     try:
-        from ddgs import DDGS as ddgs_factory
+        from ddgs import DDGS
     except ImportError:
         return None
-    return ddgs_factory
+    return DDGS
 
 
 DDGS = _load_ddgs_factory()

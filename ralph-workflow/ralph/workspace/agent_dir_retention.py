@@ -226,11 +226,11 @@ def register_temporary_path_owner(workspace_root: Path, path: Path, run_id: str)
         return
     with _metadata_lock(workspace_root):
         raw = _read_json(ownership_path)
-        owners: dict[str, object] = {}
-        if isinstance(raw, dict):
-            for key, value in raw.items():
-                if isinstance(key, str):
-                    owners[key] = value
+        owners: dict[str, object] = (
+            {key: value for key, value in raw.items() if isinstance(key, str)}
+            if isinstance(raw, dict)
+            else {}
+        )
         owners[relative_path] = {"run_id": run_id, "created_at": time.time()}
         _write_json(ownership_path, owners)
 

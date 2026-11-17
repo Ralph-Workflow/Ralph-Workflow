@@ -320,9 +320,11 @@ def _attempt_cause_from_outcome(
     outcome: StopResolutionOutcome,
     trigger: StopResolutionTrigger,
 ) -> ResolutionFailureCause:
-    if any(isinstance(outcome, _t) for _t in (ResolvedOutcome, RetryLaterOutcome)):
-        if outcome.failure_cause is not None:
-            return outcome.failure_cause
+    if (
+        any(isinstance(outcome, _t) for _t in (ResolvedOutcome, RetryLaterOutcome))
+        and outcome.failure_cause is not None
+    ):
+        return outcome.failure_cause
     if isinstance(outcome, ConfigFailureOutcome):
         return ResolutionFailureCause.CONFIG_FAILURE
     return _deferred_failure_cause(trigger.root, trigger.record)

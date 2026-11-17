@@ -92,7 +92,8 @@ def _staleness_block(handle: ExploreIndex | None) -> dict[str, object]:
             last_refresh_age = None
     raw_cached: object = getattr(handle, "staleness_block_cache", None)
     cached: tuple[tuple[int, int, float | None, int], dict[str, object]] | None
-    if raw_cached is None or not isinstance(raw_cached, tuple) or len(raw_cached) != 2:
+    _staleness_cache_pair_len = 2
+    if raw_cached is None or not isinstance(raw_cached, tuple) or len(raw_cached) != _staleness_cache_pair_len:
         cached = None
     else:
         signature_obj, block_obj = raw_cached

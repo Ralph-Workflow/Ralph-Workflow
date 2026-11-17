@@ -4,7 +4,7 @@ import json
 import shutil
 import sqlite3
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -49,11 +49,7 @@ if TYPE_CHECKING:
 def _as_str_object_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
-    result: dict[str, object] = {}
-    for key, item in value.items():
-        if isinstance(key, str):
-            result[key] = item
-    return result
+    return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
 def _env_get(base_env: Mapping[str, str] | None, key: str, default: str | None = None) -> str | None:
@@ -74,7 +70,7 @@ class _GetenvFallbackMapping(Mapping[str, str]):
             raise KeyError(key)
         return value
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         if self._base is None:
             return iter(())
         return iter(self._base)

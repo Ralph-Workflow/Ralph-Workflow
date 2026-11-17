@@ -58,9 +58,10 @@ def _pause(seconds: float) -> None:
 
 
 def _bound_address(server_address: object) -> tuple[str, int]:
+    _bound_address_len = 2
     if (
         isinstance(server_address, tuple)
-        and len(server_address) == 2
+        and len(server_address) == _bound_address_len
         and isinstance(server_address[0], str)
         and isinstance(server_address[1], int)
     ):

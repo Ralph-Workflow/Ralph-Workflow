@@ -628,21 +628,3 @@ class OpenCodeResumableExitError(AgentInvocationError):
 
 
 __all__ = ["OpenCodeResumableExitError"]
-
-
-def raise_missing_completion_evidence(
-    agent_name: str,
-    execution_strategy: BaseExecutionStrategy,
-    diagnostic: str | None,
-) -> NoReturn:
-    if execution_strategy.supports_incomplete_exit_reprompt():
-        raise AgyIncompleteExitError(agent_name, diagnostic=diagnostic)
-    canonical = (
-        "agent exited without required completion evidence "
-        "(completion sentinel missing, or required artifact receipt missing)"
-    )
-    message = f"{diagnostic}\n{canonical}" if diagnostic else canonical
-    raise AgentInvocationError(agent_name, 0, message)
-
-
-__all__ = ["AgyIncompleteExitError", "raise_missing_completion_evidence"]

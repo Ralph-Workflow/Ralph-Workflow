@@ -156,11 +156,14 @@ def _condense_pair(
     return result[0], result[1]
 
 
+_condense_summary_arity = 4
+
+
 def _condense_with_summaries(
     text: str, *, options: CondenseOptions
 ) -> tuple[str, bool, str | None, str | None]:
     result = condense_content(text, options=options)
-    if len(result) == 4:
+    if len(result) == _condense_summary_arity:
         return result
     return result[0], result[1], None, None
 

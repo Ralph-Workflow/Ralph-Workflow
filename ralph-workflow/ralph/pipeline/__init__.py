@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
-from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline._auto_integrate_rebase_resolve import (
         resolve_conflicted_rebase,
@@ -79,87 +78,87 @@ __all__ = [
 ]
 
 
-def _load_Event() -> object:
+def _load_event() -> object:
     from ralph.pipeline.events import Event
     return Event
 
-def _load_IntegrationAction() -> object:
+def _load_integrationaction() -> object:
     from ralph.pipeline._integration_action import IntegrationAction
     return IntegrationAction
 
-def _load_IntegrationPolicy() -> object:
+def _load_integrationpolicy() -> object:
     from ralph.pipeline.integration_strategy import IntegrationPolicy
     return IntegrationPolicy
 
-def _load_IntegrationRelation() -> object:
+def _load_integrationrelation() -> object:
     from ralph.pipeline.integration_strategy import IntegrationRelation
     return IntegrationRelation
 
-def _load_IntegrationStatus() -> object:
+def _load_integrationstatus() -> object:
     from ralph.pipeline._integration_status import IntegrationStatus
     return IntegrationStatus
 
-def _load_IntegrationStrategy() -> object:
+def _load_integrationstrategy() -> object:
     from ralph.pipeline.integration_strategy import IntegrationStrategy
     return IntegrationStrategy
 
-def _load_IntegrationWorkShape() -> object:
+def _load_integrationworkshape() -> object:
     from ralph.pipeline.integration_strategy import IntegrationWorkShape
     return IntegrationWorkShape
 
-def _load_ObservedIntegration() -> object:
+def _load_observedintegration() -> object:
     from ralph.pipeline.integration_strategy import ObservedIntegration
     return ObservedIntegration
 
-def _load_PipelineEvent() -> object:
+def _load_pipelineevent() -> object:
     from ralph.pipeline.events import PipelineEvent
     return PipelineEvent
 
-def _load_PipelinePhase() -> object:
+def _load_pipelinephase() -> object:
     from ralph.config.enums import PipelinePhase
     return PipelinePhase
 
-def _load_PipelineState() -> object:
+def _load_pipelinestate() -> object:
     from ralph.pipeline.state import PipelineState
     return PipelineState
 
-def _load_PlanningSyncVerdict() -> object:
+def _load_planningsyncverdict() -> object:
     from ralph.pipeline._integration_owner_seam import PlanningSyncVerdict
     return PlanningSyncVerdict
 
-def _load_RebaseOutcomeKind() -> object:
+def _load_rebaseoutcomekind() -> object:
     from ralph.pipeline._integration_action import RebaseOutcomeKind
     return RebaseOutcomeKind
 
-def _load_RebaseResolutionResult() -> object:
+def _load_rebaseresolutionresult() -> object:
     from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
     return RebaseResolutionResult
 
-def _load_StopResolutionOutcome() -> object:
+def _load_stopresolutionoutcome() -> object:
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
     return StopResolutionOutcome
 
-def _load_STRATEGY_ORDER() -> object:
+def _load_strategy_order() -> object:
     from ralph.pipeline.integration_strategy import STRATEGY_ORDER
     return STRATEGY_ORDER
 
-def _load_STRATEGY_TRANSITIONS() -> object:
+def _load_strategy_transitions() -> object:
     from ralph.pipeline.integration_strategy import STRATEGY_TRANSITIONS
     return STRATEGY_TRANSITIONS
 
-def _load_StopResolutionTrigger() -> object:
+def _load_stopresolutiontrigger() -> object:
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
     return StopResolutionTrigger
 
-def _load_StrategyDecision() -> object:
+def _load_strategydecision() -> object:
     from ralph.pipeline.integration_strategy import StrategyDecision
     return StrategyDecision
 
-def _load_StrategyTransition() -> object:
+def _load_strategytransition() -> object:
     from ralph.pipeline.integration_strategy import StrategyTransition
     return StrategyTransition
 
-def _load_StrategyTransitionGuard() -> object:
+def _load_strategytransitionguard() -> object:
     from ralph.pipeline.integration_strategy import StrategyTransitionGuard
     return StrategyTransitionGuard
 
@@ -212,27 +211,27 @@ def _load_integration_owner_seam() -> object:
     return _mod
 
 _LOADERS: dict[str, Callable[[], object]] = {
-    "Event": _load_Event,
-    "IntegrationAction": _load_IntegrationAction,
-    "IntegrationPolicy": _load_IntegrationPolicy,
-    "IntegrationRelation": _load_IntegrationRelation,
-    "IntegrationStatus": _load_IntegrationStatus,
-    "IntegrationStrategy": _load_IntegrationStrategy,
-    "IntegrationWorkShape": _load_IntegrationWorkShape,
-    "ObservedIntegration": _load_ObservedIntegration,
-    "PipelineEvent": _load_PipelineEvent,
-    "PipelinePhase": _load_PipelinePhase,
-    "PipelineState": _load_PipelineState,
-    "PlanningSyncVerdict": _load_PlanningSyncVerdict,
-    "RebaseOutcomeKind": _load_RebaseOutcomeKind,
-    "RebaseResolutionResult": _load_RebaseResolutionResult,
-    "StopResolutionOutcome": _load_StopResolutionOutcome,
-    "STRATEGY_ORDER": _load_STRATEGY_ORDER,
-    "STRATEGY_TRANSITIONS": _load_STRATEGY_TRANSITIONS,
-    "StopResolutionTrigger": _load_StopResolutionTrigger,
-    "StrategyDecision": _load_StrategyDecision,
-    "StrategyTransition": _load_StrategyTransition,
-    "StrategyTransitionGuard": _load_StrategyTransitionGuard,
+    "Event": _load_event,
+    "IntegrationAction": _load_integrationaction,
+    "IntegrationPolicy": _load_integrationpolicy,
+    "IntegrationRelation": _load_integrationrelation,
+    "IntegrationStatus": _load_integrationstatus,
+    "IntegrationStrategy": _load_integrationstrategy,
+    "IntegrationWorkShape": _load_integrationworkshape,
+    "ObservedIntegration": _load_observedintegration,
+    "PipelineEvent": _load_pipelineevent,
+    "PipelinePhase": _load_pipelinephase,
+    "PipelineState": _load_pipelinestate,
+    "PlanningSyncVerdict": _load_planningsyncverdict,
+    "RebaseOutcomeKind": _load_rebaseoutcomekind,
+    "RebaseResolutionResult": _load_rebaseresolutionresult,
+    "StopResolutionOutcome": _load_stopresolutionoutcome,
+    "STRATEGY_ORDER": _load_strategy_order,
+    "STRATEGY_TRANSITIONS": _load_strategy_transitions,
+    "StopResolutionTrigger": _load_stopresolutiontrigger,
+    "StrategyDecision": _load_strategydecision,
+    "StrategyTransition": _load_strategytransition,
+    "StrategyTransitionGuard": _load_strategytransitionguard,
     "apply_session_capture": _load_apply_session_capture,
     "adopt_resolving_rebase_record": _load_adopt_resolving_rebase_record,
     "attempt_stop_resolution": _load_attempt_stop_resolution,

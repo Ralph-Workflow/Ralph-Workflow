@@ -34,7 +34,11 @@ def _agent_spec(agent: str | None, model: str | None, current: AgentChainConfig)
     return f"{base.split('/', 1)[0]}/{model.strip()}"
 
 
-def apply_developer_override(policy: AgentsPolicy, config: _DeveloperPinConfig) -> AgentsPolicy:
+def apply_developer_override(
+    policy: AgentsPolicy, config: _DeveloperPinConfig | None
+) -> AgentsPolicy:
+    if config is None:
+        return policy
     agent = config.developer_agent
     model = config.developer_model
     if agent is None and model is None:

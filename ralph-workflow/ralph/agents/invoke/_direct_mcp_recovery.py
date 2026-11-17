@@ -154,8 +154,12 @@ def _run_with_direct_mcp_recovery[T](
     while True:
         observed_session: dict[str, str | None] = {"id": current_session_id}
 
-        def _capture_session_id(session_id: str) -> None:
-            observed_session["id"] = session_id
+        def _capture_session_id(
+            session_id: str,
+            *,
+            _observed_session: dict[str, str | None] = observed_session,
+        ) -> None:
+            _observed_session["id"] = session_id
             if on_session_observed is not None:
                 on_session_observed(session_id)
 
