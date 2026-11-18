@@ -147,11 +147,10 @@ def resolution_exhaustion_reason(
 ) -> str:
     action_msg = (
         session.operator_action_message
-        if session.operator_action_message
-        and "needs operator action:" in session.operator_action_message
+        if session.operator_action_message and "resume point:" in session.operator_action_message
         else (
             session.exhaustion_reason
-            if session.exhaustion_reason and "needs operator action:" in session.exhaustion_reason
+            if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
             else None
         )
     )
@@ -176,7 +175,7 @@ def resolution_exhaustion_reason(
         cmd = operator_command_for_paths(unresolved_paths)
         return (
             f"CANDIDATE_EXHAUSTED: all resolver agents are spent/unavailable; "
-            f"conflict on {paths} needs operator action: {cmd}"
+            f"conflict on {paths}; resume point: {cmd}"
         )
     reason = (
         session.terminal_reason.value

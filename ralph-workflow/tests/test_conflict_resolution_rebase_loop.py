@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,6 +37,19 @@ if TYPE_CHECKING:
     import pytest
 
 _TARGET = "main"
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "assert loop_module._read_replay_progress(tmp_path) == (2, 5)": (
+        "progress is still asserted through the public _read_replay_progress(read_text=...) "
+        "seam with the same (done, total) values; the private module attr patch was removed "
+        "to stay within the whitebox setattr_private ceiling"
+    ),
+    "assert loop_module._read_replay_progress(tmp_path) is None": (
+        "absent or unreadable progress is still asserted as None via the public "
+        "_read_replay_progress(read_text=...) seam; the private setattr patch was removed "
+        "to stay within the whitebox setattr_private ceiling"
+    ),
+}
 _CONFLICTED = ["src/alpha.py"]
 _BASE_SHA = "ba5e0000000000000000000000000000000000ba"
 _ORIG_HEAD_SHA = "0219000000000000000000000000000000000fea"
@@ -94,7 +107,6 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _r: list(unmerged))
     monkeypatch.setattr(loop_module, "continue_rebase_at", repo.continue_rebase)
     monkeypatch.setattr(loop_module, "_rebase_base_sha", lambda _root: _BASE_SHA)
-    monkeypatch.setattr(loop_module, "_rebase_orig_head_sha", lambda _root: _ORIG_HEAD_SHA)
     monkeypatch.setattr(loop_module, "_read_replay_progress", lambda _root: replay_progress)
     monkeypatch.setattr(loop_module, "verify_rebase_completed_at", lambda _r, _t: verified)
     monkeypatch.setattr(
@@ -552,7 +564,7 @@ def _install_progress_git_seam(
     monkeypatch: pytest.MonkeyPatch,
     root: Path,
     files: dict[str, str],
-) -> None:
+) -> Callable[[Path], str]:
     state_dir = root / "state"
     scripted_files = {
         state_dir / relative.replace("/", "_"): text for relative, text in files.items()
@@ -577,19 +589,19 @@ def _install_progress_git_seam(
             raise OSError("scripted state file is absent") from exc
 
     monkeypatch.setattr(loop_module, "run_git", _fake_run_git)
-    monkeypatch.setattr(loop_module, "_read_rebase_state_text", _fake_read_text)
+    return _fake_read_text
 
 
 def test_the_merge_backend_replay_counter_is_read_and_rendered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_progress_git_seam(
+    read_text = _install_progress_git_seam(
         monkeypatch,
         tmp_path,
         {"rebase-merge/msgnum": "2\n", "rebase-merge/end": "5\n"},
     )
 
-    assert loop_module._read_replay_progress(tmp_path) == (2, 5)
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) == (2, 5)
     assert (
         status_module._phase_label(
             round_index=1,
@@ -606,41 +618,41 @@ def test_the_merge_backend_replay_counter_is_read_and_rendered(
 def test_the_apply_backend_replay_counter_is_read_equivalently(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_progress_git_seam(
+    read_text = _install_progress_git_seam(
         monkeypatch,
         tmp_path,
         {"rebase-apply/next": "2", "rebase-apply/last": "5"},
     )
 
-    assert loop_module._read_replay_progress(tmp_path) == (2, 5)
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) == (2, 5)
 
 
 def test_unreadable_or_nonsensical_replay_state_reads_as_none(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_progress_git_seam(monkeypatch, tmp_path, {})
-    assert loop_module._read_replay_progress(tmp_path) is None
+    read_text = _install_progress_git_seam(monkeypatch, tmp_path, {})
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) is None
 
-    _install_progress_git_seam(
+    read_text = _install_progress_git_seam(
         monkeypatch,
         tmp_path,
         {"rebase-merge/msgnum": "two", "rebase-merge/end": "5"},
     )
-    assert loop_module._read_replay_progress(tmp_path) is None
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) is None
 
-    _install_progress_git_seam(
+    read_text = _install_progress_git_seam(
         monkeypatch,
         tmp_path,
         {"rebase-merge/msgnum": "7", "rebase-merge/end": "5"},
     )
-    assert loop_module._read_replay_progress(tmp_path) is None
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) is None
 
-    _install_progress_git_seam(
+    read_text = _install_progress_git_seam(
         monkeypatch,
         tmp_path,
         {"rebase-merge/msgnum": "1", "rebase-merge/end": "0"},
     )
-    assert loop_module._read_replay_progress(tmp_path) is None
+    assert loop_module._read_replay_progress(tmp_path, read_text=read_text) is None
 
 
 def test_a_failing_git_path_lookup_reads_as_none(

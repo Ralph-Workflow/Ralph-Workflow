@@ -6,12 +6,13 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, TypeGuard
 
+from ralph.checked_accessors import module_attr
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
 _BOOL_STR_TUPLE_ARITY: Final = 2
 
@@ -847,16 +848,19 @@ def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Vi
     return violations
 
 
-@runtime_checkable
-class _SelftestModule(Protocol):
-    def selftest(self) -> int: ...
+def _is_object_callable(value: object) -> TypeGuard[Callable[..., object]]:
+    return callable(value)
 
 
 def selftest() -> int:
-    module: object = importlib.import_module("ralph.testing._integration_no_legacy_selftest")
-    if not isinstance(module, _SelftestModule):
-        raise TypeError("ralph.testing._integration_no_legacy_selftest does not expose selftest")
-    return module.selftest()
+    module = importlib.import_module("ralph.testing._integration_no_legacy_selftest")
+    run_selftest = module_attr(module, "selftest")
+    if not _is_object_callable(run_selftest):
+        raise TypeError("expected callable selftest on no-legacy selftest module")
+    result = run_selftest()
+    if not isinstance(result, int) or isinstance(result, bool):
+        raise TypeError("expected int exit code from no-legacy selftest")
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

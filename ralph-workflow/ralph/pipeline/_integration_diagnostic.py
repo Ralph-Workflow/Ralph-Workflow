@@ -423,15 +423,14 @@ def _pre_pass_failure(
         from ralph.pipeline.auto_integrate_recovery_terminal import (
             RESUME_COMMAND,
             ResolutionTerminalMarker,
-            resolution_terminal_marker,
+            terminal_marker_blocks_attempt,
         )
         from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
 
+        if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
+            return False
         tip = _current_target_tip(root, record)
         key = _terminal_for_now_key(reason, tip)
-        marker = resolution_terminal_marker(record)
-        if marker is not None and record.repair_last_error == key:
-            return False
         target_record = _bump_attempt(record, key, repair_attempt_cap=repair_attempt_cap)
         gate_key = record.resolution_gate_key
         if isinstance(gate_key, ResolutionAttemptKey):
@@ -472,11 +471,12 @@ def _pre_pass_failure(
             "complete_in_place",
             RESUME_COMMAND,
         )
-        settled_key = _terminal_for_now_key(reason, _current_target_tip(root, record))
-        target_record = target_record.with_resolution_terminal_marker(
-            terminal_marker.as_record_value()
-        ).with_transition(BUMP_DIAGNOSTIC_ATTEMPT, repair_last_error=settled_key)
-        write_record(root, target_record, backend=backend)
+        current = read_record(root) or target_record
+        write_record(
+            root,
+            current.with_resolution_terminal_marker(terminal_marker.as_record_value()),
+            backend=backend,
+        )
         logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)

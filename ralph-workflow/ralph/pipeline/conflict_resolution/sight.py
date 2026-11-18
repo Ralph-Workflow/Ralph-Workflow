@@ -58,7 +58,7 @@ def gitlink_escalation_message(paths: Sequence[str]) -> str:
     if command:
         return (
             f"GITLINK_POLICY: the gitlink pointer policy could not complete on {joined}; "
-            f"needs operator action: {command}"
+            f"resume point: {command}"
         )
     return f"GITLINK_POLICY: the gitlink pointer policy could not complete on {joined}"
 
@@ -88,7 +88,7 @@ def out_of_reach_escalation_message(
         parts.append("GITLINK_POLICY: " + "; ".join(policy_items))
     joined_reasons = "; ".join(parts)
     if command:
-        return f"{joined_reasons} needs operator action: {command}"
+        return f"{joined_reasons}; resume point: {command}"
     return joined_reasons
 
 

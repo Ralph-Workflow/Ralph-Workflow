@@ -4,7 +4,6 @@ import contextlib
 import functools
 import shutil
 import subprocess
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import TextIO
@@ -34,6 +33,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the negative control and positive retry scenarios were consolidated into a single "
         "subprocess run that asserts bare refs remain unchanged at seed_sha during deferred "
         "retries before asserting publication on remote restoration"
+    ),
+    "test_throttle_deferred_probe_publishes_to_configured_release_tacos": (
+        "REPLACE: arm remote pull throttle via a public first pull_and_reconcile_target "
+        "instead of remote_sync._REMOTE_PULL_THROTTLE; second pull still asserts refresh "
+        "suppressed then deferred local publication to release/tacos"
     ),
 }
 
@@ -350,7 +354,13 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
 
     cfg = _build_config(interval_seconds=60.0)
 
-    remote_sync._REMOTE_PULL_THROTTLE.arm(repo, _REMOTE, _TARGET, clock=time.monotonic)
+    primed = remote_sync.pull_and_reconcile_target(
+        cfg,
+        repo,
+        _TARGET,
+    )
+    assert primed is not None
+    assert primed.last_remote_sync != "refresh suppressed"
 
     pull_record = remote_sync.pull_and_reconcile_target(
         cfg,

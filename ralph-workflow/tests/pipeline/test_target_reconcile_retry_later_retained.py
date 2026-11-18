@@ -20,8 +20,8 @@ pytestmark = pytest.mark.timeout_seconds(10)
 
 _OPTIONS = GitRunOptions(timeout=5)
 _ON_CHANGE_MESSAGE = (
-    "all resolver agents are spent/unavailable; conflict on shared.txt "
-    "needs operator action: git add -- shared.txt"
+    "all resolver agents are spent/unavailable; conflict on shared.txt; "
+    "resume point: git add -- shared.txt"
 )
 
 

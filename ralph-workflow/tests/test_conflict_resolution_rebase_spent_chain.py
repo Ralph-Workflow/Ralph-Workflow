@@ -13,6 +13,22 @@ from ralph.pipeline.conflict_resolution.session import (
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    'assert "needs operator action: git add -- app.py" in reason': (
+        "production spent-chain exhaustion now names a resume point instead of an "
+        "operator demand; the assertion still requires the same git-add command and "
+        "CANDIDATE_EXHAUSTED retention"
+    ),
+    'assert "needs operator action: git add -- app.py" in synth_reason': (
+        "synthesized exhaustion reasons use the same resume-point wording as production; "
+        "the assertion still requires the git-add command for the unresolved path"
+    ),
+    'assert "needs operator action: git add -- app.py" in short_circuit.last_reason': (
+        "short-circuit last_reason carries the resume-point form of the spent-chain "
+        "message; the assertion still requires the git-add command and spent-chain facts"
+    ),
+}
+
 
 class _SpentChainRunner:
     def __init__(self, action_message: str) -> None:
@@ -43,19 +59,19 @@ def test_rebase_all_spent_resolution_retains_actionable_operator_message(
     session.unresolved_paths = ("app.py",)
     action_msg = (
         "all 2 resolver agents are spent/unavailable (dev: spent, review: spent); "
-        "conflict on app.py needs operator action: git add -- app.py"
+        "conflict on app.py; resume point: git add -- app.py"
     )
     session.operator_action_message = action_msg
 
     reason = resolution_exhaustion_reason(session, session.unresolved_paths)
     assert action_msg in reason
-    assert "needs operator action: git add -- app.py" in reason
+    assert "resume point: git add -- app.py" in reason
 
     session_no_msg = ResolutionSession()
     session_no_msg.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     session_no_msg.unresolved_paths = ("app.py",)
     synth_reason = resolution_exhaustion_reason(session_no_msg, session_no_msg.unresolved_paths)
-    assert "needs operator action: git add -- app.py" in synth_reason
+    assert "resume point: git add -- app.py" in synth_reason
 
     result = resolve_conflicted_rebase(
         tmp_path,
@@ -70,5 +86,5 @@ def test_rebase_all_spent_resolution_retains_actionable_operator_message(
     assert short_circuit is not None
     assert short_circuit.resolution_exhausted is True
     assert short_circuit.last_reason is not None
-    assert "needs operator action: git add -- app.py" in short_circuit.last_reason
+    assert "resume point: git add -- app.py" in short_circuit.last_reason
     assert "all 2 resolver agents are spent/unavailable" in short_circuit.last_reason

@@ -558,7 +558,7 @@ def _determine_not_spent_reason(
         return reason
     if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
         reason = session.operator_action_message or session.exhaustion_reason
-        if not reason or "needs operator action:" not in reason:
+        if not reason or "resume point:" not in reason:
             from ralph.pipeline.conflict_resolution._operator_command import (
                 operator_command_for_paths,
             )
@@ -566,7 +566,7 @@ def _determine_not_spent_reason(
             paths = tuple(session.unresolved_paths)
             return (
                 "all resolver agents are spent/unavailable; conflict on "
-                f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
+                f"{', '.join(paths)}; resume point: {operator_command_for_paths(paths)}"
             )
         return reason
     if carried_cause in (
@@ -660,19 +660,18 @@ def _handle_spent_session(
 ) -> RebaseResolutionResult:
     reason = (
         session.operator_action_message
-        if session.operator_action_message
-        and "needs operator action:" in session.operator_action_message
+        if session.operator_action_message and "resume point:" in session.operator_action_message
         else session.exhaustion_reason
     )
     if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED and (
-        not reason or "needs operator action:" not in reason
+        not reason or "resume point:" not in reason
     ):
         from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
         paths = tuple(session.unresolved_paths)
         reason = (
             "all resolver agents are spent/unavailable; conflict on "
-            f"{', '.join(paths)} needs operator action: {operator_command_for_paths(paths)}"
+            f"{', '.join(paths)}; resume point: {operator_command_for_paths(paths)}"
         )
     effective_cause = (
         carried_cause

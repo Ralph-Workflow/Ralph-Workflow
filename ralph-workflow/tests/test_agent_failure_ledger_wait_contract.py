@@ -34,6 +34,14 @@ if TYPE_CHECKING:
 _CONFLICTED = ["a.py", "b.py"]
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    'assert "needs operator action: git add -- a.py b.py" in message': (
+        "production exhaustion messages now emit informational resume-point wording; "
+        "the assertion still requires the same git-add command and spent-chain facts, "
+        "keyed as resume point: instead of needs operator action:"
+    ),
+}
+
 
 def _minimal_policy_bundle() -> PolicyBundle:
     with tempfile.TemporaryDirectory() as d:
@@ -474,7 +482,7 @@ def test_mixed_spent_and_demoted_chain_without_finite_wait_is_not_tool_surface_d
     assert message is not None
     assert "primary: spent" in message
     assert "fallback: no_output_at_start" in message
-    assert "needs operator action: git add -- a.py b.py" in message
+    assert "resume point: git add -- a.py b.py" in message
 
 
 @pytest.mark.timeout_seconds(10)
@@ -494,4 +502,4 @@ def test_barred_candidate_cooldown_does_not_mask_an_exhausted_chain(
     assert message is not None
     assert "primary: spent" in message
     assert "fallback: no_output_at_start" in message
-    assert "needs operator action: git add -- a.py b.py" in message
+    assert "resume point: git add -- a.py b.py" in message

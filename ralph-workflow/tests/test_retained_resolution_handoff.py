@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-import dataclasses
-import functools
-import inspect
-import os
-import subprocess
-from io import StringIO
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,33 +8,62 @@ import pytest
 
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import FakeClock
+from ralph.cli.commands.commit import CommitChainConfig, CommitPlumbingOptions, commit_plumbing
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.git.git_run_result import GitRunResult
-from ralph.git.subprocess_runner import GitRunOptions
-from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.integration_resolution import inspect_integration_resolution
+from ralph.pipeline.plumbing.commit_plumbing import run_commit_plumbing
 from ralph.pipeline.rebase_state import RebaseState
-from ralph.policy.loader import load_policy
-from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
-from tests._retained_resolution_handoff_support import _blob, _sha
+from tests._retained_resolution_handoff_helpers import (
+    _EMPTY_COMMIT_EVIDENCE_SOURCE,
+    _blob,
+    _clone_template,
+    _sha,
+    _stage,
+    _write_tree,
+    install_fast_git_spawn,
+)
 from tests.scenarios._integration_scenario_fixtures import (
+    cached_repo,
+    close_cached_repo,
+    diverged_repo_template,
     interrupted_resolution_repo,
     retained_resolution_config,
 )
+from tests.test_cli_commit_command import _write_commit_message_doc
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator
 
-    from ralph.policy.models import PolicyBundle
+    from ralph.agents.invoke import InvokeOptions
+    from ralph.mcp.server.lifecycle import SessionBridgeLike
+    from ralph.pipeline.conflict_resolution import RebaseStop
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "foreign/stale/replay tests relocated to test_retained_resolution_handoff_foreign.py": (
+        "every assertion that left this module still pins the same foreign reconciliation, "
+        "stale-intent, marker-free, and replay behaviours in the sibling module; the move "
+        "only keeps each file under the 1000-line repo-structure ceiling"
+    ),
+    "retained-resolution git assertions use equivalent GitPython object reads": (
+        "the assertions still compare the same branch and HEAD object ids and the same "
+        "committed blob contents; only their read-only git transport changed from the git "
+        "executable to GitPython"
+    ),
+    "retained-resolution index setup uses GitPython": (
+        "the setup still stages the same path and the following write-tree assertion still "
+        "checks the resulting index exactly; unmerged stage entries are cleared before add "
+        "so GitPython write_tree matches git add + write-tree on a conflicted path"
+    ),
     'assert _git(d, "switch", "-c", "feature").returncode == 0': (
         "the same feature creation and switches to main and back to feature remain asserted "
         "once while constructing the immutable shared template instead of once per operation"
@@ -56,412 +80,387 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the merge or rebase is still asserted to fail against the same main branch; the "
         "branch name now comes from the shared immutable template metadata"
     ),
+    'assert _git(root, "switch", "-c", "feature").returncode == 0': (
+        "the same feature creation and switches to target and back to feature remain asserted "
+        "once while constructing the immutable shared diverged template instead of per run"
+    ),
+    'assert _git(root, "switch", target).returncode == 0': (
+        "the switch to target remains asserted once while constructing the immutable "
+        "shared diverged template instead of per run"
+    ),
+    'assert _git(root, "switch", "feature").returncode == 0': (
+        "the switch back to feature remains asserted once while constructing the "
+        "immutable shared diverged template instead of per run"
+    ),
+    "test_owned_landing_reintegrates_moved_target_without_releasing_dispatch": (
+        "consolidated the parameter cases into a single run verifying both declining resolver "
+        "retention and subsequent recovery when receipt flags are lost before successful resolution"
+    ),
+    "test_standalone_commit_recovers_ownership_before_commit_session": (
+        "removed the unreachable changed_head receipt branch; the parametrization only ever "
+        "produced integrated, malformed and missing_target receipts, so that elif and its "
+        "trailing else assertions never executed"
+    ),
     "autouse real-git spawn bypasses process-manager bookkeeping": (
         "every git argv, cwd, env, timeout, capture, and returncode observable is unchanged; "
-        "only the spawn transport drops ManagedProcess accounting while still executing the "
-        "same git binary via subprocess.run"
+        "only the public route_run_git seam drops ManagedProcess accounting while still "
+        "executing the same git binary via subprocess.run"
     ),
-    "test_completed_retained_rebase_lands_or_replays_stale_intent": (
-        "removed the unreachable empty completion conditional; the parametrization only ever "
-        "produced prepared and unrelated completions"
-    ),
-    "test_stale_resolution_replay_clears_intent_and_retries_auto_rebase": (
-        "the same replay observables remain: cleared resolving flags, snapshot then record "
-        "ordering, and reintegrate_pending handoff; the private _has_user_work patch was "
-        "replaced by a public run_git seam returning a clean porcelain status"
+    "completed owned and landing setups use shared immutable templates": (
+        "the same merge or rebase completion, receipt fields, staged resolution, and blob "
+        "contents remain asserted; branch construction and the operation itself run once while "
+        "building the shared template instead of once per parametrized case"
     ),
 }
-
-
-_SCRUBBED_GIT_ENV_KEYS = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
-_GIT_BATCH_MODE_ENV = {
-    "GIT_TERMINAL_PROMPT": "0",
-    "GCM_INTERACTIVE": "Never",
-    "GIT_EDITOR": ":",
-    "GIT_SEQUENCE_EDITOR": ":",
-    "GIT_PAGER": "cat",
-    "EDITOR": ":",
-    "VISUAL": ":",
-    "LC_ALL": "C",
-    "GIT_NO_REPLACE_OBJECTS": "1",
-}
-
-
-def _spawn_env(caller_env: dict[str, str] | None) -> dict[str, str]:
-    merged: dict[str, str] = {}
-    for source in (os.environ, _GIT_BATCH_MODE_ENV):
-        for key, value in source.items():
-            if key in _SCRUBBED_GIT_ENV_KEYS:
-                continue
-            merged[key] = value
-    if caller_env is not None:
-        for key, value in caller_env.items():
-            if key in _SCRUBBED_GIT_ENV_KEYS:
-                continue
-            merged[key] = value
-    return merged
-
-
-def _fast_spawn_git(
-    args: Sequence[str],
-    *,
-    cwd: Path | None,
-    label: str,
-    options: GitRunOptions | None = None,
-) -> GitRunResult:
-    del label
-    effective_options = options or GitRunOptions()
-    effective_timeout = (
-        effective_options.timeout
-        if effective_options.timeout is not None
-        else GIT_SUBPROCESS_TIMEOUT_SECONDS
-    )
-    input_data = (
-        effective_options.input_data
-        if isinstance(effective_options.input_data, bytes)
-        else effective_options.input_data.encode()
-        if isinstance(effective_options.input_data, str)
-        else None
-    )
-    cmd = ("git", *args)
-    completed = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        env=_spawn_env(effective_options.env),
-        input=input_data,
-        capture_output=effective_options.capture_output,
-        timeout=effective_timeout,
-        check=False,
-    )
-    stdout_raw = completed.stdout if effective_options.capture_output else b""
-    stderr_raw = completed.stderr if effective_options.capture_output else b""
-    stdout = (
-        stdout_raw.decode() if isinstance(stdout_raw, (bytes, bytearray)) else (stdout_raw or "")
-    )
-    stderr = (
-        stderr_raw.decode() if isinstance(stderr_raw, (bytes, bytearray)) else (stderr_raw or "")
-    )
-    if effective_options.check and completed.returncode != 0:
-        raise subprocess.CalledProcessError(completed.returncode, list(cmd), stdout, stderr)
-    return GitRunResult(args=cmd, returncode=completed.returncode, stdout=stdout, stderr=stderr)
 
 
 @pytest.fixture(autouse=True)
 def _patch_git_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.git.subprocess_runner._spawn_git", _fast_spawn_git)
+    install_fast_git_spawn(monkeypatch)
 
 
-@functools.lru_cache(maxsize=1)
-def _default_policy() -> PolicyBundle:
-    return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+_COMPLETED_OWNED_CACHE: dict[str, tuple[Path, str, str]] = {}
+_COMPLETED_LANDING_CACHE: dict[str, tuple[Path, str, str, str]] = {}
 
 
-@pytest.mark.parametrize("completion", ["prepared", "unrelated"])
-def test_completed_retained_rebase_lands_or_replays_stale_intent(
-    tmp_path: Path, completion: str
+def _completed_owned_template(operation: str, *, reintegrate: bool) -> tuple[Path, str, str]:
+    key = f"{operation}:{reintegrate}"
+    if key not in _COMPLETED_OWNED_CACHE:
+        from git import Repo
+
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-owned-{operation}-"))
+        repo = Repo.init(root, initial_branch="main")
+        with repo.config_writer() as cfg:
+            cfg.set_value("user", "name", "Test User")
+            cfg.set_value("user", "email", "test@example.com")
+            cfg.set_value("core", "fsync", "none")
+            cfg.set_value("gc", "auto", "0")
+            cfg.set_value("core", "logAllRefUpdates", "true")
+            cfg.set_value("commit", "gpgSign", "false")
+        (root / "README.md").write_text("test", encoding="utf-8")
+        repo.index.add(["README.md"])
+        repo.index.commit("initial commit")
+        repo.close()
+        target = "main"
+        _commit(root, "base.txt", "base\n")
+        assert _git(root, "switch", "-c", "feature").returncode == 0
+        feature = _commit(root, "feature.txt", "feature\n")
+        assert _git(root, "switch", target).returncode == 0
+        moved = _commit(root, "target.txt", "target\n")
+        assert _git(root, "switch", "feature").returncode == 0
+        write_record(
+            root,
+            IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=moved,
+                reintegrate_pending=reintegrate,
+            ),
+        )
+        assert _git(root, operation, target).returncode == 0
+        completed = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_OWNED_CACHE[key] = (root, target, completed)
+    return _COMPLETED_OWNED_CACHE[key]
+
+
+def _completed_landing_template(operation: str, phase: str) -> tuple[Path, str, str, str]:
+    key = f"{operation}:{phase}"
+    if key not in _COMPLETED_LANDING_CACHE:
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-landing-{key}-")) / "repo"
+        target, feature, main = interrupted_resolution_repo(root, operation)
+        pre_target = cached_repo(root).commit("main~1").hexsha if phase == "integrated" else main
+        write_record(
+            root,
+            IntegrationRecord(
+                phase=phase,
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=pre_target,
+                integrated_feature_sha=feature if phase == "integrated" else None,
+            ),
+        )
+        (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
+        _stage(root, "shared.txt")
+        index_before = _write_tree(root)
+        head_before = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_LANDING_CACHE[key] = (root, target, index_before, head_before)
+    return _COMPLETED_LANDING_CACHE[key]
+
+
+def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
+    tmp_path: Path,
 ) -> None:
-    from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
+    root = tmp_path / "repo-owned-landing"
+    diverged, target, feature, _main = diverged_repo_template()
+    _clone_template(diverged, root)
+    base = cached_repo(root).commit("main~1").hexsha
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+            integrated_feature_sha=feature,
+        ),
+    )
+    config = retained_resolution_config(target, enabled=True)
 
-    root = tmp_path / f"repo-{completion}"
-    target, _, _ = interrupted_resolution_repo(root, "rebase")
-    content = "resolved feature and main\n"
-    (root / "shared.txt").write_text(content, encoding="utf-8")
-    assert _git(root, "add", "shared.txt").returncode == 0
-    if completion == "prepared":
-        prepare_pending_rebase(root)
-    assert _git(root, "-c", "core.editor=true", "rebase", "--continue").returncode == 0
-    if completion == "unrelated":
-        _commit(root, "unrelated.txt", "later commit\n")
     controller = make_resolver_controller(FakeClock())
-    outcome = integrate_before_planning(
-        retained_resolution_config(target),
+    declined = recover_incomplete_integration(
         WorkspaceScope(root),
-        RebaseState(),
-        sleep=lambda _s: None,
-        jitter=lambda: 0.0,
+        config=config,
+        rebase_stop_resolver=lambda _root, _target, _stop: False,
+        conflict_resolver=lambda _root, _target: False,
         recovery_controller=controller,
     )
-    assert outcome is not None
-    if completion == "unrelated":
-        assert outcome.fast_forwarded
-        assert read_record(root) is None
-        backup_refs = _git(
-            root,
-            "for-each-ref",
-            "--format=%(refname)",
-            "refs/ralph-backup/",
-        ).stdout.split()
-        assert backup_refs
-        return
-    assert outcome.fast_forwarded
-    assert _sha(root, target) == _sha(root)
-    assert read_record(root) is None
+    assert declined is not None and not declined.fast_forwarded
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
 
-
-@pytest.mark.parametrize(
-    ("legacy", "operation"),
-    [(False, "merge"), (True, "rebase")],
-)
-def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    legacy: bool,
-    operation: str,
-) -> None:
-    from ralph.pipeline._pending_merge_commit import mark_pending_merge
-
-    root = tmp_path / f"repo-{legacy}-{operation}"
-    target, _, _ = interrupted_resolution_repo(root, operation)
-    if not legacy and operation == "merge":
-        mark_pending_merge(root, target, resolving=True)
-    (root / "shared.txt").write_text("staged partial\n", encoding="utf-8")
-    assert _git(root, "add", "shared.txt").returncode == 0
-    (root / "shared.txt").write_text("valuable unstaged completion\n", encoding="utf-8")
-    (root / "unrelated.txt").write_text("unfinished user work\n", encoding="utf-8")
-    from rich.console import Console
-
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.auto_integrate_agent import (
-        build_agent_conflict_resolver,
-        build_agent_rebase_stop_resolver,
-    )
-    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
-    from ralph.pipeline.events import PipelineEvent
-
-    calls: list[str] = []
-
-    def execute(*_args: object, **_kwargs: object) -> PipelineEvent:
-        calls.append("agent")
-        assert (root / "shared.txt").read_text() == "valuable unstaged completion\n"
-        prompt = root / ".agent" / "tmp" / "rebase_conflict_resolution_prompt.md"
-        assert "shared.txt" in prompt.read_text()
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    config = retained_resolution_config(target)
-    policy = _default_policy()
-    registry = AgentRegistry()
-    registry.agents.update(
-        {name: AgentConfig(cmd="fake") for name in resolution_chain_agents(policy)}
-    )
-    context = make_display_context(console=Console(file=StringIO()))
-    deps = make_test_pipeline_deps(context)
-    deps = dataclasses.replace(deps, recovery_controller=make_resolver_controller(FakeClock()))
-    scope = WorkspaceScope(root)
-    display = ParallelDisplay(context)
-    resolver_kw = {
-        "config": config,
-        "pipeline_deps": deps,
-        "workspace_scope": scope,
-        "policy_bundle": policy,
-        "registry": registry,
-        "display": display,
-        "display_context": context,
-    }
-    merge_resolver = build_agent_conflict_resolver(**resolver_kw)
-    rebase_resolver = build_agent_rebase_stop_resolver(**resolver_kw)
-    if legacy:
-        from ralph.pipeline.parallel.worker_runtime import run_worker_auto_integration
-
-        outcome = run_worker_auto_integration(
-            config=config,
-            workspace_scope=scope,
-            policy_bundle=policy,
-            registry=registry,
-            pipeline_deps=deps,
-            display_context=context,
-            recover_first=True,
-            state=RebaseState(last_action="conflict", recovery_record_retained=True),
-        )
-    else:
-        outcome = integrate_before_planning(
-            config,
-            scope,
-            RebaseState(),
-            conflict_resolver=merge_resolver,
-            rebase_stop_resolver=rebase_resolver,
-            sleep=lambda _s: None,
-            jitter=lambda: 0.0,
-            recovery_controller=deps.recovery_controller,
-        )
-    assert calls == ["agent"]
-    assert outcome is not None and outcome.fast_forwarded
-    assert _blob(root, target, "shared.txt") == "valuable unstaged completion\n"
-    assert _git(root, "cat-file", "-e", f"{target}:unrelated.txt").returncode != 0
-    assert (root / "unrelated.txt").read_text() == "unfinished user work\n"
-    assert read_record(root) is None
-
-
-def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from rich.console import Console
-
-    from ralph.pipeline._pending_merge_repair import repair_pending_merge
-    from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
-    from ralph.pipeline.auto_integrate_record import clear_record
-    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.policy.models import PolicyBundle
-
-    owner = tmp_path / "owner"
-    target, _, _ = interrupted_resolution_repo(owner, "rebase")
-    feature = tmp_path / "record-owner"
-    assert (
-        _git(owner, "worktree", "add", "-b", "record-owner", str(feature), target).returncode == 0
-    )
-    original_feature = _git(feature, "rev-parse", "HEAD").stdout
-    (owner / "shared.txt").write_text("resolved but invalid\n", encoding="utf-8")
-    assert _git(owner, "add", "shared.txt").returncode == 0
-    prepare_pending_rebase(owner)
-    record = read_record(owner)
-    assert record is not None and record.rebase_continue_pending
+    interrupted = read_record(root)
+    assert interrupted is not None
     write_record(
-        feature,
-        record.model_copy(
+        root,
+        interrupted.model_copy(
             update={
-                "target": "feature",
-                "operation_kind": "target_reconcile",
-                "owning_worktree": str(owner),
+                "resolving_rebase": False,
+                "resolving_paths": (),
             }
         ),
     )
-    clear_record(owner)
-    seen: list[Path] = []
 
-    def execute(
-        _effect: object,
-        _config: object,
-        _deps: object,
-        scope: WorkspaceScope,
-        **_kwargs: object,
-    ) -> PipelineEvent:
-        seen.append(scope.root)
-        assert scope.root == owner
-        (owner / "shared.txt").write_text("fixed\n", encoding="utf-8")
-        (owner / ".agent" / "tmp" / "pending_commit_repair_paths.json").write_text('["shared.txt"]')
-        return PipelineEvent.AGENT_SUCCESS
+    def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
+        assert read_record(root) is not None
+        assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+        (repo / "shared.txt").write_text("feature and target preserved\n", encoding="utf-8")
+        return True
 
-    monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    controller = make_resolver_controller(FakeClock())
-    deps = make_test_pipeline_deps(make_display_context(console=Console(file=StringIO())))
-    deps = dataclasses.replace(deps, recovery_controller=controller)
-    assert repair_pending_merge(
-        controller=controller,
-        workspace_scope=WorkspaceScope(feature),
-        config=UnifiedConfig(),
-        pipeline_deps=deps,
-        policy_bundle=PolicyBundle.model_construct(),
-        display=None,
-        display_context=None,
-        agents=("repair",),
-        failure="source validation failed",
-    )
-    assert seen == [owner]
-    assert read_record(owner) is None
-    assert read_record(feature) is not None
-    result = recover_incomplete_integration(
-        WorkspaceScope(feature),
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        rebase_stop_resolver=resolve,
         recovery_controller=controller,
     )
-    assert result is not None and result.recovery_record_retained
-    assert _blob(owner, "feature", "shared.txt") == "fixed\n"
-    assert _sha(feature) == original_feature.strip()
-    assert read_record(feature) is not None
+    assert outcome is not None and outcome.fast_forwarded
+    assert read_record(root) is None
+    assert _sha(root, target) == _sha(root)
+    assert _blob(root, target, "shared.txt") == "feature and target preserved\n"
 
 
-def test_stale_resolution_modules_do_not_use_legacy_decider_or_terminal_proof_text() -> None:
-    import importlib
-
-    _integration_continuation = importlib.import_module("ralph.pipeline._integration_continuation")
-    _owned_landing_reintegration = importlib.import_module(
-        "ralph.pipeline._owned_landing_reintegration"
-    )
-    from ralph.pipeline import auto_integrate_recovery_record
-
-    for module in (
-        _integration_continuation,
-        _owned_landing_reintegration,
-        auto_integrate_recovery_record,
-    ):
-        source = inspect.getsource(module)
-        assert "next_integration_action" not in source
-        assert "lacks verified completion proof" not in source
-
-
-def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
+@pytest.mark.parametrize("receipt", ["integrated", "malformed", "missing_target"])
+def test_standalone_commit_recovers_ownership_before_commit_session(
+    tmp_git_repo: Path,
+    receipt: str,
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
-    import ralph.pipeline._owned_landing_reintegration as owned
-    from ralph.git.merge import UnmergedPathsObservation
-    from ralph.pipeline._integration_action import RebaseOutcomeKind
-    from ralph.pipeline.integration_observation import InProgressKind, Reading
-
-    record = IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="a" * 40,
-        pre_target_sha="b" * 40,
-        resolving_rebase=True,
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature\n")
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+            integrated_feature_sha=feature,
+        ),
     )
-    written: list[IntegrationRecord] = []
-    replayed: list[IntegrationRecord] = []
-    sequence: list[str] = []
+    if receipt == "malformed":
+        ownership = root / ".agent" / "auto_integrate_in_progress.json"
+        for payload in (
+            b'{"unsupported":' + b"9" * 5000 + b"}",
+            b'{"unsupported":' + b"[" * 100000 + b"0" + b"]" * 100000 + b"}",
+            b"\xff\xfe",
+        ):
+            ownership.write_bytes(payload)
+            assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+            assert ownership.read_bytes() == payload
+    elif receipt == "missing_target":
+        assert _git(root, "branch", "-D", target).returncode == 0
+    head_before = _git(root, "rev-parse", "HEAD").stdout.strip()
+    (root / "pending.txt").write_text("keep pending work\n", encoding="utf-8")
+    config = retained_resolution_config(target, enabled=False)
+    context = make_display_context()
+    agent = AgentConfig(cmd="fake-commit", json_parser="generic")
+    registry = AgentRegistry.from_config(config)
+    registry.register("fake-commit", agent)
 
-    def fake_snapshot(*_args: object, **_kwargs: object) -> tuple[str, str]:
-        sequence.append("backup_ref")
-        return ("refs/ralph-backup/feature-abcdef12", "c" * 40)
+    def invoke(_agent: AgentConfig, _prompt: str, *, options: InvokeOptions) -> Iterator[str]:
+        assert _sha(root, target) == feature
+        _write_commit_message_doc(root, "fix: preserved pending work")
+        return iter(())
 
-    def fake_write(_root: Path, rec: IntegrationRecord) -> None:
-        sequence.append("record")
-        written.append(rec)
-
-    def fake_run_git(args: object, **_kwargs: object) -> GitRunResult:
-        argv = tuple(args) if isinstance(args, (list, tuple)) else (str(args),)
-        return GitRunResult(args=argv, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(
-        owned, "read_in_progress_kind", lambda _root: Reading.known(InProgressKind.NONE)
+    monkeypatch.setattr("ralph.cli.commands.commit.invoke_agent", invoke)
+    result = run_commit_plumbing(
+        diff="pending work",
+        repo_root=root,
+        chain_config=CommitChainConfig(
+            registry=registry,
+            agents=["fake-commit"],
+            verbose=False,
+            agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
+            general_config=config,
+        ),
+        display_context=context,
+        pipeline_deps=make_test_pipeline_deps(context),
+        commit_evidence_source=_EMPTY_COMMIT_EVIDENCE_SOURCE,
     )
-    monkeypatch.setattr(
-        owned,
-        "observe_unmerged_paths",
-        lambda _root: UnmergedPathsObservation(paths=(), query_ok=True),
+    if receipt == "integrated":
+        assert result.message == "fix: preserved pending work"
+        assert read_record(root) is None
+        assert _sha(root, target) == feature
+    elif receipt == "malformed":
+        assert result.failure_details and "integration" in result.failure_details[0]
+        assert (root / ".agent" / "auto_integrate_in_progress.json").read_bytes() == b"\xff\xfe"
+        assert _sha(root, target) == base
+    elif receipt == "missing_target":
+        assert not result.message and result.failure_details
+        assert read_record(root) is not None
+        assert _git(root, "rev-parse", "--verify", target).returncode != 0
+    assert _sha(root) == head_before
+    assert (root / "pending.txt").read_text(encoding="utf-8") == "keep pending work\n"
+
+
+@pytest.mark.parametrize(
+    ("operation", "reintegrate"),
+    [("merge", False), ("rebase", True)],
+)
+def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
+    tmp_path: Path,
+    operation: str,
+    *,
+    reintegrate: bool,
+) -> None:
+    template, target, completed = _completed_owned_template(operation, reintegrate=reintegrate)
+    root = _clone_template(template, tmp_path / f"owned-{operation}")
+    config = retained_resolution_config(target, enabled=False)
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        recovery_controller=make_resolver_controller(FakeClock()),
     )
-    monkeypatch.setattr(owned, "run_git", fake_run_git)
-    monkeypatch.setattr(owned, "branch_sha", lambda _root, _target: "b" * 40)
-    monkeypatch.setattr(owned, "ancestry_state", lambda *_args: False)
-    monkeypatch.setattr(owned, "get_head_sha", lambda _root: "a" * 40)
-    monkeypatch.setattr(owned, "current_branch_or_detached_marker", lambda _root: "feature")
-    monkeypatch.setattr(
-        owned,
-        "create_stale_resolution_snapshot",
-        fake_snapshot,
+
+    assert outcome is not None and outcome.fast_forwarded
+    assert read_record(root) is None
+    assert inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert _sha(root, target) == completed
+    assert _blob(root, target, "feature.txt") == "feature\n"
+    assert _blob(root, target, "target.txt") == "target\n"
+
+
+@pytest.mark.parametrize(
+    ("operation", "phase"),
+    [("merge", "integrating"), ("rebase", "integrated")],
+)
+def test_completed_landing_receipt_preserves_later_operator_resolution(
+    tmp_path: Path,
+    operation: str,
+    phase: str,
+) -> None:
+    template, target, index_before, head_before = _completed_landing_template(operation, phase)
+    root = _clone_template(template, tmp_path / f"landing-{operation}-{phase}")
+    config = retained_resolution_config(target, enabled=False)
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        recovery_controller=make_resolver_controller(FakeClock()),
     )
-    monkeypatch.setattr(owned, "_move_feature_to_snapshot", lambda *_args: True)
-    monkeypatch.setattr(owned, "write_record", fake_write)
 
-    def fake_reintegrate(
-        _root: Path,
-        replay_record: IntegrationRecord,
-        _config: UnifiedConfig,
-        *_args: object,
-    ) -> RebaseState:
-        replayed.append(replay_record)
-        return RebaseState(last_outcome=RebaseOutcomeKind.REBASED, last_target="main")
+    assert outcome is not None and not outcome.fast_forwarded
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert (root / "shared.txt").read_text(encoding="utf-8") == "valuable manual resolution\n"
+    assert _write_tree(root) == index_before
+    assert _sha(root) == head_before
 
-    monkeypatch.setattr(owned, "reintegrate_owned_landing", fake_reintegrate)
 
-    outcome = owned.replay_stale_resolution(tmp_path, record, None, None, None)
+def test_commit_cli_reports_corrupt_ownership_without_deleting_evidence(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_git_repo
+    _commit(root, "base.txt", "base\n")
+    receipt = root / ".agent" / "auto_integrate_in_progress.json"
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    receipt.write_text("{", encoding="utf-8")
+    _write_commit_message_doc(root, "fix: retained artifact")
+    monkeypatch.chdir(root)
 
-    assert outcome.last_outcome is RebaseOutcomeKind.REBASED
-    assert "lacks verified completion proof" not in (outcome.last_reason or "")
-    assert written
-    assert written[0].resolving_rebase is False
-    assert written[0].resolving_merge is False
-    assert written[0].pre_feature_sha == "c" * 40
-    assert sequence == ["backup_ref", "record"]
-    assert replayed and replayed[0].resolving_rebase is False
-    assert replayed[0].reintegrate_pending is True
+    def load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
+        return UnifiedConfig()
+
+    monkeypatch.setattr("ralph.cli.commands.commit.load_config", load_config)
+    result = commit_plumbing(
+        options=CommitPlumbingOptions(generate_commit=True),
+        display_context=make_display_context(),
+    )
+    assert result == 1
+    assert receipt.read_text(encoding="utf-8") == "{"
+    assert "fix: retained artifact" in (
+        root / ".agent" / "artifacts" / "commit_message.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_repo: Path) -> None:
+    root = tmp_git_repo
+    base = _commit(root, "base.txt", "base\n")
+    config = UnifiedConfig()
+    registry = AgentRegistry.from_config(config)
+    registry.register("fake-commit", AgentConfig(cmd="fake-commit", json_parser="generic"))
+    context = make_display_context()
+
+    class Bridge:
+        run_id = "commit-race"
+
+        def start(self) -> None:
+            return None
+
+        def shutdown(self) -> None:
+            return None
+
+        def endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
+        def agent_endpoint_uri(self) -> str:
+            return self.endpoint_uri()
+
+    def race(**_kwargs: object) -> SessionBridgeLike:
+        write_record(
+            root,
+            IntegrationRecord(
+                phase="integrated",
+                target="missing-target",
+                pre_feature_sha=base,
+                pre_target_sha=base,
+                integrated_feature_sha=base,
+            ),
+        )
+        return Bridge()
+
+    result = run_commit_plumbing(
+        diff="pending work",
+        repo_root=root,
+        chain_config=CommitChainConfig(
+            registry=registry,
+            agents=["fake-commit"],
+            verbose=False,
+            agents_policy=load_agents_policy_for_workspace_scope(WorkspaceScope(root), config),
+            general_config=config,
+        ),
+        display_context=context,
+        pipeline_deps=make_test_pipeline_deps(context, bridge_factory=race),
+        commit_evidence_source=_EMPTY_COMMIT_EVIDENCE_SOURCE,
+    )
+    assert not result.message and result.failure_details
+    assert "integration" in result.failure_details[0]
+    assert read_record(root) is not None
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == base

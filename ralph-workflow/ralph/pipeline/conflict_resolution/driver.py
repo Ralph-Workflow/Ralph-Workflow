@@ -651,11 +651,10 @@ def _prepare_conflicted_paths(
         msg = (
             session.operator_action_message
             if session.operator_action_message
-            and "needs operator action:" in session.operator_action_message
+            and "resume point:" in session.operator_action_message
             else (
                 session.exhaustion_reason
-                if session.exhaustion_reason
-                and "needs operator action:" in session.exhaustion_reason
+                if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
                 else out_of_reach_escalation_message(unreachable, reasons)
             )
         )
@@ -1329,7 +1328,7 @@ def _handle_dead_candidate_chain(
         msg = (
             f"{ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value}: "
             f"all {len(candidates)} resolver agents are spent/unavailable ({reasons_str}); "
-            f"conflict on {paths_str} needs operator action: {cmd}"
+            f"conflict on {paths_str}; resume point: {cmd}"
         )
         session.operator_action_message = msg
         emit_conflict_phase_line(display, msg)
@@ -1352,11 +1351,10 @@ def _escalate_unreachable_remainder(
     paths = ", ".join(session.out_of_reach_paths)
     msg = (
         session.operator_action_message
-        if session.operator_action_message
-        and "needs operator action:" in session.operator_action_message
+        if session.operator_action_message and "resume point:" in session.operator_action_message
         else (
             session.exhaustion_reason
-            if session.exhaustion_reason and "needs operator action:" in session.exhaustion_reason
+            if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
             else out_of_reach_escalation_message(session.out_of_reach_paths)
         )
     )

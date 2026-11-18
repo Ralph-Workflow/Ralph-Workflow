@@ -20,11 +20,35 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from tests._retained_resolution_handoff_helpers import install_fast_git_spawn
 
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [
+    pytest.mark.timeout_seconds(5),
+    pytest.mark.subprocess_e2e,
+]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "autouse real-git spawn and lock-recovery private patches removed": (
+        "commit and reattach observables are unchanged; git runs through the public "
+        "route_run_git fast-spawn seam (same as retained-resolution handoff) instead of "
+        "private _spawn_git / _sleep_fn / probe monkeypatches and a local subprocess.run "
+        "transport"
+    ),
+    "pytestmark_subprocess_e2e": (
+        "REPLACE: Repo.init detached-head template stays on the real Git boundary; "
+        "module pytestmark adds subprocess_e2e beside timeout_seconds so audit_test_policy "
+        "and the default verify lane agree on exclusive real-git ownership"
+    ),
+}
+
+
+@pytest.fixture(autouse=True)
+def _fast_git_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_fast_git_spawn(monkeypatch)
+
 
 _MODULE_REPO_TEMPLATE: list[Path] = []
 

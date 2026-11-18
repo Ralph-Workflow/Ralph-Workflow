@@ -58,10 +58,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "recover_pending_merge drives install FakeClock via install_executors; "
         "CONFIG_FAILURE / WAITING / RECOVERED asserts unchanged"
     ),
+    "pytestmark_subprocess_e2e": (
+        "REPLACE: Repo.init paused-rebase template stays on the real Git boundary; "
+        "module pytestmark adds subprocess_e2e beside timeout_seconds so audit_test_policy "
+        "io exemption matches sibling blackbox real-git files"
+    ),
 }
 
 
-pytestmark = pytest.mark.timeout_seconds(10)
+pytestmark = [
+    pytest.mark.timeout_seconds(10),
+    pytest.mark.subprocess_e2e,
+]
 
 
 @pytest.fixture(autouse=True)

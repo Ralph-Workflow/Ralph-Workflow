@@ -310,7 +310,7 @@ def _rebase_run_result(
             )
             exhaustion_reason = (
                 strategy
-                if "needs operator action:" in strategy
+                if "resume point:" in strategy
                 or "all resolver agents are spent/unavailable" in strategy
                 else failure_reason
             )

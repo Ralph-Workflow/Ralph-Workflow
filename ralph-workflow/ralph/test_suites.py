@@ -752,16 +752,27 @@ def _module_is_excluded_from_budgeted_lane(source: str, *, filename: str) -> boo
     module_markers = _module_level_marker_names(tree)
     if module_markers is None:
         return False
-    if _BUDGETED_LANE_REQUIRED_MARKER in module_markers:
+    registry_required = filename in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    if _BUDGETED_LANE_REQUIRED_MARKER in module_markers and registry_required:
         return False
-    test_marker_sets = _collect_test_marker_sets(tree, module_markers)
+    effective_module_markers = (
+        module_markers
+        if registry_required
+        else module_markers - {_BUDGETED_LANE_REQUIRED_MARKER}
+    )
+    test_marker_sets = _collect_test_marker_sets(tree, effective_module_markers)
     if test_marker_sets is None:
         return False
     if not test_marker_sets:
-        return bool(module_markers & _BUDGETED_LANE_EXCLUDED_MARKERS)
+        return bool(effective_module_markers & _BUDGETED_LANE_EXCLUDED_MARKERS)
+    def _markers_for_exclusion(markers: frozenset[str]) -> frozenset[str]:
+        if registry_required:
+            return markers
+        return markers - {_BUDGETED_LANE_REQUIRED_MARKER}
+
     return all(
-        _BUDGETED_LANE_REQUIRED_MARKER not in markers
-        and bool(markers & _BUDGETED_LANE_EXCLUDED_MARKERS)
+        _BUDGETED_LANE_REQUIRED_MARKER not in _markers_for_exclusion(markers)
+        and bool(_markers_for_exclusion(markers) & _BUDGETED_LANE_EXCLUDED_MARKERS)
         for markers in test_marker_sets
     )
 

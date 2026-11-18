@@ -20,8 +20,7 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 _PENDING_REASON = "rebase resolution remains pending after continuation"
 _OPERATOR_ACTION_MESSAGE = (
-    "all resolver agents are spent/unavailable; "
-    "conflict on app.py needs operator action: git add -- app.py"
+    "all resolver agents are spent/unavailable; conflict on app.py; resume point: git add -- app.py"
 )
 
 
