@@ -134,9 +134,7 @@ def _drive(root: Path) -> object:
     return drive_integration(root, resolver=runner, clock=clock)
 
 
-@pytest.mark.parametrize(
-    "action", ["abort", "continue", "reset", "cherry-pick", "manual-land"]
-)
+@pytest.mark.parametrize("action", ["abort", "continue", "reset", "cherry-pick", "manual-land"])
 def test_operator_action_between_ticks_is_observed(tmp_path: Path, action: str) -> None:
     root = _materialize(_paused_rebase_template(), tmp_path / "repo")
     feature_sha = _sha(root, "feature")
