@@ -32,10 +32,11 @@ if TYPE_CHECKING:
 _COMMIT_PHASE = "commit"
 _COMMIT_AGENT_NAME = "commit-agent"
 _COMMIT_SESSION_ID = "commit-session-1"
-_COMMIT_COOLDOWN_REASON = "consecutive_unproductive_limit_reached"
+_COMMIT_COOLDOWN_REASONS = frozenset({"unproductive_limit", "retry_limit"})
 _MIN_OUTER_ATTEMPTS = 2
 
 COMMIT_PHASE = _COMMIT_PHASE
+
 COMMIT_AGENT_NAME = _COMMIT_AGENT_NAME
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -43,7 +44,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the check no longer records two attempt facts on a hand-built controller; "
         "it drives the real commit outer retry loop and reads the owner's public "
         "cooldown status on the recovery owner that served every outer attempt, so "
-        "a fresh owner per outer attempt can no longer pass"
+        "a fresh owner per outer attempt can no longer pass; "
+        "operator rule: an agent is either on cooldown or not; reaching the limit now "
+        "starts an expiring unproductive_limit or retry_limit cooldown of the same 60 s "
+        "length, so the test accepts either limit reason and asserts the agent is "
+        "eligible again after expiry"
     ),
     "test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_bench_state": (
         "the new check pins the regression the cooldown contract depends on: an owner "
@@ -352,7 +357,7 @@ def test_commit_outer_retry_regression_owner_controller_preserves_cooldown(
         "the single owner that served every commit outer retry must report "
         f"Cooldown once the outer retries are done, got {cooldown!r}"
     )
-    assert cooldown.reason == _COMMIT_COOLDOWN_REASON
+    assert cooldown.reason in _COMMIT_COOLDOWN_REASONS
     now_ms = int(run.clock.monotonic() * 1000)
     assert cooldown.until_ms - now_ms == int(controller.ledger.base_cooldown_seconds * 1000)
     assert controller.agent_eligibility(_COMMIT_PHASE, _COMMIT_AGENT_NAME).is_eligible is False
@@ -360,6 +365,8 @@ def test_commit_outer_retry_regression_owner_controller_preserves_cooldown(
         "the commit route must not start an outer attempt while the owner has the "
         f"agent benched, got attempts {run.benched_reinvocations}"
     )
+    run.clock.advance(controller.ledger.base_cooldown_seconds)
+    assert controller.agent_eligibility(_COMMIT_PHASE, _COMMIT_AGENT_NAME).is_eligible is True
 
 
 def test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_bench_state(

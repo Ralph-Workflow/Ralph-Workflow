@@ -1779,7 +1779,7 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
 
 _CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
     "should_reset_tool_registry": 0,
-    "bench_resolver": 2,
+    "record_resolver_failure": 2,
 }
 
 _FORBIDDEN_INTEGRATION_CLASSIFIER_NAMES: frozenset[str] = frozenset(

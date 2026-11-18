@@ -22,7 +22,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, StopResolutionOutcome
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import (
     AttemptFacts,
     TerminationIssuer,
@@ -62,7 +62,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_parity_resolver_failure_stays_scoped_to_resolution_phase": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
-        "so a resolver failure must not cool the same agent in an unrelated phase"
+        "so a resolver failure must not cool the same agent in an unrelated phase; "
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a resolver failure cools the agent in every phase, and the test asserts the "
+        "shared cooldown and that its remaining wait is finite and within the one hour cap"
     ),
     "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": (
         "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
@@ -88,6 +91,8 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_parity_ordinary_phase_cooldown_applies_to_the_resolver_until_it_expires": "operator rule: an agent is either on cooldown or not; replaces test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch because the one cooldown tracker holds one state per agent, so a development cooldown also skips the agent for conflict resolution until it expires",
+    "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": "operator rule: an agent is either on cooldown or not; renamed to test_parity_ordinary_phase_cooldown_applies_to_the_resolver_until_it_expires because a cooldown is one per-agent state across phases",
     "_assert_structural_parity": "ruff format reflow of selection-token equality assertion; contract unchanged",
 }
 
@@ -155,15 +160,18 @@ def test_parity_resolver_failure_stays_scoped_to_resolution_phase(
 
     assert "agentA" in invocations
 
-    ordinary_eligibility = ledger.agent_eligibility("development", "agentA")
-    assert ordinary_eligibility.is_eligible, (
-        f"Agent 'agentA' failed only in conflict resolution and must remain eligible "
-        f"in the unrelated development phase, got {ordinary_eligibility}"
+    resolution_status = ledger.status("rebase_conflict_resolution", "agentA")
+    development_status = ledger.status("development", "agentA")
+    assert isinstance(resolution_status, Cooldown)
+    assert development_status == resolution_status
+    wait_ms = ledger.earliest_wait_ms("development", ["agentA"])
+    assert 0 < wait_ms <= 3_600_000, (
+        f"agentA must sit on a finite capped cooldown, got {wait_ms} ms for {resolution_status}"
     )
 
 
 @pytest.mark.required_auto_integrate_e2e
-def test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch(
+def test_parity_ordinary_phase_cooldown_applies_to_the_resolver_until_it_expires(
     tmp_path: Path,
 ) -> None:
     repo_dir = make_conflicted_repo(tmp_path / "repo")
@@ -230,11 +238,12 @@ def test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch(
     finally:
         reset_executors(token)
 
-    assert "agentA" in invocations, (
-        f"Agent 'agentA' was cooled down only in the development phase and must remain "
-        f"eligible for conflict resolution, but invocations were {invocations}"
+    assert "agentA" not in invocations, (
+        f"Agent 'agentA' is on a cooldown from the development phase, which applies to the "
+        f"agent in every phase until it expires, but invocations were {invocations}"
     )
-    assert "agentB" not in invocations
+    assert invocations[:1] == ["agentB"]
+    assert isinstance(ledger.status("rebase_conflict_resolution", "agentA"), Cooldown)
 
 
 @pytest.mark.required_auto_integrate_e2e

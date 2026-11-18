@@ -10,6 +10,13 @@ from ralph.recovery.controller import RecoveryController, RecoveryControllerOpti
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charged": "operator rule: an agent is either on cooldown or not; the charged attempt now starts an expiring unproductive_limit cooldown in the shared tracker instead of a ledger-only state, so the test asserts that cooldown, its reason and that the agent is selectable after expiry instead of tracker availability and is_spent",
+    "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key and is_spent are gone and the ordinary charge now cools the agent in the shared tracker, so the test asserts an expiring unproductive_limit cooldown rather than a dead-agent bench",
+    "test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure": "operator rule: an agent is either on cooldown or not; the ledger now shares the tracker so a consecutive limit of one would overlay a longer unproductive_limit cooldown, so this test uses the default limit of three to observe the dead-agent cooldown reason alone",
+    "test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_failure": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the first peer holds an expiring unproductive_limit cooldown and is selectable after it expires",
+}
+
 PHASE = "development"
 AGENT_A = "agent_a"
 AGENT_B = "agent_b"
@@ -49,6 +56,7 @@ def _controller(
     probe_outcome: ProbeOutcome | None = ProbeOutcome.PASSED,
     clock: FakeClock | None = None,
     probe_raises: bool = False,
+    consecutive_limit: int = 1,
 ) -> RecoveryController:
     def probe_runner(_phase: str, _agent: str) -> ProbeOutcome | None:
         if probe_raises:
@@ -59,7 +67,7 @@ def _controller(
         options=RecoveryControllerOptions(
             clock=clock or FakeClock(start=0.0),
             dead_agent_probe_runner=probe_runner,
-            agent_max_consecutive_unproductive=1,
+            agent_max_consecutive_unproductive=consecutive_limit,
         )
     )
 
@@ -75,6 +83,20 @@ def _cooldown_until_ms(controller: RecoveryController, agent: str) -> int | None
     if isinstance(status, Cooldown):
         return status.until_ms
     return None
+
+
+def _assert_unproductive_cooldown_then_selectable(
+    controller: RecoveryController, clock: FakeClock, agent: str
+) -> None:
+    status = controller.ledger.status(PHASE, agent)
+    assert isinstance(status, Cooldown), status
+    assert status.reason == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
+    now_ms = int(clock.monotonic() * 1000)
+    assert status.until_ms > now_ms
+    assert controller.unavailability_store.is_available(PHASE, agent) is False
+    clock.advance((status.until_ms - now_ms) / 1000.0)
+    assert isinstance(controller.ledger.status(PHASE, agent), Eligible)
+    assert controller.unavailability_store.is_available(PHASE, agent) is True
 
 
 def test_ac3_a_runtime_issued_end_with_liveness_is_runtime_ended_and_never_charged() -> None:
@@ -103,7 +125,8 @@ def test_ac3_a_runtime_issued_end_with_liveness_is_runtime_ended_and_never_charg
 
 
 def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charged() -> None:
-    controller = _controller()
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock=clock)
     facts = AttemptFacts(
         artifact_valid=False,
         exit_status="exit_0",
@@ -120,13 +143,12 @@ def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charg
 
     assert outcome.kind is AttemptOutcomeKind.UNKNOWN
     assert outcome.benches_agent is False
-    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
-    assert _cooldown_until_ms(controller, AGENT_A) is not None
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 
 def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() -> None:
-    controller = _controller(probe_raises=True)
+    clock = FakeClock(start=0.0)
+    controller = _controller(probe_raises=True, clock=clock)
 
     outcome = controller.finalize_attempt(
         PHASE,
@@ -136,19 +158,17 @@ def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() 
     )
 
     assert outcome.kind is AttemptOutcomeKind.UNKNOWN
-    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert controller.false_bench_feedback.count == 0
-    assert controller.snapshot()["spent_agents"] == {}
     assert controller.ledger.registered_agents(PHASE) == (AGENT_A,), (
         "a probe that could not run charges the ordinary ledger entry for the "
         "agent; observed ledger agents: "
         f"{controller.ledger.registered_agents(PHASE)!r}"
     )
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 
 def test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure() -> None:
-    controller = _controller()
+    controller = _controller(consecutive_limit=3)
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
 
     outcome = controller.finalize_attempt(
@@ -168,7 +188,8 @@ def test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure() -> None:
 
 
 def test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_failure() -> None:
-    controller = _controller()
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock=clock)
     controller.register_phase_chain(PHASE, (AGENT_A, AGENT_B))
     facts = _failed_facts()
 
@@ -187,7 +208,7 @@ def test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_fai
         "the first peer must not be benched for a dead-agent verdict when it only "
         f"cools down; observed reasons: {first_reasons!r}"
     )
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 
 def test_ac8_a_failed_attempt_with_a_valid_artifact_is_a_task_or_environment_failure() -> None:

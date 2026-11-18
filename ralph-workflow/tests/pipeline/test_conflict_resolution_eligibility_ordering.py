@@ -17,7 +17,6 @@ from ralph.pipeline.conflict_resolution import bind_active_rebase_resolution_ses
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface,
     session_ledger,
-    skipped_candidates,
 )
 from ralph.pipeline.conflict_resolution.driver import can_continue_rounds
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
@@ -33,13 +32,12 @@ from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
-    AgentStatus,
     AttemptFact,
+    Cooldown,
 )
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
 
 
@@ -52,22 +50,39 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig.model_validate({"general": {}})
 
 
-class _RecordingLedger(AgentFailureLedger):
-    def __init__(self, *, clock: Clock) -> None:
-        super().__init__(clock=clock, consecutive_limit=1, total_limit=1)
-        self.status_calls: list[tuple[str, str]] = []
+def _cooling(session: ResolutionSession, candidates: tuple[str, ...]) -> dict[str, str]:
+    ledger = session_ledger(session)
+    assert ledger is not None
+    cooling: dict[str, str] = {}
+    for name in candidates:
+        status = ledger.status(PHASE_RESOLUTION, name)
+        if isinstance(status, Cooldown):
+            assert status.until_ms > int(ledger.clock.monotonic() * 1000)
+            cooling[name] = status.reason
+    return cooling
 
-    def status(self, phase: str, agent: str) -> AgentStatus:
-        self.status_calls.append((phase, agent))
-        return super().status(phase, agent)
+
+def _advance_past_every_cooldown(
+    clock: FakeClock, session: ResolutionSession, candidates: tuple[str, ...]
+) -> None:
+    ledger = session_ledger(session)
+    assert ledger is not None
+    now_ms = int(clock.monotonic() * 1000)
+    latest_ms = max(
+        status.until_ms
+        for status in (ledger.status(PHASE_RESOLUTION, name) for name in candidates)
+        if isinstance(status, Cooldown)
+    )
+    clock.advance((latest_ms - now_ms) / 1000.0)
 
 
-def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -> None:
+def test_ledger_and_registry_faults_start_expiring_cooldowns() -> None:
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
     session = ResolutionSession(ledger=ledger)
+    candidates = ("agentA", "agentB")
 
-    assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
+    assert _cooling(session, candidates) == {}
 
     ledger.record(
         AttemptFact(
@@ -77,29 +92,44 @@ def test_skipped_candidates_ledger_takes_precedence_over_registry_capability() -
         )
     )
     assert not ledger.is_available(PHASE_RESOLUTION, "agentA")
-    assert skipped_candidates(session, ("agentA", "agentB")) == frozenset({"agentA"})
+    assert _cooling(session, candidates) == {"agentA": "unproductive_limit"}
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(session, "agentB")
-    assert skipped_candidates(session, ("agentA", "agentB")) == frozenset({"agentA", "agentB"})
+    assert _cooling(session, candidates) == {
+        "agentA": "unproductive_limit",
+        "agentB": "candidate_unavailable",
+    }
+
+    _advance_past_every_cooldown(clock, session, candidates)
+
+    assert ledger.is_available(PHASE_RESOLUTION, "agentA")
+    assert ledger.is_available(PHASE_RESOLUTION, "agentB")
 
 
-def test_skipped_candidates_does_not_bar_on_non_registry_faults() -> None:
-    session = ResolutionSession()
+def test_only_a_candidate_unavailable_fault_starts_a_cooldown() -> None:
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
+    candidates = ("agentA", "agentB")
 
-    assert skipped_candidates(session, ("agentA", "agentB")) == frozenset()
+    assert _cooling(session, candidates) == {}
 
     session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
     remember_dead_surface(session, "agentA")
-    assert "agentA" not in skipped_candidates(session, ("agentA", "agentB"))
+    assert _cooling(session, candidates) == {}
 
     session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
     remember_dead_surface(session, "agentA")
-    assert "agentA" not in skipped_candidates(session, ("agentA", "agentB"))
+    assert _cooling(session, candidates) == {}
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(session, "agentA")
-    assert "agentA" in skipped_candidates(session, ("agentA", "agentB"))
+    assert _cooling(session, candidates) == {"agentA": "candidate_unavailable"}
+
+    _advance_past_every_cooldown(clock, session, candidates)
+
+    assert _cooling(session, candidates) == {}
 
 
 def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
@@ -247,6 +277,41 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_skipped_candidates_ledger_takes_precedence_over_registry_capability": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates and its "
+        "permanent per-run bar are gone, so the test asserts the unproductive_limit and "
+        "candidate_unavailable cooldowns and that both expire on the fake clock"
+    ),
+    "test_ledger_and_registry_faults_start_expiring_cooldowns": (
+        "operator rule: an agent is either on cooldown or not; replaces the skipped_candidates "
+        "precedence test with the expiring cooldown contract"
+    ),
+    "test_skipped_candidates_does_not_bar_on_non_registry_faults": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts that only a candidate_unavailable fault starts a cooldown and that "
+        "it expires on the fake clock"
+    ),
+    "test_only_a_candidate_unavailable_fault_starts_a_cooldown": (
+        "operator rule: an agent is either on cooldown or not; replaces the skipped_candidates "
+        "non-registry fault test with the expiring cooldown contract"
+    ),
+    "test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates and its "
+        "status call order are gone, so the test asserts each candidate cooldown status and "
+        "that every cooldown expires on the fake clock"
+    ),
+    "test_ledger_reports_every_candidate_including_dead_surfaces_as_cooling": (
+        "operator rule: an agent is either on cooldown or not; replaces the skipped_candidates "
+        "consult-order test with the expiring cooldown contract"
+    ),
+    "test_chain_seams_consult_the_controller_ledger_when_the_session_has_none": (
+        "operator rule: an agent is either on cooldown or not; the benched agent reaches an "
+        "expiring unproductive_limit cooldown instead of Spent, and the test asserts it expires"
+    ),
+    "test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none": (
+        "operator rule: an agent is either on cooldown or not; the benched agent reaches an "
+        "unproductive_limit cooldown instead of Spent before the launch is refused"
+    ),
     "test_continue_rounds_without_controller_or_ledger_fails_closed": (
         "can_continue_rounds refuses further resolution rounds when neither the shared "
         "RecoveryController nor a ledger is bound, matching ensure_session_controller"
@@ -264,7 +329,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "RecoveryController builds its conflict-resolution controller instead of "
         "raising, which the in-gate attribution, round-cap and shared-ledger contracts "
         "depend on; a ledger-less session again reports no ledger before a controller "
-        "is built"
+        "is built; operator rule: an agent is either on cooldown or not; skipped_candidates "
+        "is gone, so the test reads the cooldown reasons through the session ledger"
     ),
 }
 
@@ -280,10 +346,11 @@ def test_session_controller_creation_guarantees_ledger() -> None:
     assert ledger is controller.ledger
 
 
-def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces() -> None:
+def test_ledger_reports_every_candidate_including_dead_surfaces_as_cooling() -> None:
     clock = FakeClock()
-    ledger = _RecordingLedger(clock=clock)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
     session = ResolutionSession(ledger=ledger)
+    candidates = ("spent_agent", "dead_agent", "registry_only_agent", "healthy_agent")
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(session, "dead_agent")
@@ -298,34 +365,21 @@ def test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces()
             )
         )
 
-    skipped = skipped_candidates(
-        session,
-        ("spent_agent", "dead_agent", "registry_only_agent", "healthy_agent"),
-    )
+    cooling = _cooling(session, candidates)
 
-    assert "spent_agent" in skipped
-    assert "dead_agent" in skipped
-    assert "registry_only_agent" in skipped
-    assert "healthy_agent" not in skipped
+    assert cooling["spent_agent"] == "unproductive_limit"
+    assert "dead_agent" in cooling
+    assert cooling["registry_only_agent"] == "candidate_unavailable"
+    assert "healthy_agent" not in cooling
 
-    assert ledger.status_calls == [
-        (PHASE_RESOLUTION, "spent_agent"),
-        (PHASE_RESOLUTION, "dead_agent"),
-        (PHASE_RESOLUTION, "registry_only_agent"),
-        (PHASE_RESOLUTION, "healthy_agent"),
-    ]
+    _advance_past_every_cooldown(clock, session, candidates)
+
+    assert all(ledger.is_available(PHASE_RESOLUTION, name) for name in candidates)
 
 
-def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -> None:
-    bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
-    session = ResolutionSession(recovery_controller=controller, ledger=None)
-
-    assert session_ledger(session) is controller.ledger
-
-    ledger = controller.ledger
+def _cool_benched_agent(ledger: AgentFailureLedger) -> Cooldown:
     attempts = 0
-    while not ledger.status(PHASE_RESOLUTION, "benched_agent").is_spent and attempts < 100:
+    while ledger.status(PHASE_RESOLUTION, "benched_agent").is_eligible and attempts < 100:
         ledger.record(
             AttemptFact(
                 phase=PHASE_RESOLUTION,
@@ -334,11 +388,30 @@ def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -
             )
         )
         attempts += 1
-    assert ledger.status(PHASE_RESOLUTION, "benched_agent").is_spent
+    status = ledger.status(PHASE_RESOLUTION, "benched_agent")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
+    return status
 
-    assert skipped_candidates(session, ("benched_agent", "healthy_agent")) == frozenset(
-        {"benched_agent"}
+
+def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -> None:
+    bundle = _policy_bundle()
+    clock = FakeClock()
+    controller = ensure_session_controller(
+        ResolutionSession(ledger=AgentFailureLedger(clock=clock)), bundle
     )
+    session = ResolutionSession(recovery_controller=controller, ledger=None)
+
+    assert session_ledger(session) is controller.ledger
+
+    _cool_benched_agent(controller.ledger)
+
+    candidates = ("benched_agent", "healthy_agent")
+    assert _cooling(session, candidates) == {"benched_agent": "unproductive_limit"}
+
+    _advance_past_every_cooldown(clock, session, candidates)
+
+    assert _cooling(session, candidates) == {}
 
 
 def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none(
@@ -348,18 +421,7 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
     controller = ensure_session_controller(ResolutionSession(), bundle)
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
-    ledger = controller.ledger
-    attempts = 0
-    while not ledger.status(PHASE_RESOLUTION, "benched_agent").is_spent and attempts < 100:
-        ledger.record(
-            AttemptFact(
-                phase=PHASE_RESOLUTION,
-                agent="benched_agent",
-                artifact_valid=False,
-            )
-        )
-        attempts += 1
-    assert ledger.status(PHASE_RESOLUTION, "benched_agent").is_spent
+    _cool_benched_agent(controller.ledger)
 
     executed: list[str] = []
 
@@ -425,16 +487,15 @@ def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> No
     assert not ledger.is_available(PHASE_RESOLUTION, "unhealthy_agent")
 
     with_ledger = ResolutionSession(ledger=ledger)
-    assert "unhealthy_agent" in skipped_candidates(with_ledger, ("unhealthy_agent",))
+    assert _cooling(with_ledger, ("unhealthy_agent",)) == {"unhealthy_agent": "unproductive_limit"}
 
     without_ledger = ResolutionSession()
     assert session_ledger(without_ledger) is None
     without_ledger.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     remember_dead_surface(without_ledger, "unavailable_agent")
-    assert skipped_candidates(
-        without_ledger,
-        ("unhealthy_agent", "unavailable_agent"),
-    ) == frozenset({"unavailable_agent"})
+    assert _cooling(without_ledger, ("unhealthy_agent", "unavailable_agent")) == {
+        "unavailable_agent": "candidate_unavailable"
+    }
 
 
 def test_continue_rounds_without_controller_or_ledger_fails_closed() -> None:

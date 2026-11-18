@@ -33,17 +33,34 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.pipeline.factory import PipelineDeps
 
 _CYCLE_CAP = 3
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_runner_tries_the_whole_chain_before_waiting_out_the_cooldown": "operator rule: an agent is either on cooldown or not; replaces test_runner_tries_the_whole_chain_before_stopping because an all-cooling chain now waits for the earliest cooldown expiry instead of failing the run, so the test stops the run at that positive wait",
+    "test_runner_records_failure_and_fallover_events": "operator rule: an agent is either on cooldown or not; an all-cooling chain now waits instead of exiting with code 1, so the run is stopped at the positive cooldown wait, the exit code is no longer pinned to 1, and the last agent failure is republished once with the cooldown wait as its retry delay",
+    "test_runner_fallover_history_reflects_agent_transitions": "operator rule: an agent is either on cooldown or not; an all-cooling chain now waits instead of counting a recovery cycle, so the fallover history is read from the last checkpoint at the cooldown wait rather than a state with a recovery cycle",
+    "test_runner_cooldown_wait_does_not_advance_the_recovery_cycle_count": "operator rule: an agent is either on cooldown or not; replaces test_runner_recovery_cycle_count_advances because an all-cooling chain now waits for its cooldown instead of entering the failed phase, so no recovery cycle is counted",
+}
+
+
+def _stop_on_first_cooldown_wait(waits: list[float]) -> Callable[[float], None]:
+    def _sleep(seconds: float) -> None:
+        if seconds > 0:
+            waits.append(seconds)
+            raise KeyboardInterrupt
+
+    return _sleep
+
 
 def _probe_reachable_deps(
     probed: list[str],
     bundle: PolicyBundle,
+    waits: list[float],
 ) -> PipelineDeps:
     def fake_invoke_agent(
         config: AgentConfig,
@@ -69,7 +86,7 @@ def _probe_reachable_deps(
     return replace(
         deps,
         invoke_agent=fake_invoke_agent,
-        recovery_sleep=lambda _: None,
+        recovery_sleep=_stop_on_first_cooldown_wait(waits),
     )
 
 
@@ -153,11 +170,12 @@ def _failing_execute() -> object:
     return _fake_execute
 
 
-def test_runner_tries_the_whole_chain_before_stopping(
+def test_runner_tries_the_whole_chain_before_waiting_out_the_cooldown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probed: list[str] = []
+    waits: list[float] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -185,13 +203,15 @@ def test_runner_tries_the_whole_chain_before_stopping(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        pipeline_deps=_probe_reachable_deps(probed, bundle),
+        pipeline_deps=_probe_reachable_deps(probed, bundle, waits),
     )
 
-    assert exit_code == 1
+    assert exit_code != 0
     assert invocation_count == 2, (
         f"Expected both agents of the chain to run, got {invocation_count} invocations"
     )
+    assert len(waits) == 1
+    assert waits[0] > 0
     assert probed, "the failed chain attempt must still reach the recovery probe boundary"
 
 
@@ -201,6 +221,7 @@ def test_runner_records_failure_and_fallover_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probed: list[str] = []
+    waits: list[float] = []
     bundle = _make_policy_bundle()
 
     captured_failure_events: list[FailureEvent] = []
@@ -232,13 +253,14 @@ def test_runner_records_failure_and_fallover_events(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        pipeline_deps=_probe_reachable_deps(probed, bundle),
+        pipeline_deps=_probe_reachable_deps(probed, bundle, waits),
     )
 
-    assert exit_code == 1
-    assert len(captured_failure_events) == 2, (
-        f"Expected 2 FailureEvents (one per agent), got {len(captured_failure_events)}"
-    )
+    assert exit_code != 0
+    assert len(waits) == 1
+    assert [evt.agent for evt in captured_failure_events] == ["claude", "opencode", "opencode"]
+    assert captured_failure_events[-1].retry_delay_ms > 0
+    assert captured_failure_events[-1].retry_delay_ms == round(waits[0] * 1000)
     for evt in captured_failure_events:
         assert evt.category == "agent"
         assert evt.counted_against_budget is True
@@ -260,6 +282,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probed: list[str] = []
+    waits: list[float] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -276,19 +299,14 @@ def test_runner_fallover_history_reflects_agent_transitions(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        pipeline_deps=_probe_reachable_deps(probed, bundle),
+        pipeline_deps=_probe_reachable_deps(probed, bundle, waits),
     )
 
-    assert exit_code == 1
+    assert exit_code != 0
+    assert len(waits) == 1
     assert len(saved_states) > 0, "Expected at least one saved checkpoint"
 
-    final_state = None
-    for state in reversed(saved_states):
-        if isinstance(state, PipelineState) and state.recovery_cycle_count > 0:
-            final_state = state
-            break
-
-    assert final_state is not None, "No state found with recovery_cycle_count > 0"
+    final_state = saved_states[-1]
     assert len(final_state.fallover_history) == 1, (
         f"Expected 1 fallover record, got {len(final_state.fallover_history)}"
     )
@@ -300,11 +318,12 @@ def test_runner_fallover_history_reflects_agent_transitions(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_runner_recovery_cycle_count_advances(
+def test_runner_cooldown_wait_does_not_advance_the_recovery_cycle_count(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     probed: list[str] = []
+    waits: list[float] = []
     bundle = _make_policy_bundle()
 
     saved_states: list[PipelineState] = []
@@ -321,13 +340,15 @@ def test_runner_recovery_cycle_count_advances(
         initial_state=_initial_state(),
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
-        pipeline_deps=_probe_reachable_deps(probed, bundle),
+        pipeline_deps=_probe_reachable_deps(probed, bundle, waits),
     )
 
-    assert exit_code == 1
+    assert exit_code != 0
+    assert len(waits) == 1
+    assert waits[0] > 0
     cycle_counts = [s.recovery_cycle_count for s in saved_states if isinstance(s, PipelineState)]
-    assert max(cycle_counts, default=0) >= 1, (
-        f"Expected recovery_cycle_count to reach at least 1 in saved states; "
-        f"got max={max(cycle_counts, default=0)}"
+    assert max(cycle_counts, default=0) == 0, (
+        f"A cooldown wait must not count a recovery cycle; got max={max(cycle_counts, default=0)}"
     )
+    assert all(s.phase != "failed_terminal" for s in saved_states)
     assert probed, "the failed chain attempt must still reach the recovery probe boundary"

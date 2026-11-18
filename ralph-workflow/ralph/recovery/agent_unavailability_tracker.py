@@ -46,6 +46,8 @@ class UnavailabilityStore(Protocol, metaclass=_UnavailabilityStoreMeta):
         phase: str,
         agent: str,
         reason: UnavailabilityReason | None = None,
+        *,
+        duration_ms: int | None = None,
     ) -> UnavailabilityEntry: ...
 
     def is_available(self, phase: str, agent: str) -> bool: ...
@@ -110,12 +112,16 @@ class AgentUnavailabilityTracker:
         phase: str,
         agent: str,
         reason: UnavailabilityReason | None = None,
+        *,
+        duration_ms: int | None = None,
     ) -> UnavailabilityEntry:
         with self._lock:
             del phase
             key = agent
             current_time_ms = int(self._clock.monotonic() * 1000)
             self.prune_expired(now_ms=current_time_ms)
+            if duration_ms is not None:
+                return self._mark_for_duration(key, reason, current_time_ms, duration_ms)
             attempt: int = self._backoff_attempts.get(key, 0)
 
             if reason is not None and reason in self._backoff_policy:
@@ -138,6 +144,10 @@ class AgentUnavailabilityTracker:
             backoff_ms = min(base_ms_int << attempt, cap_ms_int)
 
             unavailable_until_ms = current_time_ms + backoff_ms
+            self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
+            existing = self._entries.get(key)
+            if existing is not None and existing.unavailable_until_ms > unavailable_until_ms:
+                return existing
             self._entries[key] = UnavailabilityEntry(
                 unavailable_until_ms=unavailable_until_ms,
                 reason=reason,
@@ -145,8 +155,28 @@ class AgentUnavailabilityTracker:
                 base_backoff_ms=base_ms_int,
                 max_backoff_ms=cap_ms_int,
             )
-            self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
             return self._entries[key]
+
+    def _mark_for_duration(
+        self,
+        key: str,
+        reason: UnavailabilityReason | None,
+        current_time_ms: int,
+        duration_ms: int,
+    ) -> UnavailabilityEntry:
+        bounded_ms = min(max(1, duration_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
+        existing = self._entries.get(key)
+        until_ms = current_time_ms + bounded_ms
+        if existing is not None and existing.unavailable_until_ms > until_ms:
+            return existing
+        self._entries[key] = UnavailabilityEntry(
+            unavailable_until_ms=until_ms,
+            reason=reason,
+            attempt=self._backoff_attempts.get(key, 0),
+            base_backoff_ms=bounded_ms,
+            max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+        )
+        return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:
         with self._lock:
@@ -191,9 +221,15 @@ class AgentUnavailabilityTracker:
 
     def snapshot(self) -> dict[str, dict[str, object]]:
         with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            now_epoch_ms = int(self._clock.epoch() * 1000)
             return {
                 "unavailable_timeouts": {
                     key: entry.unavailable_until_ms for key, entry in self._entries.items()
+                },
+                "unavailable_until_epoch_ms": {
+                    key: now_epoch_ms + max(0, entry.unavailable_until_ms - now_ms)
+                    for key, entry in self._entries.items()
                 },
                 "unavailability_reasons": {
                     key: str(entry.reason) if entry.reason is not None else None
@@ -211,7 +247,32 @@ class AgentUnavailabilityTracker:
         return self._clock
 
 
-__all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
+UNSPECIFIED_COOLDOWN_REASON = "cooldown"
+
+
+def cooldown_windows(store: UnavailabilityStore, *, now_ms: int) -> dict[str, tuple[int, str]]:
+    snap = store.snapshot()
+    timeouts = snap.get("unavailable_timeouts", {})
+    reasons = snap.get("unavailability_reasons", {})
+    windows: dict[str, tuple[int, str]] = {}
+    for agent, until in timeouts.items():
+        if not isinstance(agent, str) or isinstance(until, bool) or not isinstance(until, int):
+            continue
+        if until <= now_ms:
+            continue
+        raw_reason = reasons.get(agent)
+        reason = raw_reason if isinstance(raw_reason, str) else UNSPECIFIED_COOLDOWN_REASON
+        windows[agent] = (until, reason)
+    return windows
+
+
+__all__ = [
+    "UNSPECIFIED_COOLDOWN_REASON",
+    "AgentUnavailabilityTracker",
+    "UnavailabilityEntry",
+    "UnavailabilityStore",
+    "cooldown_windows",
+]
 
 
 _ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset(

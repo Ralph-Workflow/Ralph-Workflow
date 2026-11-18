@@ -5,11 +5,18 @@ from pathlib import Path
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effects import Effect, ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.cycle_cap import CycleCap
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_failure_chain_exhaustion_increments_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits for its cooldown instead of entering the failed phase, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_cooling_sole_agent_waits_without_counting_a_recovery_cycle": "operator rule: an agent is either on cooldown or not; pins that a sole agent reaching the unproductive limit yields the wait state with a finite delay and becomes eligible again after it expires",
+    "test_cycle_cap_exceeded_emits_exit_failure_effect": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the cycle cap is driven through a chain with no agents, the only route that still reaches the failed phase",
+}
 
 
 def _minimal_policy_bundle() -> object:
@@ -57,17 +64,43 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
+    state = _make_state([])
+
+    new_state, _, _ = controller.handle(
+        state,
+        _AgentInactivityTimeoutError("idle"),
+        FailureContext(phase="development", agent=None),
+    )
+
+    assert new_state.recovery_cycle_count == 1
+
+
+def test_cooling_sole_agent_waits_without_counting_a_recovery_cycle() -> None:
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10, clock=clock, policy_bundle=_minimal_policy_bundle()
+        )
+    )
     state = _make_state(["claude"])
 
     new_state = state
+    effects: list[Effect] = []
     for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
-        new_state, _, _ = controller.handle(
-            state,
+        new_state, effects, _ = controller.handle(
+            new_state,
             _AgentInactivityTimeoutError("idle"),
             FailureContext(phase="development", agent="claude"),
         )
 
-    assert new_state.recovery_cycle_count == 1
+    assert new_state.recovery_cycle_count == 0
+    assert new_state.is_waiting_state is True
+    assert new_state.last_retry_delay_ms > 0
+    assert effects == []
+
+    clock.advance(new_state.last_retry_delay_ms / 1000.0)
+
+    assert controller.agent_eligibility("development", "claude").is_eligible
 
 
 def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
@@ -77,15 +110,13 @@ def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
         )
     )
 
-    state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)
+    state = _make_state([], cycle_count=_EXPECTED_CYCLE_COUNT)
 
-    effects: list[Effect] = []
-    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
-        _new_state, effects, _ = controller.handle(
-            state,
-            _AgentInactivityTimeoutError("idle timeout again"),
-            FailureContext(phase="development", agent="claude"),
-        )
+    _new_state, effects, _ = controller.handle(
+        state,
+        _AgentInactivityTimeoutError("idle timeout again"),
+        FailureContext(phase="development", agent=None),
+    )
 
     exit_effects = [e for e in effects if isinstance(e, ExitFailureEffect)]
     assert len(exit_effects) == 1

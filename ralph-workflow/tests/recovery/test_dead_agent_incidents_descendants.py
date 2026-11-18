@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
 PHASE = "development"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_incident_5_live_session_with_partial_progress_never_marked_spent_or_benched": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+    "test_incident_6_watchdog_failure_accounting_no_spent_no_bench_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+}
+
 INCIDENT_6_OPENCODE_TOOL_USE_LINE = (
     '{"type":"tool_use","sessionID":"s_0001","part":{"type":"tool","tool":"read_file",'
     '"callID":"c_0001","state":{"status":"completed","input":{"path":"docs/agents/verification.md"},'
@@ -175,9 +180,9 @@ def test_incident_5_live_session_with_partial_progress_never_marked_spent_or_ben
     assert outcome.kind.value in ("runtime_ended", "unknown"), (
         f"outcome must be non-agent failure (observed: {outcome.kind.value!r})"
     )
-    assert controller.snapshot()["spent_agents"] == {}, (
-        "a live session with partial progress must never be marked spent after one attempt "
-        f"(observed spent: {controller.snapshot()['spent_agents']!r})"
+    assert "spent_agents" not in controller.snapshot()
+    assert controller.ledger.status(PHASE, "claude").is_eligible, (
+        "a live session with partial progress must never start a cooldown after one attempt"
     )
     assert controller.unavailability_store.is_available(PHASE, "claude") is True, (
         "a live session with partial progress must not be benched in unavailability store"
@@ -425,8 +430,9 @@ def test_incident_6_watchdog_failure_accounting_no_spent_no_bench_selectable() -
     assert outcome.kind.value == "runtime_ended", (
         f"post-exit watchdog failure outcome must be runtime_ended (observed: {outcome.kind.value!r})"
     )
-    assert controller.snapshot()["spent_agents"] == {}, (
-        f"watchdog kill must not mark agent spent (observed: {controller.snapshot()['spent_agents']!r})"
+    assert "spent_agents" not in controller.snapshot()
+    assert controller.ledger.status(PHASE, "opencode").is_eligible, (
+        "watchdog kill must not start a cooldown for the agent"
     )
     assert controller.unavailability_store.is_available(PHASE, "opencode") is True, (
         "post-exit watchdog failure must not bench the agent in unavailability store"

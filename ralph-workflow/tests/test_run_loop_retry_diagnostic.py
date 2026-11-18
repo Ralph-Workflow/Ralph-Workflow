@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate_record import (
@@ -25,6 +26,7 @@ from ralph.pipeline.retry_diagnostic import (
 )
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.controller import RecoveryController
 from ralph.workspace.scope import WorkspaceScope
 
@@ -35,8 +37,15 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_cold_capped_conflict_invokes_resolver_when_budget_already_spent": (
-        "cold-capped escalation is gated by shared all_exhausted, not resolution_exhausted"
+        "cold-capped escalation is gated by shared all_exhausted, not resolution_exhausted; "
+        "renamed to test_cold_capped_conflict_defers_while_resolver_cools_then_invokes_it_after_expiry"
     ),
+    "test_cold_capped_conflict_defers_while_resolver_cools_then_invokes_it_after_expiry": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver",
+    "test_cold_capped_escalation_rederive_clears_stale_state_without_invoking_resolver": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver; renamed to test_cold_capped_conflict_while_resolver_cools_leaves_state_and_resolver_untouched, which asserts neither live re-derivation nor the resolver runs while it cools",
+    "test_cold_capped_conflict_while_resolver_cools_leaves_state_and_resolver_untouched": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver",
+    "test_cold_capped_escalation_unsuccessful_returns_false_without_spinning": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver; the unsuccessful attempt now happens after expiry and still never sleeps or touches the counter",
+    "test_cold_capped_escalation_is_one_shot_per_session": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver; renamed to test_failed_resolution_cools_the_resolver_instead_of_respinning, since the no-spin guarantee now comes from the failed attempt cooling the resolver",
+    "test_failed_resolution_cools_the_resolver_instead_of_respinning": "operator rule: an agent is either on cooldown or not; a resolver that hit the unproductive limit is on an expiring cooldown, so the cold-capped call defers without invoking it and the ordinary resolver path runs once the cooldown expires instead of a one-shot escalation over a permanently spent resolver",
     "test_cold_capped_escalation_does_not_fire_for_different_conflict_identity": (
         "with Eligible agents a different conflict identity takes the ordinary resolver path"
     ),
@@ -291,7 +300,7 @@ def test_wait_for_retry_unreadable_record_uses_bounded_retry_without_handoff(
 def test_wait_for_retry_carried_count_boundary_with_cooling_agents_stays_pending_and_resumes(
     tmp_path: Path,
 ) -> None:
-    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
+    from ralph.pipeline.conflict_resolution.resolver_health import record_resolver_failure
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryControllerOptions
     from tests.pipeline._auto_integrate_agent_failure_fixtures import (
@@ -312,8 +321,8 @@ def test_wait_for_retry_carried_count_boundary_with_cooling_agents_stays_pending
     handoff_calls: list[str] = []
     ctx.hooks.handoff_retained_failure = lambda _c, d: handoff_calls.append(d)
 
-    bench_resolver(controller, "resolver-a", "unproductive attempt")
-    bench_resolver(controller, "resolver-b", "unproductive attempt")
+    record_resolver_failure(controller, "resolver-a", "unproductive attempt")
+    record_resolver_failure(controller, "resolver-b", "unproductive attempt")
 
     cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_rebase = RebaseState(
@@ -1096,9 +1105,8 @@ def _make_cold_capped_ctx(
     *,
     cap: int = 5,
     target: str = "release",
-    spent: bool = True,
+    cooling: bool = True,
 ) -> tuple[list[float], LoopContext, dict[str, int]]:
-    from ralph.agents.timeout_clock import FakeClock
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
     from ralph.recovery.controller import RecoveryControllerOptions
 
@@ -1121,10 +1129,10 @@ def _make_cold_capped_ctx(
     ledger = AgentFailureLedger(
         clock=clock,
         consecutive_limit=1,
-        total_limit=1 if spent else 9,
+        total_limit=1 if cooling else 9,
         base_cooldown_seconds=10.0,
     )
-    if spent:
+    if cooling:
         ledger.record(
             AttemptFact(
                 phase="rebase_conflict_resolution",
@@ -1139,13 +1147,15 @@ def _make_cold_capped_ctx(
     return sleeps, ctx, counters
 
 
-def test_cold_capped_conflict_invokes_resolver_when_budget_already_spent(
-    tmp_path: Path,
+def _install_cold_capped_seams(
+    ctx: LoopContext,
     monkeypatch: MonkeyPatch,
+    counters: dict[str, int],
+    *,
+    resolved: bool,
 ) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
-    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
         lambda _root, _target, **_k: ConflictIdentity(),
@@ -1154,196 +1164,154 @@ def test_cold_capped_conflict_invokes_resolver_when_budget_already_spent(
 
     def _fake_build(**_kwargs: object) -> object:
         counters["built"] += 1
-        return lambda _root, _target: True
+        return lambda _root, _target: resolved
 
     def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
         counters["merge"] += 1
-        return True
+        return resolved
 
     ctx.hooks.paused_rebase_at = lambda _r: False
     monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
     ctx.hooks.complete_in_progress_merge = _fake_merge
-    ctx.hooks.resolve_orphaned_unmerged_index = lambda _c, _t: (
-        counters.__setitem__("orphan", counters["orphan"] + 1) or False
-    )
+    ctx.hooks.resolve_orphaned_unmerged_index = lambda _c, _t: False
     ctx.hooks.rederive_live_conflict_state = lambda _r, _t, _rb: (
         counters.__setitem__("rederive", counters["rederive"] + 1) or None
     )
 
-    cold_capped = RebaseState(
+
+def _cold_capped_rebase() -> RebaseState:
+    return RebaseState(
         last_action="conflict",
         last_target="release",
         consecutive_conflicts=5,
     ).model_copy(update={"resolution_exhausted": True})
 
-    result = run_owned_integration_conflict_resolution(ctx, cold_capped)
 
-    assert counters["built"] == 1, (
-        f"Cold-capped state must invoke the resolver; "
-        f"built={counters['built']}, OLD probe printed "
-        "'resolver_calls=0'. The escalation never ran."
-    )
-    assert counters["rederive"] == 1, (
-        "Cold-capped escalation must re-derive from live Git once before running the resolver"
-    )
-    assert counters["merge"] == 1
-    assert result is True
-    assert ctx.cold_capped_escalation_attempted is True
+def _resolver_clock(ctx: LoopContext) -> FakeClock:
+    controller = ctx.controller
+    assert isinstance(controller, RecoveryController)
+    clock = controller.ledger.clock
+    assert isinstance(clock, FakeClock)
+    return clock
 
 
-def test_cold_capped_escalation_rederive_clears_stale_state_without_invoking_resolver(
+def test_cold_capped_conflict_defers_while_resolver_cools_then_invokes_it_after_expiry(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
-
     _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
-        lambda _root, _target, **_k: ConflictIdentity(),
-        raising=False,
+    _install_cold_capped_seams(ctx, monkeypatch, counters, resolved=True)
+    cold_capped = _cold_capped_rebase()
+
+    deferred = run_owned_integration_conflict_resolution(ctx, cold_capped)
+
+    assert deferred is False
+    assert counters["built"] == 0, "a cooling resolver must be waited for, not invoked"
+    assert counters["merge"] == 0
+    assert counters["rederive"] == 0
+
+    _resolver_clock(ctx).advance(10.0)
+    result = run_owned_integration_conflict_resolution(ctx, cold_capped)
+
+    assert counters["built"] == 1, (
+        f"once the cooldown expires the resolver must run again; built={counters['built']}"
     )
+    assert counters["merge"] == 1
+    assert result is True
+    assert ctx.cold_capped_escalation_attempted is False
 
-    ctx.hooks.paused_rebase_at = lambda _r: False
 
-    def _fake_rederive(_root: object, _target: object, rebase: RebaseState) -> RebaseState:
-        counters["rederive"] += 1
-        return rebase.model_copy(
-            update={
-                "is_intervention_required": False,
-                "resolution_exhausted": False,
-                "consecutive_conflicts": 0,
-                "integration_unresolved": False,
-                "last_outcome": RebaseOutcomeKind.COMPLETED,
-                "last_reason": "live re-derivation cleared the cold-capped state",
-            }
-        )
-
-    ctx.hooks.rederive_live_conflict_state = _fake_rederive
-
-    def _fail_build(**_kwargs: object) -> object:
-        counters["built"] += 1
-        raise AssertionError("resolver must NOT be built when live re-derivation clears the state")
-
-    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fail_build)
-
-    cold_capped = RebaseState(
-        last_action="conflict",
-        last_target="release",
-        consecutive_conflicts=5,
-    ).model_copy(update={"resolution_exhausted": True})
+def test_cold_capped_conflict_while_resolver_cools_leaves_state_and_resolver_untouched(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
+    _install_cold_capped_seams(ctx, monkeypatch, counters, resolved=True)
+    cold_capped = _cold_capped_rebase()
     initial_state = PipelineState(phase="development", rebase=cold_capped)
     ctx.latest_state[:] = [initial_state]
 
     result = run_owned_integration_conflict_resolution(ctx, cold_capped)
 
-    assert counters["rederive"] == 1
-    assert counters["built"] == 0, (
-        "Resolver must not be built when live Git state has no conflict -- "
-        "the cached record is stale and the live re-derivation clears it"
-    )
-    assert result is True
-    assert ctx.cold_capped_escalation_attempted is True
-    cleared = ctx.latest_state[0]
-    assert cleared.rebase.is_intervention_required is False
-    assert cleared.rebase.resolution_exhausted is False
-    assert cleared.rebase.consecutive_conflicts == 0
-    assert cleared.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
+    assert result is False
+    assert counters["rederive"] == 0
+    assert counters["built"] == 0
+    assert ctx.cold_capped_escalation_attempted is False
+    assert ctx.latest_state[0].rebase.resolution_exhausted is True
+    controller = ctx.controller
+    assert isinstance(controller, RecoveryController)
+    status = controller.ledger.status("rebase_conflict_resolution", "resolver")
+    assert isinstance(status, Cooldown)
+    assert status.until_ms == 10_000
+    _resolver_clock(ctx).advance(10.0)
+    assert controller.ledger.is_available("rebase_conflict_resolution", "resolver")
 
 
 def test_cold_capped_escalation_unsuccessful_returns_false_without_spinning(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
-
     sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
-        lambda _root, _target, **_k: ConflictIdentity(),
-        raising=False,
-    )
-
-    ctx.hooks.paused_rebase_at = lambda _r: False
-
-    def _fake_build(**_kwargs: object) -> object:
-        counters["built"] += 1
-        return lambda _root, _target: False
-
-    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
-        counters["merge"] += 1
-        return False
-
-    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
-    ctx.hooks.complete_in_progress_merge = _fake_merge
-    ctx.hooks.resolve_orphaned_unmerged_index = lambda _c, _t: False
-    ctx.hooks.rederive_live_conflict_state = lambda _r, _t, _rb: None
-
-    cold_capped = RebaseState(
-        last_action="conflict",
-        last_target="release",
-        consecutive_conflicts=5,
-    ).model_copy(update={"resolution_exhausted": True})
+    _install_cold_capped_seams(ctx, monkeypatch, counters, resolved=False)
+    cold_capped = _cold_capped_rebase()
     initial_counter = cold_capped.consecutive_conflicts
 
+    deferred = run_owned_integration_conflict_resolution(ctx, cold_capped)
+    assert deferred is False
+    assert counters["built"] == 0
+
+    _resolver_clock(ctx).advance(10.0)
     result = run_owned_integration_conflict_resolution(ctx, cold_capped)
 
     assert counters["built"] == 1
     assert counters["merge"] == 1
     assert result is False
-    assert ctx.cold_capped_escalation_attempted is True
     assert cold_capped.consecutive_conflicts == initial_counter, (
-        "Cold-capped escalation must NEVER reset or raise the counter; "
-        "the cap is owned by the budget gate, not the escalation"
+        "an unsuccessful resolution must NEVER reset or raise the counter; "
+        "the cap is owned by the budget gate"
     )
     assert sleeps == [], (
-        "Unsuccessful cold-capped escalation must not sleep; the O1 "
+        "an unsuccessful or deferred resolution must not sleep; the O1 "
         "retry-progress rule forbids a silent fixed-interval wait"
     )
 
 
-def test_cold_capped_escalation_is_one_shot_per_session(
+def test_failed_resolution_cools_the_resolver_instead_of_respinning(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+    from ralph.recovery.agent_failure_ledger import AttemptFact
 
     sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5)
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
-        lambda _root, _target, **_k: ConflictIdentity(),
-        raising=False,
-    )
+    _install_cold_capped_seams(ctx, monkeypatch, counters, resolved=False)
+    controller = ctx.controller
+    assert isinstance(controller, RecoveryController)
 
-    ctx.hooks.paused_rebase_at = lambda _r: False
-
-    def _fake_build(**_kwargs: object) -> object:
-        counters["built"] += 1
-        return lambda _root, _target: False
-
-    def _fake_merge(_root: object, _target: object, _resolver: object) -> bool:
+    def _charging_merge(_root: object, _target: object, _resolver: object) -> bool:
         counters["merge"] += 1
+        controller.ledger.record(
+            AttemptFact(
+                phase="rebase_conflict_resolution",
+                agent="resolver",
+                artifact_valid=False,
+            )
+        )
         return False
 
-    monkeypatch.setattr(run_loop, "build_agent_conflict_resolver", _fake_build)
-    ctx.hooks.complete_in_progress_merge = _fake_merge
-    ctx.hooks.resolve_orphaned_unmerged_index = lambda _c, _t: False
-    ctx.hooks.rederive_live_conflict_state = lambda _r, _t, _rb: None
+    ctx.hooks.complete_in_progress_merge = _charging_merge
+    cold_capped = _cold_capped_rebase()
 
-    cold_capped = RebaseState(
-        last_action="conflict",
-        last_target="release",
-        consecutive_conflicts=5,
-    ).model_copy(update={"resolution_exhausted": True})
-
+    _resolver_clock(ctx).advance(10.0)
     first = run_owned_integration_conflict_resolution(ctx, cold_capped)
     assert first is False
     assert counters["built"] == 1
+    status = controller.ledger.status("rebase_conflict_resolution", "resolver")
+    assert isinstance(status, Cooldown)
     second = run_owned_integration_conflict_resolution(ctx, cold_capped)
     assert second is False
     assert counters["built"] == 1, (
-        "Same-session re-entry must not re-dispatch the cold-capped "
-        "escalation; the O1 retry-progress rule forbids unbounded spin"
+        "a resolver that just failed is cooling down, so same-session re-entry "
+        "must not re-dispatch it; the O1 retry-progress rule forbids unbounded spin"
     )
     assert sleeps == []
 
@@ -1354,7 +1322,7 @@ def test_cold_capped_escalation_does_not_fire_for_different_conflict_identity(
 ) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
-    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5, spent=False)
+    _sleeps, ctx, counters = _make_cold_capped_ctx(tmp_path, monkeypatch, cap=5, cooling=False)
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_budget_seam.observe_conflict_identity",
         lambda _root, _target, **_k: ConflictIdentity(

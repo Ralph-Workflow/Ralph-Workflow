@@ -5167,6 +5167,13 @@ ralph.testing.audit_workspace_resource_inventory
    :members:
    :show-inheritance:
 
+ralph.testing.audit_cooldown_only
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_cooldown_only
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_agent_failure_single_owner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

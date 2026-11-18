@@ -8,4 +8,4 @@ __all__ = ("WaitKind",)
 class WaitKind(StrEnum):
     AVAILABLE_NOW = "available_now"
     COOLING_DOWN = "cooling_down"
-    NEVER_ELIGIBLE = "never_eligible"
+    NO_CANDIDATES = "no_candidates"

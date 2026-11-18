@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-type EntryStrictness = Callable[[Mapping[str, object], int, int], tuple[int, int, int, int]]
+type EntryStrictness = Callable[[Mapping[str, object], int, int], tuple[int, int, int]]
 
 LEGACY_DEFAULT_AGENT = "claude"
-_LEGACY_MALFORMED_REASON = "legacy_guard_malformed"
 
 _DEFAULT_CONSECUTIVE_LIMIT = 3
 _DEFAULT_TOTAL_LIMIT = 9
@@ -102,7 +101,6 @@ def _failed_closed_entry(
     phase: str,
     agent: str,
     *,
-    reason: str,
     consecutive_limit: int,
     total_limit: int,
 ) -> dict[str, object]:
@@ -111,12 +109,7 @@ def _failed_closed_entry(
         "agent": agent,
         _KEY_CONSECUTIVE: consecutive_limit,
         _KEY_TOTAL: total_limit,
-        "cooldown_until_ms": None,
-        "cooldown_reason": None,
         "cooldown_count": 0,
-        "is_spent": True,
-        "spent_reason": reason,
-        "unavailable_reason": None,
     }
 
 
@@ -156,19 +149,14 @@ def translate_legacy_entry(
     streak = max(0, streak)
     is_exhausted = bool(guard_data.get("is_exhausted", False))
     failed_closed = bool(guard_data.get("failed_closed", False))
-    is_spent = is_exhausted or failed_closed or streak >= consecutive_limit
-    consecutive = max(streak, consecutive_limit) if is_spent else min(streak, consecutive_limit)
+    at_limit = is_exhausted or failed_closed or streak >= consecutive_limit
+    consecutive = max(streak, consecutive_limit) if at_limit else min(streak, consecutive_limit)
     return {
         "phase": phase,
         "agent": agent,
         _KEY_CONSECUTIVE: consecutive,
         _KEY_TOTAL: min(consecutive, total_limit),
-        "cooldown_until_ms": None,
-        "cooldown_reason": None,
         "cooldown_count": 0,
-        "is_spent": is_spent,
-        "spent_reason": "legacy_exhausted" if is_spent else None,
-        "unavailable_reason": None,
     }
 
 
@@ -184,7 +172,6 @@ def _translate_legacy_source(
         return _failed_closed_entry(
             phase,
             agent,
-            reason=source.fail_closed_reason,
             consecutive_limit=consecutive_limit,
             total_limit=total_limit,
         )
@@ -193,7 +180,6 @@ def _translate_legacy_source(
         return _failed_closed_entry(
             phase,
             agent,
-            reason=_LEGACY_MALFORMED_REASON,
             consecutive_limit=consecutive_limit,
             total_limit=total_limit,
         )

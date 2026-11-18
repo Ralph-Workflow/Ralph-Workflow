@@ -3,11 +3,18 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_chain_exhaustion_last_error_is_non_sentinel": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the failed-phase last_error is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_chain_exhaustion_increments_recovery_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_single_agent_chain_cooldown_waits_and_retains_no_fallover_records": "operator rule: an agent is either on cooldown or not; replaces test_single_agent_chain_exhaustion_retains_no_fallover_records because a sole agent reaching the unproductive limit now waits for its cooldown instead of entering the failed phase, and still records no fallover",
+}
 
 
 def _minimal_policy_bundle(agents: list[str] | None = None) -> object:
@@ -105,9 +112,13 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
-    state = _make_state(["claude"])
+    state = _make_state([])
 
-    state = _fail_repeatedly(controller, state, "claude", _CONSECUTIVE_UNPRODUCTIVE_LIMIT)
+    state, _, _ = controller.handle(
+        state,
+        _AgentInactivityTimeoutError("timed out"),
+        FailureContext(phase="development", agent=None),
+    )
 
     assert state.phase == "failed_terminal"
     assert state.last_error is not None
@@ -119,23 +130,36 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
-    state = _make_state(["claude"])
+    state = _make_state([])
 
     assert state.recovery_cycle_count == 0
 
-    state = _fail_repeatedly(controller, state, "claude", _CONSECUTIVE_UNPRODUCTIVE_LIMIT)
+    state, _, _ = controller.handle(
+        state,
+        _AgentInactivityTimeoutError("timed out"),
+        FailureContext(phase="development", agent=None),
+    )
 
     assert state.recovery_cycle_count == 1
 
 
-def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
+def test_single_agent_chain_cooldown_waits_and_retains_no_fallover_records() -> None:
+    clock = FakeClock(start=0.0)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
+        options=RecoveryControllerOptions(
+            cycle_cap=10, clock=clock, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
     state = _fail_repeatedly(controller, state, "claude", _CONSECUTIVE_UNPRODUCTIVE_LIMIT)
 
-    assert state.phase == "failed_terminal"
-    assert state.recovery_cycle_count == 1
+    assert state.phase == "development"
+    assert state.is_waiting_state is True
+    assert state.last_retry_delay_ms > 0
+    assert state.recovery_cycle_count == 0
     assert state.fallover_history == ()
+
+    clock.advance(state.last_retry_delay_ms / 1000.0)
+
+    assert controller.agent_eligibility("development", "claude").is_eligible

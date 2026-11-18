@@ -5,9 +5,9 @@ The runtime architecture for the maintained Python package lives under
 For the interrupt architecture ADR see
 [`ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md).
 
-Agent recovery has one owner: `RecoveryController` owns cooldown and
-unavailability, failure-budget charging, backoff, spent state, candidate
-selection, and wait/termination. Agent-invoking paths report every failed or
+Agent recovery has one owner: `RecoveryController` owns agent cooldowns,
+failure-budget charging, backoff, candidate selection, and
+wait/termination. Agent-invoking paths report every failed or
 unproductive attempt through it, and a failure may be unpenalised only after
 proven progress. Round caps come from configured limits; phases keep no local
 skip/backoff/cooldown collection. The audited path list (each marked already

@@ -21,6 +21,7 @@ from ralph.agents.invoke import (
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.state import PipelineState
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
@@ -34,6 +35,16 @@ from tests.recovery._scenario_harness import _build_policy_bundle
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_only_the_recovery_controller_benches_agents_as_dead": "operator rule: an agent is either on cooldown or not; the ledger now starts its own unproductive_limit cooldown in the shared tracker, so agent_failure_ledger.py is the second sanctioned mark_unavailable caller",
+    "test_spent_state_is_only_written_through_the_ledger_threshold_outcome": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the test asserts _spent_agents, note_retry_exhaustion and is_spent are absent from the package",
+    "test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_an_end_in_an_unseen_format_never_benches_without_failed_probe_evidence": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_a_crashing_probe_runner_never_benches_and_never_breaks_recovery": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_an_exhausted_probe_budget_never_benches": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_a_failed_attempt_on_a_one_agent_chain_with_no_evidence_is_an_ordinary_failure": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+}
 
 PHASE = "development"
 AGENT = "agent_a"
@@ -109,10 +120,11 @@ def _benched(controller: RecoveryController) -> bool:
 
 
 def _is_clean(controller: RecoveryController) -> bool:
+    status = controller.ledger.status(PHASE, AGENT)
     return (
         not _benched(controller)
-        and not controller.ledger.status(PHASE, AGENT).is_spent
-        and not controller.snapshot()["spent_agents"]
+        and "spent_agents" not in controller.snapshot()
+        and (status.is_eligible or (isinstance(status, Cooldown) and status.reason != DEAD))
     )
 
 
@@ -364,21 +376,16 @@ def test_only_the_recovery_controller_benches_agents_as_dead() -> None:
         "recovery/unavailability_reason.py",
     }
     assert _files_containing(r"record_confirmed_unavailability\(") == {"recovery/controller.py"}
-    assert _files_containing(r"\.mark_unavailable\(") == {"recovery/controller.py"}
+    assert _files_containing(r"\.mark_unavailable\(") == {
+        "recovery/controller.py",
+        "recovery/agent_failure_ledger.py",
+    }
 
 
 def test_spent_state_is_only_written_through_the_ledger_threshold_outcome() -> None:
-    assert _files_containing(r"note_retry_exhaustion\(") == {"recovery/controller.py"}
-    assert _files_containing(r"_spent_agents\b") == {"recovery/controller.py"}
-    controller_text = _package_sources()["recovery/controller.py"]
-    writes = [
-        line.strip()
-        for line in controller_text.splitlines()
-        if re.search(r"_spent_agents\.setdefault\(", line)
-    ]
-    assert writes == ["self._spent_agents.setdefault(phase, set()).add(agent)"]
-    assert controller_text.count("self.note_retry_exhaustion(phase, agent)") == 1
-    assert "if outcome.status.is_spent:" in controller_text
+    assert _files_containing(r"note_retry_exhaustion") == set()
+    assert _files_containing(r"_spent_agents\b") == set()
+    assert _files_containing(r"\.is_spent\b") == set()
 
 
 def test_nothing_sets_the_per_call_current_allowance_spent_hint() -> None:

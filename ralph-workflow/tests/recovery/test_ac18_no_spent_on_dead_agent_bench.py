@@ -13,7 +13,7 @@ from ralph.pipeline.events import AgentFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import Spent
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome
@@ -30,6 +30,13 @@ AGENT = "claude"
 OTHER_AGENT = "opencode"
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_benching_a_confirmed_dead_agent_never_marks_it_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_escalating_the_bench_still_never_marks_the_agent_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the escalated bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_the_bench_routes_all_leave_the_agent_unspent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts each bench route leaves a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+}
 
 
 def _policy() -> PipelinePolicy:
@@ -62,12 +69,19 @@ def _state(
     )
 
 
-def _assert_no_spent_anywhere(controller: RecoveryController) -> None:
+def _assert_bench_is_an_expiring_cooldown(controller: RecoveryController, clock: FakeClock) -> None:
     snapshot = controller.snapshot()
-    assert snapshot["spent_agents"] == {}
-    assert not isinstance(controller.ledger.status(PHASE, AGENT), Spent)
+    assert "spent_agents" not in snapshot
     for key in snapshot:
         assert "current_allowance_spent" not in str(key)
+    status = controller.ledger.status(PHASE, AGENT)
+    assert isinstance(status, Cooldown)
+    assert status.reason == DEAD
+    now_ms = int(clock.monotonic() * 1000)
+    assert status.until_ms > now_ms
+    clock.advance((status.until_ms - now_ms) / 1000.0 + 0.001)
+    assert controller.unavailability_store.is_available(PHASE, AGENT) is True
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
 
 
 def test_benching_a_confirmed_dead_agent_never_marks_it_spent() -> None:
@@ -83,7 +97,7 @@ def test_benching_a_confirmed_dead_agent_never_marks_it_spent() -> None:
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
     assert reasons.get(AGENT) == DEAD
-    _assert_no_spent_anywhere(controller)
+    _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 def test_escalating_the_bench_still_never_marks_the_agent_spent() -> None:
@@ -100,7 +114,7 @@ def test_escalating_the_bench_still_never_marks_the_agent_spent() -> None:
     controller.handle(_state(), failure, context)
 
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
-    _assert_no_spent_anywhere(controller)
+    _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 def test_the_bench_routes_all_leave_the_agent_unspent() -> None:
@@ -118,7 +132,7 @@ def test_the_bench_routes_all_leave_the_agent_unspent() -> None:
         )
 
         assert controller.unavailability_store.is_available(PHASE, AGENT) is False
-        _assert_no_spent_anywhere(controller)
+        _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 def test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent() -> None:
@@ -152,7 +166,7 @@ def test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent() -> N
     )
 
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
-    _assert_no_spent_anywhere(controller)
+    _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 def test_the_bench_never_uses_a_per_call_allowance_spent_hint() -> None:

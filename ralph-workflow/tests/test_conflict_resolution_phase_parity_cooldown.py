@@ -22,7 +22,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.run_loop import cold_capped_escalation_due
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -39,8 +39,13 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_shared_eligibility_governs_run_loop_escalation_and_cooldown": (
-        "launch permission and cold-capped escalation follow shared any_eligible / "
-        "all_exhausted; durable resolution_exhausted is not a launch veto"
+        "operator rule: an agent is either on cooldown or not; all_exhausted is gone and the "
+        "total limit starts an expiring unproductive_limit cooldown, so a cooled chain never "
+        "triggers cold-capped escalation and the resolver is eligible after the expiry"
+    ),
+    "test_fault_injection_phase_classification_and_cooldown_parity": (
+        "operator rule: an agent is either on cooldown or not; is_spent is gone, so parity "
+        "compares the cooldown reason across phases instead of the spent flag"
     ),
     "test_conflict_eligibility_wait_uses_shared_handle_cooldown_delay": (
         "conflict-driver eligibility waits must sleep through ordinary "
@@ -218,7 +223,7 @@ def test_fault_injection_phase_classification_and_cooldown_parity(
     assert type(status_dev) is type(status_res)
     assert status_dev.is_eligible == status_res.is_eligible
     assert status_dev.is_cooldown == status_res.is_cooldown
-    assert status_dev.is_spent == status_res.is_spent
+    assert status_dev.reason == status_res.reason
 
 
 @pytest.mark.parametrize(
@@ -315,7 +320,7 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
         AttemptFact(phase="rebase_conflict_resolution", agent="res-1", artifact_valid=False)
     )
     assert not ledger.any_eligible("rebase_conflict_resolution", candidates)
-    assert not ledger.all_exhausted("rebase_conflict_resolution", candidates)
+    assert ledger.earliest_wait_ms("rebase_conflict_resolution", candidates) > 0
     assert not configured_resolver_allowed(
         state, "main", ident, ledger=ledger, candidates=candidates
     )
@@ -340,24 +345,30 @@ def test_shared_eligibility_governs_run_loop_escalation_and_cooldown() -> None:
         candidates=candidates,
     )
 
-    spent_ledger = AgentFailureLedger(
+    total_limit_ledger = AgentFailureLedger(
         clock=clock,
         consecutive_limit=1,
         total_limit=1,
         base_cooldown_seconds=10.0,
     )
-    spent_ledger.record(
+    total_limit_ledger.record(
         AttemptFact(phase="rebase_conflict_resolution", agent="res-1", artifact_valid=False)
     )
-    assert spent_ledger.all_exhausted("rebase_conflict_resolution", candidates)
+    status = total_limit_ledger.status("rebase_conflict_resolution", "res-1")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
     assert not configured_resolver_allowed(
-        state, "main", ident, ledger=spent_ledger, candidates=candidates
+        state, "main", ident, ledger=total_limit_ledger, candidates=candidates
     )
-    assert cold_capped_escalation_due(
+    assert not cold_capped_escalation_due(
         ctx,
         state,
         "main",
         ident,
-        ledger=spent_ledger,
+        ledger=total_limit_ledger,
         candidates=candidates,
     )
+    clock.advance(
+        total_limit_ledger.earliest_wait_ms("rebase_conflict_resolution", candidates) / 1000.0
+    )
+    assert total_limit_ledger.any_eligible("rebase_conflict_resolution", candidates)

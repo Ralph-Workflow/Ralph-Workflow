@@ -18,6 +18,7 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 _RESOLUTION_PHASE = "rebase_conflict_resolution"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_cooling_resolver_is_not_launched.cooldown_only": "operator rule: an agent is either on cooldown or not; ledger.all_exhausted no longer exists, so the check asserts a positive cooldown wait and eligibility after it expires",
     "test_unchanged_paths_and_oids_are_the_same_conflict": (
         "the removed assertion drove the private wrapper _configured_resolver_allowed; "
         "the wrapper ignores state, target and identity, so the public composition "
@@ -54,7 +55,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "resolve_failure_ledger plus AgentFailureLedger.any_eligible pins the same "
         "cooling-ledger veto decision; the wrapper remains live production code reached "
         "through the configured_resolver_allowed seam in the auto-integrate tests, and "
-        "the direct private import was dropped to satisfy the white-box ratchet"
+        "the direct private import was dropped to satisfy the white-box ratchet; "
+        "operator rule: an agent is either on cooldown or not; ledger.all_exhausted is gone, "
+        "so instead of asserting the resolver is not exhausted the test asserts a positive "
+        "cooldown wait and that the resolver is eligible again after the fake clock passes it"
     ),
     "test_no_ledger_does_not_apply_a_local_launch_veto": (
         "the removed assertions drove the private wrapper _configured_resolver_allowed "
@@ -405,8 +409,12 @@ def test_a_cooling_resolver_is_not_launched() -> None:
     cooling = _cooling_ledger()
     assert identity.matches(state) is True
     assert not cooling.any_eligible(_RESOLUTION_PHASE, ("resolver",))
-    assert not cooling.all_exhausted(_RESOLUTION_PHASE, ("resolver",))
-    assert cooling.any_eligible(_RESOLUTION_PHASE, ("resolver",)) is False
+    wait_ms = cooling.earliest_wait_ms(_RESOLUTION_PHASE, ("resolver",))
+    assert wait_ms > 0
+    clock = cooling.clock
+    assert isinstance(clock, FakeClock)
+    clock.advance(wait_ms / 1000.0)
+    assert cooling.any_eligible(_RESOLUTION_PHASE, ("resolver",)) is True
 
 
 def test_no_ledger_does_not_apply_a_local_launch_veto() -> None:

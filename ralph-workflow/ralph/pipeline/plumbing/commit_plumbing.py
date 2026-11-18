@@ -110,6 +110,7 @@ from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
     should_reset_tool_registry,
 )
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -544,7 +545,7 @@ def run_commit_plumbing(
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 recovery_controller.mark_agent_unavailable(
-                    "commit", agent_name, reason="unregistered_agent"
+                    "commit", agent_name, reason=UnavailabilityReason.CANDIDATE_UNAVAILABLE
                 )
                 continue
             evidence = _resolve_commit_evidence(repo_root, diff, commit_evidence_source)

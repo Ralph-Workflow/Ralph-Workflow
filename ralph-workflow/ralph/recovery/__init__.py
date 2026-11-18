@@ -11,7 +11,6 @@ if TYPE_CHECKING:
         AttemptOutcome,
         Cooldown,
         Eligible,
-        Spent,
     )
     from ralph.recovery.agent_unavailability_tracker import (
         AgentUnavailabilityTracker,
@@ -53,7 +52,6 @@ __all__ = [
     "FalloverEvent",
     "ReasonBackoffPolicy",
     "RecoveryController",
-    "Spent",
     "UnavailabilityEntry",
     "UnavailabilityReason",
     "compute_backoff_ms",
@@ -86,7 +84,6 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "FalloverEvent": ("ralph.recovery.events", "FalloverEvent"),
     "ReasonBackoffPolicy": ("ralph.recovery.unavailability_reason", "ReasonBackoffPolicy"),
     "RecoveryController": ("ralph.recovery.controller", "RecoveryController"),
-    "Spent": ("ralph.recovery.agent_failure_ledger", "Spent"),
     "UnavailabilityEntry": (
         "ralph.recovery.agent_unavailability_tracker",
         "UnavailabilityEntry",

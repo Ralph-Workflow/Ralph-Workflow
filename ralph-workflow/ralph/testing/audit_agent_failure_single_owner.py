@@ -199,7 +199,7 @@ def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwne
                 rule="test_counter_access",
                 detail=(
                     f"Test accesses counter attribute '{attr}'; "
-                    "tests must observe public status, demoted, and behavior rather than internal counters."
+                    "tests must observe public status, cooldown_started, and behavior rather than internal counters."
                 ),
             )
         ]
@@ -586,7 +586,7 @@ def _retry_or_fall_over(state, chain):
 
     src_test_serialised = """
 def test_snapshot(state):
-    assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
+    assert state.ledger_snapshot["entries"]["development:claude"]["cooldown_count"] == 1
 """
     v11 = audit_test_source("tests/recovery/test_sample.py", src_test_serialised)
     require(
@@ -608,10 +608,10 @@ def repair_pending_merge(record):
     src_public_seam = """
 def test_public_seam(ledger, fact):
     status = ledger.status("development", "claude")
-    assert status.is_spent is False
+    assert status.is_cooldown is False
     assert ledger.is_available("development", "claude")
     outcome = ledger.record(fact)
-    assert outcome.demoted is False
+    assert outcome.cooldown_started is False
     snap = ledger.snapshot()
     restored = AgentFailureLedger.from_snapshot(snap)
     assert restored.is_available("development", "claude")
@@ -671,7 +671,7 @@ def test_controller_public_seam(controller):
     controller.reset_backoff("development", "opencode")
     assert controller.preferred_agent_index("development", ["opencode"]) == 0
     assert controller.unavailability_store.is_available("development", "opencode")
-    assert controller.ledger.status("development", "opencode").is_spent is False
+    assert controller.ledger.status("development", "opencode").is_cooldown is False
 """
     v18 = audit_test_source("tests/recovery/test_sample.py", src_controller_public_seam)
     require(not v18, f"Expected no violation for the public controller seam, got: {v18}")
@@ -727,7 +727,7 @@ def test_snapshot():
 def _verify_classifier_provenance_shapes() -> None:
     src_wrapper = """
 def handoff(controller, agent):
-    bench_resolver(
+    record_resolver_failure(
         controller,
         agent,
         f"repair agent '{agent}' left no verifiable repair declaration",
@@ -737,12 +737,12 @@ def handoff(controller, agent):
     v = audit_production_source("ralph/pipeline/_scratch_wrapper.py", src_wrapper)
     require(
         any(v.rule == "production_ralph_authored_classifier_input" for v in v),
-        f"Expected production_ralph_authored_classifier_input for bench_resolver prose, got: {v}",
+        f"Expected production_ralph_authored_classifier_input for record_resolver_failure prose, got: {v}",
     )
 
     src_reworded = """
 def handoff(controller, agent):
-    bench_resolver(controller, agent, "resolver produced nothing Ralph can verify")
+    record_resolver_failure(controller, agent, "resolver produced nothing Ralph can verify")
 """
     v = audit_production_source("ralph/pipeline/_scratch_reworded.py", src_reworded)
     require(
@@ -773,7 +773,7 @@ class Runner:
 def handoff(controller, agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
     text = detail or f"resolver '{agent}' ended without a verified completion proof"
-    bench_resolver(controller, agent, text, workspace_changed=False)
+    record_resolver_failure(controller, agent, text, workspace_changed=False)
 """
     v = audit_production_source("ralph/pipeline/_scratch_local.py", src_local)
     require(
@@ -790,7 +790,7 @@ def _failure_text(agent, failure_detail):
     return detail or f"resolver '{agent}' ended without a verified completion proof"
 
 def handoff(controller, agent, failure_detail):
-    bench_resolver(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
+    record_resolver_failure(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
 """
     v = audit_production_source("ralph/pipeline/_scratch_helper.py", src_helper)
     require(
@@ -809,7 +809,7 @@ class Runner:
         self._classifier = FailureClassifier()
 
     def go(self, exc: BaseException, controller, agent) -> None:
-        bench_resolver(controller, agent, exc, workspace_changed=False)
+        record_resolver_failure(controller, agent, exc, workspace_changed=False)
         self._classifier.classify(exc, phase="commit", agent="x")
 """
     v = audit_production_source("ralph/pipeline/_scratch_external.py", src_external)

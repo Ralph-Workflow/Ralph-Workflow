@@ -20,9 +20,9 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.conflict_resolution.resolver_health import (
-    bench_resolver,
     choose_resolver,
     clear_resolver,
+    record_resolver_failure,
 )
 from ralph.workspace.context import WorkspaceContextError
 
@@ -330,13 +330,13 @@ def handoff_pending_merge_repair(
         workspace_changed = observe_workspace_change(controller, root, _attempt)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         terminal_emitter.critical("Pending integration retained; repair handoff failed: {}", exc)
-        bench_resolver(controller, agent, exc)
+        record_resolver_failure(controller, agent, exc)
         return False
     invoked_ok = bool(reported[0]) if reported else False
     if _declared_repair_present(backend, declaration):
         clear_resolver(controller, agent)
         return invoked_ok
-    bench_resolver(
+    record_resolver_failure(
         controller,
         agent,
         None,

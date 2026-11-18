@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-type AgentAvailability = tuple[str, bool, int, bool, str | None]
+type AgentAvailability = tuple[str, bool, int, str | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,24 +15,23 @@ def agent_availability(
     agent: str,
     available: bool,
     cooldown_ms_remaining: int,
-    spent: bool,
     cooldown_reason: str | None = None,
 ) -> AgentAvailability:
-    return agent, available, cooldown_ms_remaining, spent, cooldown_reason
+    return agent, available, cooldown_ms_remaining, cooldown_reason
 
 
 def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
     selected_index = next(
         (
             index
-            for index, (_agent, available, cooldown_ms_remaining, spent, _reason) in enumerate(rows)
-            if available and cooldown_ms_remaining <= 0 and not spent
+            for index, (_agent, available, cooldown_ms_remaining, _reason) in enumerate(rows)
+            if available and cooldown_ms_remaining <= 0
         ),
         None,
     )
     selected_agent = rows[selected_index][0] if selected_index is not None else None
     skipped_reasons: list[tuple[str, str]] = []
-    for index, (agent, available, cooldown_ms_remaining, spent, cooldown_reason) in enumerate(rows):
+    for index, (agent, available, cooldown_ms_remaining, cooldown_reason) in enumerate(rows):
         if index == selected_index:
             continue
         if cooldown_ms_remaining > 0:
@@ -41,9 +40,7 @@ def select_preferred_agent(rows: Sequence[AgentAvailability]) -> AgentSelection:
                 (agent, f"cooldown ({cooldown_ms_remaining}ms remaining{reason})")
             )
         elif not available:
-            skipped_reasons.append((agent, "unavailable"))
-        elif spent:
-            skipped_reasons.append((agent, "spent"))
+            skipped_reasons.append((agent, "excluded_from_this_selection"))
         else:
             skipped_reasons.append((agent, "lower_priority"))
     return AgentSelection(selected_index, selected_agent, tuple(skipped_reasons))

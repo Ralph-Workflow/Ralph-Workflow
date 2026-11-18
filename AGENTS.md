@@ -73,6 +73,10 @@ never use `--no-verify` to bypass it. Bypassing the guard is fabrication.
 
 Detail: `docs/agents/fabrication-guard.md`.
 
+### ═══ AGENT AVAILABILITY IS COOLDOWN-ONLY — TWO STATES, NO THIRD ═══
+
+An agent is either on cooldown or available; there are no other states. Every exclusion from selection is an expiring cooldown in `ralph/recovery/agent_unavailability_tracker.py`, after which the agent is retried. Demotion, benching, "spent", "dead", "ineligible" or any other exclusion state is forbidden under any name: unproductive limits, retry limits, dead-agent verdicts and probe failures only start a cooldown with that reason, and a chain gives up only by every agent cooling down. A change that excludes an agent without an expiring cooldown is forbidden. `ralph/testing/audit_cooldown_only.py` (a `make verify` step), `tests/recovery/test_cooldown_only_invariant.py`, `tests/recovery/test_unproductive_limit_cooldown_regression.py` and `tests/test_audit_cooldown_only.py` enforce this and must never be weakened, skipped, or deleted.
+
 ### Code and test rules
 
 - Work in `ralph-workflow/` for code, tests, and verification.

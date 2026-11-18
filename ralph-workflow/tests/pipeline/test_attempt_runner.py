@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import fields
 from importlib import import_module
 from typing import TYPE_CHECKING, get_args, get_origin
 
 import pytest
+from loguru import logger
 
 from ralph.agents.invoke import AgentInvocationError, AttemptEnded
 from ralph.agents.system_clock import SystemClock
@@ -53,6 +54,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "a raw attempt that returns normally carries the recorder facts with artifact_valid "
         "marked true so the shared attempt runner does not read the success as a failure"
     ),
+    "test_two_attempts_are_judged_once_each_and_the_failure_is_charged_once": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_the_attempt_key_follows_the_published_attempt_finalization_format": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_a_reducer_style_finalization_claims_the_terminal_outcome_without_a_second_charge": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_a_reraised_already_finalized_failure_charges_the_ledger_once": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_a_raised_attempt_is_finalized_as_a_failure": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_a_raised_attempt_ended_failure_reads_the_typed_facts": "operator rule: an agent is either on cooldown or not; a charge now starts an expiring unproductive_limit cooldown and a later success clears it, so the single charge is asserted through exactly one unproductive_limit cooldown decision instead of a not-spent status",
+    "test_a_terminal_exception_that_was_never_finalized_still_charges": "operator rule: an agent is either on cooldown or not; the second charge now starts a longer backed-off unproductive_limit cooldown instead of a permanent Spent state, so the test asserts two cooldown decisions with 60 s and 120 s durations",
 }
 _FINGERPRINT = agent_config_fingerprint(
     _AGENT,
@@ -117,10 +125,31 @@ def _controller(deps: AttemptRunnerDeps) -> RecoveryController:
     )
 
 
-def _assert_exactly_one_ledger_charge(controller: RecoveryController) -> None:
-    status = controller.ledger.status(_PHASE, _AGENT)
-    assert status.is_cooldown is True
-    assert status.is_spent is False
+@pytest.fixture
+def cooldown_lines() -> Iterator[list[str]]:
+    lines: list[str] = []
+    sink = logger.add(lines.append, level="WARNING", format="{message}")
+    try:
+        yield lines
+    finally:
+        logger.remove(sink)
+
+
+def _unproductive_cooldowns(lines: list[str]) -> list[str]:
+    return [
+        line
+        for line in lines
+        if "cooldown_decision" in line
+        and f"phase={_PHASE}" in line
+        and f"agent={_AGENT}" in line
+        and "reason=unproductive_limit" in line
+    ]
+
+
+def _assert_exactly_one_ledger_charge(cooldown_lines: list[str]) -> None:
+    charges = _unproductive_cooldowns(cooldown_lines)
+    assert len(charges) == 1
+    assert "duration_ms=60000" in charges[0]
 
 
 def _entry_point_runner(*_args: object, **_kwargs: object) -> AttemptResult:
@@ -204,7 +233,9 @@ def test_construction_seam_returns_a_working_controller_per_entry_point(
     assert outcome.kind is AttemptOutcomeKind.COMPLETED
 
 
-def test_two_attempts_are_judged_once_each_and_the_failure_is_charged_once() -> None:
+def test_two_attempts_are_judged_once_each_and_the_failure_is_charged_once(
+    cooldown_lines: list[str],
+) -> None:
     deps = _deps(_fail_then_succeed_invoke)
     controller = _controller(deps)
     result = run_agent_attempt(
@@ -220,10 +251,12 @@ def test_two_attempts_are_judged_once_each_and_the_failure_is_charged_once() -> 
     assert tuple(ordinal for ordinal, _outcome in result.attempt_outcomes) == (1, 2)
     assert result.outcome.kind is AttemptOutcomeKind.COMPLETED
     assert result.attempt_outcomes[0][1].kind is AttemptOutcomeKind.UNKNOWN
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)
 
 
-def test_the_attempt_key_follows_the_published_attempt_finalization_format() -> None:
+def test_the_attempt_key_follows_the_published_attempt_finalization_format(
+    cooldown_lines: list[str],
+) -> None:
     deps = _deps(_fail_then_succeed_invoke)
     controller = _controller(deps)
     run_agent_attempt(
@@ -242,10 +275,12 @@ def test_the_attempt_key_follows_the_published_attempt_finalization_format() -> 
         attempt_key="main_phase_loop:development:fake:1",
     )
     assert memoized.kind is AttemptOutcomeKind.UNKNOWN
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)
 
 
-def test_a_reducer_style_finalization_claims_the_terminal_outcome_without_a_second_charge() -> None:
+def test_a_reducer_style_finalization_claims_the_terminal_outcome_without_a_second_charge(
+    cooldown_lines: list[str],
+) -> None:
     deps = _deps(_fail_then_succeed_invoke)
     controller = _controller(deps)
     run_agent_attempt(
@@ -263,10 +298,12 @@ def test_a_reducer_style_finalization_claims_the_terminal_outcome_without_a_seco
         attempt_failed=True,
     )
     assert claimed.kind is AttemptOutcomeKind.COMPLETED
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)
 
 
-def test_a_reraised_already_finalized_failure_charges_the_ledger_once() -> None:
+def test_a_reraised_already_finalized_failure_charges_the_ledger_once(
+    cooldown_lines: list[str],
+) -> None:
     exc = RuntimeError("attempt failed terminally")
 
     def invoke(_target: object, **kwargs: object) -> object:
@@ -286,10 +323,12 @@ def test_a_reraised_already_finalized_failure_charges_the_ledger_once() -> None:
             deps=deps,
             run_id="run-1",
         )
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)
 
 
-def test_a_terminal_exception_that_was_never_finalized_still_charges() -> None:
+def test_a_terminal_exception_that_was_never_finalized_still_charges(
+    cooldown_lines: list[str],
+) -> None:
     first = RuntimeError("attempt one failed")
     terminal = RuntimeError("terminal raise without finalization")
 
@@ -311,7 +350,11 @@ def test_a_terminal_exception_that_was_never_finalized_still_charges() -> None:
             run_id="run-1",
         )
     status = controller.ledger.status(_PHASE, _AGENT)
-    assert status.is_spent is True
+    assert status.is_cooldown is True
+    charges = _unproductive_cooldowns(cooldown_lines)
+    assert len(charges) == 2
+    assert "duration_ms=60000" in charges[0]
+    assert "duration_ms=120000" in charges[1]
 
 
 def test_a_judged_failure_benches_the_agent_and_a_later_success_clears_the_bench() -> None:
@@ -381,7 +424,7 @@ def test_the_canary_probe_entry_point_never_benches_and_never_charges_the_ledger
     assert controller.ledger.status(_PHASE, _AGENT).is_eligible is True
 
 
-def test_a_raised_attempt_is_finalized_as_a_failure() -> None:
+def test_a_raised_attempt_is_finalized_as_a_failure(cooldown_lines: list[str]) -> None:
     def invoke(_target: object, **_kwargs: object) -> object:
         raise RuntimeError("agent crashed")
 
@@ -395,7 +438,7 @@ def test_a_raised_attempt_is_finalized_as_a_failure() -> None:
             controller=controller,
             deps=deps,
         )
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)
 
 
 def test_attempt_result_preserves_ordered_attempt_outcomes() -> None:
@@ -617,7 +660,7 @@ def test_attempt_facts_keeps_workspace_changed_override_on_carried_facts() -> No
     assert facts.artifact_valid is True
 
 
-def test_a_raised_attempt_ended_failure_reads_the_typed_facts() -> None:
+def test_a_raised_attempt_ended_failure_reads_the_typed_facts(cooldown_lines: list[str]) -> None:
     error = AgentInvocationError(_AGENT, 1, "boom")
 
     def invoke(_target: object, **_kwargs: object) -> object:
@@ -637,4 +680,4 @@ def test_a_raised_attempt_ended_failure_reads_the_typed_facts() -> None:
     assert isinstance(error, AttemptEnded)
     assert error.facts.termination is not None
     assert error.facts.termination.issuer is TerminationIssuer.AGENT_EXIT
-    _assert_exactly_one_ledger_charge(controller)
+    _assert_exactly_one_ledger_charge(cooldown_lines)

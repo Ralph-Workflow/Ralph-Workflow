@@ -46,7 +46,12 @@ if TYPE_CHECKING:
 
 _FALLBACK = "next-agent"
 _RUN_ID = "cooldown-main-phase-run"
-_CONSECUTIVE_REASON = "consecutive_unproductive_limit_reached"
+_CONSECUTIVE_REASON = str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_main_phase_shared_cooldown_scenario_for_every_default_phase": "operator rule: an agent is either on cooldown or not; the consecutive unproductive limit now starts an expiring unproductive_limit cooldown, so the expected cooldown reason and log reason are unproductive_limit and the primary is selected again after expiry",
+    "test_main_phase_stalled_reported_success_is_charged_and_cooled": "operator rule: an agent is either on cooldown or not; the consecutive unproductive limit now starts an expiring unproductive_limit cooldown, so the expected cooldown reason is unproductive_limit and the primary is selected again after expiry",
+}
 
 
 def _production_phases() -> tuple[str, ...]:
@@ -262,7 +267,7 @@ def test_main_phase_shared_cooldown_scenario_for_every_default_phase(
         for line in lines
         if f"phase={phase}" in line
         and f"agent={harness.primary}" in line
-        and f"reason={UnavailabilityReason.DEAD_AGENT_NO_PROGRESS}" in line
+        and f"reason={UnavailabilityReason.UNPRODUCTIVE_LIMIT}" in line
         and f"duration_ms={expected_duration_ms}" in line
         and f"expiry_ms={expected_duration_ms}" in line
     ] != []
@@ -289,6 +294,9 @@ def test_main_phase_shared_cooldown_scenario_for_every_default_phase(
     assert harness.invoked == invoked_before
     assert getattr(refused, "event", None) is PipelineEvent.AGENT_FAILURE
 
+    harness.clock.advance(expected_duration_ms / 1000)
+    assert harness.controller.agent_eligibility(phase, harness.primary).is_eligible
+
 
 @pytest.mark.parametrize("phase", _production_phases())
 def test_main_phase_stalled_reported_success_is_charged_and_cooled(
@@ -306,6 +314,8 @@ def test_main_phase_stalled_reported_success_is_charged_and_cooled(
     assert status.reason == _CONSECUTIVE_REASON
     assert status.until_ms == expected_duration_ms
     assert harness.controller.preferred_agent_index(phase, harness.agents).agent == _FALLBACK
+    harness.clock.advance(expected_duration_ms / 1000)
+    assert harness.controller.preferred_agent_index(phase, harness.agents).agent == harness.primary
 
 
 @pytest.mark.parametrize("phase", _production_phases())

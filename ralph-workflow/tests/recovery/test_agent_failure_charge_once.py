@@ -17,6 +17,12 @@ from tests.recovery._scenario_harness import (
     run_scenario,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_executor_recovery_route_demotes_at_nine_total_attempts": "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached demotion log no longer exists, so the test asserts the unproductive_limit cooldown_decision log line carrying total=9",
+    "test_scenario_executor_recovery_route_charges_each_physical_failure_once": "operator rule: an agent is either on cooldown or not; the demotion log marker is replaced by the unproductive_limit cooldown_decision log line, whose total must still be exactly 9",
+    "test_recovery_regression_executor_failure_is_charged_once": "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached demotion log no longer exists, so the test asserts the unproductive_limit cooldown_decision log line carrying total=9",
+}
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -35,9 +41,9 @@ MINIMAL_SAME_AGENT_RETRIES = 1
 
 EXPECTED_TOTAL_LIMIT = 9
 
-_DEMOTION_MARKER = "demoted in phase 'development'"
+_COOLDOWN_MARKER = "cooldown_decision phase=development agent=agent_a reason=unproductive_limit"
 
-_TOTAL_PATTERN = re.compile(r"total=(\d+)")
+_TOTAL_PATTERN = re.compile(r"unproductive_attempts consecutive=\d+ total=(\d+)")
 
 
 def _failing_agent_script(
@@ -138,10 +144,10 @@ def _run_executor_route_scenario(
         )
 
 
-def _demotion_totals(logs: list[str]) -> list[int]:
+def _cooldown_totals(logs: list[str]) -> list[int]:
     totals: list[int] = []
     for line in logs:
-        if _DEMOTION_MARKER not in line:
+        if _COOLDOWN_MARKER not in line:
             continue
         match = _TOTAL_PATTERN.search(line)
         if match is not None:
@@ -161,8 +167,8 @@ def test_scenario_executor_recovery_route_demotes_at_nine_total_attempts(
     assert outcome.final_state.phase == "complete"
     assert outcome.exit_code == 0
 
-    assert any("total_unproductive_limit_reached" in line for line in outcome.logs), (
-        "the demotion must be logged with the reason it was reached"
+    assert _cooldown_totals(outcome.logs) == [EXPECTED_TOTAL_LIMIT], (
+        "the unproductive_limit cooldown must be logged with the total that started it"
     )
 
 
@@ -179,7 +185,7 @@ def test_scenario_executor_recovery_route_charges_each_physical_failure_once(
     assert outcome.final_state.phase == "complete"
     assert outcome.exit_code == 0
 
-    assert _demotion_totals(outcome.logs) == [EXPECTED_TOTAL_LIMIT]
+    assert _cooldown_totals(outcome.logs) == [EXPECTED_TOTAL_LIMIT]
     assert physical_failures == EXPECTED_TOTAL_LIMIT
 
 
@@ -194,6 +200,6 @@ def test_recovery_regression_executor_failure_is_charged_once(
     assert outcome.invocations == ["agent_a"] * EXPECTED_TOTAL_LIMIT + ["agent_b"]
     assert outcome.final_state.phase == "complete"
     assert outcome.exit_code == 0
-    assert any("total_unproductive_limit_reached" in line for line in outcome.logs), (
-        "the demotion must be logged with the reason it was reached"
+    assert _cooldown_totals(outcome.logs) == [EXPECTED_TOTAL_LIMIT], (
+        "the unproductive_limit cooldown must be logged with the total that started it"
     )

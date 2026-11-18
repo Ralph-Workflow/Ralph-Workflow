@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline.effect_executor import demotion_after_finalization
+from ralph.pipeline.effect_executor import cooldown_after_finalization
 from ralph.policy.validation.artifact_contract import ArtifactContractMismatchError
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
@@ -90,7 +90,7 @@ def test_controller_regression_agent_text_does_charge_ledger(failure_text: str) 
 def test_ledger_fallback_regression_engine_origin_does_not_charge_ledger() -> None:
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0), consecutive_limit=1)
 
-    demotion_after_finalization(
+    cooldown_after_finalization(
         None,
         ledger,
         phase=PHASE,
@@ -106,7 +106,7 @@ def test_ledger_fallback_regression_engine_origin_does_not_charge_ledger() -> No
 def test_ledger_fallback_regression_agent_text_does_charge_ledger(failure_text: str) -> None:
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0), consecutive_limit=1)
 
-    demotion_after_finalization(
+    cooldown_after_finalization(
         None,
         ledger,
         phase=PHASE,

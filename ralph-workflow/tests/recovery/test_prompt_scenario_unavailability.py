@@ -358,6 +358,7 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
+            clock=FakeClock(start=0.0),
             policy_bundle=_minimal_policy_bundle(),
             event_bus=FailureEventBus(),
             unavailability_store=custom_store,

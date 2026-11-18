@@ -20,6 +20,18 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 CHAIN = ("codex/a", "cursor/auto", "opencode/b")
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_histories_remain_independent": (
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a resolution unproductive_limit cooldown also applies in development, and "
+        "the test asserts the shared cooldown and that both phases see it expire"
+    ),
+    "test_resolution_cooldown_applies_in_every_phase_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
+    ),
+}
+
 
 class _ChangingWorkspaceProbe:
     def __init__(self) -> None:
@@ -241,31 +253,28 @@ def test_agent_whose_invocation_raises_is_benched_before_the_error_propagates(
     assert invoked == ["codex/a", "codex/a", "codex/a", "cursor/auto"]
 
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_phase_histories_remain_independent": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
-        "bench leaves the agent eligible in development"
-    ),
-}
-
-
-def test_phase_histories_remain_independent(tmp_path: Path) -> None:
+def test_resolution_cooldown_applies_in_every_phase_until_it_expires(tmp_path: Path) -> None:
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
-    controller = _controller(FakeClock())
+    clock = FakeClock()
+    controller = _controller(clock)
     invoked: list[str] = []
 
     for _ in range(3):
         _handoff(tmp_path, controller, invoked, backend=backend)
 
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+    from ralph.recovery.agent_failure_ledger import Cooldown
 
-    assert controller.ledger.status(PHASE_RESOLUTION, "codex/a").is_cooldown is True
+    resolution_status = controller.ledger.status(PHASE_RESOLUTION, "codex/a")
+    development_status = controller.ledger.status("development", "codex/a")
+    assert isinstance(resolution_status, Cooldown)
+    assert resolution_status.reason == "unproductive_limit"
+    assert development_status == resolution_status
 
+    clock.advance((resolution_status.until_ms + 1) / 1000.0 - clock.monotonic())
+
+    assert controller.ledger.status(PHASE_RESOLUTION, "codex/a").is_eligible is True
     assert controller.ledger.status("development", "codex/a").is_eligible is True
 
 

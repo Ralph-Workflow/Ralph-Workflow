@@ -27,12 +27,19 @@ from tests.recovery._scenario_harness import (
     run_scenario,
 )
 
+_BASE_COOLDOWN_SECONDS = 60.0
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_5_all_agents_dead_wait_out_their_cooldowns_instead_of_spinning": "operator rule: an agent is either on cooldown or not; replaces test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded because an all-dead chain now waits out expiring unproductive_limit cooldowns and retries instead of entering the failed phase, so the bound is the waited cooldown rather than a terminal exit",
+    "test_scenario_7_sole_agent_chain_cools_down_and_retries_with_clear_message": "operator rule: an agent is either on cooldown or not; replaces test_scenario_7_sole_agent_chain_fails_phase_with_clear_message because a sole agent reaching the unproductive limit now cools down and is retried after expiry instead of failing the phase, and the cooldown_decision log names the reason",
+}
 
 
 def test_scenario_1_reproduces_bug_fallback_after_unproductive_streak(tmp_path: Path) -> None:
@@ -127,7 +134,9 @@ def test_scenario_4_cooldown_expiry_retries_preferred_agent_with_longer_next_coo
     )
 
 
-def test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded(tmp_path: Path) -> None:
+def test_scenario_5_all_agents_dead_wait_out_their_cooldowns_instead_of_spinning(
+    tmp_path: Path,
+) -> None:
 
     def script(_agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:
         return AgentAttemptResult(produce_artifact=False)
@@ -136,13 +145,13 @@ def test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded(tmp_pat
         tmp_path,
         script=script,
         agents=("agent_a", "agent_b"),
-        max_iterations=25,
+        stop_after_invocations=9,
+        advance_clock_on_wait=True,
     )
 
-    assert len(outcome.invocations) <= 20
-    assert outcome.final_state.phase == "failed_terminal"
-    assert outcome.exit_code == 1
-    assert not outcome.final_state.is_waiting_state
+    assert outcome.invocations == ["agent_a"] * 3 + ["agent_b"] * 3 + ["agent_a"] * 3
+    assert outcome.final_state.phase != "failed_terminal"
+    assert outcome.clock.monotonic() >= _BASE_COOLDOWN_SECONDS
 
 
 @pytest.mark.parametrize(
@@ -181,7 +190,9 @@ def test_scenario_6_every_free_retry_category_is_bounded_identically(
     assert outcome.exit_code == 0
 
 
-def test_scenario_7_sole_agent_chain_fails_phase_with_clear_message(tmp_path: Path) -> None:
+def test_scenario_7_sole_agent_chain_cools_down_and_retries_with_clear_message(
+    tmp_path: Path,
+) -> None:
 
     def script(_agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:
         return AgentAttemptResult(produce_artifact=False)
@@ -190,17 +201,17 @@ def test_scenario_7_sole_agent_chain_fails_phase_with_clear_message(tmp_path: Pa
         tmp_path,
         script=script,
         agents=("agent_a",),
-        max_iterations=10,
+        stop_after_invocations=6,
+        advance_clock_on_wait=True,
     )
 
-    assert outcome.final_state.phase == "failed_terminal"
-    assert outcome.exit_code == 1
+    assert outcome.invocations == ["agent_a"] * 6
+    assert outcome.final_state.phase != "failed_terminal"
+    assert outcome.clock.monotonic() >= _BASE_COOLDOWN_SECONDS
 
-    combined_text = " ".join(outcome.logs) + " " + (outcome.final_state.last_error or "")
-    assert any(
-        kw in combined_text.lower()
-        for kw in ("demoted", "unproductive", "unavailable", "exhausted")
-    ), f"Expected clear demotion/exhaustion message, got: {combined_text}"
+    combined_text = " ".join(outcome.logs)
+    assert "cooldown_decision" in combined_text
+    assert "reason=unproductive_limit" in combined_text
 
 
 def test_scenario_8_return_code_ignored_artifact_presence_determines_success(

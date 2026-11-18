@@ -58,6 +58,14 @@ from tests._integration_ladder_fakes import (
     _seed_terminal_rungs,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_eligibility_wait_proof_contract": (
+        "operator rule: an agent is either on cooldown or not; clear_agent_cooldown is gone, "
+        "so the cleared-wait branch is reached by advancing the fake clock past the "
+        "unproductive_limit cooldown expiry instead of clearing it by hand"
+    ),
+}
+
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
@@ -233,7 +241,8 @@ def test_agent_eligibility_wait_proof_contract(tmp_path: Path) -> None:
     )
     assert authorized_proof.authorized is True
 
-    agent_ledger.clear_agent_cooldown("resolver", "agent_res_1")
+    clock.advance(600.0)
+    assert agent_ledger.status("resolver", "agent_res_1").is_eligible
     cleared_proof = check_last_resort_agent_eligibility(
         ledger,
         agent_ledger,

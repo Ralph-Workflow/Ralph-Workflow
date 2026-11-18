@@ -15,7 +15,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
     ralph_origin_counts_as_liveness,
 )
-from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.round_verdict import round_termination_reason
@@ -23,7 +23,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
@@ -37,9 +37,83 @@ _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dead_tool_surface_fails_fast_and_hands_over": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the candidate_unavailable cooldown and its expiry"
+    ),
+    "test_known_dead_surface_is_not_reentered": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the unproductive_limit cooldown and its expiry"
+    ),
+    "test_a_resolver_quoting_ralphs_own_fault_tokens_survives": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the agent is not cooling"
+    ),
+    "test_a_watchdog_authored_fault_still_bars_the_surface": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the agent is not cooling"
+    ),
+    "test_an_agents_activity_event_cannot_kill_its_own_tool_surface": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the agent is not cooling"
+    ),
+    "test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts the agent is not cooling"
+    ),
+    "test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
+        "the test asserts no candidate is cooling"
+    ),
+    "test_an_unspendable_chain_reports_candidate_exhausted": (
+        "operator rule: an agent is either on cooldown or not; a chain at its total limit is "
+        "cooling down, so the run reports CANDIDATE_UNAVAILABLE and invokes the primary again "
+        "once the fake clock passes the expiry"
+    ),
+    "test_an_unspendable_chain_reports_candidate_unavailable_until_its_cooldowns_expire": (
+        "operator rule: an agent is either on cooldown or not; replaces the permanent "
+        "exhaustion test with the expiring cooldown contract"
+    ),
+    "test_all_spent_candidates_yields_candidate_exhausted_terminal_reason": (
+        "operator rule: an agent is either on cooldown or not; the total limit starts a 60 s "
+        "unproductive_limit cooldown instead of Spent, so the chain reports "
+        "CANDIDATE_UNAVAILABLE and only reports CANDIDATE_EXHAUSTED after the expiry"
+    ),
+    "test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted": (
+        "operator rule: an agent is either on cooldown or not; replaces the Spent exhaustion "
+        "test with the expiring cooldown contract"
+    ),
+    "test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run": (
+        "operator rule: an agent is either on cooldown or not; a registry miss starts a "
+        "candidate_unavailable cooldown instead of a per-run bar, so the candidate is skipped "
+        "while cooling and invoked again after the expiry"
+    ),
+    "test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry": (
+        "operator rule: an agent is either on cooldown or not; replaces the per-run bar test "
+        "with the expiring cooldown contract"
+    ),
+}
+
 
 def _policy_bundle() -> PolicyBundle:
     return _POLICY_BUNDLE
+
+
+def _cooling(session: ResolutionSession, candidates: tuple[str, ...]) -> dict[str, Cooldown]:
+    ledger = session_ledger(session)
+    if ledger is None:
+        return {}
+    cooling: dict[str, Cooldown] = {}
+    for name in candidates:
+        status = ledger.status(PHASE_RESOLUTION, name)
+        if isinstance(status, Cooldown):
+            cooling[name] = status
+    return cooling
+
+
+def _advance_past(clock: FakeClock, status: Cooldown) -> None:
+    clock.advance(max(0, status.until_ms - int(clock.monotonic() * 1000)) / 1000.0)
 
 
 def _install_seams(
@@ -124,9 +198,12 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     assert called[0] == "primary"
     assert "fallback" in called
     assert called.count("primary") == 1
-    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
+    primary = _cooling(session, ("primary", "fallback"))["primary"]
+    assert primary.reason == "candidate_unavailable"
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
+    _advance_past(clock, primary)
+    assert "primary" not in _cooling(session, ("primary", "fallback"))
 
 
 def test_known_dead_surface_is_not_reentered(
@@ -168,7 +245,10 @@ def test_known_dead_surface_is_not_reentered(
     )
     assert "primary" not in called
     assert set(called) == {"fallback"}
-    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
+    primary = _cooling(session, ("primary", "fallback"))["primary"]
+    assert primary.reason == "unproductive_limit"
+    _advance_past(clock, primary)
+    assert "primary" not in _cooling(session, ("primary", "fallback"))
 
 
 def test_status_does_not_report_health_from_ralph_fault_text() -> None:
@@ -247,7 +327,7 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
                 stall_active=False,
             )
         )
-    assert "claude" not in skipped_candidates(session, ("claude",))
+    assert "claude" not in _cooling(session, ("claude",))
     assert session.terminal_reason is None
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
@@ -276,21 +356,17 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
         stall_active=False,
     )
     listener(faulting)
-    assert "claude" not in skipped_candidates(session, ("claude",)), (
-        "one tick is not a barred agent"
-    )
+    assert "claude" not in _cooling(session, ("claude",)), "one tick is not a barred agent"
     assert session.last_attempt_saw_activity is True, "a fault tick is still activity"
 
     for _ in range(_REPEATED_WATCHDOG_TICKS):
         listener(faulting)
-    assert "claude" not in skipped_candidates(session, ("claude",)), (
-        "a plumbing fault is never run-scoped"
-    )
+    assert "claude" not in _cooling(session, ("claude",)), "a plumbing fault is never run-scoped"
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
-def test_an_unspendable_chain_reports_candidate_exhausted(
+def test_an_unspendable_chain_reports_candidate_unavailable_until_its_cooldowns_expire(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -310,6 +386,12 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
             ledger=ledger, options=RecoveryControllerOptions(clock=clock)
         ),
     )
+    cooling = _cooling(session, ("primary", "fallback"))
+    assert {name: status.reason for name, status in cooling.items()} == {
+        "primary": "unproductive_limit",
+        "fallback": "unproductive_limit",
+    }
+    called: list[str] = []
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -319,18 +401,32 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
         policy_bundle=_policy_bundle(),
         display=None,
         display_context=None,
-        invoke=lambda *_args: True,
+        invoke=lambda name, _p, _r: called.append(name) is None,
         session=session,
     )
     assert isinstance(outcome, RetryLaterOutcome)
-    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    assert session.exhaustion_reason is not None
-    assert session.exhaustion_reason.startswith(
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
+    assert called == []
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+
+    _advance_past(clock, max(cooling.values(), key=lambda status: status.until_ms))
+    assert _cooling(session, ("primary", "fallback")) == {}
+    later = ResolutionSession(ledger=ledger, recovery_controller=session.recovery_controller)
+    driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_CONFIG,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: called.append(name) is None,
+        session=later,
     )
+    assert called[0] == "primary"
 
 
-def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
+def test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -346,7 +442,8 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
                 artifact_valid=False,
             )
         )
-    assert spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) is None
+    spent_wait_ms = spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates)
+    assert spent_wait_ms == 60_000
 
     session_spent = ResolutionSession(
         ledger=spent_ledger,
@@ -356,7 +453,7 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
     )
     assert (
         round_termination_reason(session_spent, invoked=False, candidates=candidates)
-        is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     )
     _ = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
@@ -370,7 +467,17 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
         invoke=lambda *_args: True,
         session=session_spent,
     )
-    assert session_spent.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert session_spent.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+
+    clock.advance(spent_wait_ms / 1000.0)
+    assert spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) == 0
+    expired = ResolutionSession(
+        ledger=spent_ledger, recovery_controller=session_spent.recovery_controller
+    )
+    assert (
+        round_termination_reason(expired, invoked=False, candidates=candidates)
+        is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    )
 
     cooldown_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
     for agent in candidates:
@@ -382,7 +489,7 @@ def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
             )
         )
     wait_ms = cooldown_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates)
-    assert wait_ms is not None and wait_ms > 0
+    assert wait_ms > 0
 
     session_cooldown = ResolutionSession(
         ledger=cooldown_ledger,
@@ -434,7 +541,7 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
             stall_active=False,
         )
     )
-    assert "claude" not in skipped_candidates(session, ("claude",))
+    assert "claude" not in _cooling(session, ("claude",))
     assert session.terminal_reason is None
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
@@ -550,9 +657,7 @@ def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
         session=session,
     )
     assert calls, "the faulting agent still had its attempt"
-    assert "solo" not in skipped_candidates(session, ("solo",)), (
-        "a plumbing fault is not a permanent verdict"
-    )
+    assert "solo" not in _cooling(session, ("solo",)), "a plumbing fault is not a permanent verdict"
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 
     _install_seams(monkeypatch)
@@ -586,7 +691,7 @@ def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
     )
     session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
     session.charge_conflict_budget = False
-    assert skipped_candidates(session, ("primary", "fallback")) == frozenset()
+    assert _cooling(session, ("primary", "fallback")) == {}
     calls: list[str] = []
 
     driver_module.run_conflict_resolution_pipeline(
@@ -604,7 +709,7 @@ def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
     assert calls, "an infrastructure bar must not leave the round with nobody to invoke"
 
 
-def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
+def test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -634,7 +739,8 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
         invoke=_unavailable,
         session=session,
     )
-    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
+    primary = _cooling(session, ("primary", "fallback"))["primary"]
+    assert primary.reason == "candidate_unavailable"
     later: list[str] = []
     driver_module.run_conflict_resolution_pipeline(
         root=tmp_path,
@@ -649,6 +755,21 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
         session=session,
     )
     assert "primary" not in later
+    _advance_past(clock, primary)
+    expired: list[str] = []
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: expired.append(name) is None,
+        session=session,
+    )
+    assert expired[0] == "primary"
 
 
 def test_every_reason_less_exit_now_names_itself(

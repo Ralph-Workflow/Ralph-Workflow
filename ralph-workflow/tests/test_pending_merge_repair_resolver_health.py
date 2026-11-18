@@ -17,6 +17,18 @@ ROOT = Path("/workspace")
 CHAIN = ("first", "second")
 DECLARATION = ROOT / ".agent" / "tmp" / "pending_commit_repair_paths.json"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integration_phase_standing_does_not_leak_into_other_phases": (
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a resolution unproductive_limit cooldown also applies in development, and "
+        "the test asserts the shared cooldown and that both phases see it expire"
+    ),
+    "test_integration_cooldown_applies_in_every_phase_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
+    ),
+}
+
 
 class _ChangingWorkspaceProbe:
     def __init__(self) -> None:
@@ -181,26 +193,23 @@ def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldow
     assert invoked == ["first"] * 12
 
 
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_integration_phase_standing_does_not_leak_into_other_phases": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
-        "bench leaves the agent eligible in development"
-    ),
-}
-
-
-def test_integration_phase_standing_does_not_leak_into_other_phases() -> None:
+def test_integration_cooldown_applies_in_every_phase_until_it_expires() -> None:
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+    from ralph.recovery.agent_failure_ledger import Cooldown
 
     backend = _RecordBackend()
     invoked: list[str] = []
-    controller = _controller(FakeClock())
+    clock = FakeClock()
+    controller = _controller(clock)
     for _ in range(3):
         _run(backend, controller, invoked)
 
-    assert controller.ledger.status(PHASE_RESOLUTION, "first").is_cooldown is True
+    resolution_status = controller.ledger.status(PHASE_RESOLUTION, "first")
+    assert isinstance(resolution_status, Cooldown)
+    assert resolution_status.reason == "unproductive_limit"
+    assert controller.ledger.status("development", "first") == resolution_status
+
+    clock.advance((resolution_status.until_ms + 1) / 1000.0 - clock.monotonic())
+
+    assert controller.ledger.status(PHASE_RESOLUTION, "first").is_eligible is True
     assert controller.ledger.status("development", "first").is_eligible is True

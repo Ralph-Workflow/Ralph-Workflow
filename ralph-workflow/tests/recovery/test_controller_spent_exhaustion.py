@@ -37,7 +37,7 @@ from ralph.pipeline.resolution_outcome import (
     StopResolutionOutcome,
 )
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import Spent
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -52,6 +52,34 @@ _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "po
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 pytestmark = pytest.mark.timeout_seconds(10)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_unproductive_limit_resolvers_end_rounds_with_a_finite_wait": "operator rule: an agent is either on cooldown or not; note_retry_exhaustion and the permanent controller spent set are gone, so every resolver is put on an expiring unproductive_limit cooldown and the test asserts the finite wait, the retry-later outcome, and selectability after expiry",
+    "test_mixed_unproductive_limit_and_cooldown_yields_candidate_unavailable": "operator rule: an agent is either on cooldown or not; the spent resolver is replaced by an expiring unproductive_limit cooldown, and all_exhausted is gone, so the mixed chain is asserted through its positive wait",
+    "test_continuation_gate_key_changes_on_retry_limit_cooldown_and_admits_one_retry": "operator rule: an agent is either on cooldown or not; note_retry_exhaustion is gone; exhausting retries now starts an expiring retry_limit cooldown, which is what changes the continuation gate key",
+    "test_sequential_dead_launch_to_unproductive_limit_repeat": "operator rule: an agent is either on cooldown or not; the spent repeat is replaced by expiring unproductive_limit cooldowns on every resolver, so the second pass reports the finite cooldown wait instead of a permanent spent exhaustion",
+    "test_overlapping_cooldowns_keep_the_longest_finite_wait": "operator rule: an agent is either on cooldown or not; the stale cooldown plus spent overlap no longer exists; overlapping cooldowns keep the longer finite expiry, the wait is always positive while cooling, and reset_backoff makes the agent selectable again",
+}
+
+
+def _cool_for_unproductive_limit(
+    controller: RecoveryController, phase: str, agent: str
+) -> Cooldown:
+    for _ in range(controller.ledger.consecutive_limit):
+        controller.record_attempt_fact(phase, agent, artifact_valid=False, workspace_changed=False)
+    status = controller.agent_eligibility(phase, agent)
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
+    return status
+
+
+def _exhaust_retries(controller: RecoveryController, phase: str, agent: str) -> Cooldown:
+    for _ in range(controller.ledger.consecutive_limit):
+        controller.record_attempt(phase, agent)
+    status = controller.agent_eligibility(phase, agent)
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.RETRY_LIMIT)
+    return status
 
 
 def _policy_bundle() -> PolicyBundle:
@@ -186,7 +214,7 @@ def test_prior_dead_launch_records_tool_surface_dead(
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
-def test_all_controller_spent_repeat_yields_candidate_exhausted(
+def test_all_unproductive_limit_resolvers_end_rounds_with_a_finite_wait(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -198,13 +226,12 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
             event_bus=FailureEventBus(),
         )
     )
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
+    primary = _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "primary")
+    _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "fallback")
 
-    assert isinstance(controller.agent_eligibility(PHASE_RESOLUTION, "primary"), Spent)
-    assert isinstance(controller.agent_eligibility(PHASE_RESOLUTION, "fallback"), Spent)
-    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is True
-    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
+    wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"])
+    assert wait_ms == primary.until_ms
+    assert wait_ms > 0
 
     session = ResolutionSession(recovery_controller=controller)
     session.rounds_spent = 1
@@ -213,14 +240,18 @@ def test_all_controller_spent_repeat_yields_candidate_exhausted(
 
     assert isinstance(result, RetryLaterOutcome)
     assert result.on_change is not None
-    assert "spent/unavailable" in result.on_change
-    assert "git add -- a.py b.py" in result.on_change
+    assert "unresolved paths: a.py, b.py" in result.on_change
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+
+    clock.advance(wait_ms / 1000.0)
+    assert controller.agents_now_available(PHASE_RESOLUTION, ["primary", "fallback"]) == [
+        "primary",
+        "fallback",
+    ]
 
 
-def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
+def test_mixed_unproductive_limit_and_cooldown_yields_candidate_unavailable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -232,14 +263,13 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
             event_bus=FailureEventBus(),
         )
     )
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
+    _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "primary")
     controller.unavailability_store.mark_unavailable(
         PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
     )
 
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"])
-    assert wait_ms > 0
-    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is False
+    assert wait_ms == 5_000
 
     session = ResolutionSession(recovery_controller=controller)
     session.rounds_spent = 1
@@ -273,7 +303,7 @@ def test_mixed_spent_and_cooldown_yields_candidate_unavailable(
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
 
 
-def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
+def test_continuation_gate_key_changes_on_retry_limit_cooldown_and_admits_one_retry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     clock = FakeClock(start=0.0)
@@ -299,7 +329,7 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     )
     assert avail_initial == ["primary", "fallback"]
 
-    controller.note_retry_exhaustion("rebase_conflict_resolution", "primary")
+    _exhaust_retries(controller, "rebase_conflict_resolution", "primary")
     avail_spent = controller.agents_now_available(
         "rebase_conflict_resolution", ["primary", "fallback"]
     )
@@ -366,7 +396,7 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
 
     monkeypatch.setattr(merge_mod, "resolve_rebase_in_progress", _fake_resolve_rebase_in_progress)
 
-    controller.note_retry_exhaustion("rebase_conflict_resolution", "primary")
+    _exhaust_retries(controller, "rebase_conflict_resolution", "primary")
     record_spent = record.with_resolution_gate_key(key_spent)
     write_record(tmp_path, record_spent)
 
@@ -421,7 +451,7 @@ def test_continuation_gate_key_changes_on_spent_transition_and_admits_one_retry(
     assert resolver_invocations[0] == 1
 
 
-def test_sequential_dead_launch_to_spent_repeat_exhaustion(
+def test_sequential_dead_launch_to_unproductive_limit_repeat(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -450,20 +480,19 @@ def test_sequential_dead_launch_to_spent_repeat_exhaustion(
     assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
     assert result1.on_change is not None
 
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
+    _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "primary")
+    _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "fallback")
 
     result2 = drive_conflict_resolution_session(tmp_path, session)
     assert isinstance(result2, RetryLaterOutcome)
-    assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-    assert session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert session.terminal_reason == ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
     assert result2.on_change is not None
-    assert "spent/unavailable" in result2.on_change
-    assert "git add -- a.py b.py" in result2.on_change
+    assert "unresolved paths: a.py, b.py" in result2.on_change
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) > 0
 
 
-def test_stale_cooldown_overlap_with_controller_spent() -> None:
+def test_overlapping_cooldowns_keep_the_longest_finite_wait() -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -476,24 +505,24 @@ def test_stale_cooldown_overlap_with_controller_spent() -> None:
     controller.unavailability_store.mark_unavailable(
         PHASE_RESOLUTION, "primary", UnavailabilityReason.NO_OUTPUT_AT_START
     )
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "primary")
+    primary = _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "primary")
 
-    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) == 0
-    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary"]) is True
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary"]) == primary.until_ms
 
     controller.unavailability_store.mark_unavailable(
         PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
     )
-    controller.note_retry_exhaustion(PHASE_RESOLUTION, "fallback")
+    fallback = _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "fallback")
 
-    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
-    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is True
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == min(
+        primary.until_ms, fallback.until_ms
+    )
 
     controller.reset_backoff(PHASE_RESOLUTION, "fallback")
+    assert controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"]) == 0
     controller.unavailability_store.mark_unavailable(
         PHASE_RESOLUTION, "fallback", UnavailabilityReason.NO_OUTPUT_AT_START
     )
 
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, ["primary", "fallback"])
-    assert wait_ms > 0
-    assert controller.all_exhausted(PHASE_RESOLUTION, ["primary", "fallback"]) is False
+    assert wait_ms == 5_000

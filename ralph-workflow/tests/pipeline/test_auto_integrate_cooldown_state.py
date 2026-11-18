@@ -25,6 +25,7 @@ _TARGET = "main"
 _PHASE = "rebase_conflict_resolution"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cooling_agent_is_not_launched_before_fake_clock_elapses.cooldown_only": "operator rule: an agent is either on cooldown or not; ledger.all_exhausted no longer exists, so the check asserts the finite 10 second cooldown wait instead",
     "test_eligible_agent_launches_after_rung_budget_spend_advances": (
         "4959fb143 expected apply_conflict_budget to advance conflict_strategy_index in the "
         "same step; the gated revert keeps budget spend and strategy advance separate, so "
@@ -33,7 +34,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_cooling_agent_is_not_launched_before_fake_clock_elapses": (
         "launch permission is cooldown-strict any_eligible; a CoolingDown agent must not "
-        "run until the injected clock advances past the cooldown"
+        "run until the injected clock advances past the cooldown; "
+        "operator rule: an agent is either on cooldown or not; ledger.all_exhausted is gone, "
+        "so instead of asserting the agent is not exhausted the test asserts the finite "
+        "10 second cooldown wait that the fake clock then passes"
     ),
 }
 
@@ -193,7 +197,7 @@ def test_cooling_agent_is_not_launched_before_fake_clock_elapses(tmp_path: Path)
     scope = WorkspaceScope(root)
     ledger.record(AttemptFact(phase=_PHASE, agent="agent-cooling", artifact_valid=False))
     assert not ledger.any_eligible(_PHASE, candidates)
-    assert not ledger.all_exhausted(_PHASE, candidates)
+    assert ledger.earliest_wait_ms(_PHASE, candidates) == 10_000
 
     ran_at: list[float] = []
 

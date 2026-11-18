@@ -14,6 +14,7 @@ from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.state import PipelineState
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FalloverEvent
@@ -23,6 +24,10 @@ from tests.recovery._scenario_harness import _build_policy_bundle
 
 if TYPE_CHECKING:
     from ralph.pipeline.events import AgentFailureEvent
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_record_attempt_fact_public_seam": "operator rule: an agent is either on cooldown or not; a sole agent is no longer demoted with a message, so record_attempt_fact returns the expiring unproductive_limit Cooldown it started for every agent and the test asserts its expiry",
+}
 
 
 class _MemoryFileBackend:
@@ -238,9 +243,10 @@ def test_record_attempt_fact_public_seam() -> None:
         workspace_changed=False,
         free_retry_category=True,
     )
-    assert res3 is not None
-    assert "Sole agent 'sole_agent' demoted in phase 'development'" in res3
-    assert "consecutive_unproductive" in res3
+    assert isinstance(res3, Cooldown)
+    assert res3.reason == "unproductive_limit"
+    assert res3.until_ms == 60_000
+    assert controller.agent_eligibility("development", "sole_agent").is_cooldown
 
     controller.register_phase_chain("review", ["agent_a", "agent_b"])
     controller.record_attempt_fact(
@@ -255,7 +261,13 @@ def test_record_attempt_fact_public_seam() -> None:
         artifact_valid=False,
         workspace_changed=False,
     )
-    assert res_multi is None
+    assert isinstance(res_multi, Cooldown)
+    assert res_multi.reason == "unproductive_limit"
+    assert res_multi.until_ms == 60_000
+
+    clock.advance(60.0)
+    assert controller.agent_eligibility("development", "sole_agent").is_eligible
+    assert controller.agent_eligibility("review", "agent_a").is_eligible
 
 
 def test_invoke_agent_probe_stamping_on_failure(

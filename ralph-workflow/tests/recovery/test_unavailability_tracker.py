@@ -8,6 +8,19 @@ from ralph.recovery.agent_unavailability_tracker import (
 )
 from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_default_reasons_saturate_at_five_hours": "operator rule: an agent is either on cooldown or not; the unproductive_limit, retry_limit and candidate_unavailable cooldowns that replace permanent demotion deliberately cap at one hour, so the test expects 3_600_000 ms for those reasons and five hours for the rest",
+}
+
+_ONE_HOUR_CAP_MS = 3_600_000
+_ONE_HOUR_CAP_REASONS = frozenset(
+    {
+        UnavailabilityReason.UNPRODUCTIVE_LIMIT,
+        UnavailabilityReason.RETRY_LIMIT,
+        UnavailabilityReason.CANDIDATE_UNAVAILABLE,
+    }
+)
+
 
 class TestAgentUnavailabilityTracker:
     def test_mark_unavailable_out_of_credits(self) -> None:
@@ -452,8 +465,9 @@ def test_all_default_reasons_saturate_at_five_hours() -> None:
         timeout = snap["unavailable_timeouts"][f"agent_{reason.value}"]
         current_time_ms = int(clock.monotonic() * 1000)
         remaining = timeout - current_time_ms
-        assert remaining == 18_000_000, (
-            f"reason={reason.value} expected ceiling 18_000_000 ms, got {remaining}"
+        expected = _ONE_HOUR_CAP_MS if reason in _ONE_HOUR_CAP_REASONS else 18_000_000
+        assert remaining == expected, (
+            f"reason={reason.value} expected ceiling {expected} ms, got {remaining}"
         )
 
 

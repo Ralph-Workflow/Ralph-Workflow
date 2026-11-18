@@ -32,6 +32,11 @@ if TYPE_CHECKING:
 
 from tests.recovery._corpus_derive import CorpusCase, load_corpus, load_fixtures
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_no_negative_is_ever_marked_spent_or_left_unavailable": "operator rule: an agent is either on cooldown or not; the spent state is gone, so a negative must not be excluded without a bench and any exclusion must expire once the clock passes it",
+    "test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails": "operator rule: an agent is either on cooldown or not; the bench is a finite dead_agent_no_progress cooldown, so the test asserts it expires instead of asserting the agent is not spent",
+}
+
 PHASE = "development"
 PEER = "peer_agent"
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
@@ -45,7 +50,8 @@ class Replay:
     case_id: str
     probe_outcome: ProbeOutcome | None
     benched: bool
-    spent: bool
+    excluded_without_bench: bool
+    cooldown_expires: bool
     probes_run: int
 
 
@@ -65,9 +71,10 @@ def _replay(case: CorpusCase, agent: str, probe_outcome: ProbeOutcome | None) ->
         probes.append(probed_agent)
         return probe_outcome
 
+    clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            clock=FakeClock(start=0.0),
+            clock=clock,
             dead_agent_probe_runner=probe_runner,
         )
     )
@@ -89,12 +96,23 @@ def _replay(case: CorpusCase, agent: str, probe_outcome: ProbeOutcome | None) ->
 
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
     benched = isinstance(reasons, dict) and reasons.get(agent) == DEAD
-    spent = (
-        controller.ledger.status(PHASE, agent).is_spent
-        or bool(controller.snapshot()["spent_agents"])
-        or (not controller.unavailability_store.is_available(PHASE, agent) and not benched)
+    store = controller.unavailability_store
+    excluded_without_bench = not store.is_available(PHASE, agent) and not benched
+    wait_ms = store.earliest_unavailable_wait_ms(PHASE, [agent])
+    clock.advance(wait_ms / 1000.0 + 0.001)
+    cooldown_expires = (
+        "spent_agents" not in controller.snapshot()
+        and store.is_available(PHASE, agent)
+        and controller.ledger.status(PHASE, agent).is_eligible
     )
-    return Replay(case.id, probe_outcome, benched, spent, len(probes))
+    return Replay(
+        case.id,
+        probe_outcome,
+        benched,
+        excluded_without_bench,
+        cooldown_expires,
+        len(probes),
+    )
 
 
 def _outcomes_for(case: CorpusCase) -> tuple[ProbeOutcome | None, ...]:
@@ -160,7 +178,11 @@ def test_replaying_the_labelled_corpus_yields_zero_false_benches_and_reports_the
 def test_no_negative_is_ever_marked_spent_or_left_unavailable(
     negative_replays: tuple[Replay, ...],
 ) -> None:
-    offenders = [replay for replay in negative_replays if replay.spent]
+    offenders = [
+        replay
+        for replay in negative_replays
+        if replay.excluded_without_bench or not replay.cooldown_expires
+    ]
 
     assert offenders == []
 
@@ -184,7 +206,8 @@ def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_f
     replay = corpus_replays[(positives[0].id, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)]
 
     assert replay.benched is True
-    assert replay.spent is False
+    assert replay.excluded_without_bench is False
+    assert replay.cooldown_expires is True
     assert replay.probes_run == 1
 
 

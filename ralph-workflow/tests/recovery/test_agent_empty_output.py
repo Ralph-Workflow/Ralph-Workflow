@@ -4,8 +4,10 @@ import tempfile
 from pathlib import Path
 
 from ralph.agents.invoke._errors import AgentInvocationError
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import (
     FailureContext,
@@ -13,6 +15,10 @@ from ralph.recovery.controller import (
     RecoveryControllerOptions,
 )
 from ralph.recovery.events import FailureEventBus, FalloverEvent
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_fault_chain_exhaustion_enters_phase_failed": "operator rule: an agent is either on cooldown or not; a sole agent hitting the unproductive limit starts an expiring unproductive_limit cooldown and the controller returns the all-agents-unavailable wait state instead of the failed phase, so the test asserts the wait, its delay and that the agent is selectable after the expiry",
+}
 
 
 def _minimal_policy_bundle() -> object:
@@ -79,23 +85,33 @@ def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
 
 
 def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
+    clock = FakeClock(start=0.0)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
+        options=RecoveryControllerOptions(
+            cycle_cap=10, policy_bundle=_minimal_policy_bundle(), clock=clock
+        )
     )
     state = _make_state(["claude"])
 
     new_state = state
+    effects: list[object] = []
     for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
-        new_state, _, _ = controller.handle(
+        new_state, effects, _ = controller.handle(
             state,
             _AgentTimeoutError("agent idle timeout"),
             FailureContext(phase="development", agent="claude"),
         )
 
-    assert new_state.phase == "failed_terminal"
-    assert new_state.recovery_cycle_count == 1
-    assert new_state.last_error is not None
-    assert "agent" in new_state.last_error.lower() or "timeout" in new_state.last_error.lower()
+    assert new_state.phase == "development"
+    assert new_state.is_waiting_state is True
+    assert effects == []
+    status = controller.ledger.status("development", "claude")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
+    assert new_state.last_retry_delay_ms == status.until_ms - int(clock.monotonic() * 1000)
+    clock.advance(new_state.last_retry_delay_ms / 1000.0 + 0.001)
+    assert controller.ledger.is_available("development", "claude") is True
+    assert controller.preferred_agent_index("development", ["claude"]).agent == "claude"
 
 
 def test_empty_output_message_classified_as_agent_fault() -> None:

@@ -21,6 +21,10 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_recovery_waits_when_every_agent_is_cooling_down_and_retries_after_expiry": "operator rule: an agent is either on cooldown or not; replaces test_recovery_chain_exhaustion_only_when_every_agent_is_spent because reaching the unproductive limit now starts an expiring unproductive_limit cooldown instead of a permanent spent state, so an all-cooling chain waits for the earliest expiry instead of entering the failed phase",
+}
+
 
 def _minimal_policy_bundle(agents: list[str] | None = None) -> object:
     with tempfile.TemporaryDirectory() as d:
@@ -248,8 +252,10 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     assert state_after_second.is_waiting_state is False
 
 
-def test_recovery_chain_exhaustion_only_when_every_agent_is_spent() -> None:
+def test_recovery_waits_when_every_agent_is_cooling_down_and_retries_after_expiry() -> None:
+    clock = FakeClock(start=0.0)
     controller = _controller(
+        clock=clock,
         agents=["claude", "opencode", "agy"],
         unproductive_streak_limit=1,
         unproductive_total_limit=1,
@@ -258,19 +264,24 @@ def test_recovery_chain_exhaustion_only_when_every_agent_is_spent() -> None:
 
     for agent in ("claude", "opencode", "agy"):
         exc = AgentInactivityTimeoutError(agent, 30.0, opts=_stalled_opts())
-        state, _effects, _evt = controller.handle(
+        state, effects, _evt = controller.handle(
             state,
             exc,
             FailureContext(phase="development", agent=agent),
         )
 
-    assert state.phase == "failed_terminal", (
-        f"phase must advance to failed_terminal on chain exhaustion, got {state.phase}"
-    )
-    assert state.is_waiting_state is False
-    assert state.recovery_cycle_count == 1, (
-        f"recovery_cycle_count must increment to 1, got {state.recovery_cycle_count}"
-    )
+    assert state.phase == "development"
+    assert state.is_waiting_state is True
+    assert state.last_retry_delay_ms > 0
+    assert state.recovery_cycle_count == 0
+    assert effects == []
+    for agent in ("claude", "opencode", "agy"):
+        assert not controller.agent_eligibility("development", agent).is_eligible
+
+    clock.advance(state.last_retry_delay_ms / 1000.0)
+
+    selection = controller.preferred_agent_index("development", ["claude", "opencode", "agy"])
+    assert selection.agent is not None
 
 
 def test_recovery_failure_classifier_consults_typed_cause_for_watchdog_kill() -> None:

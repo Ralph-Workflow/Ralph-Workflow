@@ -11,11 +11,18 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import AgentChainConfig
+from ralph.recovery.agent_failure_ledger import Cooldown, Eligible
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_limit": "operator rule: an agent is either on cooldown or not; the total limit now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown reason and that the agent is preferred again once it expires",
+    "test_demotion_is_logged_with_the_phase_agent_and_counts": "operator rule: an agent is either on cooldown or not; the demotion log and the consecutive_unproductive_limit_reached reason no longer exist, so the test asserts the cooldown_decision log line with reason unproductive_limit and the unproductive counts",
+}
 
 _PHASE = "development"
 _AGENT_A = "agent_a"
@@ -41,11 +48,11 @@ def _make_state(agents: list[str]) -> PipelineState:
     )
 
 
-def _controller(agents: list[str]) -> RecoveryController:
+def _controller(agents: list[str], clock: FakeClock | None = None) -> RecoveryController:
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=50,
-            clock=FakeClock(start=0.0),
+            clock=clock or FakeClock(start=0.0),
             policy_bundle=_policy_bundle(agents),
         )
     )
@@ -69,7 +76,8 @@ def _fail(
 
 
 def test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_limit() -> None:
-    controller = _controller([_AGENT_A, _AGENT_B])
+    clock = FakeClock(start=0.0)
+    controller = _controller([_AGENT_A, _AGENT_B], clock)
     state = _make_state([_AGENT_A, _AGENT_B])
 
     for attempt in range(1, _TOTAL_LIMIT):
@@ -94,8 +102,14 @@ def test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_li
     chain = state.chain_for_phase(_PHASE)
     assert chain is not None
     assert chain.current_index == 1
-    assert controller.ledger.status(_PHASE, _AGENT_A).is_spent is True
-    assert controller.ledger.status(_PHASE, _AGENT_B).is_spent is False
+    cooled = controller.ledger.status(_PHASE, _AGENT_A)
+    assert isinstance(cooled, Cooldown), cooled
+    assert cooled.reason == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
+    assert isinstance(controller.ledger.status(_PHASE, _AGENT_B), Eligible)
+    now_ms = int(clock.monotonic() * 1000)
+    assert cooled.until_ms > now_ms
+    clock.advance((cooled.until_ms - now_ms) / 1000.0)
+    assert controller.preferred_agent_index(_PHASE, [_AGENT_A, _AGENT_B]).agent == _AGENT_A
 
 
 def test_agent_that_changes_nothing_is_demoted_at_the_consecutive_limit() -> None:
@@ -135,12 +149,12 @@ def test_demotion_is_logged_with_the_phase_agent_and_counts() -> None:
         logger.remove(handler_id)
 
     log_output = sink.getvalue()
-    assert "demoted" in log_output.lower()
-    assert _AGENT_A in log_output
-    assert _PHASE in log_output
-    assert "consecutive=3" in log_output
-    assert "total=3" in log_output
-    assert "consecutive_unproductive_limit_reached" in log_output
+    assert "cooldown_decision" in log_output
+    assert f"agent={_AGENT_A}" in log_output
+    assert f"phase={_PHASE}" in log_output
+    assert "reason=unproductive_limit" in log_output
+    assert "unproductive_attempts consecutive=3 total=3" in log_output
+    assert "demoted" not in log_output.lower()
 
 
 class _AgentInactivityTimeoutError(Exception):

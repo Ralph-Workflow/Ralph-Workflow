@@ -16,6 +16,13 @@ _CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 _TOTAL_UNPRODUCTIVE_LIMIT = 9
 _HANDLE_CALL_CEILING = _CAP * (_CONSECUTIVE_UNPRODUCTIVE_LIMIT + 2) * 3
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ambiguous_failure_loop_is_bounded_by_the_cycle_cap": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of entering the failed phase, so the cycle cap is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_the_cap_fires_on_the_cycle_that_reaches_it": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of entering the failed phase, so the cycle cap is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_the_failing_phase_is_still_routed_before_the_run_exits": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of entering the failed phase, so the failed route is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_ambiguous_failures_on_a_sole_agent_end_in_a_cooldown_wait": "operator rule: an agent is either on cooldown or not; pins that a sole agent failing ambiguously does not spin but reaches the all-agents-unavailable wait with a finite delay",
+}
+
 
 def _policy_bundle() -> object:
     return load_policy(Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults")
@@ -32,11 +39,11 @@ def _controller() -> RecoveryController:
     )
 
 
-def _fresh_state() -> PipelineState:
+def _fresh_state(agents: tuple[str, ...] = ()) -> PipelineState:
     return PipelineState(
         phase="development_commit",
         phase_chains={
-            "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            "development_commit": AgentChainState(agents=list(agents), current_index=0, retries=0)
         },
     )
 
@@ -49,7 +56,7 @@ def _drive_until_exit(failure: BaseException) -> tuple[int, PipelineState, list[
         state, effects, _ = controller.handle(
             state,
             failure,
-            FailureContext(phase="development_commit", agent="claude"),
+            FailureContext(phase="development_commit", agent=None),
         )
         if any(isinstance(item, ExitFailureEffect) for item in effects):
             return rounds + 1, state, list(effects)
@@ -59,9 +66,7 @@ def _drive_until_exit(failure: BaseException) -> tuple[int, PipelineState, list[
                 phase="development_commit",
                 previous_phase="failed_terminal",
                 phase_chains={
-                    "development_commit": AgentChainState(
-                        agents=["claude"], current_index=0, retries=0
-                    )
+                    "development_commit": AgentChainState(agents=[], current_index=0, retries=0)
                 },
             )
     return rounds, state, []
@@ -96,3 +101,22 @@ def test_the_failing_phase_is_still_routed_before_the_run_exits() -> None:
     assert effects
     assert state.phase == "failed_terminal"
     assert state.recovery_cycle_count == _CAP
+
+
+def test_ambiguous_failures_on_a_sole_agent_end_in_a_cooldown_wait() -> None:
+    controller = _controller()
+    state = _fresh_state(("claude",))
+    for _ in range(_HANDLE_CALL_CEILING):
+        state, effects, _ = controller.handle(
+            state,
+            RuntimeError("unclassifiable"),
+            FailureContext(phase="development_commit", agent="claude"),
+        )
+        assert effects == []
+        if state.is_waiting_state:
+            break
+
+    assert state.is_waiting_state is True
+    assert state.phase == "development_commit"
+    assert state.last_retry_delay_ms > 0
+    assert state.recovery_cycle_count == 0

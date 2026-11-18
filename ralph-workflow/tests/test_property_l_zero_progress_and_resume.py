@@ -11,6 +11,11 @@ from ralph.recovery.agent_failure_ledger import (
 )
 from ralph.recovery.retry_prompt import build_retry_error_block
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ledger_cools_down_after_three_consecutive_unproductive_attempts": "operator rule: an agent is either on cooldown or not; renamed from demotion, reads cooldown_started, and also asserts the unproductive_limit cooldown expiry",
+    "test_ledger_does_not_cool_down_on_first_two_unproductive": "operator rule: an agent is either on cooldown or not; renamed from demotion and reads cooldown_started",
+}
+
 _ORIGINAL_TASK_BODY_TOKEN = "ORIGINAL_TASK_BODY_TOKEN_xyz"
 
 
@@ -20,31 +25,36 @@ def test_ledger_default_consecutive_limit_is_three() -> None:
     assert ledger.consecutive_limit == 3
 
 
-def test_ledger_demotes_after_three_consecutive_unproductive_attempts() -> None:
+def test_ledger_cools_down_after_three_consecutive_unproductive_attempts() -> None:
     clock = FakeClock(start=100.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
 
     out1 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
-    assert not out1.demoted
+    assert not out1.cooldown_started
     assert out1.status.is_eligible
 
     out2 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
-    assert not out2.demoted
+    assert not out2.cooldown_started
     assert out2.status.is_eligible
 
     out3 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
-    assert out3.demoted
+    assert out3.cooldown_started
     assert isinstance(out3.status, Cooldown)
+    assert out3.status.reason == "unproductive_limit"
+    assert out3.status.until_ms == 160_000
+    assert not ledger.is_available("development", "claude")
+    clock.advance(61.0)
+    assert ledger.is_available("development", "claude")
 
 
-def test_ledger_does_not_demote_on_first_two_unproductive() -> None:
+def test_ledger_does_not_cool_down_on_first_two_unproductive() -> None:
     clock = FakeClock(start=100.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
 
     out1 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
     out2 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
-    assert not out1.demoted
-    assert not out2.demoted
+    assert not out1.cooldown_started
+    assert not out2.cooldown_started
 
 
 def test_ledger_resets_streak_on_workspace_change() -> None:
@@ -62,25 +72,25 @@ def test_ledger_resets_streak_on_workspace_change() -> None:
             workspace_changed=True,
         )
     )
-    assert not progress_out.demoted
+    assert not progress_out.cooldown_started
     assert progress_out.status.is_eligible
 
     next_out1 = ledger.record(
         AttemptFact(phase="development", agent="claude", artifact_valid=False)
     )
-    assert not next_out1.demoted
+    assert not next_out1.cooldown_started
     assert next_out1.status.is_eligible
 
     next_out2 = ledger.record(
         AttemptFact(phase="development", agent="claude", artifact_valid=False)
     )
-    assert not next_out2.demoted
+    assert not next_out2.cooldown_started
     assert next_out2.status.is_eligible
 
     next_out3 = ledger.record(
         AttemptFact(phase="development", agent="claude", artifact_valid=False)
     )
-    assert next_out3.demoted
+    assert next_out3.cooldown_started
 
 
 def test_varying_output_without_workspace_change_does_not_reset_streak() -> None:
@@ -97,9 +107,9 @@ def test_varying_output_without_workspace_change_does_not_reset_streak() -> None
             )
         )
         if attempt < 3:
-            assert not outcome.demoted
+            assert not outcome.cooldown_started
         else:
-            assert outcome.demoted
+            assert outcome.cooldown_started
             assert isinstance(outcome.status, Cooldown)
 
 

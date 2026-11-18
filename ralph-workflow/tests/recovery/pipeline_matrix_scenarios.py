@@ -885,9 +885,7 @@ def _observe(
         outcome_kind=outcome_kind,
         availability=controller.unavailability_store.is_available(PHASE, agent),
         wait_ms=controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [agent]),
-        ledger_status=(
-            "spent" if status.is_spent else "cooldown" if status.is_cooldown else "eligible"
-        ),
+        ledger_status="cooldown" if status.is_cooldown else "eligible",
         ledger_entries=dict(raw_entries),
         verdict_record=_stable(controller.last_verdict_record),
         false_bench_count=controller.false_bench_feedback.count,

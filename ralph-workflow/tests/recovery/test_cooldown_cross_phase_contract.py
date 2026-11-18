@@ -21,6 +21,10 @@ from ralph.recovery.unavailability_reason import (
 )
 from ralph.timeout_defaults import AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_wu_c4_stalled_reported_success_uses_default_threshold_and_cooldown": "operator rule: an agent is either on cooldown or not; the consecutive unproductive limit now starts an expiring unproductive_limit cooldown, so the test asserts that reason, the 60 s expiry, and that the agent is selected again once it passes",
+}
+
 _PRIMARY = "primary-agent"
 _NEXT = "next-agent"
 _AGENTS = (_PRIMARY, _NEXT)
@@ -112,16 +116,19 @@ def test_wu_c4_stalled_reported_success_uses_default_threshold_and_cooldown(
     status = controller.agent_eligibility(phase, _PRIMARY)
 
     assert isinstance(status, Cooldown)
-    assert status.reason == "consecutive_unproductive_limit_reached"
+    assert status.reason == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
     assert status.until_ms == 60_000
     _assert_complete_log_line(
         lines,
         phase=phase,
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=60_000,
         expiry_ms=60_000,
     )
     _assert_fallback_only(controller, phase)
+    clock.advance(60.0)
+    assert controller.agent_eligibility(phase, _PRIMARY).is_eligible
+    assert controller.preferred_agent_index(phase, _AGENTS).agent == _PRIMARY
 
 
 @pytest.mark.parametrize("phase", _default_phases())

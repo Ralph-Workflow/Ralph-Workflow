@@ -35,8 +35,7 @@ from ralph.recovery.agent_failure_ledger import (
     AttemptFact,
     Cooldown,
     EligibilityWait,
-    Spent,
-    Unavailable,
+    Eligible,
     WaitKind,
     eligibility_wait_from_statuses,
 )
@@ -49,6 +48,7 @@ from ralph.recovery.agent_selection import (
 from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityStore,
+    cooldown_windows,
 )
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
@@ -84,7 +84,7 @@ __all__ = [
     "build_typed_agent_signal",
     "compute_backoff_ms",
     "is_configuration_failure",
-    "record_ledger_only_demotion",
+    "record_ledger_only_attempt",
 ]
 
 
@@ -129,13 +129,13 @@ def is_configuration_failure(
     return reason is not None and reason in ENGINE_ORIGIN_REASONS
 
 
-def record_ledger_only_demotion(
+def record_ledger_only_attempt(
     ledger: AgentFailureLedger,
     *,
     phase: str,
     agent: str,
     workspace_changed: bool | None,
-) -> tuple[bool, str | None]:
+) -> Cooldown | None:
     from ralph.recovery.controller_factory import build_recovery_controller
 
     owner = ledger.recovery_controller
@@ -154,19 +154,20 @@ def record_ledger_only_demotion(
         artifact_valid=False,
         workspace_changed=workspace_changed,
     )
-    status = ledger.status(phase, agent)
-    demoted = not status.is_eligible
-    demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
-    return demoted, demotion_reason
+    status = owner.agent_eligibility(phase, agent)
+    return status if isinstance(status, Cooldown) else None
 
+
+_NO_PROGRESS_COOLDOWN_REASONS: frozenset[str] = frozenset(
+    {
+        str(UnavailabilityReason.UNPRODUCTIVE_LIMIT),
+        str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS),
+    }
+)
 
 _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
     {"_mark_agent_unavailable", "_apply_chain_retry"}
 )
-
-_SPENT_RETRY_EXHAUSTED_REASON = "retry_exhausted"
-
-_STORE_BENCHED_REASON = "unavailable"
 
 
 _CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
@@ -585,7 +586,6 @@ class RecoveryController:
         "_last_attempt_charged_ledger",
         "_last_attempt_cooldown_reason",
         "_last_attempt_outcome",
-        "_last_demoted_reason",
         "_last_resolved_verdict",
         "_last_selection_state",
         "_last_verdict_record",
@@ -596,7 +596,6 @@ class RecoveryController:
         "_phase_launch_gates",
         "_policy_bundle",
         "_reset_hint_backend",
-        "_spent_agents",
         "_total_unproductive_limit",
         "_unavailability_tracker",
         "_workspace_probe",
@@ -616,14 +615,17 @@ class RecoveryController:
         self._phase_chains: dict[str, tuple[str, ...]] = {}
         self._phase_cursor: dict[str, str] = {}
         self._last_selection_state: dict[
-            str, tuple[str | None, tuple[tuple[str, bool, bool, bool, str | None], ...]]
+            str, tuple[str | None, tuple[tuple[str, bool, bool, str | None], ...]]
         ] = {}
         self._phase_launch_gates: dict[str, bool] = {}
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
         self._policy_bundle = opts.policy_bundle
-        self._clock: Clock = opts.clock or SystemClock()
+        supplied_ledger = ledger if ledger is not None else opts.ledger
+        self._clock: Clock = opts.clock or (
+            supplied_ledger.clock if supplied_ledger is not None else SystemClock()
+        )
         self._backoff_attempts: dict[str, int] = dict(opts.backoff_attempts or {})
         self._consecutive_unproductive_limit = (
             opts.agent_max_consecutive_unproductive
@@ -635,10 +637,8 @@ class RecoveryController:
             if opts.agent_max_total_unproductive is not None
             else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
         )
-        if ledger is not None:
-            self._ledger = ledger
-        elif opts.ledger is not None:
-            self._ledger = opts.ledger
+        if supplied_ledger is not None:
+            self._ledger = supplied_ledger
         else:
             self._ledger = AgentFailureLedger(
                 clock=self._clock,
@@ -652,7 +652,6 @@ class RecoveryController:
         self._last_verdict_record: dict[str, object] | None = None
         self._last_resolved_verdict: PersistedVerdict | None = None
         self._last_attempt_outcome: AttemptOutcome | None = None
-        self._last_demoted_reason: str | None = None
         self._last_attempt_charged_ledger: bool = False
         self._last_attempt_cooldown_reason: UnavailabilityReason | None = None
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
@@ -663,16 +662,13 @@ class RecoveryController:
         )
         self._attempt_outcome_memo: dict[
             str,
-            tuple[AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None],
+            tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None],
         ] = {}
         self._attempt_outcome_keys: dict[tuple[str, str], list[str]] = {}
         self._claimed_attempt_outcome_keys: set[str] = set()
         self._peer_failure_signatures: dict[str, dict[str, tuple[object, ...]]] = {}
         self._attempt_ordinals: dict[tuple[str, str], int] = {}
         self._attempt_counts: dict[tuple[str, str], int] = {}
-        self._spent_agents: dict[str, set[str]] = {
-            k: set(v) for k, v in (opts.spent_agents or {}).items()
-        }
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
             existing_ledger: object = read_attr(
@@ -683,14 +679,26 @@ class RecoveryController:
             else:
                 object.__setattr__(self._unavailability_tracker, "_failure_ledger", self._ledger)
         else:
-            self._unavailability_tracker = AgentUnavailabilityTracker(
-                clock=self._clock,
-                backoff_policy=opts.unavailability_backoff_policy,
-                initial_timeouts=opts.unavailable_timeouts,
-                initial_entries=opts.unavailability_entries,
-                initial_backoff_attempts=opts.backoff_attempts,
-                ledger=self._ledger,
+            shared_store = self._ledger.bound_availability
+            restores_store = bool(
+                opts.unavailability_backoff_policy
+                or opts.unavailable_timeouts
+                or opts.unavailability_entries
+                or opts.backoff_attempts
             )
+            self._unavailability_tracker = (
+                shared_store
+                if shared_store is not None and not restores_store
+                else AgentUnavailabilityTracker(
+                    clock=self._clock,
+                    backoff_policy=opts.unavailability_backoff_policy,
+                    initial_timeouts=opts.unavailable_timeouts,
+                    initial_entries=opts.unavailability_entries,
+                    initial_backoff_attempts=opts.backoff_attempts,
+                    ledger=self._ledger,
+                )
+            )
+        self._ledger.bind_availability(self._unavailability_tracker)
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -727,10 +735,6 @@ class RecoveryController:
     @property
     def last_resolved_verdict(self) -> PersistedVerdict | None:
         return self._last_resolved_verdict
-
-    @property
-    def last_demoted_reason(self) -> str | None:
-        return self._last_demoted_reason
 
     def handle(
         self,
@@ -854,7 +858,6 @@ class RecoveryController:
             failure,
             context,
             bench_applied=bench_applied or cooldown_reason is not None,
-            sole_demoted_reason=self._last_demoted_reason,
         )
 
     def _charge_failure_the_clean_finalize_left_uncharged(
@@ -864,7 +867,7 @@ class RecoveryController:
         *,
         workspace_changed: bool,
     ) -> None:
-        self._last_demoted_reason = self.record_attempt_fact(
+        self.record_attempt_fact(
             phase,
             agent,
             artifact_valid=False,
@@ -880,6 +883,10 @@ class RecoveryController:
     def record_attempt(self, phase: str, agent: str | None) -> int:
         key = (phase, agent or "")
         count = self._attempt_counts.get(key, 0) + 1
+        if agent is not None and count >= self._ledger.consecutive_limit:
+            self._attempt_counts.pop(key, None)
+            self._mark_agent_unavailable(phase, agent, UnavailabilityReason.RETRY_LIMIT)
+            return count
         self._attempt_counts[key] = count
         return count
 
@@ -916,7 +923,7 @@ class RecoveryController:
         effective_charge_ledger = charge_ledger and not is_configuration_failure(
             exc, retryable_reason
         )
-        outcome, demoted_reason, resolved_verdict = self._finalize_attempt_now(
+        outcome, resolved_verdict = self._finalize_attempt_now(
             phase,
             agent,
             facts=facts,
@@ -931,12 +938,10 @@ class RecoveryController:
             failure=failure,
         )
         self._last_attempt_outcome = outcome
-        self._last_demoted_reason = demoted_reason
         self._last_resolved_verdict = resolved_verdict
         if attempt_key is not None:
             self._attempt_outcome_memo[attempt_key] = (
                 outcome,
-                demoted_reason,
                 resolved_verdict,
                 self._last_attempt_cooldown_reason,
             )
@@ -945,15 +950,12 @@ class RecoveryController:
 
     def _restore_memoized_attempt(
         self,
-        memoized: tuple[
-            AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None
-        ],
+        memoized: tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None],
     ) -> AttemptOutcome:
-        outcome, demoted_reason, resolved_verdict, cooldown_reason = memoized
+        outcome, resolved_verdict, cooldown_reason = memoized
         self._last_attempt_charged_ledger = False
         self._last_attempt_cooldown_reason = cooldown_reason
         self._last_attempt_outcome = outcome
-        self._last_demoted_reason = demoted_reason
         self._last_resolved_verdict = resolved_verdict
         return outcome
 
@@ -961,10 +963,7 @@ class RecoveryController:
         self,
         phase: str,
         agent: str | None,
-    ) -> (
-        tuple[AttemptOutcome, str | None, PersistedVerdict | None, UnavailabilityReason | None]
-        | None
-    ):
+    ) -> tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None] | None:
         keys = self._attempt_outcome_keys.get((phase, agent or ""))
         if not keys:
             return None
@@ -993,7 +992,7 @@ class RecoveryController:
         session_ref: Mapping[str, str] | None,
         charge_ledger: bool,
         failure: ClassifiedFailure | None = None,
-    ) -> tuple[AttemptOutcome, str | None, PersistedVerdict | None]:
+    ) -> tuple[AttemptOutcome, PersistedVerdict | None]:
         attempt_facts = facts if facts is not None else AttemptFacts()
         peer_failures_identical = self._peer_failures_identical(phase, agent, attempt_facts)
         signal = attempt_facts.typed_signal
@@ -1034,7 +1033,6 @@ class RecoveryController:
         fingerprint = config_fingerprint
         if fingerprint is None and agent is not None:
             fingerprint = f"agent:{agent}"
-        demoted_reason: str | None = None
         self._last_attempt_cooldown_reason = None
         cooldown_reason, watchdog_cooldown = _attempt_cooldown_reasons(
             effective_signal,
@@ -1076,7 +1074,7 @@ class RecoveryController:
             and watchdog_cooldown is None
         ):
             self._last_attempt_charged_ledger = True
-            demoted_reason = self.record_attempt_fact(
+            self.record_attempt_fact(
                 phase,
                 agent,
                 artifact_valid=attempt_facts.artifact_valid,
@@ -1095,7 +1093,7 @@ class RecoveryController:
             self._peer_failure_signatures.setdefault(phase, {})[agent] = self._failure_signature(
                 attempt_facts
             )
-        return outcome, demoted_reason, resolved_verdict
+        return outcome, resolved_verdict
 
     def _failure_signature(self, facts: AttemptFacts) -> tuple[object, ...]:
         termination = facts.termination
@@ -1251,7 +1249,7 @@ class RecoveryController:
         return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
 
     def mark_candidate_unavailable(self, phase: str, agent: str) -> None:
-        self._ledger.mark_unavailable(phase, agent, reason="candidate_unavailable")
+        self._mark_agent_unavailable(phase, agent, UnavailabilityReason.CANDIDATE_UNAVAILABLE)
 
     def record_confirmed_dead_agent(
         self,
@@ -1302,7 +1300,7 @@ class RecoveryController:
         artifact_valid: bool,
         workspace_changed: bool | None,
         free_retry_category: bool = False,
-    ) -> str | None:
+    ) -> Cooldown | None:
         fact = AttemptFact(
             phase=phase,
             agent=agent,
@@ -1311,47 +1309,18 @@ class RecoveryController:
             free_retry_category=free_retry_category,
         )
         outcome = self._ledger.record(fact)
-
-        if outcome.demoted:
-            if isinstance(outcome.status, Cooldown):
-                now_ms = self._now_ms()
-                demotion_reason = self._last_attempt_cooldown_reason
-                if not isinstance(demotion_reason, UnavailabilityReason) or (
-                    demotion_reason not in _TYPED_NO_ACTIVITY_REASONS
-                ):
-                    demotion_reason = UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
-                self._log_cooldown_decision(
-                    phase,
-                    agent,
-                    demotion_reason,
-                    duration_ms=max(0, outcome.status.until_ms - now_ms),
-                    expiry_ms=outcome.status.until_ms,
-                    demotion=(
-                        outcome.consecutive_unproductive,
-                        outcome.total_unproductive,
-                        outcome.status.reason,
-                    ),
-                )
-            else:
-                logger.warning(
-                    "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                    agent,
-                    phase,
-                    outcome.consecutive_unproductive,
-                    outcome.total_unproductive,
-                    outcome.reason,
-                )
-            if outcome.status.is_spent:
-                self.note_retry_exhaustion(phase, agent)
-            chain_agents = self._get_chain_agents(phase)
-            if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
-                sole_msg = (
-                    f"Sole agent '{agent}' demoted in phase '{phase}': "
-                    f"unproductive attempt limit reached ({outcome.reason})"
-                )
-                logger.warning(sole_msg)
-                return sole_msg
-        return None
+        status = outcome.status
+        if not isinstance(status, Cooldown):
+            return None
+        self._log_cooldown_decision(
+            phase,
+            agent,
+            UnavailabilityReason.UNPRODUCTIVE_LIMIT,
+            duration_ms=max(0, status.until_ms - self._now_ms()),
+            expiry_ms=status.until_ms,
+            unproductive=(outcome.consecutive_unproductive, outcome.total_unproductive),
+        )
+        return status
 
     def _handle_classified_failure(
         self,
@@ -1360,7 +1329,6 @@ class RecoveryController:
         context: FailureContext,
         *,
         bench_applied: bool = False,
-        sole_demoted_reason: str | None = None,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         phase, agent = context.phase, context.agent
         retry_in_session = context.retry_in_session
@@ -1397,30 +1365,6 @@ class RecoveryController:
             last_failure_category=str(failure.category),
             last_retry_delay_ms=retry_delay_ms,
         ).clear_waiting()
-
-        if sole_demoted_reason is not None:
-            logger.warning(sole_demoted_reason)
-            new_state = new_state.copy_with(recovery_cycle_count=new_state.recovery_cycle_count + 1)
-            failed_state = self._enter_phase_failed(
-                new_state, sole_demoted_reason, failure.category
-            )
-            if self._cap.is_exceeded(failed_state.recovery_cycle_count):
-                exit_reason = self._cap.exit_reason(
-                    failed_state.recovery_cycle_count,
-                    str(failure.category),
-                    failure.reason[:200],
-                )
-                logger.error("Recovery cycle cap exceeded: {}", exit_reason)
-                return (
-                    failed_state.copy_with(last_retry_delay_ms=0),
-                    [_build_exit_failure_effect(reason=exit_reason)],
-                    failure_evt,
-                )
-            return (
-                failed_state,
-                [],
-                failure_evt,
-            )
 
         if failure.category in (
             FailureCategory.ENVIRONMENTAL,
@@ -1571,14 +1515,13 @@ class RecoveryController:
         duration_ms: int,
         expiry_ms: int,
         verdict: PersistedVerdict | None = None,
-        demotion: tuple[int, int, str] | None = None,
+        unproductive: tuple[int, int] | None = None,
     ) -> None:
         prefix = "Confirmed agent unavailability " if verdict is not None else ""
-        demotion_text = ""
-        if demotion is not None:
-            demotion_text = (
-                f" Agent '{agent}' demoted in phase '{phase}' "
-                f"(consecutive={demotion[0]}, total={demotion[1]}, reason={demotion[2]})"
+        unproductive_text = ""
+        if unproductive is not None:
+            unproductive_text = (
+                f" unproductive_attempts consecutive={unproductive[0]} total={unproductive[1]}"
             )
         logger.warning(
             "{}cooldown_decision phase={} agent={} reason={} duration_ms={} expiry_ms={} "
@@ -1596,7 +1539,7 @@ class RecoveryController:
             verdict.probe_outcome if verdict is not None else None,
             verdict.termination if verdict is not None else None,
             verdict.return_code_discrepancy if verdict is not None else None,
-            demotion_text,
+            unproductive_text,
         )
 
     def _now_ms(self) -> int:
@@ -1605,67 +1548,30 @@ class RecoveryController:
     def prune_expired(self, *, now_ms: int | None = None) -> None:
         effective_now_ms = now_ms if now_ms is not None else self._now_ms()
         self._unavailability_tracker.prune_expired(now_ms=effective_now_ms)
-        if self._ledger is not None:
-            self._ledger.prune_expired(now_ms=effective_now_ms)
-
-    def _tracker_windows(self, *, now_ms: int) -> dict[str, tuple[int, str]]:
-        snap = self._unavailability_tracker.snapshot()
-        timeouts = snap.get("unavailable_timeouts", {})
-        reasons = snap.get("unavailability_reasons", {})
-        windows: dict[str, tuple[int, str]] = {}
-        for agent, until in timeouts.items():
-            if not isinstance(agent, str) or isinstance(until, bool) or not isinstance(until, int):
-                continue
-            if until <= now_ms:
-                continue
-            raw_reason = reasons.get(agent)
-            reason = raw_reason if isinstance(raw_reason, str) else "unavailable"
-            windows[agent] = (until, reason)
-        return windows
 
     def _resolve_eligibility(
         self,
-        phase: str,
         agent: str,
         windows: dict[str, tuple[int, str]],
-        spent: set[str],
-        *,
-        now_ms: int,
     ) -> AgentStatus:
         window = windows.get(agent)
-        if agent in spent:
-            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
-        status = self._ledger.agent_eligibility(
-            phase,
-            agent,
-            cooldown=window,
-            spent_reason=None,
-            unavailable_reason=(
-                None
-                if self._unavailability_tracker.is_available(phase, agent)
-                else _STORE_BENCHED_REASON
-            ),
-        )
-        if not status.is_eligible:
-            return status
-        if self.attempt_count(phase, agent) >= self._ledger.consecutive_limit:
-            return self._ledger.spent_status(_SPENT_RETRY_EXHAUSTED_REASON)
-        return status
+        if window is None:
+            return Eligible()
+        return Cooldown(until_ms=window[0], reason=window[1])
 
     def chain_eligibility(
         self,
         phase: str,
         agents: Sequence[str],
     ) -> tuple[tuple[str, AgentStatus], ...]:
-        now_ms = self._now_ms()
-        windows = self._tracker_windows(now_ms=now_ms)
-        spent = self._spent_agents.get(phase, set())
-        return tuple(
-            (
-                agent,
-                self._resolve_eligibility(phase, agent, windows, spent, now_ms=now_ms),
-            )
-            for agent in agents
+        del phase
+        windows = cooldown_windows(self._unavailability_tracker, now_ms=self._now_ms())
+        return tuple((agent, self._resolve_eligibility(agent, windows)) for agent in agents)
+
+    def every_agent_cooling_for_no_progress(self, phase: str, agents: Sequence[str]) -> bool:
+        return bool(agents) and all(
+            isinstance(status, Cooldown) and status.reason in _NO_PROGRESS_COOLDOWN_REASONS
+            for _agent, status in self.chain_eligibility(phase, agents)
         )
 
     def agent_eligibility(self, phase: str, agent: str) -> AgentStatus:
@@ -1681,21 +1587,9 @@ class RecoveryController:
         return eligibility_wait_from_statuses(statuses, now_ms=now_ms)
 
     def mark_agent_unavailable(
-        self, phase: str, agent: str, *, reason: str | UnavailabilityReason
+        self, phase: str, agent: str, *, reason: UnavailabilityReason
     ) -> None:
-        raw_reason = reason.value if isinstance(reason, UnavailabilityReason) else reason
-        self._ledger.mark_unavailable(phase, agent, reason=raw_reason)
-        unavail_reason: UnavailabilityReason | None = None
-        if isinstance(reason, UnavailabilityReason):
-            unavail_reason = reason
-        else:
-            with contextlib.suppress(ValueError):
-                unavail_reason = UnavailabilityReason(reason)
-        if unavail_reason is not None:
-            self._mark_agent_unavailable(phase, agent, reason=unavail_reason)
-
-    def _is_agent_spent(self, phase: str, agent: str) -> bool:
-        return self.agent_eligibility(phase, agent).is_spent
+        self._mark_agent_unavailable(phase, agent, reason=reason)
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
         return self.agent_eligibility(phase, agent).is_eligible
@@ -1796,16 +1690,9 @@ class RecoveryController:
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
         self._attempt_counts.pop((phase, agent or ""), None)
-        self._spent_agents.pop(phase, None)
         self._last_selection_state.pop(phase, None)
         if agent is not None:
             self._unavailability_tracker.reset_backoff(phase, agent)
-
-    def note_retry_exhaustion(self, phase: str, agent: str) -> None:
-        self._spent_agents.setdefault(phase, set()).add(agent)
-
-    def clear_spent_agents(self, phase: str) -> None:
-        self._spent_agents.pop(phase, None)
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         if not candidates:
@@ -1834,12 +1721,11 @@ class RecoveryController:
     ) -> AgentSelection:
         self._phase_chains[phase] = tuple(agents)
         now_ms = self._now_ms()
-        windows = self._tracker_windows(now_ms=now_ms)
-        spent_set = self._spent_agents.get(phase, set())
+        windows = cooldown_windows(self._unavailability_tracker, now_ms=now_ms)
 
-        rows: list[tuple[str, bool, int, bool, str | None]] = []
+        rows: list[tuple[str, bool, int, str | None]] = []
         for idx, agent in enumerate(agents):
-            status = self._resolve_eligibility(phase, agent, windows, spent_set, now_ms=now_ms)
+            status = self._resolve_eligibility(agent, windows)
             cooldown_ms = 0
             cooldown_reason: str | None = None
             if isinstance(status, Cooldown):
@@ -1851,17 +1737,8 @@ class RecoveryController:
                 and not (exclude_current and idx == current_index)
                 and agent not in exclude
             )
-            is_spent = status.is_spent
 
-            rows.append(
-                agent_availability(
-                    agent,
-                    avail,
-                    cooldown_ms,
-                    is_spent,
-                    cooldown_reason,
-                )
-            )
+            rows.append(agent_availability(agent, avail, cooldown_ms, cooldown_reason))
 
         selection = select_preferred_agent(rows)
         candidate_state = (
@@ -1871,10 +1748,9 @@ class RecoveryController:
                     agent,
                     avail,
                     cooldown_ms > 0,
-                    is_spent,
                     cooldown_reason if cooldown_ms > 0 else None,
                 )
-                for agent, avail, cooldown_ms, is_spent, cooldown_reason in rows
+                for agent, avail, cooldown_ms, cooldown_reason in rows
             ),
         )
         if not self._phase_launch_gates.get(phase, True):
@@ -2007,27 +1883,8 @@ class RecoveryController:
                     updated_evt,
                 )
 
-        if len(chain.agents) == 1 and not self._is_agent_available(phase, chain.agents[0]):
-            sole_agent = chain.agents[0]
-            st = self.agent_eligibility(phase, sole_agent)
-            demote_reason = (
-                st.reason
-                if isinstance(st, (Cooldown, Spent, Unavailable)) and st.reason
-                else failure.reason
-            )
-            exhaustion_reason = (
-                f"Sole agent '{sole_agent}' demoted in phase '{phase}': "
-                f"unproductive attempt limit reached ({demote_reason})"
-            )
-        elif all(not self._is_agent_available(phase, agent) for agent in chain.agents):
-            exhaustion_reason = (
-                f"All agents in phase '{phase}' demoted or exhausted: {failure.reason}"
-            )
-        else:
-            exhaustion_reason = failure.reason
-
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
-        failed_state = self._enter_phase_failed(new_state, exhaustion_reason, failure.category)
+        failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         if self._cap.is_exceeded(failed_state.recovery_cycle_count):
             exit_reason = self._cap.exit_reason(
                 failed_state.recovery_cycle_count,
@@ -2090,11 +1947,6 @@ class RecoveryController:
         wait = self.earliest_eligible_wait_ms(phase, agents)
         return 0 if wait is None else wait
 
-    def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
-        if not agents:
-            return False
-        return all(status.is_spent for _agent, status in self.chain_eligibility(phase, agents))
-
     def snapshot(self) -> dict[str, object]:
         tracker_snapshot = self._unavailability_tracker.snapshot()
         merged_attempts = dict(self._backoff_attempts)
@@ -2106,8 +1958,8 @@ class RecoveryController:
             "agent_max_total_unproductive": self._total_unproductive_limit,
             "ledger": self._ledger.snapshot(),
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
+            "unavailable_until_epoch_ms": tracker_snapshot.get("unavailable_until_epoch_ms", {}),
             "unavailability_reasons": tracker_snapshot.get("unavailability_reasons", {}),
-            "spent_agents": {k: sorted(v) for k, v in self._spent_agents.items()},
             "false_bench_feedback": self._false_bench_feedback.snapshot(),
         }
 
@@ -2135,13 +1987,12 @@ class RecoveryController:
         self._phase_chains[phase] = tuple(agents)
         attempts_dict = snap.get("backoff_attempts", {})
         now_ms = self._now_ms()
-        windows = self._tracker_windows(now_ms=now_ms)
-        spent_set = self._spent_agents.get(phase, set())
+        windows = cooldown_windows(self._unavailability_tracker, now_ms=now_ms)
         result: list[tuple[str, int, int]] = []
         for agent in agents:
             attempt = attempts_dict.get(agent, 0)
             attempt_int = int(attempt) if isinstance(attempt, int) else 0
-            status = self._resolve_eligibility(phase, agent, windows, spent_set, now_ms=now_ms)
+            status = self._resolve_eligibility(agent, windows)
             cooldown_ms = 0
             if isinstance(status, Cooldown):
                 cooldown_ms = max(0, status.until_ms - now_ms)
@@ -2159,7 +2010,6 @@ class RecoveryController:
         reason: str,
         category: object,
     ) -> PipelineState:
-        self._spent_agents.pop(state.phase, None)
         if self._policy_bundle is not None:
             failed_route = self._policy_bundle.pipeline.recovery.failed_route
             return (

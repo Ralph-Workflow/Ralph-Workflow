@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from ralph.testing.audit_agent_failure_single_owner import audit_production_source
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "bench_resolver_renamed_record_resolver_failure": "operator rule: an agent is either on cooldown or not, so the resolver failure recorder no longer carries a bench name; the flagged-call assertions follow the rename to record_resolver_failure unchanged",
+}
+
 
 def test_production_ralph_authored_prose_assignment_then_classify_is_flagged() -> None:
     source = """
@@ -148,10 +152,10 @@ def note(session):
     )
 
 
-def test_production_bench_resolver_with_authored_fstring_is_flagged() -> None:
+def test_production_record_resolver_failure_with_authored_fstring_is_flagged() -> None:
     source = """
 def handoff(controller, agent):
-    bench_resolver(
+    record_resolver_failure(
         controller,
         agent,
         f"repair agent '{agent}' left no verifiable repair declaration for the pending commit",
@@ -160,15 +164,16 @@ def handoff(controller, agent):
 """
     violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
     assert any(
-        v.rule == "production_ralph_authored_classifier_input" and "bench_resolver" in v.detail
+        v.rule == "production_ralph_authored_classifier_input"
+        and "record_resolver_failure" in v.detail
         for v in violations
-    ), f"Expected bench_resolver prose violation, got: {violations}"
+    ), f"Expected record_resolver_failure prose violation, got: {violations}"
 
 
-def test_production_bench_resolver_with_reworded_literal_is_flagged() -> None:
+def test_production_record_resolver_failure_with_reworded_literal_is_flagged() -> None:
     source = """
 def handoff(controller, agent):
-    bench_resolver(
+    record_resolver_failure(
         controller,
         agent,
         "resolver produced nothing Ralph can verify",
@@ -205,7 +210,7 @@ def test_production_local_assigned_authored_value_is_flagged() -> None:
 def handoff(controller, agent, failure_detail):
     detail = failure_detail() if failure_detail is not None else None
     text = detail or f"resolver '{agent}' ended without a verified completion proof"
-    bench_resolver(controller, agent, text, workspace_changed=False)
+    record_resolver_failure(controller, agent, text, workspace_changed=False)
 """
     violations = audit_production_source(
         "ralph/pipeline/_integration_diagnostic_handoff.py", source
@@ -223,7 +228,7 @@ def _failure_text(agent, failure_detail):
     return detail or f"resolver '{agent}' ended without a verified completion proof"
 
 def handoff(controller, agent, failure_detail):
-    bench_resolver(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
+    record_resolver_failure(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
 """
     violations = audit_production_source(
         "ralph/pipeline/_integration_diagnostic_handoff.py", source
@@ -243,7 +248,7 @@ class Runner:
         self._classifier = FailureClassifier()
 
     def go(self, exc: BaseException, controller, agent) -> None:
-        bench_resolver(controller, agent, exc, workspace_changed=False)
+        record_resolver_failure(controller, agent, exc, workspace_changed=False)
         self._classifier.classify(exc, phase="commit", agent="x")
 """
     violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
@@ -252,12 +257,12 @@ class Runner:
     )
 
 
-def test_production_typed_bench_resolver_outcome_is_not_flagged() -> None:
+def test_production_typed_record_resolver_failure_outcome_is_not_flagged() -> None:
     source = """
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 def handoff(controller, agent, workspace_changed):
-    bench_resolver(
+    record_resolver_failure(
         controller,
         agent,
         None,
@@ -267,5 +272,5 @@ def handoff(controller, agent, workspace_changed):
 """
     violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
     assert not violations, (
-        f"Expected no violation for a typed bench_resolver outcome, got: {violations}"
+        f"Expected no violation for a typed record_resolver_failure outcome, got: {violations}"
     )

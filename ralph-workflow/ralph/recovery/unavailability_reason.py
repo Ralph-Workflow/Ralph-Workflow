@@ -17,6 +17,9 @@ class UnavailabilityReason(StrEnum):
     STALE_CHILD_QUIET = "stale_child_quiet"
     STRICTLY_STUCK = "strictly_stuck"
     DEAD_AGENT_NO_PROGRESS = "dead_agent_no_progress"
+    UNPRODUCTIVE_LIMIT = "unproductive_limit"
+    RETRY_LIMIT = "retry_limit"
+    CANDIDATE_UNAVAILABLE = "candidate_unavailable"
 
 
 AGENT_EXIT_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
@@ -96,6 +99,18 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {
     UnavailabilityReason.DEAD_AGENT_NO_PROGRESS: ReasonBackoffPolicy(
         base_backoff_ms=10_000,
         max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.UNPRODUCTIVE_LIMIT: ReasonBackoffPolicy(
+        base_backoff_ms=60_000,
+        max_backoff_ms=3_600_000,
+    ),
+    UnavailabilityReason.RETRY_LIMIT: ReasonBackoffPolicy(
+        base_backoff_ms=60_000,
+        max_backoff_ms=3_600_000,
+    ),
+    UnavailabilityReason.CANDIDATE_UNAVAILABLE: ReasonBackoffPolicy(
+        base_backoff_ms=60_000,
+        max_backoff_ms=3_600_000,
     ),
 }
 

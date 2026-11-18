@@ -10,8 +10,13 @@ from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     AttemptFact,
     Cooldown,
-    Spent,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ledger_exhaustion_persists_across_restart": "operator rule: an agent is either on cooldown or not; hitting the unproductive limits now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown, its expiry, and that the persisted backoff count lengthens the next cooldown after restart",
+    "test_legacy_progress_guard_translation_fail_closed": "operator rule: an agent is either on cooldown or not; an exhausted or failed-closed legacy guard now migrates to counters at the limit instead of a permanent Spent state, so the next unproductive attempt starts an expiring cooldown",
+    "test_pipeline_state_legacy_guard_migration": "operator rule: an agent is either on cooldown or not; ledger snapshot entries no longer carry is_spent, so the test asserts the migrated counters instead",
+}
 
 
 class TestRetryLedgerDurability:
@@ -23,13 +28,13 @@ class TestRetryLedgerDurability:
         outcome1 = ledger.record(
             AttemptFact(phase="development", agent="claude", artifact_valid=False)
         )
-        assert not outcome1.demoted
+        assert not outcome1.cooldown_started
         assert outcome1.status.is_eligible
 
         outcome2 = ledger.record(
             AttemptFact(phase="development", agent="claude", artifact_valid=False)
         )
-        assert not outcome2.demoted
+        assert not outcome2.cooldown_started
         assert outcome2.status.is_eligible
 
         snap = ledger.snapshot()
@@ -44,26 +49,40 @@ class TestRetryLedgerDurability:
         outcome3 = restored.record(
             AttemptFact(phase="development", agent="claude", artifact_valid=False)
         )
-        assert outcome3.demoted
+        assert outcome3.cooldown_started
         assert isinstance(outcome3.status, Cooldown)
 
     def test_ledger_exhaustion_persists_across_restart(self) -> None:
         clock = FakeClock(start=100.0)
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=2, total_limit=4)
 
-        for _ in range(4):
+        for _ in range(2):
             ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+        first = ledger.status("development", "claude")
+        assert isinstance(first, Cooldown)
+        assert first.reason == "unproductive_limit"
+        assert first.until_ms == 160_000
+        clock.advance(61.0)
+        assert ledger.is_available("development", "claude")
 
-        st = ledger.status("development", "claude")
-        assert isinstance(st, Spent)
-        assert st.is_spent
+        for _ in range(2):
+            ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+        second = ledger.status("development", "claude")
+        assert isinstance(second, Cooldown)
+        assert second.until_ms == int(clock.monotonic() * 1000) + 120_000
 
-        snap = ledger.snapshot()
-        restored = AgentFailureLedger.from_snapshot(snap, clock=clock)
-        restored_st = restored.status("development", "claude")
-        assert isinstance(restored_st, Spent)
-        assert restored_st.is_spent
+        restored = AgentFailureLedger.from_snapshot(ledger.snapshot(), clock=clock)
+        clock.advance(121.0)
+        assert restored.is_available("development", "claude")
+        restored.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+        third = restored.record(
+            AttemptFact(phase="development", agent="claude", artifact_valid=False)
+        )
+        assert isinstance(third.status, Cooldown)
+        assert third.status.until_ms == int(clock.monotonic() * 1000) + 240_000
         assert not restored.is_available("development", "claude")
+        clock.advance(241.0)
+        assert restored.is_available("development", "claude")
 
     def test_legacy_progress_guard_translation_fail_closed(self) -> None:
         clock = FakeClock(start=100.0)
@@ -78,9 +97,12 @@ class TestRetryLedgerDurability:
             exhausted_legacy,
             clock=clock,
         )
-        st = ledger_exhausted.status("development", "claude")
-        assert isinstance(st, Spent)
-        assert st.is_spent
+        assert ledger_exhausted.status("development", "claude").is_eligible
+        exhausted_outcome = ledger_exhausted.record(
+            AttemptFact(phase="development", agent="claude", artifact_valid=False)
+        )
+        assert isinstance(exhausted_outcome.status, Cooldown)
+        assert exhausted_outcome.status.reason == "unproductive_limit"
 
         failed_closed_legacy = {
             "max_identical": 3,
@@ -92,7 +114,13 @@ class TestRetryLedgerDurability:
             failed_closed_legacy,
             clock=clock,
         )
-        assert ledger_failed.status("development", "claude").is_spent
+        assert ledger_failed.status("development", "claude").is_eligible
+        failed_outcome = ledger_failed.record(
+            AttemptFact(phase="development", agent="claude", artifact_valid=False)
+        )
+        assert failed_outcome.cooldown_started
+        clock.advance(61.0)
+        assert ledger_failed.is_available("development", "claude")
 
         active_legacy = {
             "max_identical": 3,
@@ -108,7 +136,7 @@ class TestRetryLedgerDurability:
         outcome = ledger_active.record(
             AttemptFact(phase="development", agent="claude", artifact_valid=False)
         )
-        assert outcome.demoted
+        assert outcome.cooldown_started
 
     def test_pipeline_state_legacy_guard_migration(self) -> None:
         legacy_data = {
@@ -127,11 +155,13 @@ class TestRetryLedgerDurability:
         state = PipelineState.model_validate(legacy_data)
         assert state.ledger_snapshot is not None
         entries = state.ledger_snapshot.get("entries", {})
-        entry = entries.get("development:claude")
-        assert entry is not None
-        assert entry["is_spent"] is False
+        assert entries.get("development:claude") is not None
         restored = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=FakeClock(100.0))
         assert restored.status("development", "claude").is_eligible
+        third = restored.record(
+            AttemptFact(phase="development", agent="claude", artifact_valid=False)
+        )
+        assert third.cooldown_started
 
     def test_apply_session_capture_durability(self) -> None:
         initial_state = PipelineState(

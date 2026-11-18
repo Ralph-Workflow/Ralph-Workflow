@@ -22,6 +22,10 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import policy_invocation_bundle
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candidate": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+}
+
 _PRIMARY = "primary-agent"
 _NEXT = "next-agent"
 _ANALYSIS_CHAIN = (_PRIMARY, _NEXT)
@@ -146,7 +150,7 @@ def test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candid
         for line in lines
         if f"phase={PHASE_ANALYSIS}" in line
         and f"agent={_PRIMARY}" in line
-        and f"reason={UnavailabilityReason.DEAD_AGENT_NO_PROGRESS}" in line
+        and f"reason={UnavailabilityReason.UNPRODUCTIVE_LIMIT}" in line
         and f"duration_ms={duration_ms}" in line
         and f"expiry_ms={duration_ms}" in line
     ]

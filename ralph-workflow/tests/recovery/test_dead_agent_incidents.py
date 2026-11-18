@@ -27,7 +27,7 @@ from ralph.config.agent_config import AgentConfig
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
 from ralph.process.manager import ManagedProcess, ProcessManager, ProcessRecord, ProcessStatus
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.attempt_facts import TerminationIssuer
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
@@ -48,6 +48,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "calls (pinned by tests/recovery/test_canary_probe_seam_integration.py), "
         "so it was vacuous and could never be satisfied"
     ),
+    "test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unchanged": "operator rule: an agent is either on cooldown or not; the ledger resets its counters when the unproductive limit starts an expiring unproductive_limit cooldown, so the test asserts the cooldown count and the finite cooldown instead of a nonzero total counter",
+    "test_ledger_reaches_the_cooldown_after_three_attempts_without_a_workspace_change": "operator rule: an agent is either on cooldown or not; the third unproductive attempt starts a 60 s unproductive_limit cooldown and resets the counters, so the test asserts the per-attempt counts, the cooldown and its expiry instead of the removed snapshot cooldown_reason",
+    "test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_spent": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
 }
 
 INCIDENT_1_AGY_ERROR_STEP = '{"type":"error_message","message":"provider rejected the request"}'
@@ -364,10 +367,16 @@ def test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unc
         f"(observed real spawns: {real_spawns})"
     )
     entry = _ledger_entry(controller, "codex")
-    assert _counter(entry, "total_unproductive") >= 1, (
-        f"the ordinary route must advance the ledger counter (observed ledger entry: {entry!r})"
+    assert _counter(entry, "cooldown_count") >= 1, (
+        "the ordinary route must count the unproductive attempts until they start a "
+        f"cooldown (observed ledger entry: {entry!r})"
     )
+    status = controller.ledger.status(PHASE, "codex")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
     assert controller.ledger.is_available(PHASE, "codex") is False
+    now_ms = int(controller.ledger.clock.monotonic() * 1000)
+    assert status.until_ms > now_ms
     assert outcome.invocations == ["codex", "codex", "codex", "codex_b"]
     assert outcome.exit_code == 0
     assert outcome.final_state.phase == "complete"
@@ -394,20 +403,31 @@ def test_ledger_resets_the_consecutive_counter_when_the_workspace_changed() -> N
 
 
 def test_ledger_reaches_the_cooldown_after_three_attempts_without_a_workspace_change() -> None:
-    ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(clock=clock)
 
-    for _attempt in range(3):
+    outcomes = [
         ledger.record(
             AttemptFact(phase=PHASE, agent="agy", artifact_valid=False, workspace_changed=False)
         )
+        for _attempt in range(3)
+    ]
     entry = _snapshot_entry(ledger.snapshot(), "agy")
 
-    assert entry.get("consecutive_unproductive") == 3, (
+    assert [outcome.consecutive_unproductive for outcome in outcomes] == [1, 2, 3], (
         f"the dead agent would reach the consecutive threshold (observed entry: {entry!r})"
     )
-    assert entry.get("cooldown_reason") == "consecutive_unproductive_limit_reached", (
-        f"the ledger would bench the dead agent on the third attempt (observed entry: {entry!r})"
+    assert [outcome.cooldown_started for outcome in outcomes] == [False, False, True]
+    status = ledger.status(PHASE, "agy")
+    assert isinstance(status, Cooldown), (
+        f"the ledger cools the dead agent down on the third attempt (observed entry: {entry!r})"
     )
+    assert status.reason == "unproductive_limit"
+    assert status.until_ms == 60_000
+    assert entry.get("consecutive_unproductive") == 0
+    assert entry.get("cooldown_count") == 1
+    clock.advance(60.001)
+    assert ledger.is_available(PHASE, "agy") is True
 
 
 def test_unknown_workspace_change_is_not_collapsed_into_a_decided_value() -> None:
@@ -895,9 +915,9 @@ def test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_
     assert outcome.kind.value in ("runtime_ended", "unknown"), (
         f"the unattributed end stays a non-agent failure (observed: {outcome.kind.value!r})"
     )
-    assert controller.snapshot()["spent_agents"] == {}, (
-        "an unattributed exit-0 after tool work must never be marked spent "
-        f"(observed: {controller.snapshot()['spent_agents']!r})"
+    assert "spent_agents" not in controller.snapshot()
+    assert controller.ledger.status(PHASE, "claude").is_eligible, (
+        "an unattributed exit-0 after tool work must never start a cooldown"
     )
     assert controller.unavailability_store.is_available(PHASE, "claude") is True, (
         "an unattributed exit-0 after tool work must not be benched"

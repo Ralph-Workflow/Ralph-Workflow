@@ -7,17 +7,28 @@
 
 ## The invariant
 
-There is exactly one cooldown and unavailability system, owned by
+An agent is either on cooldown or available. There are no other states.
+Every exclusion of an agent from selection is a cooldown with a finite
+expiry and a reason; when the expiry passes, the agent is selectable again
+and is retried. Unproductive limits (`unproductive_limit`), commit retry
+limits (`retry_limit`), dead-agent verdicts and failed canary probes
+(`dead_agent_no_progress`), and dead conflict-resolution tool surfaces
+(`candidate_unavailable`) each start such a cooldown. When every agent in a
+chain is cooling down, including a sole agent, the phase waits until the
+earliest expiry; it never fails for that.
+
+There is exactly one cooldown system, owned by
 `RecoveryController` together with `AgentUnavailabilityTracker` and
 `AgentFailureLedger` (`ralph/recovery/`). Every place that invokes an
 agent, in every phase and sub-pipeline:
 
 1. reports each failed or unproductive attempt to that owner through the
    same classification and handling path (`classify_*` then `handle`);
-2. lets the owner decide cooldown, budget charge, backoff and
-   spent-marking, using the same `UnavailabilityReason` policy table
+2. lets the owner decide cooldown, budget charge and backoff, using the
+   same `UnavailabilityReason` policy table
    (`ralph/recovery/unavailability_reason.py`), the same exponential
-   backoff, and the same `Cooldown` / `Spent` / `Eligible` results;
+   backoff, and the same two results, `Cooldown(until_ms, reason)` and
+   `Eligible`;
 3. selects the next agent only through `preferred_agent_index` and
    `chain_eligibility`;
 4. waits on, or terminates on, cooldown expiry through the same
@@ -35,7 +46,7 @@ workspace, produced a valid artifact, or reduced the work remaining.
 | --- | --- | --- |
 | `RecoveryController` | `ralph/recovery/controller.py` | classification, handling, eligibility, backoff |
 | `AgentUnavailabilityTracker` | `ralph/recovery/agent_unavailability_tracker.py` | per-agent cooldown windows and expiry |
-| `AgentFailureLedger` | `ralph/recovery/agent_failure_ledger.py` | failure counts, demotion, ledger cooldown |
+| `AgentFailureLedger` | `ralph/recovery/agent_failure_ledger.py` | unproductive-attempt counts and the `unproductive_limit` cooldown |
 
 Cooldown reasons and their durations come from `UnavailabilityReason` and
 `DEFAULT_UNAVAILABILITY_BACKOFF_POLICY` in
@@ -62,7 +73,7 @@ commit review (per-iteration and final), and commit (per-iteration and final).
 | Conflict resolution (`ralph/pipeline/conflict_resolution/`) | fixed | `ralph/pipeline/conflict_resolution/session.py` passes typed outcomes to the shared owner's `FailureClassifier.classify_outcome` path, and `RecoveryController.handle` applies the cooldown, budget, and selection policy; `tests/test_conflict_resolution_phase_parity.py`, `tests/test_conflict_resolution_phase_parity_cooldown.py`, `tests/test_conflict_stalled_attempt_cooldown.py`, `tests/recovery/test_conflict_progress_classification.py` |
 | Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | fixed | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | already compliant | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
-| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | already compliant | the chain retains one `RecoveryController` across outer retries, so bench state survives; `tests/test_commit_retry_cooldown.py` |
+| Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | already compliant | the chain retains one `RecoveryController` across outer retries, so cooldown state survives; `tests/test_commit_retry_cooldown.py` |
 | Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | already compliant | a caught launch failure is classified and handled, cooled-down candidates are skipped, and an all-unavailable chain waits through `earliest_available_wait_ms`; `tests/project_policy/test_policy_invocation_cooldown.py` |
 | Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | fixed | the canary runner is registered through `AgentEntryPoint.CANARY_PROBE` and invokes `run_agent_attempt` with a recovery controller; `tests/recovery/test_canary_probe.py`, `tests/recovery/test_dead_agent_pipeline_matrix.py` |
 
@@ -79,6 +90,18 @@ the agent owner by construction. They are exemptions, not gaps.
 
 ## How the contract is enforced
 
+- **Two-state audit.** `ralph/testing/audit_cooldown_only.py` runs in
+  `make verify` as the step "cooldown-only agent availability audit
+  (audit_cooldown_only)". It fails when the ledger declares an agent
+  status other than `Eligible` and an expiring `Cooldown`, when
+  `WaitKind` gains a member beyond `AVAILABLE_NOW`, `COOLING_DOWN` and
+  `NO_CANDIDATES`, when a module outside the owner calls
+  `mark_unavailable`, or when a demotion, spent, benched or
+  never-eligible identifier appears under `ralph/recovery/` or
+  `ralph/pipeline/`. It also requires its guard tests to exist and not be skipped or xfailed:
+  `tests/recovery/test_cooldown_only_invariant.py`,
+  `tests/recovery/test_unproductive_limit_cooldown_regression.py`, and
+  `tests/test_audit_cooldown_only.py`.
 - **Structural audit.** `ralph/testing/audit_agent_failure_single_owner.py`
   runs in `make verify`. Its ownership rules in
   `ralph/testing/_single_owner_rules.py` include:
@@ -117,7 +140,7 @@ the agent owner by construction. They are exemptions, not gaps.
   (`NO_OUTPUT_AT_START`) with reasons and durations from the
   `UnavailabilityReason` policy table, as well as stalled agents reporting
   success without valid artifacts cooling down for
-  `consecutive_unproductive_limit_reached`. Conflict resolution is exercised
+  `unproductive_limit`. Conflict resolution is exercised
   separately via paused-rebase integration scenarios. Its mutation check
   proves that removing the classification-to-handler handoff makes the contract
   test fail. The production owner handoff of the main loop is pinned separately
@@ -127,12 +150,12 @@ the agent owner by construction. They are exemptions, not gaps.
 - **Owner-lifetime contract tests.**
   `tests/test_commit_retry_cooldown.py` drives the commit outer-retry path
   and requires every outer attempt to share one owner instance, preserving
-  bench state. `tests/project_policy/test_policy_invocation_cooldown.py`
+  cooldown state. `tests/project_policy/test_policy_invocation_cooldown.py`
   drives the project-policy production entry point and requires an
   all-unavailable chain to wait through `earliest_available_wait_ms` and a
   caught launch failure to reach the owner.
 - **Conflict-resolution contract.** A no-progress attempt has a typed
-  outcome and is benched with its typed reason, including
+  outcome and cools down with its typed reason, including
   `no_output_at_start`, `no_output_after_activity`, or
   `dead_agent_no_progress`; it counts against the owner budget. Selection and
   waiting remain owner decisions, and the driver does not replace a

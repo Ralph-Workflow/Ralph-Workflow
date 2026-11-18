@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ResolverChoice",
-    "bench_resolver",
     "choose_resolver",
     "clear_resolver",
+    "record_resolver_failure",
 ]
 
 
@@ -49,7 +49,7 @@ def choose_resolver(
     )
 
 
-def bench_resolver(
+def record_resolver_failure(
     controller: RecoveryController,
     agent: str,
     raw_failure: BaseException | str | None,

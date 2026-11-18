@@ -31,16 +31,21 @@ from ralph.pipeline.resolution_outcome import (
 from ralph.policy.loader import default_dir, load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.workspace.context import WorkspaceContextError, workspace_context
 from tests._fake_git_agent_adapter import RealRepoAgentAdapter
 from tests._integration_ladder_fakes import _seed_terminal_rungs
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_spent_resolver_chain_records_exhaustion_and_escalates_once": (
-        "ruff format collapsed the multi-line assertion into a single line without altering any assertion logic; "
-        "the exhausted first continuation is read as the typed RetryLaterOutcome carrying "
-        "CANDIDATE_EXHAUSTED that replaced the ExhaustedResolutionFailure string, and the "
-        "terminal reason is now asserted as well as the spent/unavailable message"
+        "operator rule: an agent is either on cooldown or not; note_retry_exhaustion and "
+        "all_exhausted are gone, so the chain is cooled with expiring unproductive_limit "
+        "cooldowns, the test asserts a positive wait, the same single escalation, and that "
+        "the first agent is selectable again after the fake clock passes the expiry"
+    ),
+    "test_cooling_resolver_chain_records_exhaustion_and_escalates_once": (
+        "operator rule: an agent is either on cooldown or not; renamed from the spent chain "
+        "test, which now cools every agent instead of spending it"
     ),
     "test_unrelated_head_rejected_once_and_further_ticks_are_silent": (
         "bounded silent tick iterations from 2 to 1 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
@@ -329,7 +334,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     assert len(consulted) == 2
 
 
-def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
+def test_cooling_resolver_chain_records_exhaustion_and_escalates_once(
     tmp_path: Path,
     conflicted_repo: Path,
 ) -> None:
@@ -340,8 +345,10 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
     clock = FakeClock()
     controller = _controller(clock)
     for agent in _CHAIN:
-        controller.note_retry_exhaustion(_PHASE, agent)
-    assert controller.all_exhausted(_PHASE, list(_CHAIN))
+        controller.mark_agent_unavailable(
+            _PHASE, agent, reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT
+        )
+    assert controller.earliest_available_wait_ms(_PHASE, list(_CHAIN)) > 0
     assert controller.preferred_agent_index(_PHASE, list(_CHAIN)).agent is None
 
     def _exhausted_resolver(
@@ -390,6 +397,9 @@ def test_spent_resolver_chain_records_exhaustion_and_escalates_once(
         action: count for (_signature, action), count in ledger.read().repeat_counts.items()
     }
     assert charged_after == charged
+
+    clock.advance(controller.earliest_available_wait_ms(_PHASE, list(_CHAIN)) / 1000.0)
+    assert controller.preferred_agent_index(_PHASE, list(_CHAIN)).agent == "primary"
 
 
 def test_completed_rebase_landing_uses_no_resolver_and_no_critical(

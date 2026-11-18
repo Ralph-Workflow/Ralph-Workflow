@@ -16,7 +16,7 @@ from ralph.pipeline.events import AgentFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import Spent
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
@@ -43,6 +43,7 @@ QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_runtime_issued_quota_termination_cools_without_benching_or_charging": "a provider quota kill of a live session now cools the agent so the next selection falls over instead of re-invoking the rate-limited agent; the ledger-untouched and no-bench checks are kept",
+    "test_ac14_the_bench_writes_no_spent_entry_and_no_spent_agent": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires and leaves the agent selectable",
 }
 
 
@@ -208,8 +209,13 @@ def test_ac14_the_bench_writes_no_spent_entry_and_no_spent_agent() -> None:
         FailureContext(phase=PHASE, agent=AGENT, facts=_facts()),
     )
 
-    assert isinstance(controller.ledger.status(PHASE, AGENT), Spent) is False
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
+    status = controller.ledger.status(PHASE, AGENT)
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
+    clock.advance((status.until_ms - int(clock.monotonic() * 1000)) / 1000.0 + 0.001)
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
+    assert controller.unavailability_store.is_available(PHASE, AGENT) is True
 
 
 def test_ac5_a_healthy_probe_drops_the_legacy_broken_agent_reason() -> None:

@@ -21,6 +21,7 @@ from ralph.agents.support import AgentSupport
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import (
@@ -39,8 +40,13 @@ from ralph.recovery.canary_probe import (
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 pytestmark = pytest.mark.subprocess_e2e
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker": "operator rule: an agent is either on cooldown or not; with a one-attempt unproductive limit the charged attempt now starts an expiring unproductive_limit cooldown in the shared tracker, so the test asserts that non-dead cooldown and that the agent is selectable again once it expires",
+}
 
 _STUB = Path(__file__).resolve().parent / "fixtures" / "fake_trust_dialog_cli.py"
 _CORPUS_TRUST_DIALOG = (
@@ -285,9 +291,10 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
         probe,
         max_probes=1,
     )
+    clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            clock=FakeClock(start=0.0),
+            clock=clock,
             dead_agent_probe_runner=probe_runner,
             agent_max_consecutive_unproductive=1,
         )
@@ -311,15 +318,14 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
     )
     assert outcome.benches_agent is False
     store = controller.unavailability_store
-    assert store.is_available(_PROBE_PHASE, _AGENT_NAME) is True, (
-        "after a probe that could not run, the agent must be selectable again; "
-        f"observed tracker snapshot: {store.snapshot()!r}"
-    )
-    assert store.earliest_unavailable_wait_ms(_PROBE_PHASE, [_AGENT_NAME]) == 0
     reasons = store.snapshot().get("unavailability_reasons", {})
-    assert _AGENT_NAME not in reasons
-    assert controller.ledger.status(_PROBE_PHASE, _AGENT_NAME).is_spent is False
-    assert controller.snapshot()["spent_agents"] == {}
+    assert reasons.get(_AGENT_NAME) == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT), (
+        "a probe that could not run must not bench the agent as dead; the one-attempt "
+        "unproductive limit only starts an expiring cooldown; observed tracker snapshot: "
+        f"{store.snapshot()!r}"
+    )
+    assert store.earliest_unavailable_wait_ms(_PROBE_PHASE, [_AGENT_NAME]) == 60_000
+    assert "spent_agents" not in controller.snapshot()
     assert controller.false_bench_feedback.count == 0
     assert list(tmp_path.rglob(CANARY_MARKER_FILENAME)) == []
 
@@ -352,6 +358,12 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
         stdin_record,
         dialog_tail=dialog_tail,
     )
+    clock.advance(60.001)
+    assert store.is_available(_PROBE_PHASE, _AGENT_NAME) is True, (
+        "after the cooldown expires the agent must be selectable again; "
+        f"observed tracker snapshot: {store.snapshot()!r}"
+    )
+    assert controller.ledger.status(_PROBE_PHASE, _AGENT_NAME).is_eligible
 
 
 def _assert_probe_could_not_run_observations(
@@ -413,6 +425,7 @@ def _assert_probe_could_not_run_observations(
         "attempt, so the ledger must hold exactly one entry, for that agent; observed: "
         f"{controller.ledger.registered_agents(_PROBE_PHASE)!r}"
     )
-    assert agent_status.is_spent is False, (
-        f"the charged agent must not be spent; observed: {agent_status!r}"
+    assert isinstance(agent_status, Cooldown), (
+        f"the charged agent must be on an expiring cooldown; observed: {agent_status!r}"
     )
+    assert agent_status.reason == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)

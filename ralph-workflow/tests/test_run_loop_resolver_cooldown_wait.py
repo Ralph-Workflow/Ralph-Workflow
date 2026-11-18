@@ -11,7 +11,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline import run_loop
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
-from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
+from ralph.pipeline.conflict_resolution.resolver_health import record_resolver_failure
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
@@ -62,7 +62,7 @@ def test_pass_with_every_resolver_cooling_down_waits_without_working_or_charging
     ctx = _ctx(tmp_path, sleeps, FakeClock())
     for agent in resolution_chain_agents(ctx.policy_bundle):
         for _ in range(3):
-            bench_resolver(ctx.controller, agent, "kaboom")
+            record_resolver_failure(ctx.controller, agent, "kaboom")
     preamble_calls: list[object] = []
 
     def preamble(*_args: object, **_kwargs: object) -> RebaseState | None:
@@ -115,7 +115,7 @@ def test_pass_that_needs_no_resolver_still_runs_recovery_while_every_resolver_co
     ctx = _ctx(tmp_path, sleeps, FakeClock())
     for agent in resolution_chain_agents(ctx.policy_bundle):
         for _ in range(3):
-            bench_resolver(ctx.controller, agent, "kaboom")
+            record_resolver_failure(ctx.controller, agent, "kaboom")
     preamble_calls: list[object] = []
 
     def preamble(*_args: object, **_kwargs: object) -> RebaseState | None:

@@ -4,9 +4,9 @@ import pytest
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.conflict_resolution.resolver_health import (
-    bench_resolver,
     choose_resolver,
     clear_resolver,
+    record_resolver_failure,
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
@@ -30,7 +30,7 @@ def _bench_unproductive(
     count: int = 3,
 ) -> None:
     for _ in range(count):
-        bench_resolver(controller, agent, failure)
+        record_resolver_failure(controller, agent, failure)
 
 
 def test_fresh_chain_offers_highest_priority_candidate() -> None:
@@ -130,40 +130,48 @@ def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_integration_health_does_not_contaminate_development_phase": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
-        "bench leaves the agent eligible in development"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a resolution cooldown also keeps the agent out of development until it "
+        "expires, and the test asserts the shared cooldown and its expiry"
     ),
     "test_development_phase_failure_does_not_contaminate_resolution": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
-        "development-phase failure leaves the agent eligible for resolution"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a development unproductive_limit cooldown also keeps the agent out of "
+        "resolution until it expires, and the test asserts the shared cooldown and its expiry"
+    ),
+    "test_resolution_cooldown_applies_in_every_phase_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
+    ),
+    "test_development_cooldown_applies_to_resolution_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
     ),
 }
 
 
-def test_integration_health_does_not_contaminate_development_phase() -> None:
-    controller = _controller(FakeClock())
+def test_resolution_cooldown_applies_in_every_phase_until_it_expires() -> None:
+    clock = FakeClock()
+    controller = _controller(clock)
 
     _bench_unproductive(controller, "codex/a", "kaboom")
 
-    res_choice = choose_resolver(controller, CHAIN)
-    assert res_choice.agent == "cursor/auto"
+    assert choose_resolver(controller, CHAIN).agent == "cursor/auto"
+    assert controller.preferred_agent_index("development", CHAIN).agent == "cursor/auto"
+    wait_ms = choose_resolver(controller, ("codex/a",)).wait_ms
+    assert wait_ms > 0
 
-    dev_choice = controller.preferred_agent_index("development", CHAIN)
-    assert dev_choice.agent == "codex/a"
+    clock.advance(wait_ms / 1000.0)
+
+    assert choose_resolver(controller, CHAIN).agent == "codex/a"
+    assert controller.preferred_agent_index("development", CHAIN).agent == "codex/a"
 
 
-def test_development_phase_failure_does_not_contaminate_resolution() -> None:
-    from ralph.recovery.agent_failure_ledger import AttemptFact
+def test_development_cooldown_applies_to_resolution_until_it_expires() -> None:
+    from ralph.recovery.agent_failure_ledger import AttemptFact, Cooldown
 
-    controller = _controller(FakeClock())
+    clock = FakeClock()
+    controller = _controller(clock)
 
     for _ in range(3):
         controller.ledger.record(
@@ -174,8 +182,15 @@ def test_development_phase_failure_does_not_contaminate_resolution() -> None:
             )
         )
 
-    dev_choice = controller.preferred_agent_index("development", CHAIN)
-    assert dev_choice.agent == "cursor/auto"
+    status = controller.ledger.status("development", "codex/a")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
+    assert controller.preferred_agent_index("development", CHAIN).agent == "cursor/auto"
+    assert choose_resolver(controller, CHAIN).agent == "cursor/auto"
+    wait_ms = choose_resolver(controller, ("codex/a",)).wait_ms
+    assert wait_ms > 0
 
-    res_choice = choose_resolver(controller, CHAIN)
-    assert res_choice.agent == "codex/a"
+    clock.advance(wait_ms / 1000.0)
+
+    assert choose_resolver(controller, CHAIN).agent == "codex/a"
+    assert controller.preferred_agent_index("development", CHAIN).agent == "codex/a"

@@ -5,11 +5,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from ralph.agents.timeout_clock import SystemClock
-from ralph.checked_accessors import as_int, as_mapping, as_str_list
+from ralph.checked_accessors import as_int, as_mapping
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.false_bench_feedback import FalseBenchFeedback
 from ralph.recovery.unavailability_reason import (
+    _UNIVERSAL_COOLDOWN_CAP_MS,
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
 )
@@ -72,6 +73,36 @@ def _restored_unavailability_entries(
     return entries
 
 
+def _reason_cap_ms(raw_reason: object) -> int:
+    if isinstance(raw_reason, str):
+        try:
+            policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.get(UnavailabilityReason(raw_reason))
+        except ValueError:
+            policy = None
+        if policy is not None:
+            return min(policy.max_backoff_ms, _UNIVERSAL_COOLDOWN_CAP_MS)
+    return _UNIVERSAL_COOLDOWN_CAP_MS
+
+
+def _rebased_unavailable_timeouts(
+    timeouts: Mapping[str, int],
+    epoch_deadlines: Mapping[str, int],
+    reasons: Mapping[str, object],
+    *,
+    clock: Clock,
+) -> dict[str, int]:
+    now_ms = int(clock.monotonic() * 1000)
+    now_epoch_ms = int(clock.epoch() * 1000)
+    rebased: dict[str, int] = {}
+    for agent, until_ms in timeouts.items():
+        epoch_deadline = epoch_deadlines.get(agent)
+        remaining_ms = (
+            epoch_deadline - now_epoch_ms if epoch_deadline is not None else until_ms - now_ms
+        )
+        rebased[agent] = now_ms + min(max(0, remaining_ms), _reason_cap_ms(reasons.get(agent)))
+    return rebased
+
+
 @dataclass(frozen=True)
 class RecoveryControllerOptions:
     cycle_cap: int = 200
@@ -88,7 +119,6 @@ class RecoveryControllerOptions:
     unavailability_entries: dict[str, UnavailabilityEntry] | None = None
     clock: Clock | None = None
     unavailability_store: UnavailabilityStore | None = None
-    spent_agents: dict[str, set[str]] | None = None
     dead_agent_probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     dead_agent_verdict_runner: _DeadAgentVerdictRunner | None = None
     false_bench_feedback: FalseBenchFeedback | None = None
@@ -111,23 +141,33 @@ class RecoveryControllerOptions:
                 snapshot.get("backoff_attempts", {}), field="backoff_attempts"
             ).items()
         }
-        unavailable_timeouts = {
-            k: as_int(v, field=f"unavailable_timeouts[{k}]")
-            for k, v in as_mapping(
-                snapshot.get("unavailable_timeouts", {}), field="unavailable_timeouts"
-            ).items()
-        }
+        effective_clock = clock or SystemClock()
+        reasons = as_mapping(
+            snapshot.get("unavailability_reasons", {}), field="unavailability_reasons"
+        )
+        unavailable_timeouts = _rebased_unavailable_timeouts(
+            {
+                k: as_int(v, field=f"unavailable_timeouts[{k}]")
+                for k, v in as_mapping(
+                    snapshot.get("unavailable_timeouts", {}), field="unavailable_timeouts"
+                ).items()
+            },
+            {
+                k: as_int(v, field=f"unavailable_until_epoch_ms[{k}]")
+                for k, v in as_mapping(
+                    snapshot.get("unavailable_until_epoch_ms", {}),
+                    field="unavailable_until_epoch_ms",
+                ).items()
+            },
+            reasons,
+            clock=effective_clock,
+        )
         unavailability_entries = _restored_unavailability_entries(
             unavailable_timeouts,
-            as_mapping(snapshot.get("unavailability_reasons", {}), field="unavailability_reasons"),
+            reasons,
             backoff_attempts,
         )
-        spent_agents = {
-            k: set(as_str_list(v, field=f"spent_agents[{k}]"))
-            for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
-        }
 
-        effective_clock = clock or SystemClock()
         ledger_snap = snapshot.get("ledger")
         ledger: AgentFailureLedger | None = None
         if isinstance(ledger_snap, Mapping):
@@ -143,7 +183,6 @@ class RecoveryControllerOptions:
             backoff_attempts=backoff_attempts,
             unavailable_timeouts=unavailable_timeouts,
             unavailability_entries=unavailability_entries,
-            spent_agents=spent_agents,
             policy_bundle=policy_bundle,
             clock=clock,
             classifier=classifier,

@@ -234,12 +234,11 @@ def _assert_agent_failure_charged(logs: Sequence[str], unresolved_count: int) ->
 
 
 def _assert_demoted(logs: Sequence[str], agent: str, *, consecutive: int, total: int) -> None:
-    needle = (
-        f"Agent '{agent}' demoted in phase '{_RESOLUTION_PHASE}' "
-        f"(consecutive={consecutive}, total={total},"
-    )
-    assert any(needle in line for line in logs), (
-        f"expected demotion log {needle!r} in:\n" + "\n".join(logs)
+    needle = f"cooldown_decision phase={_RESOLUTION_PHASE} agent={agent} reason=unproductive_limit "
+    counters = f"unproductive_attempts consecutive={consecutive} total={total}"
+    assert any(needle in line and counters in line for line in logs), (
+        f"expected unproductive_limit cooldown log {needle!r} with {counters!r} in:\n"
+        + "\n".join(logs)
     )
 
 
@@ -345,35 +344,53 @@ def _resolves_on_third_attempt() -> tuple[_AttemptStep, ...]:
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
     ),
     "test_B2_demotion_requires_three_no_progress_attempts_after_a_drop": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
     ),
     "test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands": (
-        "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so the cooled lead is ineligible in every phase until expiry and selectable in "
+        "every phase after it, and the demotion log is now the unproductive_limit cooldown_decision"
     ),
     "test_C_all_resolvers_demoted_reports_pending_not_failed": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
     ),
     "test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_limit": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
     ),
     "test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit": (
-        "a failed attempt in a round falls over to the fallback candidate in that round, "
-        "putting fallback in cooldown while primary makes progress and hits total limit"
+        "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached "
+        "reason string is gone, the total limit starts an unproductive_limit cooldown whose "
+        "counters consecutive=1 total=9 prove it came from the total limit"
     ),
     "test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
+    ),
+    "test_E_sole_resolver_demoted_reports_pending_without_operator_handoff": (
+        "operator rule: an agent is either on cooldown or not; the sole-agent demoted message no "
+        "longer exists, the sole resolver gets an unproductive_limit cooldown_decision instead"
     ),
     "test_D4_false_return_with_count_drop_restarts_the_streak": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
-        "so the no-progress attempts that reach demotion interleave with the next candidate"
+        "so the no-progress attempts that reach demotion interleave with the next candidate; "
+        "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
+        "unproductive_limit cooldown_decision line with its counters"
     ),
 }
 
@@ -515,14 +532,18 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
 
     controller = session.recovery_controller
     assert controller is not None
-    shared_clock.recovery_clock.advance(
-        controller.unavailability_store.earliest_unavailable_wait_ms("development", ["lead"])
-        / 1000.0
-    )
     assert not controller.agent_eligibility(_RESOLUTION_PHASE, "lead").is_eligible
-    selection = controller.preferred_agent_index("development", ("lead", "second"))
-    assert selection.agent == "lead"
-    assert all(skipped_agent != "lead" for skipped_agent, _ in selection.skipped_reasons)
+    assert not controller.agent_eligibility("development", "lead").is_eligible
+    wait_ms = controller.unavailability_store.earliest_unavailable_wait_ms(
+        _RESOLUTION_PHASE, ["lead"]
+    )
+    assert wait_ms > 0
+    shared_clock.recovery_clock.advance(wait_ms / 1000.0)
+    assert controller.agent_eligibility(_RESOLUTION_PHASE, "lead").is_eligible
+    for phase in (_RESOLUTION_PHASE, "development"):
+        selection = controller.preferred_agent_index(phase, ("lead", "second"))
+        assert selection.agent == "lead"
+        assert all(skipped_agent != "lead" for skipped_agent, _ in selection.skipped_reasons)
 
 
 def test_C_all_resolvers_demoted_reports_pending_not_failed(
@@ -618,12 +639,9 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
         f"survives to the 9th total unproductive attempt; got {invocations}"
     )
     _assert_demoted(logs, "agentA", consecutive=1, total=9)
-    assert any("total_unproductive_limit_reached" in line for line in logs), (
-        "demotion must come from the TOTAL limit, never the consecutive one"
-    )
     assert not any(
-        "demoted" in line and "consecutive=3" in line and "total=3" in line for line in logs
-    ), "a streak restart must prevent the 3-consecutive demotion"
+        "reason=unproductive_limit" in line and "consecutive=3 total=3" in line for line in logs
+    ), "a streak restart must prevent the 3-consecutive cooldown"
     assert sum("Ambiguous failure classification" in line for line in logs) >= 5, (
         "every genuinely external RAW failure must still classify AMBIGUOUS"
     )
@@ -735,9 +753,6 @@ def test_E_sole_resolver_demoted_reports_pending_without_operator_handoff(
     assert isinstance(outcome, RetryLaterOutcome)
     assert outcome.on_change is not None
     assert invocations == ["solo", "solo", "solo"]
-    assert any(
-        f"Sole agent 'solo' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
-    ), "the sole-resolver demotion must carry its clear message"
     _assert_demoted(logs, "solo", consecutive=3, total=3)
     assert any(_typed_reason(6) in line for line in logs)
     _assert_not_ambiguous(logs)

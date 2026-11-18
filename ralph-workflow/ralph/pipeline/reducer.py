@@ -928,10 +928,6 @@ def _handle_owned_agent_failure(
                 facts=_route_attempt_facts(observation),
                 attempt_failed=True,
             )
-        demoted_reason = recovery.last_demoted_reason
-        if demoted_reason is not None and len(chain.agents) == 1:
-            logger.warning(demoted_reason)
-            return _enter_failed_recovery(state, demoted_reason, policy)
     selection = recovery.preferred_agent_index(
         state.phase,
         chain.agents,
@@ -1062,10 +1058,6 @@ def _handle_skip_same_agent_retries(
                     attempt_failed=True,
                     typed_signal=facts.typed_signal,
                 )
-            demoted_reason = recovery.last_demoted_reason
-            if demoted_reason is not None and len(chain.agents) == 1:
-                logger.warning(demoted_reason)
-                return _enter_failed_recovery(state, demoted_reason, policy)
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,

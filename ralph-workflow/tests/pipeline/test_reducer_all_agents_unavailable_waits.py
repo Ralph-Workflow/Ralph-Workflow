@@ -138,7 +138,7 @@ def test_failed_route_does_not_treat_agent_cooldown_as_terminal_intervention() -
         phase_chains={"planning": AgentChainState(agents=["claude"])},
     )
 
-    requires_intervention = run_loop.ledger_requires_intervention(
+    requires_intervention = run_loop.failed_route_needs_operator(
         state,
         controller,
     )

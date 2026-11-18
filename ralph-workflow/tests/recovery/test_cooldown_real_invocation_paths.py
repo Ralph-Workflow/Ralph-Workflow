@@ -24,7 +24,7 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, invoke_resolution_agent
-from ralph.pipeline.effect_executor import demotion_after_finalization
+from ralph.pipeline.effect_executor import cooldown_after_finalization
 from ralph.pipeline.integration_diagnostic import (
     handoff_integration_diagnostic,
     handoff_pending_merge_repair,
@@ -50,6 +50,15 @@ from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_resolution_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_ledger_only_cooldown_emits_cooldown_decision_with_duration_and_expiry": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+}
 
 _PRIMARY = "primary-agent"
 _NEXT = "next-agent"
@@ -134,7 +143,7 @@ def _assert_cooldown_line(
     (
         (
             AttemptEnded(facts=AttemptFacts(artifact_valid=False, workspace_changed=False)),
-            UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+            UnavailabilityReason.UNPRODUCTIVE_LIMIT,
             [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT],
             60_000,
         ),
@@ -261,7 +270,7 @@ def test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back(
     _assert_cooldown_line(
         lines,
         phase=PHASE_REMEDIATION,
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=60_000,
     )
 
@@ -473,7 +482,7 @@ def test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back(
     _assert_cooldown_line(
         lines,
         phase="commit",
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=60_000,
     )
 
@@ -522,7 +531,7 @@ def test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back
     _assert_cooldown_line(
         lines,
         phase=PHASE_RESOLUTION,
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=60_000,
     )
 
@@ -573,7 +582,7 @@ def test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_ba
     _assert_cooldown_line(
         lines,
         phase=PHASE_RESOLUTION,
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=60_000,
     )
 
@@ -644,13 +653,13 @@ def test_commit_message_no_activity_real_invocation_cools_and_falls_back(
     )
 
 
-def test_ledger_only_demotion_emits_cooldown_decision_with_duration_and_expiry() -> None:
+def test_ledger_only_cooldown_emits_cooldown_decision_with_duration_and_expiry() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     duration_ms = 60_000
 
     lines = _capture_cooldown_lines(
-        lambda: demotion_after_finalization(
+        lambda: cooldown_after_finalization(
             None,
             ledger,
             phase="development",
@@ -665,7 +674,7 @@ def test_ledger_only_demotion_emits_cooldown_decision_with_duration_and_expiry()
     _assert_cooldown_line(
         lines,
         phase="development",
-        reason=UnavailabilityReason.DEAD_AGENT_NO_PROGRESS,
+        reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT,
         duration_ms=duration_ms,
     )
 

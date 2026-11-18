@@ -420,13 +420,13 @@ When auto-integrate conflict resolution runs through its configured resolver age
 
 1. **Candidate classification**:
    - `ResolutionTerminationReason.TOOL_SURFACE_DEAD` is used strictly when an agent candidate was actively launched and its tool surface died, failed, or was terminated.
-   - When no candidate agent is eligible and none has a finite waiting cooldown (all candidates are spent or demoted), the termination reason is `ResolutionTerminationReason.CANDIDATE_EXHAUSTED`.
-   - When an agent is currently on cooldown with a finite wait remaining, `ResolutionTerminationReason.CANDIDATE_UNAVAILABLE` indicates a temporary wait rather than permanent exhaustion.
+   - When the round ends with no candidate cooling down (the live candidate list is empty, or a candidate is available now), the termination reason is `ResolutionTerminationReason.CANDIDATE_EXHAUSTED`.
+   - When an agent is currently on cooldown with a finite wait remaining, `ResolutionTerminationReason.CANDIDATE_UNAVAILABLE` indicates a wait for that cooldown to expire.
 2. **Failure ledger and escalation ladder**:
-   - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `RESOLVER_NOT_SPENT_TERMINATION_REASONS`), `CANDIDATE_EXHAUSTED` records exhaustion in the `AgentFailureLedger`. This permits the recovery escalation ladder to progress rather than looping indefinitely.
-   - `RecoveryController` exposes `all_exhausted` and `agents_now_available` to differentiate between chains that have live options remaining and chains that are completely spent.
-3. **Spent-chain and out-of-reach outcomes**:
-   - When candidate agents are exhausted (`CANDIDATE_EXHAUSTED`), the sealed outcome is `RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED)`: integration remains pending/waiting, the rebase state is preserved, and resolution retries when eligibility changes. That stop never hands off to a person.
+   - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `RESOLVER_NOT_SPENT_TERMINATION_REASONS`), `CANDIDATE_EXHAUSTED` charges the conflict budget. This permits the recovery escalation ladder to progress rather than looping indefinitely.
+   - `RecoveryController` exposes `agents_now_available` and `earliest_eligible_wait_ms` to differentiate between chains with an agent available now and chains whose agents are all cooling down.
+3. **Candidate-exhausted and out-of-reach outcomes**:
+   - When the round ends with `CANDIDATE_EXHAUSTED`, the sealed outcome is `RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED)`: integration remains pending/waiting, the rebase state is preserved, and resolution retries when eligibility changes. That stop never hands off to a person.
    - When conflicts are out of reach for agents, the sealed outcome is `NextStrategyOutcome(strategy="completion_in_place")`, and the ladder completes in place rather than requesting manual staging.
    - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` so the stop stays pending rather than reporting a failed rebase or a hand-off-to-human summary.
 
@@ -463,10 +463,10 @@ Every path that wants to attempt resolution of a rebase or merge stop goes throu
 
 The failure ledger answers eligibility for every agent, and every other consumer is a projection of that answer.
 
-1. **The ledger answer**: `ralph.recovery.agent_failure_ledger` classifies each agent as `Eligible`, `Cooldown(until_ms, reason)`, `Spent(reason)` or `Unavailable(reason)`. `project_eligibility(snapshot, phase=..., agent=..., clock=...)` is the pure projection of a ledger snapshot plus a clock; `project_chain_eligibility(...)` answers for a whole chain.
-2. **The wait answer**: `RecoveryController.eligibility_wait(phase, agents)` returns an `EligibilityWait` whose `WaitKind` is `AVAILABLE_NOW`, `COOLING_DOWN` or `NEVER_ELIGIBLE`. `NEVER_ELIGIBLE` carries `wait_ms=None`, so "nobody will ever become eligible in this run" is distinct from "someone is available now" (wait 0).
+1. **The ledger answer**: `ralph.recovery.agent_failure_ledger` classifies each agent as `Eligible` or `Cooldown(until_ms, reason)`; there is no other state. `AgentFailureLedger.status(phase, agent)` reads the agent's cooldown window from the unavailability tracker, and `eligibility(phase, agents)` answers for a whole chain.
+2. **The wait answer**: `RecoveryController.eligibility_wait(phase, agents)` returns an `EligibilityWait` whose `WaitKind` is `AVAILABLE_NOW` (wait 0), `COOLING_DOWN` (wait until the earliest cooldown expiry, with its reason) or `NO_CANDIDATES`. `NO_CANDIDATES` occurs only for an empty agent list, carries `wait_ms=None`, and is reported by `EligibilityWait.has_no_candidates`.
 3. **Projections**: `agents_now_available`, `earliest_wait_ms`, `preferred_agent_index` and the launch gate are derived from the ledger answer rather than computing eligibility independently.
-4. **Sanctioned writes**: an unavailable or spent candidate is recorded through `AgentFailureLedger.mark_unavailable(phase, agent, reason=...)` or `RecoveryController.mark_agent_unavailable(...)`. The `Spent` state is constructed by the ledger; the controller does not construct it.
+4. **Sanctioned writes**: every cooldown is started through `RecoveryController.mark_agent_unavailable(phase, agent, reason=...)` or by the ledger itself when an unproductive limit is reached; both write the one `AgentUnavailabilityTracker` with a finite expiry.
 
 ### One landed predicate
 

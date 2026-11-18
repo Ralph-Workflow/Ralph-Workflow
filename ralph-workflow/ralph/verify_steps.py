@@ -131,6 +131,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "cooldown-only agent availability audit (audit_cooldown_only)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_cooldown_only"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "repo structure audit (audit_repo_structure)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_repo_structure"),

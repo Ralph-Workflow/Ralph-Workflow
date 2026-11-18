@@ -19,5 +19,5 @@ class EligibilityWait:
         return self.kind is WaitKind.AVAILABLE_NOW
 
     @property
-    def is_never_eligible(self) -> bool:
-        return self.kind is WaitKind.NEVER_ELIGIBLE
+    def has_no_candidates(self) -> bool:
+        return self.kind is WaitKind.NO_CANDIDATES

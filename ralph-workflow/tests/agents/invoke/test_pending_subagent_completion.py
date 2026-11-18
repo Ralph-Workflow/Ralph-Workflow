@@ -24,6 +24,10 @@ from tests.agents.invoke.test_pending_subagents_turn_end import (
 
 pytestmark = pytest.mark.subprocess_e2e
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fault": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+}
+
 _SESSION_ID = "sess-pending-completion"
 _DISPATCH_ID = "toolu_pending"
 
@@ -279,9 +283,9 @@ def test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fa
     assert outcome.kind.value in ("runtime_ended", "unknown"), (
         f"the end stays a non-agent failure (observed: {outcome.kind.value!r})"
     )
-    assert controller.snapshot()["spent_agents"] == {}, (
-        "an end with pending subagents must never mark the agent spent "
-        f"(observed: {controller.snapshot()['spent_agents']!r})"
+    assert "spent_agents" not in controller.snapshot()
+    assert controller.ledger.status("development", "claude").is_eligible, (
+        "an end with pending subagents must never start a cooldown for the agent"
     )
     assert controller.unavailability_store.is_available("development", "claude") is True, (
         "an end with pending subagents must not be benched"

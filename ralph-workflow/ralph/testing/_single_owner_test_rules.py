@@ -9,6 +9,7 @@ _PRIVATE_LEDGER_COUNTERS: frozenset[str] = frozenset(
         "is_spent",
         "spent_reason",
         "cooldown_until_ms",
+        "cooldown_count",
         "consecutive_unproductive",
         "total_unproductive",
     }

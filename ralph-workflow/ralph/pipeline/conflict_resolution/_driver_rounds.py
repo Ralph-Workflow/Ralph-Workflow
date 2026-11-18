@@ -25,7 +25,7 @@ from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface as _remember_dead_surface,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
-    skipped_candidates as _skipped_candidates,
+    session_ledger,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.resolution_action import (
@@ -388,11 +388,10 @@ def _run_one_round(
     attempt = RoundAttempt(succeeded=False, invoked=False)
     revived = False
     while len(visited) < total:
-        skipped = _skipped_candidates(session, candidates)
-        selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
+        selected = _preferred_conflict_candidate(session, candidates, visited)
         if selected is None:
             if revived or not _revive_cooling_candidates(
-                session, candidates, visited, skipped, cohort_wait_ms
+                session, candidates, visited, cohort_wait_ms
             ):
                 return RoundAttempt(
                     succeeded=False, invoked=attempt.invoked, agent_ran=attempt.agent_ran
@@ -454,7 +453,6 @@ def _revive_cooling_candidates(
     session: ResolutionSession,
     candidates: tuple[str, ...],
     visited: set[int],
-    skipped: frozenset[str],
     cohort_wait_ms: int,
 ) -> bool:
     from ralph.pipeline import run_loop
@@ -465,11 +463,7 @@ def _revive_cooling_candidates(
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController) or cohort_wait_ms <= 0:
         return False
-    pending = [
-        name
-        for index, name in enumerate(candidates)
-        if index not in visited and name not in skipped
-    ]
+    pending = [name for index, name in enumerate(candidates) if index not in visited]
     cohort = [
         name
         for name in pending
@@ -503,23 +497,24 @@ def _preferred_conflict_candidate(
     session: ResolutionSession,
     candidates: tuple[str, ...],
     visited: set[int],
-    skipped: frozenset[str],
 ) -> int | None:
     from ralph.recovery.controller import RecoveryController
 
-    eligible = [
-        name
-        for index, name in enumerate(candidates)
-        if index not in visited and name not in skipped
-    ]
-    if not eligible:
+    unvisited = [name for index, name in enumerate(candidates) if index not in visited]
+    if not unvisited:
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        return candidates.index(eligible[0])
+        ledger = session_ledger(session)
+        eligible = [
+            name
+            for name in unvisited
+            if ledger is None or ledger.is_available(PHASE_RESOLUTION, name)
+        ]
+        return candidates.index(eligible[0]) if eligible else None
     selection = controller.preferred_agent_index(
         PHASE_RESOLUTION,
-        [name for name in candidates if name not in skipped],
+        list(candidates),
         exclude=frozenset(candidates[index] for index in visited),
     )
     if selection.agent is not None:

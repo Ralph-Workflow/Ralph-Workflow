@@ -130,7 +130,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import MaterializeMasterPromptFn, PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
     from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.protocol import Workspace
@@ -280,14 +280,14 @@ def _controller_and_ledger_from_deps(
 
 def _agent_unavailable_failure(agent_name: str) -> PipelineEvent:
     logger.error(
-        "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+        "Aborting agent '{}' invocation: agent is on cooldown.",
         agent_name,
     )
     _set_last_captured_retry_intent(
         AgentRetryIntent(
             action=None,
             session_id=None,
-            failure_reason="Agent unavailable or spent in failure ledger",
+            failure_reason="Agent is on cooldown",
         )
     )
     return PipelineEvent.AGENT_FAILURE
@@ -337,14 +337,14 @@ def _execute_injected_agent_runner(
     injected_controller, injected_ledger = _controller_and_ledger_from_deps(pipeline_deps, injected)
     if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
         logger.error(
-            "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+            "Aborting agent '{}' invocation: agent is on cooldown.",
             effect.agent_name,
         )
         _set_last_captured_retry_intent(
             AgentRetryIntent(
                 action=None,
                 session_id=None,
-                failure_reason="Agent unavailable or spent in failure ledger",
+                failure_reason="Agent is on cooldown",
             )
         )
         return PipelineEvent.AGENT_FAILURE
@@ -404,14 +404,14 @@ def execute_agent_effect(
         )
         if not _agent_launch_is_available(effect, injected_controller, injected_ledger):
             logger.error(
-                "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+                "Aborting agent '{}' invocation: agent is on cooldown.",
                 effect.agent_name,
             )
             _set_last_captured_retry_intent(
                 AgentRetryIntent(
                     action=None,
                     session_id=None,
-                    failure_reason="Agent unavailable or spent in failure ledger",
+                    failure_reason="Agent is on cooldown",
                 )
             )
             return PipelineEvent.AGENT_FAILURE
@@ -851,10 +851,10 @@ def _handle_recovery_attempt_failure(
     )
     controller = recovery_controller
     ledger = ctx.deps.pipeline_deps.ledger
-    demoted, demotion_reason = (
-        (False, None)
+    cooldown = (
+        None
         if outcome is not None and outcome.retries_same_agent and controller is None
-        else _demotion_after_finalization(
+        else _cooldown_after_finalization(
             controller,
             ledger,
             phase=phase,
@@ -872,12 +872,13 @@ def _handle_recovery_attempt_failure(
     )
     if charged_observation is not None:
         state.last_observation = charged_observation
-    if demoted and charged_observation is not None:
-        logger.error(
-            "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
-            "Refusing to spin; failing fast.",
+    if cooldown is not None and charged_observation is not None:
+        logger.warning(
+            "Stopping agent '{}' retries: agent is on cooldown until {} ms (reason={}); "
+            "it is retried once the cooldown expires.",
             agent,
-            demotion_reason,
+            cooldown.until_ms,
+            cooldown.reason,
         )
         _set_last_captured_retry_intent(
             AgentRetryIntent(
@@ -967,7 +968,7 @@ def _fallback_attempt_finalizer(
     return finalize
 
 
-def _demotion_after_finalization(
+def _cooldown_after_finalization(
     controller: RecoveryController | None,
     ledger: AgentFailureLedger | None,
     *,
@@ -975,28 +976,26 @@ def _demotion_after_finalization(
     agent: str,
     workspace_changed: bool | None,
     exc: BaseException | None = None,
-) -> tuple[bool, str | None]:
-    from ralph.recovery.agent_failure_ledger import Cooldown, Spent
-    from ralph.recovery.controller import is_configuration_failure, record_ledger_only_demotion
+) -> Cooldown | None:
+    from ralph.recovery.agent_failure_ledger import Cooldown as CooldownStatus
+    from ralph.recovery.controller import is_configuration_failure, record_ledger_only_attempt
 
     if is_configuration_failure(exc):
-        return False, None
+        return None
     if controller is not None:
-        status = controller.ledger.status(phase, agent)
-        demoted = not status.is_eligible
-        demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
-        return demoted, demotion_reason
+        status = controller.agent_eligibility(phase, agent)
+        return status if isinstance(status, CooldownStatus) else None
     if ledger is not None:
-        return record_ledger_only_demotion(
+        return record_ledger_only_attempt(
             ledger,
             phase=phase,
             agent=agent,
             workspace_changed=workspace_changed,
         )
-    return False, None
+    return None
 
 
-demotion_after_finalization = _demotion_after_finalization
+cooldown_after_finalization = _cooldown_after_finalization
 
 
 def _charged_observation(

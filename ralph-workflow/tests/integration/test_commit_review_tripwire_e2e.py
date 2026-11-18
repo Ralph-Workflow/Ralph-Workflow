@@ -32,7 +32,7 @@ from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline import phase_agent_handler, runner
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import Cooldown, Spent
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.controller import (
     RecoveryController,
     RecoveryControllerOptions,
@@ -52,6 +52,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
     from ralph.pro_support.hooks import RecoveryControllerFactory
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_commit_review_tripwire_legitimate_small_deletion_approved_advances_to_commit": "operator rule: an agent is either on cooldown or not; Spent and last_demoted_reason no longer exist, so the approved reviewer is asserted to be not on cooldown through controller.agent_eligibility",
+}
 
 DEFAULT_POLICY_DIR: Final[Path] = (
     Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
@@ -380,14 +384,14 @@ def test_commit_review_tripwire_legitimate_small_deletion_approved_advances_to_c
     assert ledger.status(review_phase, selected_agent).is_eligible, (
         "approved reviewer must remain eligible"
     )
-    assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent)), (
-        "approved reviewer must not be in cooldown or spent"
+    assert not isinstance(ledger.status(review_phase, selected_agent), Cooldown), (
+        "approved reviewer must not be in cooldown"
     )
     assert selected_agent not in ledger.registered_agents(review_phase), (
         "approved reviewer must record no failure attempt fact"
     )
-    assert controller.last_demoted_reason is None, (
-        f"no demotion reason must be recorded, got: {controller.last_demoted_reason}"
+    assert controller.agent_eligibility(review_phase, selected_agent).is_eligible, (
+        "no cooldown must be recorded for the approved reviewer"
     )
 
     head_after = get_head_sha(tmp_git_repo)

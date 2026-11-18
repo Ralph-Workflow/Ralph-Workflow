@@ -558,7 +558,7 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 
 ## Recovery architecture contract
 
-Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. Agent unproductivity, retry bounds, and demotion decisions are owned exclusively by `AgentFailureLedger` (`ralph/recovery/agent_failure_ledger.py`); no secondary tracker, counter, or ad-hoc retry cap elsewhere may make an overlapping demotion choice. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
+Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. Agent unproductivity, retry bounds, and starting an `unproductive_limit` cooldown are owned exclusively by `AgentFailureLedger` (`ralph/recovery/agent_failure_ledger.py`); no secondary tracker, counter, or ad-hoc retry cap elsewhere may make an overlapping cooldown choice. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
 ### Technical retry contract (mandatory)
 
@@ -566,7 +566,7 @@ All direct technical retries must stay on one shared contract. This includes sta
 
 Required invariants:
 
-1. **Single cap family and failure ledger:** `general.max_same_agent_retries` is an invocation-local TRANSPORT budget — it bounds how many physical transport attempts one invocation may make (`ralph/agents/invoke/_direct_mcp_recovery.py`). It never judges an agent's health, never demotes an agent, never puts one in cooldown, never excludes an agent, and never selects the next agent. Agent health has exactly one owner, `AgentFailureLedger`, reached through `agent_max_consecutive_unproductive` and `agent_max_total_unproductive`; no other cap, counter, or call site may decide that an agent retries, is benched, or runs next. When no owner is reachable, the reducer fails the phase closed instead of granting another attempt.
+1. **Single cap family and failure ledger:** `general.max_same_agent_retries` is an invocation-local TRANSPORT budget — it bounds how many physical transport attempts one invocation may make (`ralph/agents/invoke/_direct_mcp_recovery.py`). It never judges an agent's health, never puts an agent in cooldown, never excludes an agent, and never selects the next agent. Agent health has exactly one owner, `AgentFailureLedger`, reached through `agent_max_consecutive_unproductive` and `agent_max_total_unproductive`; no other cap, counter, or call site may decide that an agent retries, cools down, or runs next. When no owner is reachable, the reducer fails the phase closed instead of granting another attempt.
 2. **Single error format:** retry reprompts and retry hints must use the shared formatter in `ralph/recovery/retry_prompt.py`, with the failure/error block first and prompt/context references secondary.
 3. **Loopbacks are separate:** analysis/validation loopbacks are not technical retries and must not silently reuse the technical retry counter path.
 4. **Tests are required at both seams:** changes to technical retry behavior must update (a) runner-level tests for direct retry prompt generation and (b) recovery/controller-level tests for cap enforcement and chain progression.

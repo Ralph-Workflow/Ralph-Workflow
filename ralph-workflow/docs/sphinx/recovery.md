@@ -73,13 +73,13 @@ Ralph Workflow re-selects the highest-priority agent (lowest chain index) that i
 - The effect router's `_agent_name_for_phase_from_policy` calls `preferred_agent_index` for the commit-phase and parallel/agent dispatch paths.
 - The run loop's phase-entry and cooldown-resume seams call `preferred_agent_index` to re-evaluate the chain when a phase is entered and after a wait-state cooldown expiry.
 
-This guarantees that after a higher-priority agent's cooldown expires, the next invocation returns to that agent — regardless of the persisted `current_index` carried over from the prior selection. `current_index` records which agent just failed (and its spent allowance); it is **not** a search origin.
+This guarantees that after a higher-priority agent's cooldown expires, the next invocation returns to that agent — regardless of the persisted `current_index` carried over from the prior selection. `current_index` records which agent just failed (and its used retry allowance); it is **not** a search origin.
 
 When the chain selection changes (the chosen index differs from the persisted `current_index`), the run loop and dispatch boundary reset `retries` to 0, clears `last_agent_session_id`, and resets the agent retry intent — a fresh dispatch of the higher-priority agent starts with no leftover retry state from the prior path.
 
-When no agent in the chain is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, spent, or lower-priority reason for every skipped agent.
+When no agent in the chain is selectable, both the normal and skip-same-agent `AGENT_FAILURE` paths wait for the earliest cooldown rather than routing to failure. The run transcript records the phase, selected agent, and the cooldown, `excluded_from_this_selection`, or lower-priority reason for every skipped agent.
 
-Conflict-resolution rounds reconsider priority before each invocation, excluding candidates already spent in that round and dead tool surfaces. Cooling candidates are skipped; when all remaining candidates are cooling, resolution waits for expiry. Successful resolvers reset their cooldown history without advancing the chain.
+Conflict-resolution rounds reconsider priority before each invocation, excluding candidates already invoked in that round; a dead tool surface starts a `candidate_unavailable` cooldown. Cooling candidates are skipped; when all remaining candidates are cooling, resolution waits for expiry. Successful resolvers reset their cooldown history without advancing the chain.
 
 ### Exponential cooldown growth
 
@@ -103,14 +103,14 @@ A successful invocation clears only that agent's cooldown and backoff history. T
 Every attempt that ends without producing an accepted, valid artifact is classified as *unproductive*. To prevent infinite retry loops across free-retry categories (such as missing or invalid artifacts, environmental failures, and ambiguous failures that do not debit budget), agent unproductivity is tracked by a single conceptual owner: `AgentFailureLedger` in `ralph/recovery/agent_failure_ledger.py`.
 
 - **Consecutive unproductive ceiling (`agent_max_consecutive_unproductive`)**: After a configurable number of consecutive unproductive attempts by the same agent in the same phase (default `3` via `[general] agent_max_consecutive_unproductive`), the agent is placed on cooldown with exponential backoff and Ralph Workflow falls over to the next eligible agent in the chain.
-- **Total unproductive ceiling (`agent_max_total_unproductive`)**: When an attempt modifies workspace files but still ends without a valid artifact, the consecutive counter resets to allow genuine iterative progress. However, `[general] agent_max_total_unproductive` (default `9`) imposes an absolute upper limit on total unproductive attempts, demoting agents that continuously mutate files without producing the required artifact.
-- **Sole-agent exhaustion**: For an ordinary phase, if a demoted agent is the only configured agent in the chain, the phase terminates immediately with an actionable error rather than silently looping. Resolver/integration exhaustion is the exception: when every conflict-resolution candidate is demoted or otherwise ineligible, integration remains pending/waiting (the `MERGE_COMMIT_PENDING` outcome), the rebase state is preserved on disk, and resolution retries when a candidate comes off cooldown. That stop never hands off to the operator and never reports a failed rebase or integration.
-- **Cooldown expiry and success reset**: Upon cooldown expiry, the agent becomes eligible again with a fresh counter. Producing an accepted, valid artifact completely clears the agent's failure ledger history. In-progress counts survive restarts through persisted state.
+- **Total unproductive ceiling (`agent_max_total_unproductive`)**: When an attempt modifies workspace files but still ends without a valid artifact, the consecutive counter resets to allow genuine iterative progress. However, `[general] agent_max_total_unproductive` (default `9`) imposes an absolute upper limit on total unproductive attempts; reaching it starts the same `unproductive_limit` cooldown for agents that continuously mutate files without producing the required artifact.
+- **Sole-agent cooldown**: When every agent in the chain is cooling down, including a sole configured agent, the phase waits until the earliest cooldown expiry and then retries; it never fails for that. When every conflict-resolution candidate is cooling down, integration remains pending/waiting (the `MERGE_COMMIT_PENDING` outcome), the rebase state is preserved on disk, and resolution retries when a candidate comes off cooldown. That stop never hands off to the operator and never reports a failed rebase or integration.
+- **Cooldown expiry and success reset**: The cooldown reason is `unproductive_limit`; it starts at 60 seconds, doubles for each earlier `unproductive_limit` cooldown since the agent's last valid artifact, and is capped at 3600 seconds. Starting it resets the counters, and upon expiry the agent is selectable again and is retried. Producing an accepted, valid artifact completely clears the agent's failure ledger history. In-progress counts survive restarts through persisted state.
 
 ### Lock-in regression coverage
 
 - `tests/recovery/test_agent_failure_ledger.py` — consecutive and total limits, workspace-mutation resets, cooldown transitions, and snapshot round-trip serialization.
-- `tests/recovery/test_agent_failure_scenarios.py` — black-box scenario coverage verifying unproductive demotion, workspace change tolerance, recovery on success, cooldown expiry, sole-agent failure, and restart preservation.
+- `tests/recovery/test_agent_failure_scenarios.py` — black-box scenario coverage verifying the unproductive-limit cooldown, workspace change tolerance, recovery on success, cooldown expiry, sole-agent waiting, and restart preservation.
 - `tests/recovery/test_agent_selection.py` — `select_preferred_agent` is a pure index-0 scan; `skipped_reasons` enumerate every non-selected agent in priority order; multiple consecutive calls with identical rows return identical selections.
 - `tests/recovery/test_priority_agent_selection.py` — `RecoveryController.preferred_agent_index` returns the highest-priority available agent across consecutive invocations, across cooldown expiry, across successful preferred-agent runs, and across persisted `current_index` values that point past index 0.
 - `tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py` — `_reselect_preferred_agent` on phase entry ignores the persisted `current_index` and resets retries / session id / retry intent when the selection changes.
@@ -380,8 +380,8 @@ Every attempt records structured facts (`AttemptFacts`):
 
 Attribution rules classify the exit as `agent`, `runtime`, `task_or_environment`, or `unknown`. Attribution rules clear an agent; they never convict one:
 
-- Runtime-issued terminations (`quota_detector`, `supervisor_idle`, `recovery_timeout`, `post_exit_watchdog`, `operator`) and unattributed terminations of active sessions do not convict an agent and never count toward cooldown or spent state.
-- Interactive turn ends with pending subagents (stop-hook sentinel with missing artifact) resolve as `runtime_kill_unattributed` (`not_agent_fault`) and never bench.
+- Runtime-issued terminations (`quota_detector`, `supervisor_idle`, `recovery_timeout`, `post_exit_watchdog`, `operator`) and unattributed terminations of active sessions do not convict an agent and never count toward a cooldown.
+- Interactive turn ends with pending subagents (stop-hook sentinel with missing artifact) resolve as `runtime_kill_unattributed` (`not_agent_fault`) and never start a cooldown.
 - Workspace modifications, mid-run tool activity, or identical failures across chain peers attribute the failure to the task or environment.
 
 ### Canary probe
@@ -392,28 +392,28 @@ When attribution leaves an agent as suspect, Ralph Workflow runs a canary probe 
 - **Launch contract**: The probe launches only a CLI whose resolved command carries a headless selection (the configuration's own print flag, `-p`, or `--print`). A transport that carries none is not probe-safe and fails closed with the reason `transport_not_probe_safe` instead of being launched.
 - **Time and budget limits**: The probe enforces a 30-second timeout and a budget cap of at most 3 canary probes per pipeline run.
 - **Positive proof**: The probe passes only when the expected marker file is written with exact content. The marker is read on every end, so a probe that wrote it is `passed` even when the CLI then exits nonzero or the timeout elapses.
-- **Failures and unknowns**: A probe convicts an agent (`failed_reproducing_no_work`) only when positive evidence shows the agent ran (a tool-use, tool-result or child-process event kind, a non-empty tool-call list, or subagent activity) but failed to produce the marker. Stream output alone is activity, not task evidence: a CLI that printed a dialog and exited 0 is not convicted. Any failure to run, timeout, crash, prompt-only output, or exhausted probe budget resolves to inconclusive (`unknown`) with the class `probe_could_not_run` and the reason that produced it. An unknown result never benches an agent.
+- **Failures and unknowns**: A probe convicts an agent (`failed_reproducing_no_work`) only when positive evidence shows the agent ran (a tool-use, tool-result or child-process event kind, a non-empty tool-call list, or subagent activity) but failed to produce the marker. Stream output alone is activity, not task evidence: a CLI that printed a dialog and exited 0 is not convicted. Any failure to run, timeout, crash, prompt-only output, or exhausted probe budget resolves to inconclusive (`unknown`) with the class `probe_could_not_run` and the reason that produced it. An unknown result never puts an agent on cooldown.
 
-Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`, and `BrokenAgentExitError` prompt echoes) bench on first failure without running a canary probe.
+Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`, and `BrokenAgentExitError` prompt echoes) start a cooldown on first failure without running a canary probe.
 
-### Cooldown and bench duration
+### Dead-agent cooldown duration
 
 When a dead-agent verdict is confirmed, the agent is placed on cooldown with `UnavailabilityReason.DEAD_AGENT_NO_PROGRESS`:
 
 - **Backoff schedule**: Initial backoff is 10 seconds, doubling on each consecutive repeat failure.
 - **Universal ceiling**: Backoff is capped at the 5-hour universal ceiling (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000` ms).
-- **Cooldown vs. Spent**: A bench is an unavailability cooldown, never the `Spent` state. Ledger limits (3 consecutive, 9 total unproductive attempts) remain the sole path to `Spent`. During cooldown, chain selection skips the agent in favor of eligible alternatives.
+- **One cooldown system**: The dead-agent cooldown and the ledger's `unproductive_limit` cooldown (3 consecutive or 9 total unproductive attempts) live in the same tracker; an agent is either on cooldown or available. During cooldown, chain selection skips the agent in favor of available alternatives.
 
 ### Clearing backoff
 
 When an agent's cooldown expires, its next invocation serves as a production probe:
 
 - A successful attempt producing a valid artifact resets backoff history via `reset_backoff`.
-- A repeat failure re-benches the agent with exponential cooldown progression.
+- A repeat failure starts the next, longer cooldown.
 
 ### Persisted verdicts and false-bench measurement
 
-Every dead-agent verdict is recorded in the checkpoint with its underlying facts, attribution, probe outcome, and termination log (`PersistedVerdict`). Each bench opens a candidate metric keyed by the agent configuration fingerprint (agent name, binary, model, parser, transport). A subsequent success under that same configuration closes the candidate and increments the false-bench count. The run-time report displays false-bench counts to surface verdict accuracy.
+Every dead-agent verdict is recorded in the checkpoint with its underlying facts, attribution, probe outcome, and termination log (`PersistedVerdict`). Each dead-agent cooldown opens a candidate metric keyed by the agent configuration fingerprint (agent name, binary, model, parser, transport). A subsequent success under that same configuration closes the candidate and increments the false-bench count. The run-time report displays false-bench counts to surface verdict accuracy.
 
 ## Integration lifecycle authority
 

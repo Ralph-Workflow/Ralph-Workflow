@@ -47,10 +47,14 @@ from ralph.pipeline.integration_resolution_status import IntegrationResolutionSt
 from ralph.pipeline.rebase_state import PublicationDecision, RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_acceptance_scenario_9_exhausted_retry_does_not_replenish": "operator rule: an agent is either on cooldown or not; an exhausted legacy guard now migrates to counters near the limit instead of a permanent Spent state, so the reloaded agent may run again but its very next unproductive attempt starts an expiring unproductive_limit cooldown, proving the budget was not replenished",
+}
 
 
 @dataclass
@@ -472,12 +476,20 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
     assert reloaded_state is not None
     assert reloaded_state.ledger_snapshot is not None
 
+    ledger_clock = FakeClock()
     restored = AgentFailureLedger.from_snapshot(
         reloaded_state.ledger_snapshot,
-        clock=FakeClock(),
+        clock=ledger_clock,
     )
-    assert restored.status("development", "claude").is_spent is True
+    assert restored.status("development", "claude").is_eligible is True
+    replayed = restored.record(
+        AttemptFact(phase="development", agent="claude", artifact_valid=False)
+    )
+    assert isinstance(replayed.status, Cooldown)
+    assert replayed.status.reason == "unproductive_limit"
     assert restored.is_available("development", "claude") is False
+    ledger_clock.advance(restored.base_cooldown_seconds)
+    assert restored.is_available("development", "claude") is True
 
     mock_invoke = MagicMock()
     prompt_file = tmp_path / "PROMPT.md"
@@ -503,8 +515,8 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
         state=reloaded_state,
         invoke_agent=mock_invoke,
     )
-    assert event == PipelineEvent.AGENT_FAILURE
-    assert mock_invoke.call_count == 0
+    assert event == PipelineEvent.AGENT_SUCCESS
+    assert mock_invoke.call_count == 1
 
     prior = RebaseState(
         consecutive_conflicts=64,

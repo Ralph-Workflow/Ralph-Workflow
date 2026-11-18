@@ -26,7 +26,7 @@ from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.run_loop import build_recovery_controller
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Spent
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
@@ -53,6 +53,15 @@ OTHER = "agent_b"
 QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 LIMIT_PHRASE = "You've hit your session limit"
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the agent stays eligible and the key is absent",
+    "test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires",
+    "test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so the test asserts the agent stays eligible and the key is absent",
+    "test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts two attempts below the limit leave the agent eligible without a cooldown",
+    "test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak": "operator rule: an agent is either on cooldown or not; demoted was renamed cooldown_started, so the test asserts the third attempt starts an unproductive_limit cooldown",
+    "test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak": "operator rule: an agent is either on cooldown or not; demoted was renamed cooldown_started with identical assertions",
+}
 
 
 def _policy() -> PipelinePolicy:
@@ -177,8 +186,8 @@ def test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent() -> None:
 
     reduce(state, _failure_event(), _policy(), recovery=controller)
 
-    assert isinstance(controller.ledger.status(PHASE, AGENT), Spent) is False
-    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
+    assert "spent_agents" not in controller.snapshot()
 
 
 def test_ac2_the_selection_evidence_never_labels_the_agent_spent_after_one_attempt(
@@ -216,7 +225,8 @@ def test_ac10_typed_provider_signals_bench_on_first_failure_without_a_probe(
 
 
 def test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner() -> None:
-    controller = _controller()
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock)
 
     reduce(
         _state(agents=(AGENT, OTHER), intent=_skip_intent()),
@@ -226,7 +236,11 @@ def test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner() -
     )
 
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
-    assert controller.ledger.status(PHASE, AGENT).is_spent is False
+    status = controller.ledger.status(PHASE, AGENT)
+    assert isinstance(status, Cooldown)
+    assert status.reason == DEAD
+    clock.advance((status.until_ms - int(clock.monotonic() * 1000)) / 1000.0 + 0.001)
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
 
 
 def test_ac10_the_second_confirmed_failure_escalates_per_the_policy_table() -> None:
@@ -307,8 +321,8 @@ def test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench() -
     )
 
     assert controller.unavailability_store.is_available(PHASE, AGENT) is True
-    assert controller.ledger.status(PHASE, AGENT).is_spent is False
-    assert controller.snapshot()["spent_agents"] == {}
+    assert controller.ledger.status(PHASE, AGENT).is_eligible
+    assert "spent_agents" not in controller.snapshot()
 
 
 def test_ac7_the_runtime_attributed_end_is_labelled_with_its_cause_in_the_persisted_record(
@@ -414,7 +428,8 @@ def test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent(
     ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
     outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
 
-    assert isinstance(outcome.status, Spent) is False
+    assert outcome.status.is_eligible
+    assert outcome.cooldown_started is False
 
 
 def test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak() -> None:
@@ -425,7 +440,9 @@ def test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak(
     outcome = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))
 
     assert outcome.consecutive_unproductive == 3
-    assert outcome.demoted is True
+    assert outcome.cooldown_started is True
+    assert isinstance(outcome.status, Cooldown)
+    assert outcome.status.reason == "unproductive_limit"
 
 
 def test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak() -> None:
@@ -436,8 +453,8 @@ def test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak()
     second = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
     third = ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=False))
 
-    assert reset.demoted is False
-    assert second.demoted is False
-    assert third.demoted is False
+    assert reset.cooldown_started is False
+    assert second.cooldown_started is False
+    assert third.cooldown_started is False
     assert ledger.status(PHASE, AGENT).is_eligible is True
     assert ledger.is_available(PHASE, AGENT) is True

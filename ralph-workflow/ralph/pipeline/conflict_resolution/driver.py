@@ -36,7 +36,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     session_ledger,
-    skipped_candidates,
 )
 from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.graph import (
@@ -1138,33 +1137,14 @@ def _execute_round_loop(
 
 
 def _can_continue_controller_rounds(
-    session: ResolutionSession,
     controller: RecoveryController,
     live: Sequence[str],
 ) -> bool:
-    from ralph.recovery.agent_failure_ledger import AgentStatus, Cooldown, Spent
+    from ralph.recovery.agent_failure_ledger import Cooldown
 
-    chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
-    ledger_statuses: dict[str, AgentStatus] = dict(
-        controller.ledger.eligibility(PHASE_RESOLUTION, live)
-    )
-
-    def _is_spent_or_demoted(agent: str, status: AgentStatus) -> bool:
-        if isinstance(status, Spent):
-            return True
-        if isinstance(status, Cooldown) and status.reason in (
-            "consecutive_unproductive_limit_reached",
-            "dead_agent_no_progress",
-        ):
-            return True
-        l_status = ledger_statuses.get(agent)
-        return (
-            isinstance(l_status, Cooldown)
-            and l_status.reason == "consecutive_unproductive_limit_reached"
-        )
-
-    if all(_is_spent_or_demoted(agent, status) for agent, status in chain_statuses):
+    if controller.every_agent_cooling_for_no_progress(PHASE_RESOLUTION, live):
         return False
+    chain_statuses = controller.chain_eligibility(PHASE_RESOLUTION, live)
     wait_ms = controller.earliest_available_wait_ms(PHASE_RESOLUTION, live)
     provider_fallover_pending = len(live) > 1 and any(
         isinstance(status, Cooldown) and status.reason == "provider_unavailable"
@@ -1180,18 +1160,16 @@ def _ledger_can_continue(
     live: list[str],
     rounds_spent: int,
 ) -> bool:
-    if ledger.all_exhausted(PHASE_RESOLUTION, live):
-        return False
     if rounds_spent == 0:
-        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
-        return ledger.any_eligible(PHASE_RESOLUTION, live) or (wait is not None and wait > 0)
+        return (
+            ledger.any_eligible(PHASE_RESOLUTION, live)
+            or ledger.earliest_wait_ms(PHASE_RESOLUTION, live) > 0
+        )
     return ledger.any_eligible(PHASE_RESOLUTION, live)
 
 
 def can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
-
-    skipped = skipped_candidates(session, candidates)
-    live = [name for name in candidates if name not in skipped]
+    live = list(candidates)
     if not live or (
         isinstance(session.recovery_state, PipelineState)
         and session.recovery_state.phase != PHASE_RESOLUTION
@@ -1199,7 +1177,7 @@ def can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...])
         return False
     controller = session.recovery_controller
     if controller is not None:
-        return _can_continue_controller_rounds(session, controller, live)
+        return _can_continue_controller_rounds(controller, live)
     ledger = session_ledger(session)
     if ledger is not None:
         return _ledger_can_continue(ledger, live, session.rounds_spent)
@@ -1271,14 +1249,11 @@ def _agent_unavailability_reason(
         u_reasons = snap.get("unavailability_reasons", {})
         if isinstance(u_reasons, dict) and agent in u_reasons:
             return str(u_reasons[agent])
-        reason = controller.ledger.failure_reason(PHASE_RESOLUTION, agent)
-        if reason:
-            return reason
     elif ledger is not None:
         reason = ledger.failure_reason(PHASE_RESOLUTION, agent)
         if reason:
             return reason
-    return "spent"
+    return "no cooldown"
 
 
 def _handle_dead_candidate_chain(
@@ -1296,8 +1271,7 @@ def _handle_dead_candidate_chain(
         session.initial_conflicted_count = len(paths)
     session.unresolved_paths = paths
 
-    barred = skipped_candidates(session, tuple(candidates))
-    live_candidates = [agent for agent in candidates if agent not in barred]
+    live_candidates = list(candidates)
 
     if (
         session.terminal_reason in _CHAIN_STATE_TERMINATION_REASONS

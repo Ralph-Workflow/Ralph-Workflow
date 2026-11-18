@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInactivityTimeoutError
@@ -10,6 +11,26 @@ from tests.recovery._scenario_harness import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine": "operator rule: an agent is either on cooldown or not; the demotion log and total_unproductive_limit_reached reason no longer exist, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with total=9",
+    "test_scenario_varying_output_cannot_evade_the_consecutive_limit": "operator rule: an agent is either on cooldown or not; the demotion log no longer exists, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with consecutive=3",
+    "test_scenario_missing_observation_never_inherits_the_previous_attempt_fact": "operator rule: an agent is either on cooldown or not; the demotion log and consecutive_unproductive_limit_reached reason no longer exist, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with consecutive=3 total=4",
+}
+
+_COOLDOWN_PATTERN = re.compile(
+    r"cooldown_decision phase=development agent=agent_a reason=unproductive_limit .*"
+    r"unproductive_attempts consecutive=(\d+) total=(\d+)"
+)
+
+
+def _cooldown_counts(logs: list[str]) -> list[tuple[int, int]]:
+    counts: list[tuple[int, int]] = []
+    for line in logs:
+        match = _COOLDOWN_PATTERN.search(line)
+        if match is not None:
+            counts.append((int(match.group(1)), int(match.group(2))))
+    return counts
 
 
 def test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine(
@@ -36,11 +57,9 @@ def test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine
     assert outcome.final_state.phase == "complete"
     assert outcome.exit_code == 0
 
-    assert any("Agent 'agent_a' demoted in phase 'development'" in line for line in outcome.logs), (
-        "the demotion must be logged with its phase and agent"
-    )
-    assert any("total_unproductive_limit_reached" in line for line in outcome.logs), (
-        "the demotion must be logged with the reason it was reached"
+    assert set(_cooldown_counts(outcome.logs)) == {(0, 9)}, (
+        "the unproductive_limit cooldown must be logged with its phase, agent and the total that "
+        "started it"
     )
 
 
@@ -75,8 +94,9 @@ def test_scenario_varying_output_cannot_evade_the_consecutive_limit(tmp_path: Pa
     assert outcome.agent_outputs[:3] == list(prose_variants)
     assert len(set(outcome.agent_outputs[:3])) == 3
 
-    assert any("Agent 'agent_a' demoted in phase 'development'" in line for line in outcome.logs), (
-        "the demotion must be logged with its phase and agent"
+    assert set(_cooldown_counts(outcome.logs)) == {(3, 3)}, (
+        "the unproductive_limit cooldown must be logged with its phase, agent and the "
+        "consecutive count that started it"
     )
 
 
@@ -100,9 +120,7 @@ def test_scenario_missing_observation_never_inherits_the_previous_attempt_fact(
     assert outcome.final_state.phase == "complete"
     assert outcome.exit_code == 0
 
-    assert any("Agent 'agent_a' demoted in phase 'development'" in line for line in outcome.logs), (
-        "the demotion must be logged with its phase and agent"
-    )
-    assert any("consecutive_unproductive_limit_reached" in line for line in outcome.logs), (
-        "the demotion must be logged with the reason it was reached"
+    assert set(_cooldown_counts(outcome.logs)) == {(3, 4)}, (
+        "the unproductive_limit cooldown must be logged with its phase, agent and the "
+        "consecutive count that started it"
     )

@@ -123,9 +123,10 @@ def resolver_allowed(
     **kwargs: object,
 ) -> bool:
     del kwargs
+    del phase
     effective_ledger = resolve_failure_ledger(ledger, session=session)
     if effective_ledger is not None and candidates:
-        return not effective_ledger.all_exhausted(phase, candidates)
+        return True
     return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)
 
 

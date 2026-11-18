@@ -18,7 +18,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
@@ -35,10 +35,11 @@ from ralph.pipeline.resolution_outcome import (
     UnknownOutcome,
 )
 from ralph.recovery import dead_agent_probe
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -64,8 +65,24 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
     "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
+    "test_an_uninstalled_candidate_hands_over_to_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts the candidate_unavailable cooldown on the uninstalled candidate and that it expires on the fake clock",
+    "test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt": "operator rule: an agent is either on cooldown or not; a chain at its total limit is cooling down instead of Spent, so the uninvoked round reports CANDIDATE_UNAVAILABLE rather than CANDIDATE_EXHAUSTED",
+    "test_ordinary_phase_two_agent_fall_over_then_wait": "operator rule: an agent is either on cooldown or not; the unproductive limit cooldown reason is now unproductive_limit",
+    "test_one_candidates_infrastructure_fault_does_not_bury_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts no candidate is on a candidate_unavailable cooldown after an infrastructure fault",
 }
 _orig_run_conflict_resolution_pipeline = driver_module.run_conflict_resolution_pipeline
+
+
+def _cooling(session: ResolutionSession, candidates: tuple[str, ...]) -> dict[str, Cooldown]:
+    ledger = session_ledger(session)
+    if ledger is None:
+        return {}
+    cooling: dict[str, Cooldown] = {}
+    for name in candidates:
+        status = ledger.status(PHASE_RESOLUTION, name)
+        if isinstance(status, Cooldown):
+            cooling[name] = status
+    return cooling
 
 
 class _ExecFakeClock(FakeClock):
@@ -513,8 +530,8 @@ def test_next_round_keeps_the_successful_highest_priority_candidate(
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         called.append((agent_name, round_index))
         if round_index == 2:
-            session.recovery_controller.ledger.mark_unavailable(
-                PHASE_RESOLUTION, "one", reason="unproductive"
+            session.recovery_controller.mark_agent_unavailable(
+                PHASE_RESOLUTION, "one", reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT
             )
         return True
 
@@ -890,9 +907,9 @@ def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
     assert not any(
         line.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value) for line in lines
     )
-    assert any(
-        line.startswith(ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value) for line in lines
-    )
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    assert any("conflict resolution remains pending" in line for line in lines)
+    assert any(ResolutionTerminationReason.CANDIDATE_UNAVAILABLE.value in line for line in lines)
 
 
 def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1126,8 +1143,11 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
             is True
         )
         assert called == ["pi", "claude"]
-        assert "pi" in skipped_candidates(session, ("pi", "claude"))
-        assert "claude" not in skipped_candidates(session, ("pi", "claude"))
+        cooling = _cooling(session, ("pi", "claude"))
+        assert cooling["pi"].reason == "candidate_unavailable"
+        assert "claude" not in cooling
+        _clock.advance((cooling["pi"].until_ms - int(_clock.monotonic() * 1000)) / 1000.0)
+        assert _cooling(session, ("pi", "claude")) == {}
     finally:
         reset_executors(token)
 
@@ -1231,7 +1251,10 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
             )
             is False
         )
-        assert skipped_candidates(session, ("one", "two")) == frozenset()
+        assert all(
+            status.reason != "candidate_unavailable"
+            for status in _cooling(session, ("one", "two")).values()
+        )
         assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
     finally:
         reset_executors(token)
@@ -1407,11 +1430,11 @@ def test_ordinary_phase_two_agent_fall_over_then_wait(
         assert selection.skipped_reasons == (
             (
                 "first",
-                "cooldown (60000ms remaining, reason=consecutive_unproductive_limit_reached)",
+                "cooldown (60000ms remaining, reason=unproductive_limit)",
             ),
             (
                 "second",
-                "cooldown (60000ms remaining, reason=consecutive_unproductive_limit_reached)",
+                "cooldown (60000ms remaining, reason=unproductive_limit)",
             ),
         )
 

@@ -18,6 +18,10 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_recovery_memory_regression": "operator rule: an agent is either on cooldown or not; when every chain agent is cooling down the controller now returns the all-agents-unavailable wait state with a positive finite wait instead of routing to failed_terminal, so each cycle asserts the wait state and a bounded fallover history",
+}
+
 _RECOVERY_CYCLE_CAP = 4
 _RECOVERY_ITERATION_COUNT = 8
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
@@ -120,8 +124,11 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
             _AgentInactivityTimeoutError("opencode idle"),
             FailureContext(phase="development", agent="opencode"),
         )
-        assert state.phase == "failed_terminal"
-        assert state.recovery_cycle_count == cycle
+        assert state.phase == "development"
+        assert state.is_waiting_state is True
+        assert 0 < state.last_retry_delay_ms <= 60_000
+        assert state.recovery_cycle_count == 0
+        assert len(state.fallover_history) == min(cycle, _RECOVERY_CYCLE_CAP)
 
         ckpt.save(state, checkpoint_path)
         loaded = ckpt.load(checkpoint_path)

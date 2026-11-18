@@ -38,7 +38,7 @@ from ralph.pipeline import effect_executor, phase_agent_handler, runner
 from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.attempt_runner import run_agent_attempt
 from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-from ralph.pipeline.effect_executor import demotion_after_finalization
+from ralph.pipeline.effect_executor import cooldown_after_finalization
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
@@ -51,7 +51,6 @@ from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,
     Cooldown,
-    Spent,
 )
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.controller import (
@@ -95,8 +94,12 @@ REVIEWED_CONTENT = "print('reviewed change')\n"
 
 RALPH_TEST_CHANGE_REASONS: Final[dict[str, str]] = {
     "FakeClock_recovery_and_ledger": (
-        "graded PASS and ledger-only demotion paths use FakeClock; "
+        "graded PASS and ledger-only cooldown paths use FakeClock; "
         "PASS / no-AttemptFact / real-commit asserts unchanged"
+    ),
+    "test_ledger_only_fallback_cooldown_records_no_fact_for_configuration_failure": (
+        "operator rule: an agent is either on cooldown or not; renamed from demotion and "
+        "calls cooldown_after_finalization, asserting the agent is not on cooldown"
     ),
 }
 
@@ -481,7 +484,7 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
         "the ledger must be inspected for the agent the policy chain actually selected"
     )
     assert ledger.is_available(review_phase, selected_agent)
-    assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent))
+    assert not isinstance(ledger.status(review_phase, selected_agent), Cooldown)
     assert ledger.status(review_phase, selected_agent).is_eligible, (
         "a graded PASS must not charge the agent failure ledger"
     )
@@ -530,10 +533,10 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
         "the mismatching required-artifact type must be rejected before the agent is invoked"
     )
     assert ledger.is_available(review_phase, selected_agent), (
-        "an engine-side contract mismatch must not bench or demote the agent"
+        "an engine-side contract mismatch must not cool the agent down"
     )
-    assert not isinstance(ledger.status(review_phase, selected_agent), (Cooldown, Spent)), (
-        "an engine-side contract mismatch must not place the agent in cooldown or spent"
+    assert not isinstance(ledger.status(review_phase, selected_agent), Cooldown), (
+        "an engine-side contract mismatch must not place the agent in cooldown"
     )
     assert ledger.status(review_phase, selected_agent).is_eligible, (
         "an engine-side contract mismatch must not charge the consecutive_unproductive counter"
@@ -663,8 +666,8 @@ def test_controller_backed_finalize_attempt_records_no_fact_for_configuration_fa
     )
 
     status = controller.ledger.status(phase, agent)
-    assert not isinstance(status, (Cooldown, Spent)), (
-        f"Agent must not be demoted or cooled down for engine configuration failure: {status!r}"
+    assert not isinstance(status, Cooldown), (
+        f"Agent must not be cooled down for engine configuration failure: {status!r}"
     )
 
     other_agent = "genuine-failure-agent"
@@ -709,7 +712,7 @@ def test_controller_backed_finalize_attempt_checkpoint_mismatch_records_no_fact(
     )
 
 
-def test_ledger_only_fallback_demotion_records_no_fact_for_configuration_failure() -> None:
+def test_ledger_only_fallback_cooldown_records_no_fact_for_configuration_failure() -> None:
     phase = "development_commit_review"
     agent = "fallback-agent-config"
 
@@ -722,7 +725,7 @@ def test_ledger_only_fallback_demotion_records_no_fact_for_configuration_failure
         f"Contract mismatch: phase requires 'commit_review' but prompt asked for '{RETIRED_PHASE_NAME}'"
     )
 
-    demotion_after_finalization(
+    cooldown_after_finalization(
         None,
         ledger,
         phase=phase,
@@ -734,4 +737,4 @@ def test_ledger_only_fallback_demotion_records_no_fact_for_configuration_failure
     assert ledger.is_available(phase, agent), (
         "Ledger fallback must not record AttemptFact on engine configuration failure"
     )
-    assert not isinstance(ledger.status(phase, agent), (Cooldown, Spent))
+    assert not isinstance(ledger.status(phase, agent), Cooldown)

@@ -10,12 +10,29 @@ from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_lowest_index_wins_among_selectable_agents": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_agent_in_cooldown_never_picked_even_if_index_zero": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_allowance_spent_agent_never_picked": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
+    "test_current_agent_returned_when_highest_priority_selectable": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_returns_none_when_nothing_selectable": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
+    "test_skipped_reasons_formatting_and_evidence": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
+    "test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_zero_ms": "operator rule: an agent is either on cooldown or not; a non-cooling excluded agent is now reported excluded_from_this_selection instead of unavailable",
+    "test_select_preferred_agent_is_a_pure_index_zero_scan": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason; the zero-cooldown excluded agent is reported excluded_from_this_selection",
+    "test_select_preferred_agent_returns_none_when_no_agent_selectable": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
+    "test_select_preferred_agent_index_zero_with_full_remaining_cooldown": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_select_preferred_agent_repeated_calls_with_same_rows_are_stable": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
+    "test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable": "operator rule: an agent is either on cooldown or not; a non-cooling excluded agent is now reported excluded_from_this_selection instead of unavailable",
+    "test_preferred_agent_index_deduplicates_unchanged_spent_chain": "operator rule: an agent is either on cooldown or not; the removed note_retry_exhaustion spent marking is replaced by record_attempt reaching the retry_limit cooldown, and the test also asserts the agent is selected again after the cooldown expires",
+}
+
 
 def test_lowest_index_wins_among_selectable_agents() -> None:
     rows = [
-        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 0
@@ -28,11 +45,9 @@ def test_lowest_index_wins_among_selectable_agents() -> None:
 
 def test_agent_in_cooldown_never_picked_even_if_index_zero() -> None:
     rows = [
-        agent_availability(
-            agent="claude", available=False, cooldown_ms_remaining=5000, spent=False
-        ),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=5000),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 1
@@ -45,23 +60,28 @@ def test_agent_in_cooldown_never_picked_even_if_index_zero() -> None:
 
 def test_allowance_spent_agent_never_picked() -> None:
     rows = [
-        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=True),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(
+            agent="claude",
+            available=False,
+            cooldown_ms_remaining=60_000,
+            cooldown_reason="retry_limit",
+        ),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 1
     assert selection.agent == "opencode"
     assert selection.skipped_reasons == (
-        ("claude", "spent"),
+        ("claude", "cooldown (60000ms remaining, reason=retry_limit)"),
         ("agy", "lower_priority"),
     )
 
 
 def test_current_agent_returned_when_highest_priority_selectable() -> None:
     rows = [
-        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 0
@@ -70,39 +90,45 @@ def test_current_agent_returned_when_highest_priority_selectable() -> None:
 
 def test_returns_none_when_nothing_selectable() -> None:
     rows = [
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=2000),
         agent_availability(
-            agent="claude", available=False, cooldown_ms_remaining=2000, spent=False
+            agent="opencode",
+            available=False,
+            cooldown_ms_remaining=60_000,
+            cooldown_reason="retry_limit",
         ),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index is None
     assert selection.agent is None
     assert selection.skipped_reasons == (
         ("claude", "cooldown (2000ms remaining)"),
-        ("opencode", "spent"),
+        ("opencode", "cooldown (60000ms remaining, reason=retry_limit)"),
     )
 
 
 def test_skipped_reasons_formatting_and_evidence() -> None:
     rows = [
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=1500),
         agent_availability(
-            agent="claude", available=False, cooldown_ms_remaining=1500, spent=False
+            agent="opencode",
+            available=False,
+            cooldown_ms_remaining=60_000,
+            cooldown_reason="retry_limit",
         ),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 2
     assert selection.agent == "agy"
     assert selection.skipped_reasons == (
         ("claude", "cooldown (1500ms remaining)"),
-        ("opencode", "spent"),
+        ("opencode", "cooldown (60000ms remaining, reason=retry_limit)"),
     )
     evidence = format_selection_evidence("development", selection)
     assert evidence == (
         "Phase development: Selected agent agy "
-        "(skipped claude: cooldown (1500ms remaining); opencode: spent)"
+        "(skipped claude: cooldown (1500ms remaining); opencode: cooldown (60000ms remaining, reason=retry_limit))"
     )
 
 
@@ -167,21 +193,21 @@ def test_controller_selection_evidence_includes_stored_cooldown_reason() -> None
 
 def test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_zero_ms() -> None:
     rows = [
-        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 1
     assert selection.agent == "opencode"
-    assert selection.skipped_reasons == (("claude", "unavailable"),)
+    assert selection.skipped_reasons == (("claude", "excluded_from_this_selection"),)
     assert "0ms remaining" not in selection.skipped_reasons[0][1]
 
 
 def test_select_preferred_agent_is_a_pure_index_zero_scan() -> None:
     rows = [
-        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     for _ in range(3):
         selection = select_preferred_agent(rows)
@@ -195,32 +221,37 @@ def test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_ord
             agent="claude",
             available=False,
             cooldown_ms_remaining=3000,
-            spent=False,
             cooldown_reason="no_output_at_start",
         ),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=True),
-        agent_availability(agent="agy", available=False, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="codex", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(
+            agent="opencode",
+            available=False,
+            cooldown_ms_remaining=60_000,
+            cooldown_reason="retry_limit",
+        ),
+        agent_availability(agent="agy", available=False, cooldown_ms_remaining=0),
+        agent_availability(agent="codex", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 3
     assert selection.agent == "codex"
     assert selection.skipped_reasons == (
         ("claude", "cooldown (3000ms remaining, reason=no_output_at_start)"),
-        ("opencode", "spent"),
-        ("agy", "unavailable"),
+        ("opencode", "cooldown (60000ms remaining, reason=retry_limit)"),
+        ("agy", "excluded_from_this_selection"),
     )
 
 
 def test_select_preferred_agent_returns_none_when_no_agent_selectable() -> None:
     rows = [
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=2000),
+        agent_availability(agent="opencode", available=False, cooldown_ms_remaining=5000),
         agent_availability(
-            agent="claude", available=False, cooldown_ms_remaining=2000, spent=False
+            agent="agy",
+            available=False,
+            cooldown_ms_remaining=60_000,
+            cooldown_reason="retry_limit",
         ),
-        agent_availability(
-            agent="opencode", available=False, cooldown_ms_remaining=5000, spent=False
-        ),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=True),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index is None
@@ -228,17 +259,15 @@ def test_select_preferred_agent_returns_none_when_no_agent_selectable() -> None:
     assert selection.skipped_reasons == (
         ("claude", "cooldown (2000ms remaining)"),
         ("opencode", "cooldown (5000ms remaining)"),
-        ("agy", "spent"),
+        ("agy", "cooldown (60000ms remaining, reason=retry_limit)"),
     )
 
 
 def test_select_preferred_agent_index_zero_with_full_remaining_cooldown() -> None:
     rows = [
-        agent_availability(
-            agent="claude", available=True, cooldown_ms_remaining=10_000, spent=False
-        ),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=10_000),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 1
@@ -248,9 +277,9 @@ def test_select_preferred_agent_index_zero_with_full_remaining_cooldown() -> Non
 
 def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> None:
     rows = [
-        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=True, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selections = [select_preferred_agent(rows) for _ in range(5)]
     for selection in selections:
@@ -264,16 +293,16 @@ def test_select_preferred_agent_repeated_calls_with_same_rows_are_stable() -> No
 
 def test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable() -> None:
     rows = [
-        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="opencode", available=False, cooldown_ms_remaining=0, spent=False),
-        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0, spent=False),
+        agent_availability(agent="claude", available=False, cooldown_ms_remaining=0),
+        agent_availability(agent="opencode", available=False, cooldown_ms_remaining=0),
+        agent_availability(agent="agy", available=True, cooldown_ms_remaining=0),
     ]
     selection = select_preferred_agent(rows)
     assert selection.index == 2
     assert selection.agent == "agy"
     assert selection.skipped_reasons == (
-        ("claude", "unavailable"),
-        ("opencode", "unavailable"),
+        ("claude", "excluded_from_this_selection"),
+        ("opencode", "excluded_from_this_selection"),
     )
 
 
@@ -336,8 +365,9 @@ def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> 
 def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
-    controller.note_retry_exhaustion("development", "agent_a")
-    controller.note_retry_exhaustion("development", "agent_b")
+    for agent in ("agent_a", "agent_b"):
+        for _ in range(controller.ledger.consecutive_limit):
+            controller.record_attempt("development", agent)
 
     logs: list[str] = []
     sink_id = logger.add(logs.append, level="INFO", format="{message}")
@@ -351,5 +381,10 @@ def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
             sel = controller.preferred_agent_index("development", ["agent_a", "agent_b"])
             assert sel.agent is None
         assert len(logs) == 1
+
+        clock.advance(controller.earliest_available_wait_ms("development", ["agent_a"]) / 1000.0)
+        assert controller.preferred_agent_index("development", ["agent_a", "agent_b"]).agent == (
+            "agent_a"
+        )
     finally:
         logger.remove(sink_id)

@@ -181,7 +181,10 @@ def _invoke_and_judge(
     failure_detail: Callable[[], BaseException | str | None] | None,
 ) -> bool:
     from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
-    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver, clear_resolver
+    from ralph.pipeline.conflict_resolution.resolver_health import (
+        clear_resolver,
+        record_resolver_failure,
+    )
     from ralph.workspace.context import WorkspaceContextError
 
     def _attempt() -> None:
@@ -192,7 +195,7 @@ def _invoke_and_judge(
     except WorkspaceContextError:
         raise
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        bench_resolver(controller, agent, exc)
+        record_resolver_failure(controller, agent, exc)
         raise
     verified, _reason = _check_operation_completion_proof(inspection_root, record, collector=col)
     if verified:
@@ -200,14 +203,14 @@ def _invoke_and_judge(
     else:
         detail = failure_detail() if failure_detail is not None else None
         if detail is not None:
-            bench_resolver(
+            record_resolver_failure(
                 controller,
                 agent,
                 detail,
                 workspace_changed=workspace_changed,
             )
         else:
-            bench_resolver(
+            record_resolver_failure(
                 controller,
                 agent,
                 None,

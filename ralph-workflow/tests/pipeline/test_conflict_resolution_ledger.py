@@ -9,13 +9,13 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.resolver_health import (
-    bench_resolver,
     choose_resolver,
     clear_resolver,
+    record_resolver_failure,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
@@ -92,28 +92,36 @@ def test_resolver_falls_over_after_three_failures(
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_phase_isolation_through_public_integration_flow": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
-        "development-phase failure leaves the agent eligible for resolution"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a development unproductive_limit cooldown keeps the agent out of resolution "
+        "until it expires, after which it resolves again, and the test asserts both"
     ),
     "test_integration_health_does_not_contaminate_other_phases": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a resolution "
-        "bench leaves the agent eligible in other phases"
+        "operator rule: an agent is either on cooldown or not; replaced by "
+        "test_resolution_cooldown_applies_to_other_phases_until_it_expires because the "
+        "cooldown is keyed by agent only and applies in every phase until it expires"
     ),
     "test_other_phase_failure_does_not_contaminate_resolution": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a "
-        "development-phase failure leaves the agent eligible for resolution"
+        "operator rule: an agent is either on cooldown or not; replaced by "
+        "test_other_phase_cooldown_applies_to_resolution_until_it_expires because the "
+        "cooldown is keyed by agent only and applies in every phase until it expires"
+    ),
+    "test_resolution_cooldown_applies_to_other_phases_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; asserts the agent-keyed "
+        "cooldown and its expiry"
+    ),
+    "test_other_phase_cooldown_applies_to_resolution_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; asserts the agent-keyed "
+        "cooldown and its expiry"
+    ),
+    "test_fault_activity_text_does_not_exclude_candidate": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, "
+        "so the test asserts the candidate stays eligible in the session ledger"
+    ),
+    "test_ledger_is_sole_authority_for_candidate_exclusion": (
+        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, "
+        "so the test asserts the ledger starts an expiring unproductive_limit cooldown and "
+        "the candidate is available again after it expires"
     ),
     "test_resolver_falls_over_after_three_failures": (
         "the shared controller falls over to the next eligible candidate in the same round "
@@ -277,7 +285,9 @@ def test_phase_isolation_through_public_integration_flow(
                 )
             )
         assert not ledger.is_available("development", "agentA")
-        assert ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
+        assert not ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
+        cooldown_wait_ms = ledger.earliest_wait_ms(driver_module.PHASE_RESOLUTION, ["agentA"])
+        assert cooldown_wait_ms > 0
 
         invocations: list[str] = []
 
@@ -304,8 +314,12 @@ def test_phase_isolation_through_public_integration_flow(
         )
 
         assert succeeded is True
-        assert invocations == ["agentA"]
+        assert invocations == ["agentB"]
         assert not ledger.is_available("development", "agentA")
+
+        clock.advance(cooldown_wait_ms / 1000.0)
+        assert ledger.is_available("development", "agentA")
+        assert ledger.is_available(driver_module.PHASE_RESOLUTION, "agentA")
 
         resolved = False
         session2 = _session_with_controller(clock, ledger)
@@ -315,8 +329,6 @@ def test_phase_isolation_through_public_integration_flow(
             nonlocal resolved
             del prompt_path, round_index
             invocations2.append(agent_name)
-            if agent_name == "agentA":
-                raise RuntimeError("agentA resolution failure")
             resolved = True
             return True
 
@@ -334,8 +346,8 @@ def test_phase_isolation_through_public_integration_flow(
             session=session2,
         )
         assert succeeded2 is True
-        assert "agentB" in invocations2
-        assert not ledger.is_available("development", "agentA")
+        assert invocations2 == ["agentA"]
+        assert ledger.is_available("development", "agentA")
         assert ledger.is_available("development", "agentB")
     finally:
         reset_executors(token)
@@ -348,9 +360,9 @@ def test_all_candidates_cooling_down_reports_pending_wait(
     controller = _make_controller(clock)
 
     for _ in range(3):
-        bench_resolver(controller, "agentA", "error A")
+        record_resolver_failure(controller, "agentA", "error A")
     for _ in range(3):
-        bench_resolver(controller, "agentB", "error B")
+        record_resolver_failure(controller, "agentB", "error B")
 
     choice = choose_resolver(controller, ("agentA", "agentB"))
     assert choice.agent is None
@@ -361,21 +373,25 @@ def test_all_candidates_cooling_down_reports_pending_wait(
     assert choice_after.agent == "agentA"
 
 
-def test_integration_health_does_not_contaminate_other_phases() -> None:
+def test_resolution_cooldown_applies_to_other_phases_until_it_expires() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
     for _ in range(3):
-        bench_resolver(controller, "agentA", "resolution failure")
+        record_resolver_failure(controller, "agentA", "resolution failure")
 
-    res_choice = choose_resolver(controller, ("agentA", "agentB"))
-    assert res_choice.agent == "agentB"
+    assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
+    assert controller.preferred_agent_index("development", ("agentA", "agentB")).agent == "agentB"
+    wait_ms = choose_resolver(controller, ("agentA",)).wait_ms
+    assert wait_ms > 0
 
-    dev_choice = controller.preferred_agent_index("development", ("agentA", "agentB"))
-    assert dev_choice.agent == "agentA"
+    clock.advance(wait_ms / 1000.0)
+
+    assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
+    assert controller.preferred_agent_index("development", ("agentA", "agentB")).agent == "agentA"
 
 
-def test_other_phase_failure_does_not_contaminate_resolution() -> None:
+def test_other_phase_cooldown_applies_to_resolution_until_it_expires() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -388,11 +404,17 @@ def test_other_phase_failure_does_not_contaminate_resolution() -> None:
             )
         )
 
-    dev_choice = controller.preferred_agent_index("development", ("agentA", "agentB"))
-    assert dev_choice.agent == "agentB"
+    status = controller.ledger.status("development", "agentA")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
+    assert controller.preferred_agent_index("development", ("agentA", "agentB")).agent == "agentB"
+    assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
+    wait_ms = choose_resolver(controller, ("agentA",)).wait_ms
+    assert wait_ms > 0
 
-    res_choice = choose_resolver(controller, ("agentA", "agentB"))
-    assert res_choice.agent == "agentA"
+    clock.advance(wait_ms / 1000.0)
+
+    assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
 
 
 def test_clear_resolver_resets_resolution_history() -> None:
@@ -400,14 +422,14 @@ def test_clear_resolver_resets_resolution_history() -> None:
     controller = _make_controller(clock)
 
     for _ in range(3):
-        bench_resolver(controller, "agentA", "fail 1")
+        record_resolver_failure(controller, "agentA", "fail 1")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
 
     clear_resolver(controller, "agentA")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
 
     for _ in range(3):
-        bench_resolver(controller, "agentA", "fail after clear")
+        record_resolver_failure(controller, "agentA", "fail after clear")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
 
 
@@ -487,7 +509,7 @@ def test_faulty_health_recording_fails_closed() -> None:
     )
 
     with pytest.raises(RuntimeError):
-        bench_resolver(controller, "agentA", "error")
+        record_resolver_failure(controller, "agentA", "error")
 
     with pytest.raises(RuntimeError):
         clear_resolver(controller, "agentA")
@@ -746,10 +768,11 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
 
 
 def test_fault_activity_text_does_not_exclude_candidate() -> None:
-    from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
-    session = ResolutionSession()
+    ledger = AgentFailureLedger(clock=FakeClock())
+    session = ResolutionSession(ledger=ledger)
     listener = wrap_activity_listener(None, session, agent_name="agentA")
     assert listener is not None
 
@@ -764,19 +787,17 @@ def test_fault_activity_text_does_not_exclude_candidate() -> None:
     for _ in range(10):
         listener(event)
 
-    assert "agentA" not in skipped_candidates(session, ("agentA", "agentB"))
+    assert ledger.is_available(PHASE_RESOLUTION, "agentA")
+    assert ledger.status(PHASE_RESOLUTION, "agentA").is_eligible
 
 
 def test_ledger_is_sole_authority_for_candidate_exclusion() -> None:
-    from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    session = ResolutionSession(ledger=ledger)
 
-    skipped = skipped_candidates(session, ("agentA", "agentB"))
-    assert "agentA" not in skipped
+    assert ledger.is_available(PHASE_RESOLUTION, "agentA")
 
     ledger.record(
         AttemptFact(
@@ -785,8 +806,15 @@ def test_ledger_is_sole_authority_for_candidate_exclusion() -> None:
             artifact_valid=False,
         )
     )
-    assert not ledger.is_available(PHASE_RESOLUTION, "agentA")
 
-    skipped_after = skipped_candidates(session, ("agentA", "agentB"))
-    assert "agentA" in skipped_after
-    assert "agentB" not in skipped_after
+    status = ledger.status(PHASE_RESOLUTION, "agentA")
+    assert isinstance(status, Cooldown)
+    assert status.reason == "unproductive_limit"
+    assert not ledger.is_available(PHASE_RESOLUTION, "agentA")
+    assert ledger.is_available(PHASE_RESOLUTION, "agentB")
+    wait_ms = ledger.earliest_wait_ms(PHASE_RESOLUTION, ["agentA"])
+    assert wait_ms > 0
+
+    clock.advance(wait_ms / 1000.0)
+
+    assert ledger.is_available(PHASE_RESOLUTION, "agentA")

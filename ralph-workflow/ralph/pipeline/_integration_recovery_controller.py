@@ -44,7 +44,7 @@ def standalone_integration_controller(
         config=config,
         policy_bundle=policy_bundle,
         deps=AttemptRunnerDeps(
-            clock=SystemClock(),
+            clock=ledger.clock if ledger is not None else SystemClock(),
             invoke=PRODUCTION_INVOKE,
             probe_runner=None,
             workspace_probe=None,

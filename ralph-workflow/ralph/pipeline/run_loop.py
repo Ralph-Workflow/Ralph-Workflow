@@ -1633,11 +1633,8 @@ def _cold_capped_escalation_due(
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
     if ledger is not None and candidates:
-        if ledger.any_eligible("rebase_conflict_resolution", candidates):
-            return False
-        if not ledger.all_exhausted("rebase_conflict_resolution", candidates):
-            return False
-    elif (
+        return False
+    if (
         not rebase.resolution_exhausted
         or resolver_allowed(rebase, target, identity)
         or _firm_conflict_identity_bound(rebase, identity)
@@ -1729,11 +1726,6 @@ def _run_owned_integration_conflict_resolution(
         candidates=installed,
     ):
         return _run_cold_capped_escalation(ctx, target, rebase)
-    all_exhausted = (
-        ledger is not None
-        and installed
-        and ledger.all_exhausted("rebase_conflict_resolution", installed)
-    )
     allowed = (
         resolver_allowed(
             rebase,
@@ -1745,7 +1737,7 @@ def _run_owned_integration_conflict_resolution(
         if rebase is not None
         else True
     )
-    if rebase is not None and (all_exhausted or not allowed):
+    if rebase is not None and not allowed:
         logger.warning(
             "integration resolution: no eligible conflict resolver for target '{}'; escalating",
             target,
@@ -2563,12 +2555,7 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if rebase is not None
         else True
     )
-    can_resolve = allowed and (
-        ledger is None
-        or not installed
-        or not ledger.all_exhausted("rebase_conflict_resolution", installed)
-    )
-    if can_resolve:
+    if allowed:
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",
@@ -3451,7 +3438,7 @@ handle_cooldown_delay = _handle_cooldown_delay
 _MAX_RECOVERY_EPOCHS: int = 3
 
 
-def ledger_requires_intervention(state: PipelineState, controller: RecoveryController) -> bool:
+def failed_route_needs_operator(state: PipelineState, controller: RecoveryController) -> bool:
     target_phase = state.previous_phase or state.phase
     chain = state.chain_for_phase(target_phase)
     agents = (
@@ -3459,10 +3446,10 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
         if chain is not None and chain.agents
         else controller.agents_for_phase(target_phase)
     )
-    ledger = controller.ledger
-    decision = ledger.requires_intervention(target_phase, agents, snapshot=state.ledger_snapshot)
-    if decision is not None:
-        return decision
+    if any(
+        status.is_cooldown for _agent, status in controller.chain_eligibility(target_phase, agents)
+    ):
+        return False
     return bool(
         state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
         or state.last_execution_result_status == "failed"
@@ -3471,7 +3458,7 @@ def ledger_requires_intervention(state: PipelineState, controller: RecoveryContr
 
 def failed_route_is_recoverable(state: PipelineState, controller: RecoveryController) -> bool:
     rollback_was_refused = bool(state.rollback_ref) and not state.rollback_pending
-    return not rollback_was_refused and not ledger_requires_intervention(state, controller)
+    return not rollback_was_refused and not failed_route_needs_operator(state, controller)
 
 
 def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:

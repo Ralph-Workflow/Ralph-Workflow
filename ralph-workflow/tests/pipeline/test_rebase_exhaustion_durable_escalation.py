@@ -21,7 +21,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_ladder import ladder_charge_count
 from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Spent
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -30,14 +30,33 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_set_spent_chain_terminal_reason": (
+        "operator rule: an agent is either on cooldown or not; the total limit now starts an "
+        "expiring unproductive_limit cooldown instead of Spent, a cooling chain reports "
+        "CANDIDATE_UNAVAILABLE, and an uninvoked round reports CANDIDATE_EXHAUSTED only once "
+        "the fake clock passes every expiry"
+    ),
+}
+
 _CANDIDATES = ("agent1", "agent2")
 
 
 def _set_spent_chain_terminal_reason(session: ResolutionSession) -> None:
-    ledger = AgentFailureLedger(clock=FakeClock(), total_limit=1)
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
     for candidate in _CANDIDATES:
         ledger.record(AttemptFact(PHASE_RESOLUTION, candidate, artifact_valid=False))
-        assert isinstance(ledger.status(PHASE_RESOLUTION, candidate), Spent)
+        status = ledger.status(PHASE_RESOLUTION, candidate)
+        assert isinstance(status, Cooldown)
+        assert status.reason == "unproductive_limit"
+    session.ledger = ledger
+    assert (
+        round_termination_reason(session, invoked=False, candidates=_CANDIDATES)
+        is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    )
+    clock.advance(ledger.earliest_wait_ms(PHASE_RESOLUTION, _CANDIDATES) / 1000.0)
+    assert ledger.any_eligible(PHASE_RESOLUTION, _CANDIDATES)
     session.ledger = ledger
     session.unresolved_paths = ("app.py",)
     session.terminal_reason = round_termination_reason(

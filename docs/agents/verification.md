@@ -185,8 +185,8 @@ The agent-failure single-owner audit enforces the recovery invariant described
 in [Agent cooldown: the single-owner invariant](../../ralph-workflow/docs/agents/cooldown-invariant.md)
 and summarised in
 [Agent Invoke Architecture](architecture.md#shared-recovery-ownership).
-Exactly one `RecoveryController` owns cooldown/unavailability, failure-budget
-charging, backoff, spent state, candidate selection, and wait/termination.
+Exactly one `RecoveryController` owns agent cooldowns, failure-budget
+charging, backoff, candidate selection, and wait/termination.
 Every agent invocation must report each failed or unproductive attempt through
 that owner. A failure may be unpenalised only on an explicitly checked path that
 proves progress. Agent phases must not maintain local skip, backoff, or cooldown

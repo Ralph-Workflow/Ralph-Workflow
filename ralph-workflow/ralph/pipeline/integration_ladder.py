@@ -335,11 +335,11 @@ def evaluate_last_resort_preconditions(
             else f"unmet: salvage:{kind}={value or 'never-tried'}"
         )
 
-    spent = ladder_charge_count(state)
+    charges = ladder_charge_count(state)
     results[LAST_RESORT_PRECONDITIONS[4]] = (
-        f"met: {spent} charges >= budget {budget}"
-        if spent >= budget
-        else f"unmet: {spent} charges < budget {budget}"
+        f"met: {charges} charges >= budget {budget}"
+        if charges >= budget
+        else f"unmet: {charges} charges < budget {budget}"
     )
 
     reconfirmed = bool(decided_signature) and fresh_signature == decided_signature
@@ -722,7 +722,7 @@ def last_resort_wait_proof(
     wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
     epoch_now: Callable[[], float] = time.time,
 ) -> _LastResortWaitProof:
-    from ralph.recovery.agent_failure_ledger import CoolingDown, Spent
+    from ralph.recovery.agent_failure_ledger import CoolingDown
 
     now_ms = int(epoch_now() * 1000)
     proofs: list[_LastResortAgentProof] = []
@@ -740,29 +740,15 @@ def last_resort_wait_proof(
                         reason=status.reason,
                     )
                 )
-            elif isinstance(status, Spent):
-                proofs.append(
-                    _LastResortAgentProof(
-                        phase=pool.phase,
-                        agent=agent,
-                        tried=True,
-                        outcome="spent",
-                        cooldown_until_ms=None,
-                        reason=status.reason,
-                    )
-                )
             else:
-                reason = (
-                    None if status.is_eligible else eligibility.failure_reason(pool.phase, agent)
-                )
                 proofs.append(
                     _LastResortAgentProof(
                         phase=pool.phase,
                         agent=agent,
                         tried=False,
-                        outcome="eligible" if status.is_eligible else "unavailable",
+                        outcome="eligible",
                         cooldown_until_ms=None,
-                        reason=reason,
+                        reason=None,
                     )
                 )
     all_tried_and_unavailable = bool(proofs) and all(proof.tried for proof in proofs)

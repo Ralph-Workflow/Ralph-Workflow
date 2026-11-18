@@ -13,7 +13,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AgentStatus, Cooldown
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
@@ -33,18 +33,25 @@ def _config() -> UnifiedConfig:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_resolution_observes_workspace_changes_allowing_total_limit.cooldown_only": "operator rule: an agent is either on cooldown or not; the total limit now starts an expiring unproductive_limit cooldown instead of the removed Spent state, so the check asserts that cooldown and its expiry",
     "test_conflict_resolution_observes_workspace_changes_allowing_total_limit": (
         "under per-round candidate fallover, fallback candidate interleaves each round "
         "until primary candidate reaches total limit and fallback candidate resolves; "
         "total_limit is consecutive_limit+1 (4) so the scenario stays inside the 1.0 "
         "CPU-s per-test budget while still proving progress resets consecutive and "
-        "total remains reachable"
+        "total remains reachable; operator rule: an agent is either on cooldown or not, so "
+        "reaching the total limit is asserted as an expiring unproductive_limit cooldown "
+        "instead of the removed Spent state"
     ),
     "test_conflict_resolution_without_workspace_changes_stops_at_consecutive_limit": (
         "under per-round candidate fallover, fallback candidate interleaves each round "
         "until primary candidate reaches consecutive limit and fallback candidate resolves"
     ),
 }
+
+
+def _is_unproductive_cooldown(status: AgentStatus) -> bool:
+    return isinstance(status, Cooldown) and status.reason == "unproductive_limit"
 
 
 def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
@@ -80,7 +87,7 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         if agent_name == "agentA":
             return False
 
-        if ledger.status(PHASE_RESOLUTION, "agentA").is_spent:
+        if _is_unproductive_cooldown(ledger.status(PHASE_RESOLUTION, "agentA")):
             markers_remaining = False
             return True
         return False
@@ -124,7 +131,12 @@ def test_conflict_resolution_observes_workspace_changes_allowing_total_limit(
         assert invocations == ["agentA", "agentB"] * 4
 
         agent_a_status = ledger.status(PHASE_RESOLUTION, "agentA")
-        assert agent_a_status.is_spent is True
+        assert isinstance(agent_a_status, Cooldown)
+        assert agent_a_status.reason == "unproductive_limit"
+        wait_ms = ledger.earliest_wait_ms(PHASE_RESOLUTION, ["agentA"])
+        assert wait_ms > 0
+        clock.advance(wait_ms / 1000.0)
+        assert ledger.is_available(PHASE_RESOLUTION, "agentA")
     finally:
         reset_executors(token)
 

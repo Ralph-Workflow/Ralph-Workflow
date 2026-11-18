@@ -4,10 +4,15 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resume_after_single_agent_chain_cooldown_waits_without_counting": "operator rule: an agent is either on cooldown or not; replaces test_resume_after_single_agent_chain_exhaustion_increments_count because a sole agent reaching the unproductive limit now waits for its expiring cooldown instead of entering the failed phase and counting a recovery cycle",
+}
 
 _CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
@@ -131,9 +136,12 @@ def test_controller_ledger_can_be_restored_from_a_checkpoint_snapshot() -> None:
     )
 
 
-def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
+def test_resume_after_single_agent_chain_cooldown_waits_without_counting() -> None:
+    clock = FakeClock(start=0.0)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
+        options=RecoveryControllerOptions(
+            cycle_cap=10, clock=clock, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
@@ -150,10 +158,15 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
             FailureContext(phase="development", agent="claude"),
         )
 
-    assert new_state.phase == "failed_terminal"
-    assert new_state.recovery_cycle_count == 1
-
+    assert new_state.phase == "development"
+    assert new_state.is_waiting_state is True
+    assert new_state.last_retry_delay_ms > 0
+    assert new_state.recovery_cycle_count == 0
     assert len(new_state.fallover_history) == 0
+
+    clock.advance(new_state.last_retry_delay_ms / 1000.0)
+
+    assert controller.agent_eligibility("development", "claude").is_eligible
 
 
 def test_resume_after_two_agent_chain_first_exhausted() -> None:

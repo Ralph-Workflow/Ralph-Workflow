@@ -161,11 +161,11 @@ is the single home for those facts, do not re-describe them here.
 
 ## Shared recovery ownership
 
-Exactly one `RecoveryController` owns agent cooldown and unavailability,
-failure-budget charging, retry backoff, spent state, candidate selection, and
+Exactly one `RecoveryController` owns agent cooldowns,
+failure-budget charging, retry backoff, candidate selection, and
 whether execution waits or terminates. Every agent-invoking path reports every
 failed or unproductive attempt to that controller. Candidate selection also
-goes through the controller so a cooled or spent candidate cannot be launched.
+goes through the controller so a candidate on cooldown cannot be launched.
 A failed attempt may be left unpenalised only when the controller receives
 proof that the attempt made progress.
 

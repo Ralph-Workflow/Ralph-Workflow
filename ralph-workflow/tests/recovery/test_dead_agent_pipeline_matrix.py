@@ -11,6 +11,7 @@ from ralph.pipeline.agent_entry_point import (
     registered_entry_points,
     registered_runners,
 )
+from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController
@@ -39,12 +40,30 @@ from tests.recovery.pipeline_matrix_scenarios import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ralph.agents.timeout_clock import FakeClock
+
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_assert_one_ordinary_ledger_charge": "operator rule: an agent is either on cooldown or not; ledger entries hold only counters, so instead of reading is_spent, cooldown and unavailable fields the helper asserts no exclusion field exists and the agent is eligible with no cooldown wait",
     "test_ac12_unavailability_store_snapshot_restore_round_trip": (
         "assert prune_expired via public return code rather than inspecting private "
         "serialized snapshot timeouts key per single owner policy"
     ),
+    "test_matrix_scenario_over_every_entry_point": "operator rule: an agent is either on cooldown or not; the spent state is gone, so instead of asserting never spent the harness asserts every excluded agent has a finite cooldown and is selectable again after the clock passes its expiry",
+    "test_parity_across_non_probe_entry_points": "operator rule: an agent is either on cooldown or not; the spent state is gone, so each entry point asserts every exclusion is an expiring cooldown instead of an empty spent_agents map",
+    "test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the probe-mode check asserts every exclusion expires instead of an empty spent_agents map",
+    "test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
+    "test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched": "operator rule: an agent is either on cooldown or not; is_spent no longer exists, so the test asserts the ledger status is eligible",
+    "test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
+    "test_ac16_probe_could_not_run_keeps_a_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac3_runtime_attribution_label_and_selectability": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac4_prompt_side_quota_words_never_bench": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac16_positive_proof_only_exit_zero_alone_never_benches": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac17_pending_subagents_recorded_as_unattributed_end": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac14_unattributed_live_session_end_parity": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac15_post_exit_watchdog_attribution_parity": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
 }
 
 
@@ -90,12 +109,30 @@ def _scenario(name: str) -> MatrixScenario:
     return next(scenario for scenario in SCENARIOS if scenario.name == name)
 
 
-def _assert_never_spent(
-    observation: MatrixScenario.Observation, controller: RecoveryController
-) -> None:
-    snapshot = controller.snapshot()
-    assert observation.ledger_status != "spent"
-    assert snapshot["spent_agents"] == {}
+def _assert_every_exclusion_expires(controller: RecoveryController, clock: FakeClock) -> None:
+    assert "spent_agents" not in controller.snapshot()
+    store = controller.unavailability_store
+    waits = [store.earliest_unavailable_wait_ms(PHASE, [agent]) for agent in AGENTS]
+    for agent, wait in zip(AGENTS, waits, strict=True):
+        status = controller.ledger.status(PHASE, agent)
+        assert status.is_eligible or status.is_cooldown
+        assert store.is_available(PHASE, agent) is (wait == 0)
+    clock.advance(max(waits) / 1000.0 + 0.001)
+    for agent in AGENTS:
+        assert store.is_available(PHASE, agent) is True
+        assert controller.ledger.status(PHASE, agent).is_eligible
+
+
+def _assert_bench_is_an_expiring_cooldown(controller: RecoveryController, clock: FakeClock) -> None:
+    assert "spent_agents" not in controller.snapshot()
+    status = controller.ledger.status(PHASE, AGENT_A)
+    assert isinstance(status, Cooldown)
+    assert status.reason == DEAD
+    now_ms = int(clock.monotonic() * 1000)
+    assert status.until_ms > now_ms
+    clock.advance((status.until_ms - now_ms) / 1000.0 + 0.001)
+    assert controller.ledger.status(PHASE, AGENT_A).is_eligible
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
 
 
 def _assert_one_ordinary_ledger_charge(
@@ -110,10 +147,16 @@ def _assert_one_ordinary_ledger_charge(
     entry = as_mapping(next(iter(entries.values())))
     assert entry.get("phase") == PHASE
     assert entry.get("agent") == agent
-    assert entry.get("is_spent") is False
-    assert entry.get("cooldown_until_ms") is None
-    assert entry.get("cooldown_reason") is None
-    assert entry.get("unavailable_reason") is None
+    for exclusion_field in (
+        "is_spent",
+        "spent_reason",
+        "cooldown_until_ms",
+        "cooldown_reason",
+        "unavailable_reason",
+    ):
+        assert exclusion_field not in entry
+    assert observation.ledger_status == "eligible"
+    assert observation.wait_ms == 0
 
 
 def _assert_corpus_expectations(
@@ -172,9 +215,9 @@ def _assert_observation(
     scenario: MatrixScenario,
     observation: MatrixScenario.Observation,
     controller: RecoveryController,
+    clock: FakeClock,
 ) -> None:
     assert observation.invocations == tuple(script.agent for script in scenario.attempts)
-    _assert_never_spent(observation, controller)
     if scenario.corpus_id is not None and entry_point is not AgentEntryPoint.CANARY_PROBE:
         _assert_corpus_expectations(scenario, observation, controller)
     if entry_point is AgentEntryPoint.CANARY_PROBE:
@@ -221,6 +264,7 @@ def _assert_observation(
             == expected_reason
         )
         assert observation.unavailability_reasons.get(last_attempt.agent) == expected_reason
+    _assert_every_exclusion_expires(controller, clock)
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
@@ -304,9 +348,9 @@ def test_matrix_scenario_over_every_entry_point(
     entry_point: AgentEntryPoint,
     scenario: MatrixScenario,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+    observation, controller, clock = run_matrix_scenario(entry_point, scenario)
 
-    _assert_observation(entry_point, scenario, observation, controller)
+    _assert_observation(entry_point, scenario, observation, controller, clock)
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=_scenario_ids(ALL_SCENARIOS))
@@ -315,10 +359,10 @@ def test_parity_across_non_probe_entry_points(scenario: MatrixScenario) -> None:
     for entry_point in NON_PROBE_ENTRY_POINTS:
         if entry_point is MAIN_PHASE_LOOP:
             continue
-        observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+        observation, controller, clock = run_matrix_scenario(entry_point, scenario)
 
         assert observation.parity == baseline.parity, entry_point.value
-        _assert_never_spent(observation, controller)
+        _assert_every_exclusion_expires(controller, clock)
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=_scenario_ids(ALL_SCENARIOS))
@@ -370,13 +414,13 @@ def test_reducer_style_finalize_claims_the_outcome_without_double_charge(
 def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe(
     scenario: MatrixScenario,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
+    observation, controller, clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
 
     assert observation.probe_calls == ()
     assert observation.availability is True
     assert observation.ledger_entries == {}
     assert observation.false_bench_count == 0
-    _assert_never_spent(observation, controller)
+    _assert_every_exclusion_expires(controller, clock)
 
 
 @pytest.mark.parametrize(
@@ -431,7 +475,7 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     entry_point: AgentEntryPoint,
     scenario_name: str,
 ) -> None:
-    observation, controller, _clock, selected = run_matrix_scenario_with_selection(
+    observation, controller, clock, selected = run_matrix_scenario_with_selection(
         entry_point,
         _scenario(scenario_name),
     )
@@ -459,8 +503,7 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) > 0
     reasons = store.snapshot().get("unavailability_reasons", {})
     assert reasons.get(AGENT_A) == DEAD
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
-    assert controller.snapshot()["spent_agents"] == {}
+    _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 @pytest.mark.parametrize(
@@ -478,7 +521,7 @@ def test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
+    assert controller.ledger.status(PHASE, AGENT_A).is_eligible
 
 
 @pytest.mark.parametrize(
@@ -498,7 +541,7 @@ def test_ac16_probe_could_not_run_keeps_a_selectable(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     _assert_one_ordinary_ledger_charge(observation, AGENT_A)
 
@@ -519,7 +562,7 @@ def test_ac3_runtime_attribution_label_and_selectability(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     record = observation.verdict_record
     assert isinstance(record, dict)
@@ -545,7 +588,7 @@ def test_ac4_prompt_side_quota_words_never_bench(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     assert AGENT_A not in controller.unavailability_store.snapshot().get(
         "unavailability_reasons", {}
@@ -560,7 +603,7 @@ def test_ac4_prompt_side_quota_words_never_bench(
 def test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason(
     entry_point: AgentEntryPoint,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
+    observation, controller, clock = run_matrix_scenario(
         entry_point, _scenario("failed_probe_benches")
     )
 
@@ -574,8 +617,7 @@ def test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason(
     reasons = store.snapshot().get("unavailability_reasons", {})
     assert reasons.get(AGENT_A) == DEAD
     assert observation.unavailability_reasons.get(AGENT_A) == DEAD
-    assert controller.ledger.status(PHASE, AGENT_A).is_spent is False
-    assert controller.snapshot()["spent_agents"] == {}
+    _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
 @pytest.mark.parametrize(
@@ -595,7 +637,7 @@ def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
     assert observation.probe_calls == (AGENT_A,)
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     _assert_one_ordinary_ledger_charge(observation, AGENT_A)
     record = observation.verdict_record
@@ -619,7 +661,7 @@ def test_ac16_positive_proof_only_exit_zero_alone_never_benches(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     record = observation.verdict_record
     if isinstance(record, dict):
@@ -654,7 +696,7 @@ def test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_cont
         assert observation.availability is True
         assert observation.ledger_status == "eligible"
         assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
-        assert controller.snapshot()["spent_agents"] == {}
+        assert "spent_agents" not in controller.snapshot()
 
 
 @pytest.mark.parametrize(
@@ -673,7 +715,7 @@ def test_ac17_pending_subagents_recorded_as_unattributed_end(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     record = observation.verdict_record
     assert isinstance(record, dict)
@@ -881,7 +923,7 @@ def test_ac14_unattributed_live_session_end_parity(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
 
     script = scenario.attempts[-1]
     assert script.facts.liveness_observed is True
@@ -924,7 +966,7 @@ def test_ac15_post_exit_watchdog_attribution_parity(
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert controller.snapshot()["spent_agents"] == {}
+    assert "spent_agents" not in controller.snapshot()
 
     script = scenario.attempts[-1]
     assert script.facts.liveness_observed is True

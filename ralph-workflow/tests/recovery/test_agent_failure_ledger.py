@@ -10,9 +10,26 @@ from ralph.recovery.agent_failure_ledger import (
     AttemptOutcome,
     Cooldown,
     Eligible,
-    Spent,
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.unavailability_reason import UnavailabilityReason
+
+UNPRODUCTIVE_LIMIT = str(UnavailabilityReason.UNPRODUCTIVE_LIMIT)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_initial_status_is_eligible": "operator rule: an agent is either on cooldown or not; AgentStatus.is_spent no longer exists, so the initial status check drops the spent assertion",
+    "test_consecutive_limit_triggers_cooldown": "operator rule: an agent is either on cooldown or not; the consecutive limit now starts a cooldown with the single unproductive_limit reason instead of consecutive_unproductive_limit_reached",
+    "test_u2_regression_ledger_cooldown_logs_one_complete_owner_decision": "operator rule: an agent is either on cooldown or not; the ledger-owned limit cooldown is now logged with reason unproductive_limit and its unproductive attempt counts",
+    "test_total_limit_starts_an_expiring_cooldown": "operator rule: an agent is either on cooldown or not; the total unproductive limit now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown and its expiry",
+    "test_total_limit_reached_on_non_workspace_change": "operator rule: an agent is either on cooldown or not; reaching a limit resets both counters, so the total limit is reached through workspace-changing attempts that keep the consecutive count below its limit and yields an unproductive_limit cooldown instead of Spent",
+    "test_free_retry_category_treated_identically": "operator rule: an agent is either on cooldown or not; the limit cooldown reason is now unproductive_limit",
+    "test_independent_tracking_per_phase_and_agent": "operator rule: an agent is either on cooldown or not; the cooldown tracker is keyed by agent only, so a cooldown recorded in one phase applies to that agent in every phase while other agents stay eligible",
+    "test_snapshot_round_trip": "operator rule: an agent is either on cooldown or not; ledger snapshots now carry only counters and cooldown_count while cooldown windows live in the shared tracker, so the round trip asserts restored counters and backoff instead of restored Cooldown and Spent statuses",
+    "test_attempt_outcome_properties": "operator rule: an agent is either on cooldown or not; Spent and AttemptOutcome.demoted no longer exist, so only the eligible and cooldown outcomes are asserted via cooldown_started",
+    "test_cooldown_restored_after_reboot_keeps_its_remaining_duration": "operator rule: an agent is either on cooldown or not; the unproductive_limit cooldown now lives in the controller tracker, so the reboot contract is asserted through the controller snapshot",
+    "test_cooldown_that_elapsed_across_reboot_restores_eligible": "operator rule: an agent is either on cooldown or not; the unproductive_limit cooldown now lives in the controller tracker, so the reboot contract is asserted through the controller snapshot",
+    "test_restored_cooldown_is_clamped_to_its_reason_cap": "operator rule: an agent is either on cooldown or not; the ledger snapshot no longer has cooldown fields, so the legacy clamp test asserts a restored controller cooldown never exceeds the one hour unproductive_limit cap",
+}
 
 
 def test_initial_status_is_eligible() -> None:
@@ -22,7 +39,6 @@ def test_initial_status_is_eligible() -> None:
     assert isinstance(status, Eligible)
     assert status.is_eligible
     assert not status.is_cooldown
-    assert not status.is_spent
     assert ledger.is_available("development", "agent-a")
 
 
@@ -38,7 +54,7 @@ def test_unproductive_attempts_remain_eligible_until_consecutive_limit() -> None
     )
     outcome1 = ledger.record(fact1)
     assert isinstance(outcome1.status, Eligible)
-    assert not outcome1.demoted
+    assert not outcome1.cooldown_started
     assert outcome1.reason is None
     assert ledger.is_available("development", "agent-a")
 
@@ -50,13 +66,13 @@ def test_unproductive_attempts_remain_eligible_until_consecutive_limit() -> None
     )
     outcome2 = ledger.record(fact2)
     assert isinstance(outcome2.status, Eligible)
-    assert not outcome2.demoted
+    assert not outcome2.cooldown_started
     assert outcome2.reason is None
     assert ledger.is_available("development", "agent-a")
 
     outcome3 = ledger.record(fact2)
     assert isinstance(outcome3.status, Cooldown)
-    assert outcome3.demoted
+    assert outcome3.cooldown_started
     assert not ledger.is_available("development", "agent-a")
 
 
@@ -88,10 +104,10 @@ def test_consecutive_limit_triggers_cooldown() -> None:
         )
     )
     assert isinstance(outcome.status, Cooldown)
-    assert outcome.demoted
-    assert outcome.reason == "consecutive_unproductive_limit_reached"
+    assert outcome.cooldown_started
+    assert outcome.reason == UNPRODUCTIVE_LIMIT
     assert outcome.status.until_ms == 70000
-    assert outcome.status.reason == "consecutive_unproductive_limit_reached"
+    assert outcome.status.reason == UNPRODUCTIVE_LIMIT
 
     status = ledger.status("development", "agent-a")
     assert isinstance(status, Cooldown)
@@ -125,9 +141,10 @@ def test_u2_regression_ledger_cooldown_logs_one_complete_owner_decision() -> Non
     assert len(cooldown_lines) == 1
     assert "phase=development" in cooldown_lines[0]
     assert "agent=agent-a" in cooldown_lines[0]
-    assert "reason=dead_agent_no_progress" in cooldown_lines[0]
+    assert "reason=unproductive_limit" in cooldown_lines[0]
     assert "duration_ms=60000" in cooldown_lines[0]
     assert "expiry_ms=70000" in cooldown_lines[0]
+    assert "unproductive_attempts consecutive=3 total=3" in cooldown_lines[0]
 
 
 def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
@@ -168,7 +185,7 @@ def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
         )
     )
     assert isinstance(outcome1.status, Eligible)
-    assert not outcome1.demoted
+    assert not outcome1.cooldown_started
     assert ledger.is_available("development", "agent-a")
 
     outcome2 = ledger.record(
@@ -180,7 +197,7 @@ def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
         )
     )
     assert isinstance(outcome2.status, Eligible)
-    assert not outcome2.demoted
+    assert not outcome2.cooldown_started
 
     outcome3 = ledger.record(
         AttemptFact(
@@ -191,7 +208,7 @@ def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
         )
     )
     assert isinstance(outcome3.status, Cooldown)
-    assert outcome3.demoted
+    assert outcome3.cooldown_started
 
 
 def test_growing_backoff_on_subsequent_cooldowns() -> None:
@@ -235,18 +252,18 @@ def test_workspace_changed_resets_consecutive_count() -> None:
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome1.status, Eligible)
-    assert not outcome1.demoted
+    assert not outcome1.cooldown_started
     outcome2 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome2.status, Eligible)
-    assert not outcome2.demoted
+    assert not outcome2.cooldown_started
 
     outcome3 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
     )
     assert isinstance(outcome3.status, Eligible)
-    assert not outcome3.demoted
+    assert not outcome3.cooldown_started
     assert ledger.is_available("dev", "a")
 
     outcome4 = ledger.record(
@@ -262,38 +279,43 @@ def test_workspace_changed_resets_consecutive_count() -> None:
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome6.status, Cooldown)
-    assert outcome6.demoted
+    assert outcome6.cooldown_started
 
 
-def test_total_limit_demotes_agent_to_spent() -> None:
+def test_total_limit_starts_an_expiring_cooldown() -> None:
     clock = FakeClock(start=0.0)
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
+    ledger = AgentFailureLedger(
+        clock=clock, consecutive_limit=3, total_limit=9, base_cooldown_seconds=60.0
+    )
 
     for _ in range(8):
         outcome = ledger.record(
             AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
         )
         assert isinstance(outcome.status, Eligible)
-        assert not outcome.demoted
+        assert not outcome.cooldown_started
         assert ledger.is_available("dev", "a")
 
     outcome9 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
     )
-    assert isinstance(outcome9.status, Spent)
-    assert outcome9.demoted
-    assert outcome9.reason == "total_unproductive_limit_reached"
-    assert outcome9.status.reason == "total_unproductive_limit_reached"
+    assert isinstance(outcome9.status, Cooldown)
+    assert outcome9.cooldown_started
+    assert outcome9.reason == UNPRODUCTIVE_LIMIT
+    assert outcome9.status.until_ms == 60_000
 
     status = ledger.status("dev", "a")
-    assert isinstance(status, Spent)
-    assert status.is_spent
+    assert isinstance(status, Cooldown)
+    assert status.is_cooldown
     assert not status.is_eligible
-    assert not status.is_cooldown
     assert not ledger.is_available("dev", "a")
 
-    clock.advance(100_000.0)
-    assert isinstance(ledger.status("dev", "a"), Spent)
+    clock.advance(60.0)
+    assert isinstance(ledger.status("dev", "a"), Eligible)
+    after_expiry = ledger.record(
+        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
+    )
+    assert isinstance(after_expiry.status, Eligible)
 
 
 def test_total_limit_reached_on_non_workspace_change() -> None:
@@ -302,26 +324,23 @@ def test_total_limit_reached_on_non_workspace_change() -> None:
         clock=clock, consecutive_limit=3, total_limit=9, base_cooldown_seconds=10.0
     )
 
-    for _ in range(2):
-        for _ in range(3):
-            ledger.record(
-                AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
+    outcome = None
+    for _ in range(3):
+        for workspace_changed in (True, False, False):
+            outcome = ledger.record(
+                AttemptFact(
+                    phase="dev",
+                    agent="a",
+                    artifact_valid=False,
+                    workspace_changed=workspace_changed,
+                )
             )
-        clock.advance(100.0)
 
-    ledger.record(
-        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
-    )
-    ledger.record(
-        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
-    )
-
-    outcome = ledger.record(
-        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
-    )
-    assert isinstance(outcome.status, Spent)
-    assert outcome.demoted
-    assert outcome.reason == "total_unproductive_limit_reached"
+    assert outcome is not None
+    assert isinstance(outcome.status, Cooldown)
+    assert outcome.cooldown_started
+    assert outcome.reason == UNPRODUCTIVE_LIMIT
+    assert outcome.status.until_ms == 10_000
     assert not ledger.is_available("dev", "a")
 
 
@@ -350,23 +369,23 @@ def test_artifact_valid_clears_all_history() -> None:
         )
     )
     assert isinstance(outcome.status, Eligible)
-    assert not outcome.demoted
+    assert not outcome.cooldown_started
 
     outcome1 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome1.status, Eligible)
-    assert not outcome1.demoted
+    assert not outcome1.cooldown_started
     outcome2 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome2.status, Eligible)
-    assert not outcome2.demoted
+    assert not outcome2.cooldown_started
     outcome3 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome3.status, Cooldown)
-    assert outcome3.demoted
+    assert outcome3.cooldown_started
 
 
 def test_free_retry_category_treated_identically() -> None:
@@ -377,32 +396,20 @@ def test_free_retry_category_treated_identically() -> None:
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=True)
     )
     assert isinstance(o1.status, Eligible)
-    assert not o1.demoted
+    assert not o1.cooldown_started
 
     o2 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=False)
     )
     assert isinstance(o2.status, Eligible)
-    assert not o2.demoted
+    assert not o2.cooldown_started
 
     o3 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=True)
     )
     assert isinstance(o3.status, Cooldown)
-    assert o3.demoted
-    assert o3.reason == "consecutive_unproductive_limit_reached"
-
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_independent_tracking_per_phase_and_agent": (
-        "restores the phase-isolated cooldown contract the gated 7a9b1e590 tree "
-        "recorded; 563e5204f inverted it while its message described an unrelated "
-        "deterministic-resolution refactor, and its cross-phase projection broke the "
-        "in-gate demotion contract of "
-        "tests/pipeline/test_conflict_resolution_unresolved_typed.py, so a cooldown "
-        "recorded under one phase leaves the agent eligible in another"
-    ),
-}
+    assert o3.cooldown_started
+    assert o3.reason == UNPRODUCTIVE_LIMIT
 
 
 def test_independent_tracking_per_phase_and_agent() -> None:
@@ -414,7 +421,10 @@ def test_independent_tracking_per_phase_and_agent() -> None:
 
     assert isinstance(ledger.status("p1", "a"), Cooldown)
     assert isinstance(ledger.status("p1", "b"), Eligible)
-    assert isinstance(ledger.status("p2", "a"), Eligible)
+    assert isinstance(ledger.status("p2", "a"), Cooldown)
+    assert isinstance(ledger.status("p2", "b"), Eligible)
+    second_phase_attempt = ledger.record(AttemptFact(phase="p2", agent="a", artifact_valid=False))
+    assert not second_phase_attempt.cooldown_started
 
 
 def test_snapshot_round_trip() -> None:
@@ -454,23 +464,44 @@ def test_snapshot_round_trip() -> None:
     assert restored.max_cooldown_seconds == 500.0
     assert restored.backoff_factor == 3.0
 
-    status_a = restored.status("dev", "a")
-    assert isinstance(status_a, Cooldown)
-    assert status_a.until_ms == 150000
+    original_a = ledger.status("dev", "a")
+    assert isinstance(original_a, Cooldown)
+    assert original_a.until_ms == 150000
+    original_b = ledger.status("dev", "b")
+    assert isinstance(original_b, Cooldown)
+    assert original_b.reason == UNPRODUCTIVE_LIMIT
 
-    status_b = restored.status("dev", "b")
-    assert isinstance(status_b, Spent)
-    assert status_b.reason == "total_unproductive_limit_reached"
+    entries = snap["entries"]
+    assert isinstance(entries, dict)
+    assert entries["dev:a"] == {
+        "phase": "dev",
+        "agent": "a",
+        "consecutive_unproductive": 0,
+        "total_unproductive": 0,
+        "cooldown_count": 1,
+    }
+    assert entries["dev:c"] == {
+        "phase": "dev",
+        "agent": "c",
+        "consecutive_unproductive": 2,
+        "total_unproductive": 2,
+        "cooldown_count": 0,
+    }
 
     status_c = restored.status("dev", "c")
     assert isinstance(status_c, Eligible)
 
     outcome_c = restored.record(AttemptFact(phase="dev", agent="c", artifact_valid=False))
-    assert outcome_c.demoted is True
+    assert outcome_c.cooldown_started is True
     assert isinstance(outcome_c.status, Cooldown)
+    assert outcome_c.status.until_ms == 150000
 
-    clock.advance(50.0)
-    assert isinstance(restored.status("dev", "a"), Eligible)
+    outcomes_a = [
+        restored.record(AttemptFact(phase="dev", agent="a", artifact_valid=False)) for _ in range(3)
+    ]
+    outcome_a = outcomes_a[-1]
+    assert isinstance(outcome_a.status, Cooldown)
+    assert outcome_a.status.until_ms == 100000 + 150000
 
     snap2 = restored.snapshot()
     assert snap2["consecutive_limit"] == snap["consecutive_limit"]
@@ -519,7 +550,7 @@ def test_invalid_init_arguments_raise_value_error() -> None:
 
 def test_attempt_outcome_properties() -> None:
     eligible_outcome = AttemptOutcome(Eligible(), 0, 0)
-    assert not eligible_outcome.demoted
+    assert not eligible_outcome.cooldown_started
     assert eligible_outcome.reason is None
 
     cooldown_outcome = AttemptOutcome(
@@ -527,16 +558,8 @@ def test_attempt_outcome_properties() -> None:
         3,
         3,
     )
-    assert cooldown_outcome.demoted
+    assert cooldown_outcome.cooldown_started
     assert cooldown_outcome.reason == "test_reason"
-
-    spent_outcome = AttemptOutcome(
-        Spent(reason="spent_reason"),
-        0,
-        9,
-    )
-    assert spent_outcome.demoted
-    assert spent_outcome.reason == "spent_reason"
 
 
 _FIVE_DAYS_S = 5 * 86400.0
@@ -544,51 +567,42 @@ _WALL_START_S = 1_800_000_000.0
 
 
 def _cooled_down_snapshot(clock: FakeClock) -> dict[str, object]:
-    ledger = AgentFailureLedger(clock=clock, base_cooldown_seconds=60.0)
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     for _ in range(3):
-        ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
-    assert ledger.earliest_wait_ms("development", ["claude"]) == 60_000
-    return ledger.snapshot()
+        controller.record_attempt_fact(
+            "development", "claude", artifact_valid=False, workspace_changed=False
+        )
+    assert controller.earliest_eligible_wait_ms("development", ["claude"]) == 60_000
+    return controller.snapshot()
 
 
 def test_cooldown_restored_after_reboot_keeps_its_remaining_duration() -> None:
     snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
     after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 20.0)
 
-    restored = AgentFailureLedger.from_snapshot(snap, clock=after_reboot)
+    restored = RecoveryController.from_snapshot(snap, clock=after_reboot)
 
-    assert restored.earliest_wait_ms("development", ["claude"]) == 40_000
+    assert restored.earliest_eligible_wait_ms("development", ["claude"]) == 40_000
     after_reboot.advance(40.0)
-    assert isinstance(restored.status("development", "claude"), Eligible)
+    assert isinstance(restored.agent_eligibility("development", "claude"), Eligible)
 
 
 def test_cooldown_that_elapsed_across_reboot_restores_eligible() -> None:
     snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
     after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 130.0)
 
-    restored = AgentFailureLedger.from_snapshot(snap, clock=after_reboot)
+    restored = RecoveryController.from_snapshot(snap, clock=after_reboot)
 
-    assert isinstance(restored.status("development", "claude"), Eligible)
-    assert restored.earliest_wait_ms("development", ["claude"]) == 0
+    assert isinstance(restored.agent_eligibility("development", "claude"), Eligible)
+    assert restored.earliest_eligible_wait_ms("development", ["claude"]) == 0
 
 
-def test_legacy_monotonic_only_cooldown_is_clamped_to_max_cooldown() -> None:
+def test_restored_cooldown_is_clamped_to_its_reason_cap() -> None:
     snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
-    raw_entries = snap["entries"]
-    assert isinstance(raw_entries, dict)
-    legacy_entries: dict[str, object] = {}
-    for key, item in raw_entries.items():
-        assert isinstance(item, dict)
-        legacy_entries[key] = {
-            field: value
-            for field, value in item.items()
-            if field in {"phase", "agent", "consecutive_unproductive", "total_unproductive"}
-            or field in {"cooldown_until_ms", "cooldown_reason", "cooldown_count", "is_spent"}
-        }
-    legacy = {**snap, "entries": legacy_entries}
     after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 20.0)
 
-    restored = AgentFailureLedger.from_snapshot(legacy, clock=after_reboot)
+    restored = RecoveryController.from_snapshot(snap, clock=after_reboot)
 
-    wait_ms = restored.earliest_wait_ms("development", ["claude"])
-    assert 0 < wait_ms <= int(restored.max_cooldown_seconds * 1000)
+    wait_ms = restored.earliest_eligible_wait_ms("development", ["claude"])
+    assert wait_ms is not None
+    assert 0 < wait_ms <= 3_600_000

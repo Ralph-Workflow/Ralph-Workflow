@@ -39,23 +39,32 @@ _OTHER_PHASES = ("development", "review")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_scenario_c_integration_demotion_leaves_other_phases_untouched": (
-        "restores the phase-isolated cooldown contract that c14583b81 inverted without a "
-        "recorded reason; an integration demotion is keyed to the resolution phase, and the "
-        "in-gate ledger, resolver-health and phase-isolation tests require other phases to "
-        "keep their own standing"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so an integration unproductive_limit cooldown also keeps the agent out of "
+        "other phases until it expires, and the renamed test asserts that and the expiry"
+    ),
+    "test_scenario_c_integration_cooldown_applies_to_other_phases_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
     ),
     "test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact": (
-        "restores the phase-isolated cooldown contract that c14583b81 inverted without a "
-        "recorded reason; an integration demotion is keyed to the resolution phase, and the "
-        "in-gate ledger, resolver-health and phase-isolation tests require other phases to "
-        "keep their own standing"
+        "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
+        "only, so a cooldown earned in other phases also keeps the agent out of resolution, "
+        "and the renamed test resolves with the agent only after the fake clock passes it"
+    ),
+    "test_scenario_c_cooldown_elsewhere_applies_to_integration_until_it_expires": (
+        "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
+        "test with the agent-keyed cooldown contract"
     ),
     "test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves": (
-        "each failed attempt falls over to the fallback candidate in that round, "
-        "so the three consecutive failures that demote agentA interleave with agentB"
+        "operator rule: an agent is either on cooldown or not; demotion no longer exists, so "
+        "the test asserts the unproductive_limit cooldown_decision log instead of the removed "
+        "demoted log; each failed attempt still falls over to the fallback candidate"
     ),
     "test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase": (
-        "align outcome assertion with typed AGENT_FAILURE failure cause preserved across recovery"
+        "operator rule: an agent is either on cooldown or not; demotion no longer exists, so "
+        "the test asserts each agent logs an unproductive_limit cooldown_decision instead of "
+        "the removed demoted log; the typed AGENT_FAILURE cause is still asserted"
     ),
     "test_scenario_c_integration_demotion_cools_other_phases": (
         "ruff format inlined multi-line assertion"
@@ -96,6 +105,18 @@ def _captured_logs() -> Iterator[list[str]]:
         yield captured
     finally:
         loguru_logger.remove(sink_id)
+
+
+class _AdvancingClock(FrozenClock):
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
+
+
+def _cooldown_started(line: str, agent: str) -> bool:
+    return (
+        f"cooldown_decision phase={_RESOLUTION_PHASE} agent={agent} reason=unproductive_limit"
+        in line
+    )
 
 
 def _run_integration(
@@ -166,9 +187,9 @@ def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
     assert outcome.fast_forwarded is True
     assert not outcome.is_intervention_required
 
-    assert any(f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs)
+    assert any(_cooldown_started(line, "agentA") for line in logs)
     assert any("Selected agent agentB (skipped agentA:" in line for line in logs), (
-        "the demoted agent must be skipped for a stated reason"
+        "the cooling agent must be skipped for a stated reason"
     )
 
 
@@ -234,17 +255,15 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
     assert rebase_in_progress(repo_root)
 
     for agent in ("agentA", "agentB"):
-        assert any(
-            f"Agent '{agent}' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
-        )
+        assert any(_cooldown_started(line, agent) for line in logs)
 
 
-def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
+def test_scenario_c_integration_cooldown_applies_to_other_phases_until_it_expires(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
     repo_root = _clone_repo(_template_repo, tmp_path / "repo")
-    clock = FrozenClock()
+    clock = _AdvancingClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
 
@@ -262,25 +281,31 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
     assert outcome.fast_forwarded is True
     assert not outcome.is_intervention_required
 
-    assert any(f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs)
+    assert any(_cooldown_started(line, "agentA") for line in logs)
+
+    for phase in _OTHER_PHASES:
+        selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
+        assert selection.agent == "agentB"
+        assert any(skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons)
+
+    wait_ms = controller.earliest_available_wait_ms(_OTHER_PHASES[0], ["agentA"])
+    assert 0 < wait_ms <= 3_600_000
+    clock.advance(wait_ms / 1000.0)
 
     with _captured_logs() as other_logs:
         for phase in _OTHER_PHASES:
             selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
             assert selection.index == 0
             assert selection.agent == "agentA"
-            assert not any(
-                skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons
-            )
             assert any(f"Phase {phase}: Selected agent agentA" in line for line in other_logs)
 
 
-def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
+def test_scenario_c_cooldown_elsewhere_applies_to_integration_until_it_expires(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
     repo_root = _clone_repo(_template_repo, tmp_path / "repo")
-    clock = FrozenClock()
+    clock = _AdvancingClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
 
@@ -289,7 +314,7 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
             ledger.record(AttemptFact(phase=phase, agent="agentA", artifact_valid=False))
 
     with _captured_logs() as other_logs:
-        for phase in _OTHER_PHASES:
+        for phase in (*_OTHER_PHASES, _RESOLUTION_PHASE):
             selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
             assert selection.index == 1
             assert selection.agent == "agentB"
@@ -298,6 +323,10 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
                 f"Phase {phase}: Selected agent agentB (skipped agentA:" in line
                 for line in other_logs
             )
+
+    wait_ms = controller.earliest_available_wait_ms(_RESOLUTION_PHASE, ["agentA"])
+    assert 0 < wait_ms <= 3_600_000
+    clock.advance(wait_ms / 1000.0)
 
     outcome, invocations, logs = _run_integration(
         repo_root,
@@ -313,7 +342,5 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
     assert outcome.fast_forwarded is True
     assert not outcome.is_intervention_required
 
-    assert not any(
-        f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
-    )
+    assert not any(_cooldown_started(line, "agentA") for line in logs)
     assert not any("skipped agentA" in line for line in logs)

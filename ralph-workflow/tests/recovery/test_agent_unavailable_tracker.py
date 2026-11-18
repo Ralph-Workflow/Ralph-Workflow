@@ -27,6 +27,10 @@ from ralph.recovery.unavailability_reason import (
     UnavailabilityReason,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_agents_unavailable_waits_for_cooldown": "operator rule: an agent is either on cooldown or not, and one cooldown tracker holds that state; a later shorter cooldown no longer shortens a longer cooldown the agent is already on, so the restored 60 s cooldown remains instead of being replaced by the 5 s process_exited backoff",
+}
+
 
 def _minimal_policy_bundle(agents: list[str] | tuple[str, ...] | None = None) -> object:
     with tempfile.TemporaryDirectory() as d:
@@ -185,7 +189,7 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert "all agents unavailable" in new_state.last_error.lower()
     assert "waiting for cooldown expiry" in new_state.last_error.lower()
 
-    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 60_000
 
     clock.advance(60)
     retried_state, retried_effects, _ = controller.handle(

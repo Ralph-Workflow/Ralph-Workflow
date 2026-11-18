@@ -6,8 +6,19 @@ from ralph.recovery.agent_failure_ledger import (
     AttemptFact,
     CoolingDown,
     Eligible,
-    Spent,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_total_limit_returns_the_canonical_spent_answer": (
+        "operator rule: an agent is either on cooldown or not; the total unproductive limit now "
+        "starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so "
+        "the test asserts the cooldown and its expiry"
+    ),
+    "test_total_limit_starts_an_expiring_unproductive_limit_cooldown": (
+        "operator rule: an agent is either on cooldown or not; replaces the Spent answer test "
+        "with the expiring cooldown contract"
+    ),
+}
 
 _PHASE = "rebase_conflict_resolution"
 
@@ -43,16 +54,25 @@ def test_cooldown_expires_without_private_state_mutation() -> None:
     assert isinstance(ledger.agent_eligibility(_PHASE, "primary"), Eligible)
 
 
-def test_total_limit_returns_the_canonical_spent_answer() -> None:
+def test_total_limit_starts_an_expiring_unproductive_limit_cooldown() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(
         clock=clock,
-        consecutive_limit=2,
+        consecutive_limit=5,
         total_limit=2,
+        base_cooldown_seconds=2.0,
     )
 
     ledger.record(_failed_attempt("primary"))
-    outcome = ledger.record(_failed_attempt("primary"))
+    outcome = ledger.record(
+        AttemptFact(phase=_PHASE, agent="primary", artifact_valid=False, workspace_changed=True)
+    )
 
-    assert isinstance(outcome.status, Spent)
-    assert isinstance(ledger.agent_eligibility(_PHASE, "primary"), Spent)
+    assert isinstance(outcome.status, CoolingDown)
+    assert outcome.status.reason == "unproductive_limit"
+    assert outcome.status.until_ms == 2000
+    status = ledger.agent_eligibility(_PHASE, "primary")
+    assert isinstance(status, CoolingDown)
+    assert status.until_ms == 2000
+    clock.advance(2.0)
+    assert isinstance(ledger.agent_eligibility(_PHASE, "primary"), Eligible)

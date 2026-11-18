@@ -80,7 +80,7 @@ The conflict-strategy / deadline / intervention choice fields on
   of `consecutive_conflicts`; clamped to
   `MAX_TRACKED_CONFLICT_ATTEMPTS` inside the setter. The counter
   describes the repository (conflict identity plus the operator
-  escalation); it never selects, suppresses or demotes an agent.
+  escalation); it never selects an agent or puts one on cooldown.
 - `advance_conflict_strategy(reason: str) -> Self` -- bounded
   advancement of `conflict_strategy_index`,
   `conflict_strategies_tried`, `resolution_exhausted`,
