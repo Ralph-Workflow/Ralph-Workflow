@@ -352,7 +352,7 @@ tests/test_authority_audit_scenario_1_2_worktree_target.py|0,2,0
 tests/test_authority_audit_scenario_3_4_9_restart_retry.py|0,4,0
 tests/test_authority_audit_scenario_5_6_lifecycle_publication.py|0,2,0
 tests/test_authority_audit_scenario_7_8_10_entrypoints_display.py|0,2,0
-tests/test_auto_integrate_acceptance_scenarios_e2e.py|0,1,1
+tests/test_auto_integrate_acceptance_scenarios_e2e.py|0,1,0
 tests/test_auto_integrate_boundary_cleanliness.py|1,0,2
 tests/test_auto_integrate_boundary_freshness.py|4,4,0
 tests/test_auto_integrate_boundary_refresh.py|11,0,1
@@ -445,7 +445,7 @@ tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
 tests/test_conflict_resolution_pipeline.py|8,1,1
 tests/test_conflict_resolution_pipeline_outcome.py|5,0,0
-tests/test_conflict_resolution_rebase_loop.py|16,0,9
+tests/test_conflict_resolution_rebase_loop.py|14,0,9
 tests/test_conflict_resolution_relay_failure.py|0,1,0
 tests/test_conflict_resolution_resume.py|8,0,0
 tests/test_conflict_resolution_shared_ledger.py|1,0,0
