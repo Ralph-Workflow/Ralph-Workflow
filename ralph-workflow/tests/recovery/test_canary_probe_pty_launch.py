@@ -43,8 +43,25 @@ from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 pytestmark = pytest.mark.subprocess_e2e
 
 _STUB = Path(__file__).resolve().parent / "fixtures" / "fake_trust_dialog_cli.py"
+_CORPUS_TRUST_DIALOG = (
+    Path(__file__).resolve().parent / "dead_agent_corpus" / "claude_probe_trust_dialog_rc1.json"
+)
 
 _NEVER_SEEN_PROMPT_TAIL = "╭─ Vault handshake ─╮"
+
+
+def _corpus_real_prompt_tail() -> str:
+    payload = json.loads(_CORPUS_TRUST_DIALOG.read_text(encoding="utf-8"))
+    lines = payload["captured_lines"]
+    if not isinstance(lines, list) or not lines:
+        raise RuntimeError(f"corpus fixture missing captured_lines: {_CORPUS_TRUST_DIALOG}")
+    tail = lines[-1]
+    if not isinstance(tail, str) or not tail:
+        raise RuntimeError(f"corpus trust-dialog tail missing: {_CORPUS_TRUST_DIALOG}")
+    return tail
+
+
+_CORPUS_REAL_PROMPT_TAIL = _corpus_real_prompt_tail()
 
 _RUNTIME_TERMINATION_REASON_PREFIX = "probe_terminated_by_runtime:"
 
@@ -221,10 +238,21 @@ def _dead_attempt_facts() -> AttemptFacts:
 
 
 @pytest.mark.timeout_seconds(20)
-@pytest.mark.parametrize("block", [True, False], ids=["blocks_forever", "exits_rc1"])
+@pytest.mark.parametrize(
+    ("dialog_tail", "block"),
+    [
+        (_NEVER_SEEN_PROMPT_TAIL, False),
+        (_CORPUS_REAL_PROMPT_TAIL, True),
+    ],
+    ids=[
+        "never_seen_exits_rc1",
+        "corpus_real_blocks_forever",
+    ],
+)
 def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
+    dialog_tail: str,
     block: bool,
 ) -> None:
     trusted_root = tmp_path / "trusted-root"
@@ -233,7 +261,7 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
     stdout_record = tmp_path / "stub-stdout.txt"
     stdin_record = tmp_path / "stub-stdin.txt"
     extra = {
-        "STUB_DIALOG_TEXT": _NEVER_SEEN_PROMPT_TAIL,
+        "STUB_DIALOG_TEXT": dialog_tail,
         "STUB_STDOUT_RECORD": str(stdout_record),
         "STUB_STDIN_RECORD": str(stdin_record),
     }
@@ -318,34 +346,58 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
     assert f"detail={PROBE_COULD_NOT_RUN_DETAIL}" in probe_log_lines[0]
     assert f"reason={probe_result.reason}" in probe_log_lines[0]
 
-    _assert_probe_could_not_run_observations(controller, stdout_record, stdin_record)
+    _assert_probe_could_not_run_observations(
+        controller,
+        stdout_record,
+        stdin_record,
+        dialog_tail=dialog_tail,
+    )
 
 
 def _assert_probe_could_not_run_observations(
     controller: RecoveryController,
     stdout_record: Path,
     stdin_record: Path,
+    *,
+    dialog_tail: str,
 ) -> None:
     captured_stdout = stdout_record.read_text(encoding="utf-8")
-    assert captured_stdout == f"{_NEVER_SEEN_PROMPT_TAIL}\n", (
-        "the blocked CLI must emit exactly the unanswered prompt tail and nothing else; "
+    assert captured_stdout == f"{dialog_tail}\n", (
+        "the blocked CLI must emit exactly the requested prompt tail and nothing else; "
         f"observed: {captured_stdout!r}"
     )
     captured_stdin = stdin_record.read_text(encoding="utf-8") if stdin_record.exists() else ""
-    assert captured_stdin == "", (
-        "an arbitrary never-seen prompt wording must match no prompt-phrase list in the "
-        f"tree, so nothing may answer it; observed input: {captured_stdin!r}"
-    )
+    if dialog_tail == _NEVER_SEEN_PROMPT_TAIL:
+        assert captured_stdin == "", (
+            "an arbitrary never-seen prompt wording must match no prompt-phrase list in the "
+            f"tree, so nothing may answer it; observed input: {captured_stdin!r}"
+        )
+    else:
+        assert captured_stdin != "", (
+            "the corpus-real trust-dialog wording must reach the production permission "
+            f"auto-approval surface and receive Enter; observed input: {captured_stdin!r}"
+        )
+        assert all(character in "\r\n" for character in captured_stdin), (
+            "the production auto-approval response must contain only Enter-key bytes; "
+            f"observed input: {captured_stdin!r}"
+        )
 
     parser = ClaudeInteractiveParser()
     parsed_lines = list(parser.parse(iter([captured_stdout])))
     assert parser.session_id is None, (
         f"the blocked CLI emitted a session event; observed: {parser.session_id!r}"
     )
-    assert parsed_lines == [], (
-        "the blocked CLI emitted model output; observed: "
-        f"{[(line.type, line.content) for line in parsed_lines]!r}"
-    )
+    if dialog_tail == _NEVER_SEEN_PROMPT_TAIL:
+        assert parsed_lines == [], (
+            "the blocked CLI emitted model output; observed: "
+            f"{[(line.type, line.content) for line in parsed_lines]!r}"
+        )
+    else:
+        assert [(line.type, line.content) for line in parsed_lines] == [("text", dialog_tail)], (
+            "the corpus-real trust-dialog wording must remain visible as the captured "
+            "provider text; observed: "
+            f"{[(line.type, line.content) for line in parsed_lines]!r}"
+        )
     activity = ClaudeInteractiveExecutionStrategy().classify_activity_line(captured_stdout)
     assert activity is not None
     assert activity.kind is not AgentActivityKind.STREAM_DELTA, (

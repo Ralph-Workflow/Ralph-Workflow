@@ -98,6 +98,24 @@ def _assert_never_spent(
     assert snapshot["spent_agents"] == {}
 
 
+def _assert_one_ordinary_ledger_charge(
+    observation: MatrixScenario.Observation,
+    agent: str,
+) -> None:
+    entries = observation.ledger_entries
+    assert len(entries) == 1, (
+        "AC7 ordinary ledger accounting: a probe that produced no verdict leaves "
+        f"exactly one ledger entry for the agent; observed entries={entries!r}"
+    )
+    entry = as_mapping(next(iter(entries.values())))
+    assert entry.get("phase") == PHASE
+    assert entry.get("agent") == agent
+    assert entry.get("is_spent") is False
+    assert entry.get("cooldown_until_ms") is None
+    assert entry.get("cooldown_reason") is None
+    assert entry.get("unavailable_reason") is None
+
+
 def _assert_corpus_expectations(
     scenario: MatrixScenario,
     observation: MatrixScenario.Observation,
@@ -188,6 +206,8 @@ def _assert_observation(
         assert observation.ledger_status == "eligible"
         assert observation.wait_ms == 0
     last_attempt = scenario.attempts[-1]
+    if scenario.probe_raises:
+        _assert_one_ordinary_ledger_charge(observation, last_attempt.agent)
     if "AC10" in scenario.acceptance and last_attempt.typed_signal is not None:
         assert observation.availability is False
         assert observation.wait_positive is True
@@ -480,6 +500,7 @@ def test_ac16_probe_could_not_run_keeps_a_selectable(
     assert observation.ledger_status == "eligible"
     assert controller.snapshot()["spent_agents"] == {}
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    _assert_one_ordinary_ledger_charge(observation, AGENT_A)
 
 
 @pytest.mark.parametrize(
@@ -576,6 +597,7 @@ def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
     assert observation.probe_calls == (AGENT_A,)
     assert controller.snapshot()["spent_agents"] == {}
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    _assert_one_ordinary_ledger_charge(observation, AGENT_A)
     record = observation.verdict_record
     if isinstance(record, dict):
         assert as_mapping(record).get("probe_outcome") is None
