@@ -48,7 +48,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "test, which now cools every agent instead of spending it"
     ),
     "test_unrelated_head_rejected_once_and_further_ticks_are_silent": (
-        "bounded silent tick iterations from 2 to 1 while continuing to assert that subsequent ticks are completely silent and invoke no agents"
+        "the later-tick budget is restored from one tick to two, the observed head moves after the "
+        "terminal transition so the durable terminal marker is the only one-shot authority left, and "
+        "the durable complete_in_place result (terminal marker, landed feature sha, integrated phase) "
+        "plus the unchanged repair-attempt counter, terminal marker and ladder evidence are asserted, "
+        "so a repeated terminal warning, a second escalation or a lost completion result fails the test"
     ),
     "test_config_corrupt_agents_toml_surfaces_file_and_check_config": (
         "pass an explicit recovery_controller so the continuation retry gate can compute a key "
@@ -475,8 +479,20 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
     assert len(terminal) == 1, terminal
     assert invoked == []
 
+    settled = read_record(root)
+    assert settled is not None
+    marker = settled.resolution_terminal_marker
+    assert marker is not None
+    assert marker[1] == "complete_in_place"
+    assert settled.phase == "integrated"
+    assert settled.integrated_feature_sha == feature
+    settled_attempts = settled.merge_commit_repair_attempts
+    settled_evidence = ledger.read().ladder_evidence
+
+    _commit(root, "unrelated-again\n", "unrelated again")
+
     later: list[tuple[str, str]] = []
-    for _tick in range(1):
+    for _tick in range(2):
         clock.advance(60)
         result, round_invoked, captured = _diagnose(
             root, ledger=ledger, clock=clock, controller=controller
@@ -484,11 +500,16 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
         invoked.extend(round_invoked)
         later.extend(captured)
         assert result is False
+        settled = read_record(root)
+        assert settled is not None
+        assert settled.merge_commit_repair_attempts == settled_attempts
+        assert settled.resolution_terminal_marker == marker
 
     assert invoked == []
     assert [message for level, message in later if level in {"CRITICAL", "WARNING"}] == []
     assert not any("Selected agent" in message for _level, message in later)
     assert len(terminal) == 1
+    assert ledger.read().ladder_evidence == settled_evidence
 
 
 def test_retry_gate_blocks_launch_for_unchanged_identity(

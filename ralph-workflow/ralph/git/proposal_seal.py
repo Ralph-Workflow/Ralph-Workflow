@@ -29,6 +29,10 @@ _REF_PARTITION_COUNT: int = 2
 _MAX_CONTENT_SCAN_BYTES: int = 1_000_000
 
 _PROPOSAL_ADDED_STATUSES: frozenset[str] = frozenset({"A", "R", "C"})
+_BASELINE_REF_PREFIX = "refs/ralph/baselines/"
+_BASELINE_INDEX_REF_PREFIX = "refs/ralph/baseline-index/"
+_PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
+_ROLLBACK_COMPLETION_REF_PREFIX = "refs/ralph/rollback-completions/"
 
 
 @dataclass(frozen=True)
@@ -92,6 +96,14 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
         return Seal(ref=ref, commit_sha=commit_sha, tree_sha=tree_sha)
 
 
+def _baseline_index_ref(baseline_ref: str) -> str:
+    if not baseline_ref.startswith(_BASELINE_REF_PREFIX):
+        raise ProposalPreflightError(
+            f"Baseline ref {baseline_ref!r} is not a Ralph baseline ref"
+        )
+    return _BASELINE_INDEX_REF_PREFIX + baseline_ref.removeprefix(_BASELINE_REF_PREFIX)
+
+
 def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) -> Seal | None:
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
@@ -101,6 +113,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) ->
                 return None
 
         ref = f"refs/ralph/baselines/{run_id}"
+        index_ref = _baseline_index_ref(ref)
         parent_sha: str | None = None
         try:
             head_obj = route_git_method(repo, "rev_parse", ("--verify", "HEAD"))
@@ -116,6 +129,8 @@ def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) ->
 
             try:
                 with repo.git.custom_environment(GIT_INDEX_FILE=str(tmp_index_path)):
+                    index_tree_obj = route_git_method(repo, "write_tree")
+                    index_tree_sha = str(index_tree_obj).strip()
                     route_git_method(repo, "add", ("-A",))
                     route_git_method(
                         repo, "rm", ("-r", "--cached", "--ignore-unmatch", "--", ".agent")
@@ -134,6 +149,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) ->
             try:
                 commit_sha_obj = route_git_method(repo, "commit_tree", commit_args)
                 commit_sha = str(commit_sha_obj).strip()
+                route_git_method(repo, "update_ref", (index_ref, index_tree_sha))
                 route_git_method(repo, "update_ref", (ref, commit_sha))
             except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
                 raise ProposalSealError(f"Failed to create baseline commit/ref: {exc}") from exc
@@ -355,6 +371,31 @@ def _remove_proposal_added_files(root_path: Path, diff_entries: list[DiffEntry])
                     break
 
 
+def _rollback_completion_ref(proposal_ref: str) -> str | None:
+    if not proposal_ref.startswith(_PROPOSAL_REF_PREFIX):
+        return None
+    suffix = proposal_ref.removeprefix(_PROPOSAL_REF_PREFIX)
+    return _ROLLBACK_COMPLETION_REF_PREFIX + suffix
+
+
+def _require_resolved_ref(repo: Repo, ref: str, label: str) -> str:
+    try:
+        return _resolve_full_object_name(repo, ref)
+    except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
+        raise ProposalPreflightError(f"{label} ref {ref!r} does not resolve: {exc}") from exc
+
+
+def _restore_worktree_to_ref(repo: Repo, target_ref: str) -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_index_path = Path(tmp_dir) / "restore_index"
+        try:
+            with repo.git.custom_environment(GIT_INDEX_FILE=str(tmp_index_path)):
+                route_git_method(repo, "read_tree", (target_ref,))
+                route_git_method(repo, "read_tree", ("--reset", "-u", target_ref))
+        except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
+            raise ProposalSealError(f"Failed to restore worktree to {target_ref}: {exc}") from exc
+
+
 def rollback(
     repo_root: Path | str,
     ref: str,
@@ -368,29 +409,36 @@ def rollback(
 
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
-        target_ref = "HEAD"
-        if baseline_ref is not None:
-            try:
-                route_git_method(repo, "rev_parse", ("--verify", baseline_ref))
-                target_ref = baseline_ref
-            except (GitCommandError, OSError) as exc:
-                raise ProposalPreflightError(
-                    f"Baseline ref {baseline_ref!r} does not resolve: {exc}"
-                ) from exc
+        proposal_sha = _require_resolved_ref(repo, ref, "Proposal")
+        worktree_ref = baseline_ref if baseline_ref is not None else "HEAD"
+        index_ref = _baseline_index_ref(baseline_ref) if baseline_ref is not None else "HEAD"
+        _require_resolved_ref(repo, worktree_ref, "Baseline")
+        _require_resolved_ref(repo, index_ref, "Baseline index")
+        diff_entries = diff_tree(repo_root, ref=ref, base=worktree_ref)
 
         if step_hook is not None:
             step_hook("read_tree")
 
-        try:
-            route_git_method(repo, "read_tree", ("--reset", "-u", target_ref))
-        except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
-            raise ProposalSealError(f"Failed to reset tree to {target_ref}: {exc}") from exc
+        _restore_worktree_to_ref(repo, worktree_ref)
 
         if step_hook is not None:
             step_hook("remove_added_files")
 
-        diff_entries = diff_tree(repo_root, ref=ref, base=target_ref)
         _remove_proposal_added_files(root_path, diff_entries)
+
+        try:
+            route_git_method(repo, "read_tree", ("--reset", index_ref))
+        except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
+            raise ProposalSealError(f"Failed to restore index to {index_ref}: {exc}") from exc
+
+        completion_ref = _rollback_completion_ref(ref)
+        if completion_ref is not None:
+            try:
+                route_git_method(repo, "update_ref", (completion_ref, proposal_sha))
+            except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
+                raise ProposalSealError(
+                    f"Failed to persist rollback completion {completion_ref!r}: {exc}"
+                ) from exc
 
         if step_hook is not None:
             step_hook("complete")
@@ -399,7 +447,6 @@ def rollback(
 
 
 REJECTED_PROPOSAL_REF_PREFIX = "refs/ralph/rejected-proposals/"
-_PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
 
 _FULL_OBJECT_NAME_RE: re.Pattern[str] = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
 
@@ -412,6 +459,20 @@ def _resolve_full_object_name(repo: Repo, ref: str) -> str:
     if _FULL_OBJECT_NAME_RE.fullmatch(resolved) is None:
         raise ValueError(f"Ref {ref!r} did not resolve to a full object name")
     return resolved
+
+
+def rollback_completed(repo_root: Path | str, proposal_ref: str) -> bool:
+    completion_ref = _rollback_completion_ref(proposal_ref)
+    if completion_ref is None:
+        return False
+    root_path = Path(repo_root).resolve()
+    with _open_repo(root_path) as repo:
+        proposal_sha = _require_resolved_ref(repo, proposal_ref, "Proposal")
+        try:
+            completion_sha = _resolve_full_object_name(repo, completion_ref)
+        except (GitCommandError, OSError, RuntimeError, ValueError):
+            return False
+        return proposal_sha == completion_sha
 
 
 def _mark_rejected_proposal(repo_root: Path, proposal_ref: str) -> None:
@@ -440,6 +501,7 @@ __all__ = [
     "preflight",
     "prune",
     "rollback",
+    "rollback_completed",
     "seal_baseline",
     "seal_pending",
 ]

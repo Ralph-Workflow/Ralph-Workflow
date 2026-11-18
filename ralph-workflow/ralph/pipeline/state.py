@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final, cast
@@ -256,6 +257,7 @@ class PipelineState(_FrozenPipelineStateModel):
     push_count: int = 0
     last_error: str | None = None
     last_reviewed_sha: str | None = None
+    run_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
 
     rollback_pending: bool = False
     rollback_ref: str | None = None
@@ -302,6 +304,18 @@ class PipelineState(_FrozenPipelineStateModel):
     ledger_snapshot: dict[str, object] | None = None
     dead_agent_verdict_record: dict[str, object] | None = None
     false_bench_feedback: dict[str, object] | None = None
+
+    @field_validator("run_id")
+    @classmethod
+    def _reject_literal_run_alias(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise TypeError("run_id must be a non-empty durable per-run identity")
+        cleaned = value.strip()
+        if not cleaned or cleaned == "run":
+            raise ValueError(
+                "run_id must be a durable per-run identity, not empty or the literal 'run'"
+            )
+        return cleaned
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:

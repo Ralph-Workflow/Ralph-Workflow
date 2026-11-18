@@ -97,6 +97,13 @@ PROGRESS_PATH_ALLOWLIST: dict[tuple[str, str], str] = {
         "ralph/pipeline/reducer.py",
         "_reduce_phase_failure",
     ): "Phase-level failure routing preserves workspace progress and delegates the outcome to RecoveryController.handle.",
+    (
+        "ralph/recovery/failure_classifier.py",
+        "UNRESOLVED_REMAINING",
+    ): (
+        "Conflict attempt that changed the worktree or reduced the unresolved count; "
+        "progress stays non-penalising."
+    ),
 }
 
 ROUND_CAP_LITERAL_ALLOWLIST: dict[tuple[str, str], str] = {
@@ -136,6 +143,7 @@ TEMPORARY_TEST_COUNTER_READS: frozenset[tuple[str, str]] = frozenset(
 
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {}
 
+_TYPED_OUTCOME_CLASSIFICATION_ARITY = 3
 _CONFLICT_RESOLUTION_PATH_PREFIX = "ralph/pipeline/conflict_resolution/"
 
 _CONFLICT_RESOLUTION_CLASSIFICATION_RULE = (
@@ -1647,9 +1655,69 @@ def _check_agent_retry_timing_outside_shared_path(
     return violations
 
 
+_TYPED_OUTCOME_CLASSIFICATION_NAME = "_TYPED_OUTCOME_CLASSIFICATION"
+
+
+def _assignment_target_names(node: ast.Assign | ast.AnnAssign | ast.AugAssign) -> list[str]:
+    return [target.id for target in _assignment_targets(node) if isinstance(target, ast.Name)]
+
+
+def _typed_outcome_key_name(node: ast.AST | None) -> str | None:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _typed_outcome_mapping_is_unpenalised(value: ast.AST) -> bool:
+    if (
+        not isinstance(value, ast.Tuple)
+        or len(value.elts) < _TYPED_OUTCOME_CLASSIFICATION_ARITY
+    ):
+        return False
+    counts = value.elts[1]
+    reason = value.elts[2]
+    counts_false = _is_false_constant(counts) or _is_statically_falsy_expression(counts)
+    reason_none = isinstance(reason, ast.Constant) and reason.value is None
+    return counts_false and reason_none
+
+
+def _check_typed_outcome_classification_mapping(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    for node in tree.body:
+        if not _is_assign_or_ann(node) or node.value is None:
+            continue
+        if _TYPED_OUTCOME_CLASSIFICATION_NAME not in _assignment_target_names(node):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            continue
+        for key, value in zip(node.value.keys, node.value.values, strict=False):
+            if value is None or not _typed_outcome_mapping_is_unpenalised(value):
+                continue
+            outcome_name = _typed_outcome_key_name(key)
+            if outcome_name is not None and _is_progress_path_allowed(rel_path, outcome_name):
+                continue
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=value.lineno,
+                    rule="production_unjustified_non_penalising_failure",
+                    detail=(
+                        "Typed outcome classification disables both budget charge and "
+                        "unavailability outside an explicitly justified progress-made path."
+                    ),
+                )
+            )
+    return violations
+
+
 def check_agent_failure_ownership(tree: ast.Module, rel_path: str) -> list[SingleOwnerViolation]:
     context = _build_ownership_context(tree)
     violations = _check_conflict_resolution_classification_ownership(tree, rel_path)
+    violations.extend(_check_typed_outcome_classification_mapping(tree, rel_path))
     violations.extend(_check_cooldown_state_single_owner(tree, rel_path))
     violations.extend(_check_forbidden_integration_classifier(tree, rel_path))
     violations.extend(_check_agent_retry_timing_outside_shared_path(tree, rel_path))

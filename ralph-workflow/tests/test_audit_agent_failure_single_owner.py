@@ -36,6 +36,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "TEMPORARY_TRANSITIONAL_RULES is now empty following removal of transitional "
         "dead_tool_surfaces rules in conflict resolution"
     ),
+    "test_unjustified_unpenalised_typed_outcome_mapping_entry_is_flagged": (
+        "the single-owner audit must reject a typed-outcome mapping entry that is neither "
+        "unavailable nor budget-charged outside an explicitly justified progress case"
+    ),
+    "test_justified_progress_typed_outcome_mapping_entry_passes": (
+        "an allowlisted progress outcome may keep counts_against_budget False without "
+        "unavailability in the shared typed mapping"
+    ),
 }
 
 
@@ -81,6 +89,35 @@ def classify_attempt():
 """
     violations = audit_production_source("ralph/recovery/custom.py", source)
     assert any(v.rule == "production_unjustified_non_penalising_failure" for v in violations)
+
+
+def test_unjustified_unpenalised_typed_outcome_mapping_entry_is_flagged() -> None:
+    source = """
+_TYPED_OUTCOME_CLASSIFICATION = {
+    ConflictAttemptOutcome.ATTEMPT_FAILED: (FailureCategory.AGENT, False, None),
+}
+"""
+    violations = audit_production_source("ralph/recovery/failure_classifier.py", source)
+    assert any(v.rule == "production_unjustified_non_penalising_failure" for v in violations), (
+        f"Expected unjustified typed mapping entry to be flagged, got: {violations}"
+    )
+
+
+def test_justified_progress_typed_outcome_mapping_entry_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = """
+_TYPED_OUTCOME_CLASSIFICATION = {
+    ConflictAttemptOutcome.UNRESOLVED_REMAINING: (FailureCategory.AGENT, False, None),
+}
+"""
+    monkeypatch.setitem(
+        PROGRESS_PATH_ALLOWLIST,
+        ("ralph/recovery/failure_classifier.py", "UNRESOLVED_REMAINING"),
+        "Conflict attempt that changed the worktree or reduced the unresolved count.",
+    )
+    violations = audit_production_source("ralph/recovery/failure_classifier.py", source)
+    assert not [v for v in violations if v.rule == "production_unjustified_non_penalising_failure"]
 
 
 def test_non_penalising_classified_failure_on_justified_progress_path_passes(

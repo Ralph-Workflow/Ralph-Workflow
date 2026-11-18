@@ -63,12 +63,19 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "module pytestmark adds subprocess_e2e beside timeout_seconds so audit_test_policy "
         "io exemption matches sibling blackbox real-git files"
     ),
+    "pytestmark_subprocess_e2e_required_auto_integrate_e2e": (
+        "the paused-rebase template is a real git repository, so the file is marked "
+        "subprocess_e2e like every other real-git suite; required_auto_integrate_e2e keeps "
+        "it selected by the combined verification invocation; the CONFIG_FAILURE / WAITING / "
+        "RECOVERED asserts and the seeded paused-rebase template are unchanged"
+    ),
 }
 
 
 pytestmark = [
-    pytest.mark.timeout_seconds(10),
     pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(10),
 ]
 
 

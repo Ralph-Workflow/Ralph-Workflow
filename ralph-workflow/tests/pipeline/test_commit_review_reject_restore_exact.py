@@ -51,6 +51,27 @@ def _snapshot_tree(root: Path, *, exclude_ignored: bool = False) -> dict[str, tu
     return snapshot
 
 
+def _status_snapshot(root: Path) -> set[str]:
+    status = route_run_git(
+        ["status", "--porcelain", "-uall"],
+        cwd=root,
+        label="status",
+    ).stdout
+    return {
+        line
+        for line in status.splitlines()
+        if line and not line[3:].startswith(".agent/")
+    }
+
+
+def _index_snapshot(root: Path) -> str:
+    return route_run_git(
+        ["ls-files", "--stage", "-z"],
+        cwd=root,
+        label="ls-files",
+    ).stdout
+
+
 def _setup_prework_tree(
     root: Path,
     *,
@@ -448,3 +469,82 @@ def test_commit_review_reject_restores_the_run_start_baseline_byte_exactly(
     assert not (root / "docs" / "added_by_proposal.txt").exists()
     assert not (root / "assets" / "proposal.bin").exists()
     assert (root / "README.md").read_bytes() == b"test"
+
+
+def test_commit_review_reject_restores_the_run_start_index_classification(
+    tmp_git_repo: Path,
+) -> None:
+    root = Path(tmp_git_repo)
+    tracked_files = {
+        "deleted.txt": b"deleted at run start\n",
+        "staged.txt": b"head staged content\n",
+        "unstaged.txt": b"head unstaged content\n",
+    }
+    for relative_path, payload in tracked_files.items():
+        path = root / relative_path
+        path.write_bytes(payload)
+    route_run_git(["add", *tracked_files], cwd=root, label="add")
+    route_run_git(["commit", "-m", "add index classification fixtures"], cwd=root, label="commit")
+
+    (root / "unstaged.txt").write_bytes(b"user unstaged content\n")
+    (root / "staged.txt").write_bytes(b"user staged content\n")
+    route_run_git(["add", "staged.txt"], cwd=root, label="stage")
+    (root / "staged_new.txt").write_bytes(b"user staged new content\n")
+    route_run_git(["add", "staged_new.txt"], cwd=root, label="stage")
+    (root / "deleted.txt").unlink()
+    untracked = root / "untracked.bin"
+    untracked.write_bytes(b"\x00user untracked binary\xff")
+
+    status_before = _status_snapshot(root)
+    index_before = _index_snapshot(root)
+    assert status_before == {
+        " D deleted.txt",
+        "M  staged.txt",
+        "A  staged_new.txt",
+        " M unstaged.txt",
+        "?? untracked.bin",
+    }
+
+    baseline = seal_baseline(root, _RUN_ID)
+    assert baseline is not None
+
+    (root / "deleted.txt").write_bytes(b"proposal restored this path\n")
+    (root / "staged.txt").write_bytes(b"proposal staged content\n")
+    (root / "staged_new.txt").write_bytes(b"proposal staged new content\n")
+    (root / "unstaged.txt").write_bytes(b"proposal unstaged content\n")
+    untracked.write_bytes(b"\x00proposal untracked binary\xff")
+    (root / "proposal_added.txt").write_bytes(b"proposal addition\n")
+
+    seal = seal_pending(root, _RUN_ID, _ITERATION)
+    bundle = load_policy(_DEFAULT_POLICY_DIR)
+    pending_state, _ = reduce(
+        PipelineState(
+            phase="development_commit_review",
+            commit_review_rejections=0,
+            rollback_baseline_ref=baseline.ref,
+        ),
+        CommitReviewRejected(
+            reason="proposal rejected: restore index classification",
+            ref=seal.ref,
+            hard=True,
+        ),
+        bundle.pipeline,
+    )
+
+    cleared_state = execute_pending_rollback(
+        pending_state,
+        root,
+        bundle.pipeline,
+        checkpoint_path=rollback_checkpoint_path_for_root(root),
+    )
+
+    assert cleared_state.rollback_pending is False
+    assert cleared_state.rollback_ref is None
+    assert _status_snapshot(root) == status_before
+    assert _index_snapshot(root) == index_before
+    assert not (root / "deleted.txt").exists()
+    assert (root / "staged.txt").read_bytes() == b"user staged content\n"
+    assert (root / "staged_new.txt").read_bytes() == b"user staged new content\n"
+    assert (root / "unstaged.txt").read_bytes() == b"user unstaged content\n"
+    assert untracked.read_bytes() == b"\x00user untracked binary\xff"
+    assert not (root / "proposal_added.txt").exists()

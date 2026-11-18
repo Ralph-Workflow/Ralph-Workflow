@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ralph.testing.audit_integration_no_legacy import (
+    DENIAL_ONLY_PRE_RENAME_SENTINELS,
     audit_modules,
     audit_tree,
     main,
@@ -30,11 +31,42 @@ def test_audit_flags_legacy_review_identifiers() -> None:
         ("ralph/pipeline/planted_skill.py", f"skill = 'submit-{_HYPHEN_STEM}-artifact'\n"),
         ("ralph/pipeline/planted_template.py", f"template = '{_STEM}.jinja'\n"),
         ("ralph/pipeline/planted_counter.py", f"{_STEM}_rejections += 1\n"),
+        ("ralph/pipeline/probe.py", 'phase = "commit_" + "cleanup"\n'),
+        ("ralph/pipeline/planted_implicit_concat.py", 'phase = "commit_" "cleanup"\n'),
+        (
+            "ralph/pipeline/planted_nested_concat.py",
+            'phase = "development_" + "commit_" + "cleanup"\n',
+        ),
     ]
     for rel, source in planted_snippets:
         violations = audit_modules({rel: source}, ignore_transitional=True)
         rules = [v.rule for v in violations]
         assert _RULE in rules, f"Failed for {rel}: got {rules}"
+
+
+def test_audit_allows_exact_denial_only_pre_rename_sentinel() -> None:
+    denial_path = "ralph/pipeline/_checkpoint_retired_phase_error.py"
+    assert (denial_path, _STEM) in DENIAL_ONLY_PRE_RENAME_SENTINELS
+    assert DENIAL_ONLY_PRE_RENAME_SENTINELS[(denial_path, _STEM)]
+
+    source = (
+        "class CheckpointRetiredPhaseError:\n"
+        "    def __init__(self) -> None:\n"
+        '        retired_artifact = "commit_" + "cleanup"\n'
+    )
+    violations = audit_modules({denial_path: source}, ignore_transitional=True)
+    assert not [v for v in violations if v.rule == _RULE]
+
+
+def test_audit_rejects_non_exact_folded_legacy_on_denial_sentinel_path() -> None:
+    denial_path = "ralph/pipeline/_checkpoint_retired_phase_error.py"
+    violations = audit_modules(
+        {
+            denial_path: 'phase = "development_" + "commit_" + "cleanup"\n',
+        },
+        ignore_transitional=True,
+    )
+    assert _RULE in [v.rule for v in violations]
 
 
 def test_audit_allows_clean_commit_review_identifiers() -> None:

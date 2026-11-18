@@ -9,6 +9,7 @@ from loguru import logger
 
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.terminal_state_violation_error import TerminalStateViolationError
 
 if TYPE_CHECKING:
@@ -23,8 +24,10 @@ __all__ = (
     "TerminalStateViolationError",
     "delete_rebase_backup_refs",
     "post_attempt_verify",
+    "record_resolution_attempt_key",
     "resolution_terminal_marker",
     "terminal_marker_blocks_attempt",
+    "write_resolution_terminal_marker",
 )
 
 type ResolutionAttemptKey = tuple[str | None, tuple[str, ...], str | None]
@@ -79,6 +82,31 @@ def terminal_marker_blocks_attempt(
 ) -> bool:
     marker = resolution_terminal_marker(record)
     return marker is not None and marker.attempt_key == attempt_key
+
+
+def record_resolution_attempt_key(
+    record: IntegrationRecord,
+) -> ResolutionAttemptKey | None:
+    return _resolution_attempt_key(record.resolution_gate_key)
+
+
+def write_resolution_terminal_marker(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> IntegrationRecord:
+    from ralph.pipeline.auto_integrate_record import read_record, write_record
+
+    current = read_record(root, backend=backend) or record
+    marker = ResolutionTerminalMarker(
+        record_resolution_attempt_key(current),
+        "complete_in_place",
+        RESUME_COMMAND,
+    )
+    settled = current.with_resolution_terminal_marker(marker.as_record_value())
+    write_record(root, settled, backend=backend)
+    return settled
 
 
 _TERMINAL_MARKER_FILES: frozenset[str] = frozenset(

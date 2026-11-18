@@ -298,8 +298,46 @@ def _run_commit_review_phase(workspace: FsWorkspace) -> list[object]:
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     return handle_commit_review_phase(effect, ctx)
+
+
+def test_literal_run_alias_and_missing_identity_fail_the_gate(
+    tmp_git_repo: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_raw_commit_review_artifact(workspace, ["verdict: approve"])
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    for effect in (
+        InvokeAgentEffect(
+            agent_name="dev",
+            phase="development_commit_review",
+            prompt_file="cleanup.txt",
+            run_id="run",
+            iteration="1",
+        ),
+        InvokeAgentEffect(
+            agent_name="dev",
+            phase="development_commit_review",
+            prompt_file="cleanup.txt",
+        ),
+    ):
+        result = handle_commit_review_phase(effect, ctx)
+        assert len(result) == 1
+        assert isinstance(result[0], CommitReviewGateFailed)
+        assert "durable per-run identity" in result[0].detail
+        assert "literal 'run'" in result[0].detail
+    refs = tmp_git_repo / ".git" / "refs" / "ralph" / "proposals" / "run"
+    assert not refs.exists()
 
 
 def test_artifact_without_verdict_is_never_an_approval(tmp_git_repo: Path) -> None:
@@ -486,6 +524,8 @@ def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
@@ -508,6 +548,8 @@ def test_missing_artifact_returns_failure_event(tmp_git_repo: Path) -> None:
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
     assert len(result) == 1
@@ -537,6 +579,8 @@ def test_cleanup_actions_applied_when_verdict_approves(tmp_git_repo: Path) -> No
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
@@ -574,6 +618,8 @@ def test_repo_root_resolution_failure_returns_phase_failure_event(
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -629,6 +675,8 @@ def test_repo_root_resolution_failure_does_not_use_path_cwd(
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -661,6 +709,8 @@ def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
@@ -727,7 +777,11 @@ def test_delete_file_with_parent_traversal_returns_failure_event(
         agents_policy=object(),
     )
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
 
     result = handle_commit_review_phase(effect, ctx)
@@ -759,7 +813,11 @@ def test_delete_file_with_absolute_path_returns_failure_event(
         agents_policy=object(),
     )
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
 
     result = handle_commit_review_phase(effect, ctx)
@@ -784,7 +842,11 @@ def _invoke_cleanup(workspace: FsWorkspace, content: dict) -> list:
     _write_commit_review_artifact(workspace, content)
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     return handle_commit_review_phase(effect, ctx)
 
@@ -1297,6 +1359,8 @@ def test_apply_time_delete_failure_triggers_commit_review_loopback(
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     events = handle_commit_review_phase(effect, ctx)
 
@@ -1361,6 +1425,8 @@ def test_apply_time_delete_failure_with_safe_gitignore_loops_back(
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     events = handle_commit_review_phase(effect, ctx)
 
@@ -1483,7 +1549,11 @@ def test_pre_emptive_untrack_runs_before_artifact_load(tmp_git_repo: Path) -> No
     workspace = FsWorkspace(tmp_git_repo)
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     events = handle_commit_review_phase(effect, ctx)
 
@@ -1515,7 +1585,11 @@ def test_pre_emptive_untrack_succeeds_when_git_state_is_broken(tmp_path: Path) -
     workspace = FsWorkspace(non_repo)
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     events = handle_commit_review_phase(effect, ctx)
 
@@ -1707,7 +1781,11 @@ def test_hard_tripwire_automatic_rejection_without_agent_invocation(tmp_git_repo
     workspace = FsWorkspace(tmp_git_repo)
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1730,7 +1808,11 @@ def test_agent_approval_with_matching_tree_sha(tmp_git_repo: Path) -> None:
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1761,7 +1843,11 @@ def test_agent_rejection_with_verifiable_citations(tmp_git_repo: Path) -> None:
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1794,7 +1880,11 @@ def test_unverifiable_citations_returns_gate_failed(tmp_git_repo: Path) -> None:
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1817,7 +1907,11 @@ def test_stale_tree_sha_mismatch_loops_back_for_rereview(tmp_git_repo: Path) -> 
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1849,7 +1943,11 @@ def test_stale_tree_sha_does_not_apply_actions_before_rereview(tmp_git_repo: Pat
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 
@@ -1887,7 +1985,11 @@ def test_safe_actions_application_and_resealing(tmp_git_repo: Path) -> None:
     )
     ctx = _make_cleanup_ctx(workspace)
     effect = InvokeAgentEffect(
-        agent_name="dev", phase="development_commit_review", prompt_file="cleanup.txt"
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 

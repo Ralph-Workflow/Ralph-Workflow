@@ -503,7 +503,13 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
     mismatch_effect = InvokeAgentEffect(
         agent_name=selected_agent,
         phase=review_phase,
-        prompt_file=str(prompt_path.relative_to(commit_review_repo)),
+        prompt_file=str(
+            prompt_path.relative_to(
+                commit_review_repo,
+                run_id="phase-test-run",
+                iteration="1",
+            )
+        ),
         drain="commit",
     )
     runner_deps = AttemptRunnerDeps(

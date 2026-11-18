@@ -1,22 +1,70 @@
 from collections.abc import Callable
 
-from ralph.display._run_start_orientation import RunStartOrientation
-from ralph.display.context import (
-    DisplayContext,
-    install_sigwinch_refresher,
-    install_width_refresher,
-    make_display_context,
-)
-from ralph.display.phase_status import (
-    PhaseIterationContext,
-    format_analysis_cycle,
-    format_dev_cycle,
-)
-from ralph.display.status_bar import (
-    StatusBar,
-    StatusBarModel,
-    render_status_bar,
-)
+
+def _load_display_context() -> object:
+    from ralph.display.context import DisplayContext
+
+    return DisplayContext
+
+
+def _load_install_sigwinch_refresher() -> object:
+    from ralph.display.context import install_sigwinch_refresher
+
+    return install_sigwinch_refresher
+
+
+def _load_install_width_refresher() -> object:
+    from ralph.display.context import install_width_refresher
+
+    return install_width_refresher
+
+
+def _load_make_display_context() -> object:
+    from ralph.display.context import make_display_context
+
+    return make_display_context
+
+
+def _load_phase_iteration_context() -> object:
+    from ralph.display.phase_status import PhaseIterationContext
+
+    return PhaseIterationContext
+
+
+def _load_format_analysis_cycle() -> object:
+    from ralph.display.phase_status import format_analysis_cycle
+
+    return format_analysis_cycle
+
+
+def _load_format_dev_cycle() -> object:
+    from ralph.display.phase_status import format_dev_cycle
+
+    return format_dev_cycle
+
+
+def _load_status_bar() -> object:
+    from ralph.display.status_bar import StatusBar
+
+    return StatusBar
+
+
+def _load_status_bar_model() -> object:
+    from ralph.display.status_bar import StatusBarModel
+
+    return StatusBarModel
+
+
+def _load_render_status_bar() -> object:
+    from ralph.display.status_bar import render_status_bar
+
+    return render_status_bar
+
+
+def _load_run_start_orientation() -> object:
+    from ralph.display._run_start_orientation import RunStartOrientation
+
+    return RunStartOrientation
 
 
 def _load_parallel_display() -> object:
@@ -80,7 +128,18 @@ def _load_subscriber_for_display() -> object:
 
 
 _LOADERS: dict[str, Callable[[], object]] = {
+    "DisplayContext": _load_display_context,
     "ParallelDisplay": _load_parallel_display,
+    "PhaseIterationContext": _load_phase_iteration_context,
+    "RunStartOrientation": _load_run_start_orientation,
+    "StatusBar": _load_status_bar,
+    "StatusBarModel": _load_status_bar_model,
+    "format_analysis_cycle": _load_format_analysis_cycle,
+    "format_dev_cycle": _load_format_dev_cycle,
+    "install_sigwinch_refresher": _load_install_sigwinch_refresher,
+    "install_width_refresher": _load_install_width_refresher,
+    "make_display_context": _load_make_display_context,
+    "render_status_bar": _load_render_status_bar,
     "build_default_display_legacy_bridge": _load_build_default_display_legacy_bridge,
     "emit_activity_line": _load_emit_activity_line,
     "get_display_context": _load_get_display_context,

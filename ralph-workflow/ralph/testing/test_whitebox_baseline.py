@@ -238,7 +238,7 @@ tests/pipeline/test_reducer_lock_retry.py|0,1,0
 tests/pipeline/test_run_loop_cleanup_shutdown.py|0,2,0
 tests/pipeline/test_run_loop_cycle_timebox_wiring.py|2,0,1
 tests/pipeline/test_run_loop_interrupt.py|2,2,0
-tests/pipeline/test_baseline_seal_failure.py|0,0,2
+tests/pipeline/test_baseline_seal_failure.py|0,0,1
 tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py|0,0,11
 tests/pipeline/test_run_loop_recovery_surface.py|0,3,0
 tests/pipeline/test_run_loop_resume_prefers_available_agent.py|33,0,32

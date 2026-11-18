@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.pipeline.state import PipelineState
+from ralph.testing.audit_integration_no_legacy import DENIAL_ONLY_PRE_RENAME_SENTINELS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 RETIRED_IDENT: str = "commit_" + "cleanup"
 RETIRED_HYPHEN_IDENT: str = "commit-" + "cleanup"
+_DENIAL_ONLY_SENTINEL_REL = "ralph/pipeline/_checkpoint_retired_phase_error.py"
+_DENIAL_ONLY_SENTINEL_PACKAGE_REL = f"ralph-workflow/{_DENIAL_ONLY_SENTINEL_REL}"
 FORBIDDEN_TEXT_STRINGS: tuple[str, ...] = (RETIRED_IDENT, RETIRED_HYPHEN_IDENT)
 FORBIDDEN_BYTE_STRINGS: tuple[bytes, ...] = tuple(
     text.encode("utf-8") for text in FORBIDDEN_TEXT_STRINGS
@@ -291,6 +294,102 @@ def test_only_historical_archive_prefixes_are_exempt() -> None:
     assert not _is_historical_archive("ralph-workflow/PROMPT.md")
     assert not _is_historical_archive("PROMPT.md")
     assert not _is_historical_archive("ralph-workflow/ralph/pipeline/state.py")
+    assert not _is_historical_archive(_DENIAL_ONLY_SENTINEL_PACKAGE_REL)
+
+
+def test_denial_only_pre_rename_sentinels_are_exact_and_justified() -> None:
+    expected = {
+        (
+            "ralph/pipeline/_checkpoint_retired_phase_error.py",
+            RETIRED_IDENT,
+        ): (
+            "denial-only default for CheckpointRetiredPhaseError.retired_artifact; "
+            "names the pre-rename artifact solely to refuse resume of retired checkpoints"
+        ),
+        (
+            "ralph/pipeline/state.py",
+            f"development_{RETIRED_IDENT}",
+        ): (
+            "denial-only retired phase membership for validate_no_retired_phases; "
+            "refuses resume of pre-rename development commit-review checkpoints"
+        ),
+        (
+            "ralph/pipeline/state.py",
+            f"development_final_{RETIRED_IDENT}",
+        ): (
+            "denial-only retired phase membership for validate_no_retired_phases; "
+            "refuses resume of pre-rename final commit-review checkpoints"
+        ),
+        (
+            "tests/integration/test_pipeline_commit_review_grading_e2e.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for commit-review grading e2e refusal",
+        (
+            "tests/policy/test_artifact_contract_entry_validation.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for artifact-contract entry validation",
+        (
+            "tests/policy/test_artifact_contract_missing_prompt.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for missing-prompt contract refusal",
+        (
+            "tests/policy/test_artifact_type_closed_set.py",
+            RETIRED_IDENT,
+        ): "denial-only planted stale artifact type for closed-set policy refusal",
+        (
+            "tests/recovery/test_preflight_validation.py",
+            f"development_{RETIRED_IDENT}",
+        ): "denial-only planted retired phase for preflight validation refusal",
+        (
+            "tests/test_artifact_format_docs.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired stem for format-doc materialization refusal",
+        (
+            "tests/test_materialize_format_docs_pruning.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for format-doc pruning refusal",
+        (
+            "tests/test_pipeline_resume_renamed_commit_review.py",
+            f"development_{RETIRED_IDENT}",
+        ): "denial-only planted retired phase for checkpoint resume refusal",
+        (
+            "tests/test_pipeline_resume_renamed_commit_review.py",
+            f"development_final_{RETIRED_IDENT}",
+        ): "denial-only planted retired final phase for checkpoint resume refusal",
+        (
+            "tests/test_pipeline_resume_renamed_commit_review.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for checkpoint resume refusal",
+        (
+            "tests/test_pipeline_runner_resume_renamed_phase.py",
+            RETIRED_IDENT,
+        ): "denial-only planted retired artifact type for runner resume-phase refusal",
+        (
+            "tests/test_repo_retired_identifier_guard.py",
+            RETIRED_IDENT,
+        ): (
+            "denial-only detector stem for the tracked-inventory retired-identifier guard; "
+            "constructed only to refuse live reintroduction"
+        ),
+        (
+            "tests/test_repo_retired_identifier_guard.py",
+            RETIRED_HYPHEN_IDENT,
+        ): (
+            "denial-only hyphenated detector stem for the tracked-inventory "
+            "retired-identifier guard; constructed only to refuse live reintroduction"
+        ),
+    }
+    assert dict(DENIAL_ONLY_PRE_RENAME_SENTINELS) == expected
+    for path_key, token in expected:
+        if not path_key.startswith("ralph/"):
+            continue
+        source = (_repo_root() / "ralph-workflow" / path_key).read_text(encoding="utf-8")
+        assert token not in source, f"{path_key} must keep {token!r} split, not contiguous"
+    sentinel_path = _repo_root() / _DENIAL_ONLY_SENTINEL_PACKAGE_REL
+    source = sentinel_path.read_text(encoding="utf-8")
+    assert RETIRED_IDENT not in source
+    assert RETIRED_HYPHEN_IDENT not in source
+    assert '"commit_" + "cleanup"' in source
 
 
 def test_index_parser_reads_version_2_entries() -> None:

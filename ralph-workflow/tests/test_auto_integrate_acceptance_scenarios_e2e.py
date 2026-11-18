@@ -35,9 +35,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "retries before asserting publication on remote restoration"
     ),
     "test_throttle_deferred_probe_publishes_to_configured_release_tacos": (
-        "REPLACE: arm remote pull throttle via a public first pull_and_reconcile_target "
-        "instead of remote_sync._REMOTE_PULL_THROTTLE; second pull still asserts refresh "
-        "suppressed then deferred local publication to release/tacos"
+        "REPLACE: arm the pull throttle through a first public pull_and_reconcile_target "
+        "call with a frozen clock, then assert the second call reports refresh suppressed; "
+        "avoids remote_sync._REMOTE_PULL_THROTTLE private-attr coupling"
     ),
 }
 
@@ -353,19 +353,25 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
     repo, bare = _seed_cluster(tmp_path)
 
     cfg = _build_config(interval_seconds=60.0)
+    clock_now = 100.0
 
-    primed = remote_sync.pull_and_reconcile_target(
+    def frozen_clock() -> float:
+        return clock_now
+
+    first_pull = remote_sync.pull_and_reconcile_target(
         cfg,
         repo,
         _TARGET,
+        clock=frozen_clock,
     )
-    assert primed is not None
-    assert primed.last_remote_sync != "refresh suppressed"
+    assert first_pull is not None
+    assert first_pull.last_refresh != "refresh suppressed by throttle"
 
     pull_record = remote_sync.pull_and_reconcile_target(
         cfg,
         repo,
         _TARGET,
+        clock=frozen_clock,
     )
     assert pull_record is not None
     assert pull_record.last_remote_sync == "refresh suppressed"

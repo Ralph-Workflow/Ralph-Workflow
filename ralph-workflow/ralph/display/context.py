@@ -11,15 +11,6 @@ from typing import TYPE_CHECKING, Final, Literal, TextIO, cast
 from ralph.display._mode_adaptive_limits import _DEFAULT_LIMITS
 from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import DEFAULT_MODE
-from ralph.display.theme import (
-    ASCII_GLYPHS,
-    UNICODE_GLYPHS,
-    detect_glyph_capability,
-    detect_terminal_background_hex,
-    detect_terminal_background_is_light,
-    make_console,
-    theme_for_background,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -111,6 +102,8 @@ def _build_console(
     surface_hex: str | None = None,
     output_stream: TextIO | None = None,
 ) -> Console:
+    from ralph.display.theme import make_console
+
     if resolved_env.no_color:
         return make_console(
             file=output_stream,
@@ -248,6 +241,8 @@ class DisplayContext:
     _explicit_env: bool = field(default=False, repr=False, compare=False)
 
     def glyph_for(self, name: str) -> str:
+        from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
+
         if name not in UNICODE_GLYPHS:
             known = ", ".join(sorted(UNICODE_GLYPHS))
             raise KeyError(f"Unknown glyph {name!r}. Known glyphs: {known}")
@@ -311,6 +306,13 @@ def make_display_context(
     force_glyphs: bool | None = None,
     force_height: int | None = None,
 ) -> DisplayContext:
+    from ralph.display.theme import (
+        detect_glyph_capability,
+        detect_terminal_background_hex,
+        detect_terminal_background_is_light,
+        theme_for_background,
+    )
+
     if console is not None and output_stream is not None:
         msg = "output_stream cannot be combined with an injected console"
         raise ValueError(msg)

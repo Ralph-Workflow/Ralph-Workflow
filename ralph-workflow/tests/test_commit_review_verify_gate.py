@@ -160,7 +160,13 @@ def _ctx(
 
 
 def _invoke(phase: str = "development_commit_review") -> InvokeAgentEffect:
-    return InvokeAgentEffect(agent_name="dev", phase=phase, prompt_file="cleanup.txt")
+    return InvokeAgentEffect(
+        agent_name="dev",
+        phase=phase,
+        prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
+    )
 
 
 def _run(

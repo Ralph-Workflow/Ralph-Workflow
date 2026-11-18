@@ -18,8 +18,8 @@ from ralph.testing.audit_agent_failure_single_owner import audit_production_sour
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_shared_classifier_regression_owns_every_typed_conflict_outcome": (
-        "a no-progress success that went quiet after activity cools its resolver with the "
-        "typed no_output_after_activity reason, like a stalled attempt"
+        "progress (UNRESOLVED_REMAINING) stays non-penalising; ATTEMPT_FAILED charges the "
+        "shared budget so no typed failure is neither unavailable nor budget-charged"
     ),
 }
 
@@ -48,14 +48,14 @@ _OWNED_CLASSIFICATIONS = (
     (
         ConflictAttemptOutcome.UNRESOLVED_REMAINING,
         FailureCategory.AGENT,
-        True,
+        False,
         False,
         None,
     ),
     (
         ConflictAttemptOutcome.ATTEMPT_FAILED,
         FailureCategory.AGENT,
-        False,
+        True,
         False,
         None,
     ),

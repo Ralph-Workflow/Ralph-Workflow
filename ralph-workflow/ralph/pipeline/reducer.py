@@ -1488,6 +1488,8 @@ def _reduce_commit_review_rejection(
     ):
         timebox_expired = True
 
+    progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
+
     if new_rejections >= max_rejections or timebox_expired:
         if timebox_expired:
             reason = (
@@ -1504,7 +1506,7 @@ def _reduce_commit_review_rejection(
                 f"Commit review rejection limit reached ({new_rejections}/{max_rejections}); "
                 f"the rejected changes remain saved at {event.ref}: {event.reason}"
             )
-        failed_state = state.copy_with(
+        failed_state = progress_state.copy_with(
             commit_review_rejections=new_rejections,
             last_error=reason,
             rollback_pending=False,
@@ -1523,7 +1525,6 @@ def _reduce_commit_review_rejection(
             routing_timing=routing_timing,
         )
 
-    progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
     target_phase = phase_def.transitions.on_reject or "development"
     state_for_advance = progress_state.copy_with(
         commit_review_rejections=new_rejections,

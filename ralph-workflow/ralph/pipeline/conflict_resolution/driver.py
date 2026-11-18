@@ -1199,6 +1199,7 @@ def _wait_for_eligible_agent(
         return 0
     tracked = session.recovery_state
     state = tracked if isinstance(tracked, PipelineState) else PipelineState(phase=PHASE_RESOLUTION)
+
     state = run_loop.handle_cooldown_delay(
         state.copy_with(last_retry_delay_ms=wait_ms),
         CooldownWaitContext(sleep=_sleep_seconds, controller=controller),

@@ -40,6 +40,27 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "test_detached_head_reattaches_to_branch_before_commit on a single repository "
         "to stay within the test CPU budget"
     ),
+    "test_the_proposal_identity_advances_with_every_rejection_attempt": (
+        "REPLACE: share an explicit durable run_id across attempt/cycle states so the "
+        "iteration segment can advance without relying on the retired literal 'run' alias"
+    ),
+    "test_two_independent_runs_seal_distinct_proposal_refs": (
+        "KEEP nearest retention coverage; ADD distinct-fault two-run namespace proof that "
+        "independent PipelineState.run_id values seal under different refs/ralph/proposals "
+        "paths and neither uses the literal 'run' segment"
+    ),
+    "test_two_rejections_seal_two_distinct_restorable_proposal_refs": (
+        "REPLACE: seal under a durable per-run identity from commit_review_proposal_identity "
+        "instead of the retired literal 'run' segment"
+    ),
+    "test_proposal_run_identity_survives_checkpoint_round_trip": (
+        "KEEP two-run seal coverage; ADD distinct durability proof that PipelineState.run_id "
+        "round-trips through checkpoint JSON into commit_review_proposal_identity"
+    ),
+    "test_literal_run_alias_is_refused_as_pipeline_run_identity": (
+        "KEEP two-run seal coverage; ADD distinct refusal proof that the literal 'run' "
+        "segment cannot be stored as PipelineState.run_id"
+    ),
 }
 
 _TEMPLATE_BRANCH = "main"
@@ -542,34 +563,134 @@ def test_a_rejected_proposal_ref_survives_a_later_commit_of_the_same_tree(
     assert tracked.read_text(encoding="utf-8") == "shared content\n"
 
 
+def test_proposal_run_identity_survives_checkpoint_round_trip() -> None:
+    from ralph.pipeline.effect_router import commit_review_proposal_identity
+    from ralph.pipeline.state import PipelineState
+
+    state = PipelineState(phase="development", run_id="durable-run-42")
+    loaded = PipelineState.model_validate_json(state.model_dump_json())
+
+    assert loaded.run_id == "durable-run-42"
+    assert commit_review_proposal_identity(loaded) == ("durable-run-42", "1-1")
+
+
+def test_literal_run_alias_is_refused_as_pipeline_run_identity() -> None:
+    from pydantic import ValidationError
+
+    from ralph.pipeline.state import PipelineState
+
+    with pytest.raises(ValidationError):
+        PipelineState(phase="development", run_id="run")
+
+
 def test_the_proposal_identity_advances_with_every_rejection_attempt() -> None:
     from ralph.pipeline.effect_router import commit_review_proposal_identity
     from ralph.pipeline.state import PipelineState
 
-    first = commit_review_proposal_identity(PipelineState(phase="development"))
+    run_id = "attempt-cycle-run"
+    first = commit_review_proposal_identity(
+        PipelineState(phase="development", run_id=run_id)
+    )
     second = commit_review_proposal_identity(
-        PipelineState(phase="development", commit_review_rejections=1)
+        PipelineState(phase="development", run_id=run_id, commit_review_rejections=1)
     )
     later_cycle = commit_review_proposal_identity(
-        PipelineState(phase="development", outer_progress={"iteration": 1})
+        PipelineState(
+            phase="development",
+            run_id=run_id,
+            outer_progress={"iteration": 1},
+        )
     )
 
-    assert first[0] == second[0] == later_cycle[0]
+    assert first[0] == second[0] == later_cycle[0] == run_id
+    assert first[0] != "run"
     assert len({first[1], second[1], later_cycle[1]}) == 3
 
 
-def test_two_rejections_seal_two_distinct_restorable_proposal_refs(tmp_path: Path) -> None:
+def test_two_independent_runs_seal_distinct_proposal_refs(tmp_path: Path) -> None:
+    from ralph.pipeline.effect_router import commit_review_proposal_identity
+    from ralph.pipeline.state import PipelineState
+
     _init_test_git_repo(tmp_path, "main")
     tracked = tmp_path / "initial.txt"
 
+    run_a = PipelineState(phase="development", run_id="run-alpha")
+    run_b = PipelineState(phase="development", run_id="run-beta")
+    identity_a = commit_review_proposal_identity(run_a)
+    identity_b = commit_review_proposal_identity(run_b)
+
+    assert identity_a[0] != identity_b[0]
+    assert "run" not in {identity_a[0], identity_b[0]}
+    assert identity_a == ("run-alpha", "1-1")
+    assert identity_b == ("run-beta", "1-1")
+
+    tracked.write_text("run a rejected\n", encoding="utf-8")
+    seal_a = seal_pending(tmp_path, identity_a[0], identity_a[1])
+    rollback(tmp_path, seal_a.ref)
+
+    tracked.write_text("run b rejected\n", encoding="utf-8")
+    seal_b = seal_pending(tmp_path, identity_b[0], identity_b[1])
+
+    assert seal_a.ref == "refs/ralph/proposals/run-alpha/1-1"
+    assert seal_b.ref == "refs/ralph/proposals/run-beta/1-1"
+    assert seal_a.ref != seal_b.ref
+
+    surviving = _proposal_refs(tmp_path)
+    assert seal_a.ref in surviving
+    assert seal_b.ref in surviving
+
+    message_file = _create_commit_message_artifact(tmp_path, "feat: run b lands")
+    event = execute_commit_effect(
+        CommitEffect(
+            message_file=str(message_file),
+            expected_tree_sha=seal_b.tree_sha,
+        ),
+        tmp_path,
+        branch="main",
+        run_id=identity_b[0],
+        rollback_ref=seal_b.ref,
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+
+    after_commit = _proposal_refs(tmp_path)
+    assert seal_a.ref in after_commit
+
+    repo = Repo(tmp_path)
+    try:
+        repo.git.checkout(seal_a.ref, "--", ".")
+    finally:
+        repo.close()
+    assert tracked.read_text(encoding="utf-8") == "run a rejected\n"
+
+
+def test_two_rejections_seal_two_distinct_restorable_proposal_refs(tmp_path: Path) -> None:
+    from ralph.pipeline.effect_router import commit_review_proposal_identity
+    from ralph.pipeline.state import PipelineState
+
+    _init_test_git_repo(tmp_path, "main")
+    tracked = tmp_path / "initial.txt"
+    run_id, first_iteration = commit_review_proposal_identity(
+        PipelineState(phase="development", run_id="rejection-pair")
+    )
+    _, second_iteration = commit_review_proposal_identity(
+        PipelineState(
+            phase="development",
+            run_id=run_id,
+            commit_review_rejections=1,
+        )
+    )
+
     tracked.write_text("first attempt\n", encoding="utf-8")
-    first = seal_pending(tmp_path, "run", "1-1")
+    first = seal_pending(tmp_path, run_id, first_iteration)
     rollback(tmp_path, first.ref)
 
     tracked.write_text("second attempt\n", encoding="utf-8")
-    second = seal_pending(tmp_path, "run", "1-2")
+    second = seal_pending(tmp_path, run_id, second_iteration)
 
+    assert run_id != "run"
     assert first.ref != second.ref
+    assert first.ref == f"refs/ralph/proposals/{run_id}/{first_iteration}"
+    assert second.ref == f"refs/ralph/proposals/{run_id}/{second_iteration}"
     repo = Repo(tmp_path)
     try:
         assert repo.git.rev_parse(first.ref)

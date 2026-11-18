@@ -293,6 +293,62 @@ def test_a_crash_at_every_lifecycle_boundary_resumes_to_the_same_end_state(
     )
 
 
+def test_rollback_resume_regression_crash_after_completion_never_reapplies_the_reset(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = Path(tmp_git_repo)
+    bundle = _bundle()
+    checkpoint_path = rollback_checkpoint_path_for_root(root)
+
+    readme, _ignored_log, _agent_state = _prepare_workspace(root)
+    baseline = _seal_run_start_baseline(root)
+    _apply_rejected_proposal(root, readme)
+
+    state = PipelineState(
+        phase=_COMMIT_REVIEW_PHASE,
+        commit_review_rejections=0,
+        rollback_baseline_ref=baseline.ref,
+    )
+    _persist(state, checkpoint_path)
+
+    seal = seal_pending(root, _RUN_ID, _ITERATION)
+    pending = _pending_state(bundle, state, seal.ref)
+    restores: list[str] = []
+
+    def crash_after_rollback(
+        repo_root: Path | str,
+        ref: str,
+        baseline_ref: str | None = None,
+        step_hook: Callable[[str], None] | None = None,
+    ) -> None:
+        restores.append(ref)
+        _real_rollback(repo_root, ref, baseline_ref=baseline_ref, step_hook=step_hook)
+        raise _SimulatedCrash("crash after the durable reset completion")
+
+    monkeypatch.setattr(proposal_seal, "rollback", crash_after_rollback)
+
+    with pytest.raises(_SimulatedCrash):
+        execute_pending_rollback(
+            pending,
+            root,
+            bundle.pipeline,
+            checkpoint_path=checkpoint_path,
+        )
+
+    persisted = load_checkpoint(checkpoint_path)
+    assert persisted is not None
+    assert persisted.rollback_pending is True
+
+    readme.write_text("follow-up work after the crash\n", encoding="utf-8")
+    resumed = _resume(root, bundle, checkpoint_path)
+
+    assert len(restores) == 1
+    assert resumed.rollback_pending is False
+    assert resumed.rollback_ref is None
+    assert readme.read_text(encoding="utf-8") == "follow-up work after the crash\n"
+
+
 def test_cleared_checkpoint_persistence_failure_fails_closed_and_prevents_replay(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -676,6 +676,8 @@ def _run_review_phase(repo_root: Path) -> list[object]:
         agent_name="dev",
         phase=_REVIEW_PHASE,
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     return handle_commit_review_phase(effect, ctx)
 

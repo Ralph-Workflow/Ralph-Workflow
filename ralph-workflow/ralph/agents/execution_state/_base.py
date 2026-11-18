@@ -4,19 +4,15 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.execution_state._harness_echo import is_prompt_echo_line
-from ralph.mcp.server._activity_sink import (
-    get_subagent_sink as _has_subagent_sink,
-)
-from ralph.mcp.server._activity_sink import (
-    invoke_subagent_sink as _invoke_subagent_sink,
-)
 
 from ._helpers import (
     _classify_generic_child_signal,
     _error_output_signal,
     _non_blank_output_signal,
     _progress_report_signal,
+    has_subagent_sink,
+    invoke_subagent_sink,
+    prompt_echo_line,
 )
 from .agent_execution_state import AgentExecutionState
 
@@ -34,7 +30,7 @@ def with_prompt_echo_flag(
     queued_line: str,
     input_prompt: str | None,
 ) -> AgentActivitySignal:
-    if not is_prompt_echo_line(queued_line, input_prompt):
+    if not prompt_echo_line(queued_line, input_prompt):
         return activity_signal
     return AgentActivitySignal(
         kind=activity_signal.kind,
@@ -57,7 +53,7 @@ class BaseExecutionStrategy:
         self._subagent_pid_source = subagent_pid_source
 
     def observe_line(self, line: str) -> None:
-        if not _has_subagent_sink():
+        if not has_subagent_sink():
             return
         signal = _classify_generic_child_signal(line)
         if signal is None:
@@ -67,7 +63,7 @@ class BaseExecutionStrategy:
             AgentActivityKind.CHILD_HEARTBEAT,
         ):
             with contextlib.suppress(Exception):
-                _invoke_subagent_sink(line)
+                invoke_subagent_sink(line)
 
     def observe_stream_end(self) -> None:
         return

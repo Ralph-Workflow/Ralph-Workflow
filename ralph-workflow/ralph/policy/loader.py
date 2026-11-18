@@ -42,16 +42,12 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
-from ralph.policy.validation import (
-    PolicyValidationError,
-    validate_artifact_types_supported,
-    validate_drain_contracts,
-    validate_policy_completeness,
-)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
     from ralph.workspace.scope import WorkspaceScope
+
 
 
 def _policy_error(message: str, *, source: str | None = None) -> PolicyValidationError:
@@ -165,6 +161,8 @@ def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
 
 
 def _reject_phase_authored_pipeline_override(*, scope: str, path: Path) -> None:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     raise PolicyValidationError(
         f"{scope} pipeline.toml at '{path}' uses the obsolete phase-authored schema and must "
         f"not be merged with the bundled block-authored default pipeline. Remove the outdated "
@@ -180,6 +178,8 @@ def _handle_phase_authored_pipeline(
     scope: str,
     strict: bool,
 ) -> bool:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     if not (data and _is_phase_authored_pipeline_data(data)):
         return False
     if strict:
@@ -209,6 +209,8 @@ def _resolve_pipeline_policy(
     global_pipeline_path: Path | None,
     strict_optional_files: bool = False,
 ) -> PipelinePolicy:
+    from ralph.policy._policy_validation import load_toml, validate_pipeline
+
     default_pipeline_data = cached_default_pipeline_data()
     default_pipeline_policy = cached_default_pipeline_policy()
 
@@ -297,6 +299,8 @@ def _resolve_artifacts_policy(
     global_artifacts_path: Path | None,
     strict_optional_files: bool = False,
 ) -> ArtifactsPolicy:
+    from ralph.policy._policy_validation import load_toml, validate_artifacts
+
     default_artifacts_data = cached_default_artifacts_data()
     default_artifacts_policy = cached_default_artifacts_policy()
 
@@ -450,6 +454,8 @@ _DEFAULT_POLICY_BUNDLE_CACHE: list[PolicyBundle] = []
 
 
 def cached_default_agents_policy() -> AgentsPolicy:
+    from ralph.policy._policy_validation import load_toml, validate_agents
+
     if not _DEFAULT_AGENTS_POLICY_CACHE:
         _DEFAULT_AGENTS_POLICY_CACHE.append(
             validate_agents(load_toml(default_dir() / "agents.toml", kind="agents", strict=True))
@@ -458,6 +464,8 @@ def cached_default_agents_policy() -> AgentsPolicy:
 
 
 def cached_default_pipeline_data() -> dict[str, object]:
+    from ralph.policy._policy_validation import load_toml
+
     if not _DEFAULT_PIPELINE_DATA_CACHE:
         _DEFAULT_PIPELINE_DATA_CACHE.append(
             load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True)
@@ -466,6 +474,8 @@ def cached_default_pipeline_data() -> dict[str, object]:
 
 
 def cached_default_pipeline_policy() -> PipelinePolicy:
+    from ralph.policy._policy_validation import validate_pipeline
+
     if not _DEFAULT_PIPELINE_POLICY_CACHE:
         _DEFAULT_PIPELINE_POLICY_CACHE.append(
             validate_pipeline(cached_default_pipeline_data(), timeboxes_explicit=False)
@@ -474,6 +484,8 @@ def cached_default_pipeline_policy() -> PipelinePolicy:
 
 
 def cached_default_artifacts_data() -> dict[str, object]:
+    from ralph.policy._policy_validation import load_toml
+
     if not _DEFAULT_ARTIFACTS_DATA_CACHE:
         _DEFAULT_ARTIFACTS_DATA_CACHE.append(
             load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
@@ -482,6 +494,8 @@ def cached_default_artifacts_data() -> dict[str, object]:
 
 
 def cached_default_artifacts_policy() -> ArtifactsPolicy:
+    from ralph.policy._policy_validation import validate_artifacts
+
     if not _DEFAULT_ARTIFACTS_POLICY_CACHE:
         _DEFAULT_ARTIFACTS_POLICY_CACHE.append(validate_artifacts(cached_default_artifacts_data()))
     return _DEFAULT_ARTIFACTS_POLICY_CACHE[0]
@@ -570,6 +584,8 @@ def _load_agents_policy_from_path(
     *,
     strict_optional_files: bool = False,
 ) -> AgentsPolicy:
+    from ralph.policy._policy_validation import load_toml, validate_agents
+
     default_policy = cached_default_agents_policy()
     agents_data: dict[str, object] = {}
     if agents_path.exists():
@@ -634,6 +650,14 @@ def _load_policy_from_paths(
     strict_optional_files: bool = False,
     _bypass_bundle_cache: bool = False,
 ) -> PolicyBundle:
+    from ralph.policy._policy_validation import format_validation_error_messages
+    from ralph.policy.validation import (
+        validate_artifact_types_supported,
+        validate_drain_contracts,
+        validate_policy_completeness,
+    )
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     default_policy_dir = default_dir()
     global_pipeline_path, global_artifacts_path = (
         global_policy_paths if global_policy_paths is not None else (None, None)
@@ -801,6 +825,8 @@ def load_policy_or_die(
     *,
     strict_optional_files: bool = False,
 ) -> PolicyBundle:
+    from ralph.policy.validation._policy_validation_error import PolicyValidationError
+
     try:
         try:
             if config is None:

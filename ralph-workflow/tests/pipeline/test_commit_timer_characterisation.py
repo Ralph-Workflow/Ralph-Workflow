@@ -696,6 +696,66 @@ def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_fail
     assert "expired" in (next_state.last_error or "")
 
 
+def test_terminal_rejection_accounts_a_completed_commit() -> None:
+    policy = _policy()
+    final_commit = _cycle_commit_entry(policy)
+    review_phase = _phase_before_cycle_commit(policy)
+    lifecycle = policy.lifecycle_phases.get(final_commit)
+    assert lifecycle is not None
+    counter_name = lifecycle.increments_counter
+    assert counter_name is not None and counter_name != "none"
+    reset_fields = tuple(lifecycle.loop_resets)
+    assert reset_fields
+
+    timings = (_sample_timing("development", iteration=0),)
+
+    def _starting_state(phase: str) -> PipelineState:
+        state = PipelineState(
+            phase=phase,
+            phase_timings=timings,
+            cycle_timing_start_index=0,
+            commit_review_rejections=1,
+        )
+        for reset_field in reset_fields:
+            state = state.with_loop_iteration(reset_field, 3)
+        return state.with_outer_progress(counter_name, 1)
+
+    committed, _ = reduce(
+        _starting_state(final_commit),
+        PipelineEvent.COMMIT_SUCCESS,
+        policy,
+        routing_timing=RoutingTiming(total_elapsed_seconds=500.0),
+    )
+
+    next_state, effects = reduce(
+        _starting_state(review_phase),
+        CommitReviewRejected(
+            reason="Repeated damage",
+            ref="refs/ralph/proposals/run-1/2",
+        ),
+        policy,
+        routing_timing=RoutingTiming(total_elapsed_seconds=500.0),
+    )
+
+    assert next_state.phase == policy.recovery.failed_route
+    assert _commit_accounting(
+        next_state,
+        reset_fields=reset_fields,
+        counter_name=counter_name,
+    ) == _commit_accounting(
+        committed,
+        reset_fields=reset_fields,
+        counter_name=counter_name,
+    )
+    assert next_state.get_loop_iteration(reset_fields[0]) == 0
+    assert next_state.get_outer_progress(counter_name) == 2
+    assert next_state.cycle_timing_start_index == len(timings)
+    assert next_state.commit_review_rejections == 2
+    assert next_state.rollback_pending is False
+    assert next_state.rollback_ref == "refs/ralph/proposals/run-1/2"
+    assert effects == []
+
+
 def _per_iteration_review_and_commit_phases(policy: PipelinePolicy) -> tuple[str, str]:
     for name, phase in policy.phases.items():
         if phase.role != "commit_review":

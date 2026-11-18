@@ -84,6 +84,8 @@ def _run_phase(workspace: FsWorkspace) -> list[object]:
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     return handle_commit_review_phase(effect, context)
 

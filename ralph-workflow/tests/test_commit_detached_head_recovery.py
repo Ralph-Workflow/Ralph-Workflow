@@ -26,8 +26,9 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 pytestmark = [
-    pytest.mark.timeout_seconds(5),
     pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(5),
 ]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -41,6 +42,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "REPLACE: Repo.init detached-head template stays on the real Git boundary; "
         "module pytestmark adds subprocess_e2e beside timeout_seconds so audit_test_policy "
         "and the default verify lane agree on exclusive real-git ownership"
+    ),
+    "removed_autouse_private_git_transport_and_lock_timing_patches": (
+        "the module used to replace ralph.git.subprocess_runner._spawn_git with a private "
+        "subprocess.run transport and to rewrite seven private lock-recovery timing "
+        "constants; every git call now runs through the production ManagedProcess "
+        "transport and the unchanged assertions observe the same commits, branches, "
+        "detached-HEAD states and worktree contents"
     ),
 }
 

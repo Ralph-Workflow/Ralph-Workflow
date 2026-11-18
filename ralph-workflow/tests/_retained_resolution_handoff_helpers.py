@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,13 +13,15 @@ import pytest
 from ralph.git.git_call_policy import classify_git_outcome
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 from tests.scenarios._integration_scenario_fixtures import (
     REPO_TEMPLATE_IGNORE,
     cached_repo,
     close_cached_repo,
+    interrupted_resolution_repo,
 )
-from tests.test_pending_merge_commit_recovery import _fast_rev_parse
+from tests.test_pending_merge_commit_recovery import _commit, _fast_rev_parse, _git
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -175,3 +178,73 @@ class _EmptyCommitEvidenceSource:
 
 
 _EMPTY_COMMIT_EVIDENCE_SOURCE: CommitEvidenceSource = _EmptyCommitEvidenceSource()
+
+_COMPLETED_OWNED_CACHE: dict[str, tuple[Path, str, str]] = {}
+_COMPLETED_LANDING_CACHE: dict[str, tuple[Path, str, str, str]] = {}
+
+
+def _completed_owned_template(operation: str, *, reintegrate: bool) -> tuple[Path, str, str]:
+    key = f"{operation}:{reintegrate}"
+    if key not in _COMPLETED_OWNED_CACHE:
+        from git import Repo
+
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-owned-{operation}-"))
+        repo = Repo.init(root, initial_branch="main")
+        with repo.config_writer() as cfg:
+            cfg.set_value("user", "name", "Test User")
+            cfg.set_value("user", "email", "test@example.com")
+            cfg.set_value("core", "fsync", "none")
+            cfg.set_value("gc", "auto", "0")
+            cfg.set_value("core", "logAllRefUpdates", "true")
+            cfg.set_value("commit", "gpgSign", "false")
+        (root / "README.md").write_text("test", encoding="utf-8")
+        repo.index.add(["README.md"])
+        repo.index.commit("initial commit")
+        repo.close()
+        target = "main"
+        _commit(root, "base.txt", "base\n")
+        assert _git(root, "switch", "-c", "feature").returncode == 0
+        feature = _commit(root, "feature.txt", "feature\n")
+        assert _git(root, "switch", target).returncode == 0
+        moved = _commit(root, "target.txt", "target\n")
+        assert _git(root, "switch", "feature").returncode == 0
+        write_record(
+            root,
+            IntegrationRecord(
+                phase="integrating",
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=moved,
+                reintegrate_pending=reintegrate,
+            ),
+        )
+        assert _git(root, operation, target).returncode == 0
+        completed = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_OWNED_CACHE[key] = (root, target, completed)
+    return _COMPLETED_OWNED_CACHE[key]
+
+
+def _completed_landing_template(operation: str, phase: str) -> tuple[Path, str, str, str]:
+    key = f"{operation}:{phase}"
+    if key not in _COMPLETED_LANDING_CACHE:
+        root = Path(tempfile.mkdtemp(prefix=f"it-completed-landing-{key}-")) / "repo"
+        target, feature, main = interrupted_resolution_repo(root, operation)
+        pre_target = cached_repo(root).commit("main~1").hexsha if phase == "integrated" else main
+        write_record(
+            root,
+            IntegrationRecord(
+                phase=phase,
+                target=target,
+                pre_feature_sha=feature,
+                pre_target_sha=pre_target,
+                integrated_feature_sha=feature if phase == "integrated" else None,
+            ),
+        )
+        (root / "shared.txt").write_text("valuable manual resolution\n", encoding="utf-8")
+        _stage(root, "shared.txt")
+        index_before = _write_tree(root)
+        head_before = _sha(root)
+        close_cached_repo(root)
+        _COMPLETED_LANDING_CACHE[key] = (root, target, index_before, head_before)
+    return _COMPLETED_LANDING_CACHE[key]

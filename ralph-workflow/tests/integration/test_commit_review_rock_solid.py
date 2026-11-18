@@ -137,6 +137,8 @@ def test_handle_commit_review_phase_rock_solid(
         agent_name="dev",
         phase="development_commit_review",
         prompt_file="cleanup.txt",
+        run_id="phase-test-run",
+        iteration="1",
     )
     result = handle_commit_review_phase(effect, ctx)
 

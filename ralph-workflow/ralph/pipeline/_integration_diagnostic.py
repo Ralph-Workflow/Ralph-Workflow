@@ -413,43 +413,33 @@ def _pre_pass_failure(
     clock: Clock | None = None,
     terminal_for_now: bool = False,
 ) -> bool:
+    from ralph.pipeline.auto_integrate_recovery_terminal import (
+        record_resolution_attempt_key,
+        terminal_marker_blocks_attempt,
+        write_resolution_terminal_marker,
+    )
+
     if ladder_terminal_state(root, record, ledger=ledger, git=git) is not None:
         logger.info(
             "Integration diagnostic: the cleanup ladder already ended in a terminal "
             "complete_in_place state; the retained integration starts no new diagnostic round"
         )
         return False
-    if terminal_for_now:
-        from ralph.pipeline.auto_integrate_recovery_terminal import (
-            RESUME_COMMAND,
-            ResolutionTerminalMarker,
-            terminal_marker_blocks_attempt,
+    attempt_key = record_resolution_attempt_key(record)
+    if terminal_marker_blocks_attempt(record, attempt_key):
+        logger.info(
+            "Integration diagnostic: the durable record already holds a terminal "
+            "complete_in_place state; the retained integration starts no new diagnostic round"
         )
-        from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
-
-        if terminal_marker_blocks_attempt(record, record.resolution_gate_key):
-            return False
+        return False
+    if terminal_for_now:
         tip = _current_target_tip(root, record)
         key = _terminal_for_now_key(reason, tip)
         target_record = _bump_attempt(record, key, repair_attempt_cap=repair_attempt_cap)
-        gate_key = record.resolution_gate_key
-        if isinstance(gate_key, ResolutionAttemptKey):
-            attempt_key: ResolutionAttemptKey | None = gate_key
-        elif (
-            isinstance(gate_key, tuple)
-            and len(gate_key) == len(ResolutionAttemptKey._fields)
-            and isinstance(gate_key[1], (tuple, list))
-        ):
-            attempt_key = ResolutionAttemptKey(
-                gate_key[0],
-                tuple(gate_key[1]),
-                gate_key[2],
-            )
-        else:
-            attempt_key = None
         write_record(root, target_record, backend=backend)
+        announced = False
         try:
-            escalate_diagnostic_budget_to_ladder(
+            step = escalate_diagnostic_budget_to_ladder(
                 root,
                 target_record,
                 reason=reason,
@@ -461,23 +451,15 @@ def _pre_pass_failure(
                 target=record.target,
                 feature_tip=_feature_tip_for(target_record),
             )
+            announced = step.outcome == "terminal"
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
                 "Integration diagnostic budget spent but ladder escalation raised; "
                 "the durable ledger keeps the climb and the next seam resumes it",
             )
-        terminal_marker = ResolutionTerminalMarker(
-            attempt_key,
-            "complete_in_place",
-            RESUME_COMMAND,
-        )
-        current = read_record(root) or target_record
-        write_record(
-            root,
-            current.with_resolution_terminal_marker(terminal_marker.as_record_value()),
-            backend=backend,
-        )
-        logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
+        write_resolution_terminal_marker(root, target_record, backend=backend)
+        if not announced:
+            logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)

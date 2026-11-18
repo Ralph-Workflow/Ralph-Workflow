@@ -2,17 +2,29 @@ from __future__ import annotations
 
 import ast
 import importlib
-import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Final, TypeGuard
 
 from ralph.checked_accessors import module_attr
+from ralph.testing import _audit_integration_no_legacy_sentinels as _no_legacy_sentinels
+from ralph.testing._audit_integration_no_legacy_sentinels import (
+    _RETIRED_HYPHEN_STEM,
+    _RETIRED_REVIEW_DETAIL,
+    _RETIRED_REVIEW_PATTERN,
+    _RETIRED_REVIEW_RULE,
+    _RETIRED_STEM,
+    _is_denial_only_pre_rename_sentinel,
+    _iter_folded_string_literals,
+    _package_key,
+)
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
+
+DENIAL_ONLY_PRE_RENAME_SENTINELS = _no_legacy_sentinels.DENIAL_ONLY_PRE_RENAME_SENTINELS
 
 _BOOL_STR_TUPLE_ARITY: Final = 2
 
@@ -51,6 +63,7 @@ _SELF_AUDIT_MODULES: frozenset[str] = frozenset(
     {
         "ralph/testing/audit_integration_invariants.py",
         "ralph/testing/audit_integration_no_legacy.py",
+        "ralph/testing/_audit_integration_no_legacy_sentinels.py",
         "ralph/testing/_integration_no_legacy_selftest.py",
         "tests/audit/test_audit_integration_no_legacy.py",
     }
@@ -79,13 +92,6 @@ _SKIP_DIR_NAMES: frozenset[str] = frozenset(
         "__pycache__",
     }
 )
-_RETIRED_STEM: Final = "commit_" + "cleanup"
-_RETIRED_HYPHEN_STEM: Final = "commit-" + "cleanup"
-_RETIRED_REVIEW_PATTERN: Final = re.compile(
-    rf"(?i)\b[a-zA-Z0-9_-]*commit[-_]?{'clean' + 'up'}[a-zA-Z0-9_.-]*\b"
-)
-_RETIRED_REVIEW_RULE: Final = f"legacy {_RETIRED_STEM} identifier reappeared"
-_RETIRED_REVIEW_DETAIL: Final = f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
 _RETIRED_THREE_SHA_MESSAGE: Final = (
     "integrated_feature_sha, " + "pre_target_sha, " + "or pre_feature_sha"
 )
@@ -510,10 +516,6 @@ def _is_transitional_allowed(violation: Violation) -> bool:
     return any(name in violation.detail for name in allowed_rules)
 
 
-def _package_key(rel: str) -> str:
-    return rel.removeprefix(_PACKAGE_PROJECT_DIR_NAME + "/")
-
-
 def resolve_repository_root(start: Path) -> Path:
     current = start.resolve()
     for candidate in (current, *current.parents):
@@ -650,7 +652,36 @@ def _is_exempt_path(rel: str) -> bool:
     )
 
 
-def _retired_review_violations(rel: str, source: str) -> list[Violation]:
+def _folded_retired_review_violations(rel: str, tree: ast.AST) -> list[Violation]:
+    violations: list[Violation] = []
+    reported: set[tuple[int, str]] = set()
+    for folded, lineno in _iter_folded_string_literals(tree):
+        match = _RETIRED_REVIEW_PATTERN.search(folded)
+        if match is None:
+            continue
+        token = match.group(0)
+        if _is_denial_only_pre_rename_sentinel(rel, token):
+            continue
+        key = (lineno, token)
+        if key in reported:
+            continue
+        reported.add(key)
+        violations.append(
+            Violation(
+                path=rel,
+                line=lineno,
+                rule=_RETIRED_REVIEW_RULE,
+                detail=_RETIRED_REVIEW_DETAIL.format(token=token),
+            )
+        )
+    return violations
+
+
+def _retired_review_violations(
+    rel: str,
+    source: str,
+    tree: ast.AST | None = None,
+) -> list[Violation]:
     if _is_exempt_path(rel):
         return []
     violations: list[Violation] = []
@@ -664,6 +695,8 @@ def _retired_review_violations(rel: str, source: str) -> list[Violation]:
                 detail=f"filename '{filename}' contains legacy {_RETIRED_STEM} spelling",
             )
         )
+    if tree is not None:
+        violations.extend(_folded_retired_review_violations(rel, tree))
     lowered = source.lower()
     if (
         _RETIRED_STEM not in lowered
@@ -672,7 +705,10 @@ def _retired_review_violations(rel: str, source: str) -> list[Violation]:
     ):
         return violations
 
+    reported_lines = {violation.line for violation in violations}
     for lineno, line in enumerate(source.splitlines(), start=1):
+        if lineno in reported_lines:
+            continue
         match = _RETIRED_REVIEW_PATTERN.search(line)
         if match:
             violations.append(
@@ -785,7 +821,7 @@ def audit_modules(
                 violations.extend(_pipeline_ast_violations(rel, tree))
                 violations.extend(_operator_parking_state_violations(rel, tree))
             violations.extend(_package_legacy_violations(rel, source, tree))
-        violations.extend(_retired_review_violations(rel, source))
+        violations.extend(_retired_review_violations(rel, source, tree))
         violations.extend(_retired_three_sha_message_violations(rel, source))
         violations.extend(_operator_parking_literal_violations(rel, source))
 
@@ -842,7 +878,13 @@ def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Vi
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        repo_wide_violations.extend(_retired_review_violations(rel, source))
+        tree = None
+        if path.suffix == ".py":
+            try:
+                tree = ast.parse(source, filename=rel)
+            except SyntaxError:
+                tree = None
+        repo_wide_violations.extend(_retired_review_violations(rel, source, tree))
 
     violations.extend(repo_wide_violations)
     return violations

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, cast
 
-from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
+from git.exc import GitError
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
@@ -32,6 +32,7 @@ from ralph.display.parallel_display import (
 )
 from ralph.display.status_bar import StatusBarModel
 from ralph.git.proposal_seal import seal_baseline
+from ralph.git.proposal_seal_error import ProposalSealError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
@@ -1100,11 +1101,9 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
     run_id = uuid.uuid4().hex
     try:
         seal = seal_baseline(root, run_id, force=False)
-    except (InvalidGitRepositoryError, NoSuchPathError):
-        return state
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+    except (GitError, OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("Failed to seal the run-start baseline: {}", exc)
-        return state
+        raise ProposalSealError(f"Failed to seal the run-start baseline: {exc}") from exc
     if seal is None:
         return state
     logger.info("Recorded the run-start rollback baseline: {}", seal.ref)
@@ -1199,7 +1198,14 @@ def _resolve_initial_state(
         state_factory,
         counter_overrides,
     )
-    return _capture_rollback_baseline(fresh_state, workspace_root)
+    try:
+        return _capture_rollback_baseline(fresh_state, workspace_root)
+    except ProposalSealError as exc:
+        return _runner_module.rollback_gate_failure_state(
+            fresh_state,
+            policy_bundle.pipeline,
+            f"Run-start baseline could not be saved: {exc}",
+        )
 
 
 def _resolve_recovery_sleep(

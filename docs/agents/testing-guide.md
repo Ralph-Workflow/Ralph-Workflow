@@ -731,7 +731,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/pipeline/test_planning_commit_recovery.py` | 4 | 0 | 5 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_planning_requires_target_sync.py` | 3 | 0 | 10 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_reducer_lock_retry.py` | 0 | 1 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
-| `tests/pipeline/test_baseline_seal_failure.py` | 0 | 0 | 2 | pipeline | private-attribute-assert | assert the public result instead of the private attribute | follow-up: run-loop public-seam unit |
+| `tests/pipeline/test_baseline_seal_failure.py` | 0 | 0 | 1 | pipeline | private-attribute-assert | assert the public result instead of the private attribute | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_cleanup_shutdown.py` | 0 | 2 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_cycle_timebox_wiring.py` | 2 | 0 | 1 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/pipeline/test_run_loop_interrupt.py` | 2 | 2 | 0 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |

@@ -606,8 +606,8 @@ _TYPED_OUTCOME_CLASSIFICATION: dict[
         True,
         UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
     ),
-    ConflictAttemptOutcome.UNRESOLVED_REMAINING: (FailureCategory.AGENT, True, None),
-    ConflictAttemptOutcome.ATTEMPT_FAILED: (FailureCategory.AGENT, False, None),
+    ConflictAttemptOutcome.UNRESOLVED_REMAINING: (FailureCategory.AGENT, False, None),
+    ConflictAttemptOutcome.ATTEMPT_FAILED: (FailureCategory.AGENT, True, None),
 }
 
 

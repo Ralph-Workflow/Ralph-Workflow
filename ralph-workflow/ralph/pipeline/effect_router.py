@@ -3,27 +3,8 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from git.exc import GitError
 from loguru import logger
 
-from ralph.git.commit_review import is_recognized_secret_path
-from ralph.git.operations import has_staged_changes, has_uncommitted_changes, list_changed_paths
-from ralph.mcp.artifacts.commit_message import (
-    COMMIT_MESSAGE_ARTIFACT,
-    delete_commit_message_artifacts,
-    read_commit_message_artifact,
-)
-from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
-from ralph.mcp.artifacts.plan._validation import (
-    is_noop_plan,
-    normalize_plan_artifact_content,
-)
-from ralph.phases._agent_internal_paths import is_agent_internal_path
-from ralph.phases.artifacts import (
-    PhaseArtifactError,
-    load_phase_artifact,
-    unwrap_phase_artifact_content,
-)
 from ralph.pipeline.effects import (
     CommitEffect,
     EmptyCommitEffect,
@@ -34,17 +15,6 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
-from ralph.pipeline.work_units import (
-    WorkUnit,
-    canonical_plan_references,
-    dispatchable_work_units,
-    has_unextractable_work_units,
-    parse_work_units_from_artifact,
-)
-from ralph.prompts.materialize import prompt_file_for_phase
-from ralph.workspace.fs import FsWorkspace
-from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -54,6 +24,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.effects.empty_commit_effect import EmptyCommitPhaseRole
     from ralph.pipeline.state import PipelineState
+    from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import (
         AgentsPolicy,
         PhaseDefinition,
@@ -67,6 +38,24 @@ if TYPE_CHECKING:
 MIN_WORK_UNITS_FOR_PARALLELIZATION = 2
 
 
+def has_uncommitted_changes(workspace_root: Path) -> bool:
+    from ralph.git.operations import has_uncommitted_changes as check_changes
+
+    return check_changes(workspace_root)
+
+
+def has_staged_changes(workspace_root: Path) -> bool:
+    from ralph.git.operations import has_staged_changes as check_staged
+
+    return check_staged(workspace_root)
+
+
+def list_changed_paths(workspace_root: Path) -> list[str]:
+    from ralph.git.operations import list_changed_paths as changed_paths
+
+    return changed_paths(workspace_root)
+
+
 def determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -76,6 +65,8 @@ def determine_effect_from_policy(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
+    from ralph.workspace.scope import resolve_workspace_scope
+
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
     if terminal is not None:
         return terminal
@@ -133,6 +124,10 @@ def _parallel_or_agent_effect(
     recovery: RecoveryController | None = None,
     proposal_identity: tuple[str, str] | None = None,
 ) -> Effect:
+    from ralph.pipeline.work_units import dispatchable_work_units
+    from ralph.prompts.materialize import prompt_file_for_phase
+    from ralph.workspace.scope import resolve_workspace_scope
+
     work_units = state.work_units
     if not work_units and phase_def.parallelization is not None:
         scope = workspace_scope or resolve_workspace_scope()
@@ -187,6 +182,23 @@ def _fan_out_effect(
 
 
 def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]:
+    from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
+    from ralph.mcp.artifacts.plan._validation import (
+        is_noop_plan,
+        normalize_plan_artifact_content,
+    )
+    from ralph.phases.artifacts import (
+        PhaseArtifactError,
+        load_phase_artifact,
+        unwrap_phase_artifact_content,
+    )
+    from ralph.pipeline.work_units import (
+        canonical_plan_references,
+        has_unextractable_work_units,
+        parse_work_units_from_artifact,
+    )
+    from ralph.workspace.fs import FsWorkspace
+
     workspace = FsWorkspace(workspace_root)
     try:
         artifact_wrapper = load_phase_artifact(workspace, PLAN_ARTIFACT_PATH)
@@ -228,6 +240,8 @@ def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy
 def _recovery_prepare_effect(
     state: PipelineState, pipeline_policy: PipelinePolicy
 ) -> PreparePromptEffect:
+    from ralph.pipeline.handoffs import resolve_phase_drain
+
     previous_phase = state.previous_phase if isinstance(state.previous_phase, str) else None
     failed_route = pipeline_policy.recovery.failed_route
     policy_entry_phase = (
@@ -251,6 +265,8 @@ def _current_analysis_phase_advance_effect(
     phase_def: PhaseDefinition,
     pipeline_policy: PipelinePolicy,
 ) -> ExhaustedAnalysisPhaseAdvanceEffect | None:
+    from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass
+
     if phase_def.role != "analysis":
         return None
     bypass = resolve_exhausted_analysis_bypass(state, state.phase, pipeline_policy)
@@ -316,7 +332,7 @@ def _commit_review_phase_effect(
 def commit_review_proposal_identity(state: PipelineState) -> tuple[str, str]:
     cycle = state.get_outer_progress("iteration") + 1
     attempt = state.commit_review_rejections + 1
-    return "run", f"{cycle}-{attempt}"
+    return state.run_id, f"{cycle}-{attempt}"
 
 
 def _commit_phase_effect(
@@ -329,6 +345,12 @@ def _commit_phase_effect(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
+    from ralph.mcp.artifacts.commit_message import (
+        COMMIT_MESSAGE_ARTIFACT,
+        read_commit_message_artifact,
+    )
+    from ralph.prompts.materialize import prompt_file_for_phase
+
     if phase_def.role == "commit_review":
         return _commit_review_phase_effect(
             state,
@@ -372,6 +394,8 @@ def _empty_commit_review_effect(
     *,
     has_uncommitted_changes_fn: Callable[[Path], bool],
 ) -> EmptyCommitEffect | ExitFailureEffect | None:
+    from git.exc import GitError
+
     try:
         has_pending_work = has_uncommitted_changes_fn(workspace_root)
     except (GitError, OSError, RuntimeError, ValueError, KeyError):
@@ -387,6 +411,8 @@ def _empty_commit_effect(
     phase_role: EmptyCommitPhaseRole = "commit",
     has_uncommitted_changes_fn: Callable[[Path], bool],
 ) -> EmptyCommitEffect | ExitFailureEffect | None:
+    from ralph.mcp.artifacts.commit_message import delete_commit_message_artifacts
+
     empty_commit = _is_empty_commit_phase(
         workspace_root, has_uncommitted_changes_fn=has_uncommitted_changes_fn
     )
@@ -405,10 +431,18 @@ def _is_empty_commit_phase(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     has_staged_changes_fn: Callable[[Path], bool] = has_staged_changes,
 ) -> bool | None:
+    from git.exc import GitError
+
+    from ralph.git.commit_review import is_recognized_secret_path
+    from ralph.git.operations import has_staged_changes as default_has_staged_changes
+    from ralph.git.operations import has_uncommitted_changes as default_has_uncommitted_changes
+    from ralph.phases._agent_internal_paths import is_agent_internal_path
+
     try:
         fast_path = (
-            has_uncommitted_changes_fn is has_uncommitted_changes
-            and has_staged_changes_fn is has_staged_changes
+            has_uncommitted_changes_fn
+            in (has_uncommitted_changes, default_has_uncommitted_changes)
+            and has_staged_changes_fn in (has_staged_changes, default_has_staged_changes)
         )
         changed_paths = list_changed_paths(workspace_root) if fast_path else None
         if changed_paths is not None:

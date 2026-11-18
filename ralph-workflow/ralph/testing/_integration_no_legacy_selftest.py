@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import sys
 
+from ralph.testing._audit_integration_no_legacy_sentinels import (
+    _RETIRED_HYPHEN_STEM,
+    _RETIRED_REVIEW_RULE,
+    _RETIRED_STEM,
+)
 from ralph.testing.audit_integration_no_legacy import (
     _LEGACY_DEAD_OUTCOME_MODULE_NAMES,
     _OPERATOR_PARKING_LITERAL_RULE,
     _OPERATOR_PARKING_STATE_RULE,
-    _RETIRED_HYPHEN_STEM,
-    _RETIRED_REVIEW_RULE,
-    _RETIRED_STEM,
     _RETIRED_THREE_SHA_MESSAGE,
     _RETIRED_THREE_SHA_RULE,
     LEGACY_OUTCOME_MODULE,

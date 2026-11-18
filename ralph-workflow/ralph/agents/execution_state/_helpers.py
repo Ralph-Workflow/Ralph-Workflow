@@ -6,8 +6,6 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
-from ralph.process.child_liveness import classify_child_snapshot
 
 from .agent_execution_state import AgentExecutionState
 
@@ -23,6 +21,24 @@ if TYPE_CHECKING:
 
 
 _AGENT_LABEL_PREFIX = "agent:"
+
+
+def prompt_echo_line(line: str, input_prompt: str | None) -> bool:
+    from ralph.agents.execution_state._harness_echo import is_prompt_echo_line
+
+    return is_prompt_echo_line(line, input_prompt)
+
+
+def has_subagent_sink() -> bool:
+    from ralph.mcp.server._activity_sink import get_subagent_sink
+
+    return get_subagent_sink() is not None
+
+
+def invoke_subagent_sink(line: str) -> None:
+    from ralph.mcp.server._activity_sink import invoke_subagent_sink as invoke_sink
+
+    invoke_sink(line)
 
 
 _CLAUDE_LIFECYCLE_EVENTS = frozenset(
@@ -88,6 +104,8 @@ _PROGRESS_NOTE = re.compile(r"note='([^']*)'")
 
 
 def _progress_report_signal(line: str) -> AgentActivitySignal | None:
+    from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
+
     if PROGRESS_PIPELINE_MARKER not in line:
         return None
     status_match = _PROGRESS_STATUS.search(line)
@@ -457,6 +475,8 @@ def _probe_check_quiet(
     probe_prefix: str,
 ) -> tuple[AgentExecutionState | None, bool]:
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
+        from ralph.process.child_liveness import classify_child_snapshot
+
         snap = liveness_probe.child_snapshot(probe_prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:
@@ -475,6 +495,8 @@ def _registry_check_for_exit(
     scope_prefix = label_prefix if label_prefix is not None else ""
     had_scoped_records = registry.has_records(scope_prefix)
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
+        from ralph.process.child_liveness import classify_child_snapshot
+
         reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
@@ -491,6 +513,8 @@ def _probe_check_exit(
 ) -> tuple[AgentExecutionState | None, bool]:
     prefix = label_prefix if label_prefix is not None else ""
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
+        from ralph.process.child_liveness import classify_child_snapshot
+
         snap = liveness_probe.child_snapshot(prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:
