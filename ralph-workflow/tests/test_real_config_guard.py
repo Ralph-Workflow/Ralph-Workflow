@@ -13,6 +13,7 @@ from tests._real_config_guard_support import (
     _BUNDLED_AGENTS_TEMPLATE,
     _STATE,
     _clear_recorded_read_violations,
+    _diff_repo_tree,
     _extract_guarded_path,
     _extract_read_path,
     _extract_write_path,
@@ -909,3 +910,19 @@ def test_default_production_session_guard_in_pytester(
     assert "TRANSIENT MUTATION:" in output
     assert "transient_unprefixed.toml" in output
     assert ".bashrc" not in output
+
+
+def test_repo_tree_guard_reports_a_file_a_test_created_changed_or_deleted() -> None:
+    kept = Path("/repo/ralph-workflow/README.md")
+    leaked = Path("/repo/ralph-workflow/checkpoint.json")
+    rewritten = Path("/repo/ralph-workflow/pyproject.toml")
+    removed = Path("/repo/ralph-workflow/Makefile")
+    before = {kept: (10, 1), rewritten: (20, 1), removed: (30, 1)}
+    after = {kept: (10, 1), rewritten: (21, 2), leaked: (5, 3)}
+
+    assert _diff_repo_tree(before, after) == [
+        f"REPO TREE CREATED: {leaked}",
+        f"REPO TREE CHANGED: {rewritten}",
+        f"REPO TREE DELETED: {removed}",
+    ]
+    assert _diff_repo_tree(before, dict(before)) == []

@@ -389,7 +389,9 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
     ]
 
 
-def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_reduce() -> None:
+def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_reduce(
+    tmp_path: Path,
+) -> None:
     state = PipelineState(phase="planning")
     notified_phases: list[str] = []
 
@@ -402,7 +404,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_red
         state=state,
         pipeline_policy=MagicMock(),
         artifacts_policy=MagicMock(),
-        workspace_scope=WorkspaceScope(Path.cwd()),
+        workspace_scope=WorkspaceScope(tmp_path),
         dashboard_subscriber=_Subscriber(),
     )
 
@@ -410,7 +412,9 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_red
     assert notified_phases == [new_state.phase]
 
 
-def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt() -> None:
+def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt(
+    tmp_path: Path,
+) -> None:
     state = PipelineState(phase="planning")
     notified_phases: list[str] = []
 
@@ -436,7 +440,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt
             state=state,
             pipeline_policy=MagicMock(),
             artifacts_policy=MagicMock(),
-            workspace_scope=WorkspaceScope(Path.cwd()),
+            workspace_scope=WorkspaceScope(tmp_path),
             dashboard_subscriber=_Subscriber(),
         )
 

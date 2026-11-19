@@ -28,12 +28,14 @@ from tests._real_config_guard_support import (
     _ConfigPathSnapshot,
     _diff_config_snapshots,
     _diff_project_local_configs,
+    _diff_repo_tree,
     _get_test_read_violations,
     _install_config_guard_audit_hook,
     _read_violations_count,
     _resolve_guarded_config_dirs,
     _scan_guarded_config_files,
     _scan_project_local_configs,
+    _scan_repo_tree,
     _set_current_test_node,
 )
 
@@ -240,9 +242,11 @@ def _collect_session_guard_violations(
     before: dict[Path, _ConfigPathSnapshot],
     project_local_before: dict[Path, str | None],
     extra_local_before: dict[Path, str | None],
+    repo_tree_before: dict[Path, tuple[int, int]],
 ) -> list[str]:
     after = _scan_guarded_config_files(guarded_dirs)
     violations = _diff_config_snapshots(before, after)
+    violations.extend(_diff_repo_tree(repo_tree_before, _scan_repo_tree()))
     violations.extend(
         _diff_project_local_configs(project_local_before, _scan_project_local_configs())
     )
@@ -273,6 +277,7 @@ def _guard_real_config_files(
     before = _scan_guarded_config_files(guarded_dirs)
     project_local_before = _scan_project_local_configs()
     extra_local_before = _scan_extra_project_local_configs()
+    repo_tree_before = _scan_repo_tree()
     session_home = tmp_path_factory.mktemp("session-home")
     session_config = session_home / ".config"
     session_config.mkdir(parents=True)
@@ -294,7 +299,7 @@ def _guard_real_config_files(
         else:
             os.environ.pop("XDG_CONFIG_HOME", None)
         violations = _collect_session_guard_violations(
-            guarded_dirs, before, project_local_before, extra_local_before
+            guarded_dirs, before, project_local_before, extra_local_before, repo_tree_before
         )
         if violations:
             msg = (

@@ -489,3 +489,65 @@ def _diff_project_local_configs(
         for path in before
         if after[path] != before[path] and after[path] is not None
     ]
+
+
+_REPO_TREE_SKIPPED_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        ".hypothesis",
+        "node_modules",
+    }
+)
+
+
+_REPO_TREE_SKIPPED_RUNTIME_DIRS: frozenset[str] = frozenset({".agent", "tmp"})
+
+
+def _repo_tree_entry(path: Path) -> tuple[int, int] | None:
+    try:
+        info = path.lstat()
+    except OSError:
+        return None
+    return info.st_size, info.st_mtime_ns
+
+
+def _scan_repo_tree() -> dict[Path, tuple[int, int]]:
+    entries: dict[Path, tuple[int, int]] = {}
+    for directory, dirnames, filenames in os.walk(_REPO_DIR):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in _REPO_TREE_SKIPPED_DIRS
+            and not (directory == str(_REPO_DIR) and name in _REPO_TREE_SKIPPED_RUNTIME_DIRS)
+        ]
+        for name in filenames:
+            path = Path(directory) / name
+            entry = _repo_tree_entry(path)
+            if entry is not None:
+                entries[path] = entry
+    with os.scandir(_ROOT_DIR) as children:
+        for child in children:
+            if child.is_file(follow_symlinks=False):
+                entry = _repo_tree_entry(Path(child.path))
+                if entry is not None:
+                    entries[Path(child.path)] = entry
+    return entries
+
+
+def _diff_repo_tree(
+    before: dict[Path, tuple[int, int]], after: dict[Path, tuple[int, int]]
+) -> list[str]:
+    created = [f"REPO TREE CREATED: {path}" for path in sorted(after.keys() - before.keys())]
+    changed = [
+        f"REPO TREE CHANGED: {path}"
+        for path in sorted(after.keys() & before.keys())
+        if after[path] != before[path]
+    ]
+    deleted = [f"REPO TREE DELETED: {path}" for path in sorted(before.keys() - after.keys())]
+    return [*created, *changed, *deleted]
