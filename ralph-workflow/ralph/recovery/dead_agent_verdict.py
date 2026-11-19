@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from ralph.checked_accessors import as_object_dict
 from ralph.recovery.attempt_facts import (
@@ -16,6 +16,9 @@ from ralph.recovery.typed_signal import (
     TypedSignal,
     runtime_issued_termination_is_not_agent_fault,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = (
     "DeadAgentVerdict",
@@ -33,6 +36,8 @@ __all__ = (
 )
 
 _VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
+
+_LEGACY_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 1
 
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "agent_dead",
@@ -200,10 +205,8 @@ def verdict_record(phase: str, agent: str, verdict: PersistedVerdict) -> dict[st
     }
 
 
-def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
+def _migrate_v1_record_to_v2(record: dict[str, object]) -> dict[str, object]:
     migrated = dict(record)
-    if migrated.get("schema_version") == _VERDICT_RECORD_SCHEMA_VERSION:
-        return migrated
     termination = migrated.get("termination")
     try:
         migrated_termination = as_object_dict(termination)
@@ -215,5 +218,39 @@ def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
             [{"issuer": issuer, "source": "v1"}] if isinstance(issuer, str) else []
         )
         migrated["termination"] = migrated_termination
-    migrated["schema_version"] = _VERDICT_RECORD_SCHEMA_VERSION
+    return migrated
+
+
+_VERDICT_RECORD_MIGRATION_STEPS: Final[
+    tuple[tuple[int, int, Callable[[dict[str, object]], dict[str, object]]], ...]
+] = (
+    (
+        _LEGACY_VERDICT_RECORD_SCHEMA_VERSION,
+        _VERDICT_RECORD_SCHEMA_VERSION,
+        _migrate_v1_record_to_v2,
+    ),
+)
+
+
+def _record_schema_version(record: dict[str, object]) -> int:
+    raw = record.get("schema_version")
+    if isinstance(raw, bool):
+        return _LEGACY_VERDICT_RECORD_SCHEMA_VERSION
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float) and raw.is_integer():
+        return int(raw)
+    return _LEGACY_VERDICT_RECORD_SCHEMA_VERSION
+
+
+def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
+    version = _record_schema_version(record)
+    if version >= _VERDICT_RECORD_SCHEMA_VERSION:
+        return dict(record)
+    migrated = record
+    for source_version, target_version, step in _VERDICT_RECORD_MIGRATION_STEPS:
+        if source_version < version:
+            continue
+        migrated = step(migrated)
+        migrated["schema_version"] = target_version
     return migrated

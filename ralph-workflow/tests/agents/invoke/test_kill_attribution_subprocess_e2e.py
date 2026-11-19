@@ -89,6 +89,30 @@ def test_tool_result_quoting_credits_exhausted_does_not_kill_session(tmp_path: P
     assert has_return_code_discrepancy(termination) is False
 
 
+def test_user_prompt_quoting_credits_exhausted_does_not_kill_session(tmp_path: Path) -> None:
+    stream = run_subprocess_and_read_lines(_command("credits_in_user_prompt.py"), _ctx(tmp_path))
+    try:
+        lines, attempt_ended = _drain(stream)
+    except AgentInvocationError as exc:
+        pytest.fail(f"the healthy session was killed: {exc}")
+
+    assert any('"role": "user"' in line and "credits exhausted" in line for line in lines), (
+        "the fake CLI must emit its user prompt line, otherwise the case proves nothing"
+    )
+
+    termination = attempt_ended.facts.termination
+    assert termination is not None
+    assert termination.issuer is not TerminationIssuer.QUOTA_DETECTOR, (
+        "a user prompt quoting the quota wording must never be attributed to the quota detector"
+    )
+    assert termination.issuer is TerminationIssuer.AGENT_EXIT, (
+        "a healthy session that ends on its own is attributed to the agent exit"
+    )
+    assert termination.observed_returncode == 0
+    assert termination.reported_returncode == 0
+    assert has_return_code_discrepancy(termination) is False
+
+
 def test_sigterm_during_subagent_activity_records_return_codes_and_issuer(tmp_path: Path) -> None:
     with pytest.raises(AgentInvocationError) as caught:
         list(run_subprocess_and_read_lines(_command("subagent_sigterm.py"), _ctx(tmp_path)))

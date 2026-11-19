@@ -3,6 +3,7 @@ from __future__ import annotations
 INIT_COMPLETE = True
 
 _RAW = """
+tests/_conflict_resolution_futile_loop_support.py|2,0,0
 tests/_fake_git_ops.py|0,1,0
 tests/_support/mock_multimodal_agent.py|0,2,0
 tests/agents/execution_state/test_generic_child_signal.py|0,5,0
@@ -439,7 +440,7 @@ tests/test_config_bootstrap.py|0,2,0
 tests/test_conflict_budget_durability.py|0,1,0
 tests/test_conflict_budget_typed_setter.py|0,1,0
 tests/test_conflict_resolution_cross_path_budget.py|6,0,0
-tests/test_conflict_resolution_futile_loop.py|9,0,2
+tests/test_conflict_resolution_futile_loop.py|0,0,1
 tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
@@ -449,6 +450,7 @@ tests/test_conflict_resolution_rebase_loop.py|14,0,9
 tests/test_conflict_resolution_relay_failure.py|0,1,0
 tests/test_conflict_resolution_resume.py|8,0,0
 tests/test_conflict_resolution_shared_ledger.py|1,0,0
+tests/test_conflict_resolution_stop_evidence.py|7,0,1
 tests/test_conflict_resolution_worktree_rescan.py|2,0,0
 tests/test_conftest_process_manager_teardown.py|4,0,2
 tests/test_cursor_concurrent_invocations.py|1,3,1

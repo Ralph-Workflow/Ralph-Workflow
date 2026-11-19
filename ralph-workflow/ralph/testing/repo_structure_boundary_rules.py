@@ -91,6 +91,17 @@ _B3_ALLOWED_PATH_JUSTIFICATIONS: Final[Mapping[str, str]] = MappingProxyType(
             "controller's public mutation API"
         ),
         "ralph/recovery/controller.py": "recovery controller owns unavailability state mutation",
+        "ralph/recovery/agent_failure_ledger.py": (
+            "the agent failure ledger is the one component that decides an agent failed too "
+            "many times and starts the unproductive_limit cooldown it returns; "
+            "docs/agents/broken-agent-detection.md:137 states that only "
+            "recovery/controller.py, recovery/agent_failure_ledger.py and "
+            "recovery/agent_unavailability_tracker.py may start a cooldown "
+            "(mark_unavailable), and docs/agents/broken-agent-detection.md:37 states that "
+            "exactly one component decides that an agent has failed too many times: the "
+            "agent failure ledger; ralph/testing/audit_cooldown_only.py:23-25 already "
+            "lists the ledger module in ALLOWED_MARK_UNAVAILABLE_MODULES"
+        ),
         "ralph/recovery/unavailability_reason.py": (
             "unavailability reason definitions own the reason values referenced by the boundary"
         ),

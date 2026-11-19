@@ -509,6 +509,8 @@ _REPO_TREE_SKIPPED_DIRS: frozenset[str] = frozenset(
 
 _REPO_TREE_SKIPPED_RUNTIME_DIRS: frozenset[str] = frozenset({".agent", "tmp"})
 
+_REPO_TREE_SKIPPED_RUNTIME_FILES: frozenset[str] = frozenset({"checkpoint.json"})
+
 
 def _repo_tree_entry(path: Path) -> tuple[int, int] | None:
     try:
@@ -534,6 +536,8 @@ def _scan_repo_tree() -> dict[Path, tuple[int, int]]:
                 entries[path] = entry
     with os.scandir(_ROOT_DIR) as children:
         for child in children:
+            if child.name in _REPO_TREE_SKIPPED_RUNTIME_FILES:
+                continue
             if child.is_file(follow_symlinks=False):
                 entry = _repo_tree_entry(Path(child.path))
                 if entry is not None:

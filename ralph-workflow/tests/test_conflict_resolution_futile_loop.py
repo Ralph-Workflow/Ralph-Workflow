@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,27 +13,27 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
     ralph_origin_counts_as_liveness,
 )
-from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.round_verdict import round_termination_reason
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
-from ralph.policy.loader import load_policy
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
-
-if TYPE_CHECKING:
-    from ralph.policy.models import PolicyBundle
-
-_CONFLICTED = ["a.py", "b.py", "c.py"]
-_REPEATED_WATCHDOG_TICKS = 6
-_POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
-_CONFIG = UnifiedConfig.model_validate({"general": {}})
+from tests._conflict_resolution_futile_loop_support import (
+    _CONFIG,
+    _CONFLICTED,
+    _advance_past,
+    _cooling,
+    _install_seams,
+    _policy_bundle,
+)
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+_REPEATED_WATCHDOG_TICKS = 6
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_all_cooling_candidates_wait_on_cooldown_then_report_no_runnable_candidate (renamed)": (
@@ -111,58 +109,55 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: an agent is either on cooldown or not; replaces the per-run bar test "
         "with the expiring cooldown contract"
     ),
+    "test_a_new_stop_starts_with_a_chargeable_budget (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_failed_mechanical_attempt_still_reaches_the_resolver (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_every_reason_less_exit_now_names_itself (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_the_operator_headline_names_what_the_resolver_reported (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_the_durable_evidence_does_not_assert_a_scan_that_never_ran (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_a_clean_stop_is_not_reported_as_a_failure_reason (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
+    "test_mechanical_staging_never_masks_a_path_nobody_can_repair (moved)": (
+        "the check moved unchanged to tests/test_conflict_resolution_stop_evidence.py when "
+        "this module was split to stay under the 1000-line repo-structure limit"
+    ),
 }
-
-
-def _policy_bundle() -> PolicyBundle:
-    return _POLICY_BUNDLE
-
-
-def _cooling(session: ResolutionSession, candidates: tuple[str, ...]) -> dict[str, Cooldown]:
-    ledger = session_ledger(session)
-    if ledger is None:
-        return {}
-    cooling: dict[str, Cooldown] = {}
-    for name in candidates:
-        status = ledger.status(PHASE_RESOLUTION, name)
-        if isinstance(status, Cooldown):
-            cooling[name] = status
-    return cooling
-
-
-def _advance_past(clock: FakeClock, status: Cooldown) -> None:
-    clock.advance(max(0, status.until_ms - int(clock.monotonic() * 1000)) / 1000.0)
-
-
-def _install_seams(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    unmerged: Sequence[str] = _CONFLICTED,
-) -> None:
-    from ralph.git.conflict_stage_entries import ConflictStageEntries
-    from ralph.pipeline.conflict_resolution import sight as sight_module
-
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
-    monkeypatch.setattr(
-        driver_module,
-        "paths_with_conflict_markers",
-        lambda root, paths: list(unmerged),
-    )
-    monkeypatch.setattr(
-        driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
-    )
-    monkeypatch.setattr(
-        driver_module,
-        "render_conflict_prompt",
-        lambda *, root, **_kwargs: root / "resolution-prompt.md",
-    )
-    monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    monkeypatch.setattr(
-        sight_module,
-        "conflict_stage_entries",
-        lambda _root, _paths: ConflictStageEntries({}),
-    )
 
 
 def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:
@@ -604,423 +599,3 @@ def test_a_real_no_runnable_resolver_stop_is_still_recorded(
     short_circuit = result.short_circuit
     assert short_circuit is not None
     assert short_circuit.last_reason == "ATTEMPT_FAILED: conflict markers survive in: a.py"
-
-
-def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
-    from ralph.pipeline.conflict_resolution.session import begin_resolution_stop
-
-    session = ResolutionSession(charge_conflict_budget=False)
-    begin_resolution_stop(session)
-    assert session.charge_conflict_budget is True
-
-
-def test_a_failed_mechanical_attempt_still_reaches_the_resolver(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.pipeline.conflict_resolution import rebase_loop
-
-    stop = rebase_loop.RebaseStop(
-        sha="deadbeef",
-        subject="replayed commit",
-        conflicted_files=("a.py",),
-        stop_index=1,
-        stop_cap=10,
-    )
-    monkeypatch.setattr(rebase_loop, "_read_stop", lambda *_a: stop)
-    monkeypatch.setattr(rebase_loop, "_worktree_dirty_paths", lambda _root: frozenset())
-    monkeypatch.setattr(rebase_loop, "_try_deterministic_resolution", lambda *_a, **_kw: True)
-    monkeypatch.setattr(rebase_loop, "_stage_and_prove", lambda *_a: False)
-    monkeypatch.setattr(rebase_loop, "_touched_nothing_unexpected", lambda *_a: True)
-    monkeypatch.setattr(rebase_loop, "_remove_ort_residue", lambda *_a: True)
-    monkeypatch.setattr(rebase_loop, "_continue_past", lambda *_a: True)
-    asked: list[str] = []
-
-    def _resolver(_root: Path, _target: str, _stop: object) -> ResolvedOutcome:
-        asked.append("resolver")
-        return ResolvedOutcome()
-
-    resolved = rebase_loop._resolve_one_stop(tmp_path, "main", _resolver, 1, 10, frozenset(), set())
-    assert asked == ["resolver"], "the resolver must still be offered the stop"
-    assert resolved is False, "and Ralph's own proof still gates the landing"
-
-
-def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch)
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("solo",))
-    clock = FakeClock()
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
-    session = ResolutionSession(
-        ledger=controller.ledger,
-        recovery_controller=controller,
-    )
-    calls: list[str] = []
-
-    def _faulting(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        calls.append(agent_name)
-        session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-        return False
-
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=_faulting,
-        session=session,
-    )
-    assert calls, "the faulting agent still had its attempt"
-    assert "solo" not in _cooling(session, ("solo",)), "a plumbing fault is not a permanent verdict"
-    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-
-    _install_seams(monkeypatch)
-    later: list[str] = []
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: later.append(name) is None,
-        session=session,
-    )
-    assert later, "the next stop must still be able to invoke the only agent"
-
-
-def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch)
-    clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock)
-    session = ResolutionSession(
-        ledger=ledger,
-        recovery_controller=RecoveryController(
-            ledger=ledger, options=RecoveryControllerOptions(clock=clock)
-        ),
-    )
-    session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-    session.charge_conflict_budget = False
-    assert _cooling(session, ("primary", "fallback")) == {}
-    calls: list[str] = []
-
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: calls.append(name) is None,
-        session=session,
-    )
-    assert calls, "an infrastructure bar must not leave the round with nobody to invoke"
-
-
-def test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch)
-    clock = FakeClock()
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
-    session = ResolutionSession(
-        ledger=controller.ledger,
-        recovery_controller=controller,
-    )
-    calls: list[str] = []
-
-    def _unavailable(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        calls.append(agent_name)
-        if agent_name == "primary":
-            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-        return False
-
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=_unavailable,
-        session=session,
-    )
-    primary = _cooling(session, ("primary", "fallback"))["primary"]
-    assert primary.reason == "candidate_unavailable"
-    later: list[str] = []
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: later.append(name) is None,
-        session=session,
-    )
-    assert "primary" not in later
-    _advance_past(clock, primary)
-    expired: list[str] = []
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: expired.append(name) is None,
-        session=session,
-    )
-    assert expired[0] == "primary"
-
-
-def test_every_reason_less_exit_now_names_itself(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch)
-
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ())
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-    _ = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_a: True,
-        session=session,
-    )
-    assert session.terminal_reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
-    assert session.halt_reason is not None
-
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
-    monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-    _ = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_a: True,
-        session=session,
-    )
-    assert session.terminal_reason is ResolutionTerminationReason.PROMPT_UNAVAILABLE
-    assert session.halt_reason is not None
-
-
-def test_the_operator_headline_names_what_the_resolver_reported() -> None:
-    from ralph.git.merge import MergeResult
-    from ralph.git.rebase.rebase import RebaseConflicts
-    from ralph.pipeline.auto_integrate_outcome import classify_rebase_outcome
-    from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
-
-    _action, reason = classify_rebase_outcome(
-        rebase_outcome=RebaseConflicts(files=["a.py"]),
-        merge_attempted=True,
-        merge_outcome=MergeResult(outcome=RESOLUTION_FAILED, reason="OUT_OF_REACH"),
-    )
-    assert reason is not None
-    assert "OUT_OF_REACH" in reason
-
-
-def test_a_binary_conflict_does_not_starve_the_text_conflicts_beside_it(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
-
-    paths = ["asset.png", "a.py", "b.py"]
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(paths))
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _root, given: {
-            path: (ConflictSight.AGENT_DECISION if path.endswith(".png") else ConflictSight.AGENT)
-            for path in given
-        },
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
-    calls: list[str] = []
-
-    driver_module.run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: calls.append(name) is None,
-        session=ResolutionSession(
-            recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-        ),
-    )
-    assert calls, "a binary conflict must not starve the text conflicts beside it"
-
-
-def test_a_submodule_pointer_beside_a_text_conflict_still_spends_the_chain(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
-
-    paths = ["vendor/sub", "a.py"]
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: list(paths))
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _root, given: {
-            path: (ConflictSight.OUT_OF_REACH if path == "vendor/sub" else ConflictSight.AGENT)
-            for path in given
-        },
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("claude",))
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-    calls: list[str] = []
-
-    outcome = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda name, _p, _r: calls.append(name) is None or True,
-        session=session,
-    )
-    assert calls, "the resolvable path must still reach a resolver"
-    assert not isinstance(outcome, ResolvedOutcome), (
-        "the stop cannot land while a path is unreachable"
-    )
-    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert session.unresolved_paths == ("vendor/sub",), "and it is named"
-
-
-def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
-
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["vendor/sub"])
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _root, paths: dict.fromkeys(paths, ConflictSight.OUT_OF_REACH),
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-
-    _ = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=_CONFIG,
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_a: True,
-        session=session,
-    )
-    assert session.halt_reason is not None
-    assert "markers survive" not in session.halt_reason
-    assert "vendor/sub" in session.halt_reason
-    assert session.unresolved_paths == ("vendor/sub",)
-
-
-def test_a_clean_stop_is_not_reported_as_a_failure_reason(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: [])
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-
-    _ = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_a: True,
-        session=session,
-    )
-    assert session.terminal_reason is None
-    assert session.halt_reason is None
-
-
-def test_mechanical_staging_never_masks_a_path_nobody_can_repair(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.pipeline.conflict_resolution.sight import ConflictSight
-
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["mode.txt", "sub"])
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _root, paths: {
-            "mode.txt": ConflictSight.MECHANICAL,
-            "sub": ConflictSight.OUT_OF_REACH,
-        },
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ("mode.txt",))
-    session = ResolutionSession(
-        recovery_controller=RecoveryController(options=RecoveryControllerOptions())
-    )
-
-    outcome = driver_module.run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=lambda *_a: True,
-        session=session,
-    )
-    assert not isinstance(outcome, ResolvedOutcome)
-    assert session.terminal_reason is ResolutionTerminationReason.OUT_OF_REACH
-    assert session.unresolved_paths == ("sub",)

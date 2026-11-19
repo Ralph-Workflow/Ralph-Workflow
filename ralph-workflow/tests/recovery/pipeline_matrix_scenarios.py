@@ -54,6 +54,8 @@ def termination_facts(
     liveness: bool | None = False,
     artifact_valid: bool = False,
     workspace_changed: bool | None = False,
+    workspace_changed_by_tool: bool | None = None,
+    subagent_activity_observed: bool | None = None,
     event_kinds: tuple[str, ...] = (),
     tool_calls: tuple[str, ...] = (),
     elapsed_to_terminal_ms: int | None = None,
@@ -61,11 +63,13 @@ def termination_facts(
     return AttemptFacts(
         event_kinds=event_kinds,
         tool_calls=tool_calls,
-        elapsed_to_terminal_ms=elapsed_to_terminal_ms,
+        workspace_changed_by_tool=workspace_changed_by_tool,
         artifact_valid=artifact_valid,
         workspace_changed=workspace_changed,
+        elapsed_to_terminal_ms=elapsed_to_terminal_ms,
         exit_status=f"exit_{reported}" if reported is not None else None,
         liveness_observed=liveness,
+        subagent_activity_observed=subagent_activity_observed,
         termination=TerminationRecord.create(
             issuer,
             observed_returncode=observed,
@@ -282,9 +286,31 @@ SCENARIOS = (
                     reported=0,
                     liveness=True,
                     event_kinds=("tool_result",),
+                    tool_calls=("read_file",),
                 )
             ),
         ),
+        expected_kind="runtime_ended",
+        no_ledger_charge=True,
+    ),
+    MatrixScenario(
+        "runtime_live_end_subagent",
+        ("AC3",),
+        (
+            MatrixScenario.Script(
+                facts=termination_facts(
+                    TerminationIssuer.UNKNOWN,
+                    observed=-15,
+                    reported=0,
+                    liveness=True,
+                    workspace_changed=None,
+                    subagent_activity_observed=True,
+                    event_kinds=("child_progress",),
+                ),
+                returncode=0,
+            ),
+        ),
+        ProbeOutcome.PASSED,
         expected_kind="runtime_ended",
         no_ledger_charge=True,
     ),
@@ -320,7 +346,12 @@ SCENARIOS = (
         ("AC6",),
         (
             MatrixScenario.Script(
-                facts=termination_facts(workspace_changed=True), workspace_changed=True
+                facts=termination_facts(
+                    workspace_changed=True,
+                    workspace_changed_by_tool=True,
+                    tool_calls=("edit_file",),
+                ),
+                workspace_changed=True,
             ),
         ),
         expected_kind="unknown",

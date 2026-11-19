@@ -86,10 +86,6 @@ def _is_nested_session(config: pytest.Config) -> bool:
     return outer_config is not None and config is not outer_config
 
 
-def _xdist_distribution_requested(config: pytest.Config) -> bool:
-    return getattr(config.option, "numprocesses", None) is not None
-
-
 @pytest.fixture(autouse=True)
 def _isolate_test_environment_and_globals(
     request: pytest.FixtureRequest,
@@ -343,9 +339,18 @@ def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(claude_transport, "claude_cli_mcp_server_lister", lambda: None)
 
 
+def _is_xdist_session(config: pytest.Config) -> bool:
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        return True
+    if (config.getoption("dist", "no") or "no") != "no":
+        return True
+    return bool(config.getoption("numprocesses", 0))
+
+
 def pytest_configure(config: pytest.Config) -> None:
+    nested_session = _is_nested_session(config)
     _OUTER_SESSION_CONFIG_HOLDER[0] = config
-    if not _xdist_distribution_requested(config):
+    if nested_session or not _is_xdist_session(config):
         os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     config.stash[gc_collect_iterations_key] = 0
     _bypass_macos_git_shim()
@@ -400,7 +405,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         )
         if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
             item.add_marker("required_auto_integrate_e2e")
-        if "agy" in item.nodeid.casefold() and relative_path not in _AGY_DEFAULT_TEST_PATHS:
+        if (
+            "agy" in item.nodeid.casefold()
+            and relative_path not in _AGY_DEFAULT_TEST_PATHS
+            and relative_path != "tests/recovery/test_dead_agent_pipeline_matrix.py"
+        ):
             item.add_marker("smoke")
 
 

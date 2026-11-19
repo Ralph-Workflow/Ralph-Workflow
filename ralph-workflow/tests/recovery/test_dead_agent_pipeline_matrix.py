@@ -56,11 +56,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched with an unchanged body"
     ),
-    "test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down (renamed)": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched with an unchanged body"
-    ),
-    "test_ac4_prompt_side_quota_words_never_start_a_cooldown (renamed)": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac4_prompt_side_quota_words_never_bench with an unchanged body"
+    "test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down": (
+        "operator rule: an agent is either on cooldown or not; the check now covers every "
+        "entry point and states the AC6 contract exactly - the outcome is unknown, the "
+        "agent stays available, the wait is zero and no exclusion reason is recorded"
     ),
     "test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason with an unchanged body"
@@ -98,16 +97,48 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_parity_across_non_probe_entry_points": "operator rule: an agent is either on cooldown or not; the spent state is gone, so each entry point asserts every exclusion is an expiring cooldown instead of an empty spent_agents map",
     "test_canary_probe_owner_managed_exemption_records_without_charge_cooldown_or_probe": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the probe-mode check asserts every exclusion expires instead of an empty spent_agents map",
     "test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
-    "test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down": "operator rule: an agent is either on cooldown or not; is_spent no longer exists, so the test asserts the ledger status is eligible",
     "test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
     "test_ac16_probe_could_not_run_keeps_a_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac3_runtime_attribution_label_and_selectability": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac4_prompt_side_quota_words_never_start_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac3_runtime_attribution_label_and_selectability": (
+        "operator rule: an agent is either on cooldown or not; the check now states the "
+        "AC3 runtime contract for both arms - a quota-detector kill of a live session "
+        "and an unattributed kill of a live session with subagent activity - over every "
+        "entry point: the outcome is runtime_ended, the agent stays available, the wait "
+        "is zero, the ledger is eligible and holds no entry, the attribution is runtime "
+        "with the matching runtime cause, the verdict does not count toward agent state "
+        "and the agent is selectable again"
+    ),
+    "test_ac4_quota_words_in_a_prompt_or_tool_output_never_start_a_cooldown": (
+        "operator rule: an agent is either on cooldown or not; renamed from "
+        "test_ac4_prompt_side_quota_words_never_start_a_cooldown and extended to the "
+        "tool-output variant, so both AC4 variants state the contract per entry point - "
+        "no cooldown, the agent stays available, no exclusion reason and no quota signal"
+    ),
+    "test_ac6_workspace_writes_then_a_failure_does_not_cool_down": (
+        "operator rule: an agent is either on cooldown or not; the second AC6 half - the "
+        "agent that edits files and then fails - now has its own dedicated check over "
+        "every entry point: the write-tool-call evidence (the scenario's declared tool "
+        "calls and workspace_changed_by_tool, and the same facts in the persisted "
+        "record) is asserted next to the outcome, the outcome is unknown, the agent "
+        "stays available, the wait is zero and no exclusion reason is recorded"
+    ),
+    "test_ac7_probe_cannot_run_keeps_unknown_and_selectable": (
+        "operator rule: an agent is either on cooldown or not; renamed from "
+        "test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable and extended to "
+        "the probe-infrastructure-error arm, so both AC7 arms state the contract per "
+        "entry point - the persisted verdict value is unknown, one ordinary ledger entry "
+        "holds no exclusion field, the agent stays available and the wait is zero"
+    ),
     "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac17_pending_subagents_recorded_as_unattributed_end": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac14_unattributed_live_session_end_parity": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac14_unattributed_live_session_end_parity": (
+        "operator rule: an agent is either on cooldown or not; the check now states the "
+        "AC14 verdict exactly - the outcome is runtime_ended, the ledger holds no entry, "
+        "and the verdict record's facts, termination and attribution are asserted for "
+        "every entry point, with the verdict and probe outcome asserted on the "
+        "non-probe routes only"
+    ),
     "test_ac15_post_exit_watchdog_attribution_parity": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
 }
 
@@ -553,8 +584,8 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down(
 
 @pytest.mark.parametrize(
     "entry_point",
-    NON_PROBE_ENTRY_POINTS,
-    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
 )
 def test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down(
     entry_point: AgentEntryPoint,
@@ -565,8 +596,46 @@ def test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down(
     assert observation.outcome_kind == "unknown"
     assert observation.availability is True
     assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert controller.ledger.status(PHASE, AGENT_A).is_eligible
+    assert AGENT_A not in controller.unavailability_store.snapshot().get(
+        "unavailability_reasons", {}
+    )
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
+)
+def test_ac6_workspace_writes_then_a_failure_does_not_cool_down(
+    entry_point: AgentEntryPoint,
+) -> None:
+    scenario = _scenario("workspace_progress")
+    script = scenario.attempts[-1]
+    observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
+
+    assert "edit_file" in script.facts.tool_calls
+    assert script.facts.workspace_changed_by_tool is True
+    assert observation.outcome_kind == "unknown"
+    assert observation.availability is True
+    assert observation.wait_ms == 0
+    assert observation.ledger_status == "eligible"
+    assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
+    assert controller.ledger.status(PHASE, AGENT_A).is_eligible
+    assert AGENT_A not in controller.unavailability_store.snapshot().get(
+        "unavailability_reasons", {}
+    )
+    assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
+    record = observation.verdict_record
+    assert isinstance(record, dict)
+    facts_record = as_mapping(as_mapping(record).get("facts", {}))
+    assert "edit_file" in as_sequence(facts_record.get("tool_calls", []))
+    assert facts_record.get("workspace_changed_by_tool") is True
+    attrib = as_mapping(as_mapping(record).get("attribution", {}))
+    assert attrib.get("attribution") == "task_or_environment"
 
 
 @pytest.mark.parametrize(
@@ -593,27 +662,35 @@ def test_ac16_probe_could_not_run_keeps_a_selectable(
 
 @pytest.mark.parametrize(
     "entry_point",
-    NON_PROBE_ENTRY_POINTS,
-    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
+)
+@pytest.mark.parametrize(
+    ("scenario_name", "expected_runtime_cause"),
+    (
+        ("runtime_live_end", "runtime_kill_quota_misread"),
+        ("runtime_live_end_subagent", "runtime_kill_unattributed"),
+    ),
 )
 def test_ac3_runtime_attribution_label_and_selectability(
     entry_point: AgentEntryPoint,
+    scenario_name: str,
+    expected_runtime_cause: str,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario("runtime_live_end")
-    )
+    observation, controller, _clock = run_matrix_scenario(entry_point, _scenario(scenario_name))
 
     assert observation.outcome_kind == "runtime_ended"
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
+    assert observation.ledger_entries == {}
     assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     record = observation.verdict_record
     assert isinstance(record, dict)
     attrib = as_mapping(record.get("attribution", {}))
     assert attrib.get("attribution") == "runtime"
-    assert attrib.get("runtime_cause") == "runtime_kill_quota_misread"
+    assert attrib.get("runtime_cause") == expected_runtime_cause
     assert attrib.get("counts_toward_agent_state") is False
 
 
@@ -622,12 +699,18 @@ def test_ac3_runtime_attribution_label_and_selectability(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac4_prompt_side_quota_words_never_start_a_cooldown(
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "quota_words_in_prompt_are_data",
+        "quota_words_are_data",
+    ),
+)
+def test_ac4_quota_words_in_a_prompt_or_tool_output_never_start_a_cooldown(
     entry_point: AgentEntryPoint,
+    scenario_name: str,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario("quota_words_in_prompt_are_data")
-    )
+    observation, controller, _clock = run_matrix_scenario(entry_point, _scenario(scenario_name))
 
     assert observation.outcome_kind == "unknown"
     assert observation.availability is True
@@ -635,9 +718,14 @@ def test_ac4_prompt_side_quota_words_never_start_a_cooldown(
     assert observation.ledger_status == "eligible"
     assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
-    assert AGENT_A not in controller.unavailability_store.snapshot().get(
-        "unavailability_reasons", {}
-    )
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is True
+    assert store.earliest_unavailable_wait_ms(PHASE, [AGENT_A]) == 0
+    assert AGENT_A not in store.snapshot().get("unavailability_reasons", {})
+    record = observation.verdict_record
+    assert isinstance(record, dict)
+    typed_record = as_mapping(record)
+    assert typed_record.get("typed_signal") is None
 
 
 @pytest.mark.parametrize(
@@ -667,27 +755,39 @@ def test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason(
 
 @pytest.mark.parametrize(
     "entry_point",
-    NON_PROBE_ENTRY_POINTS,
-    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
 )
-def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "probe_unavailable",
+        "probe_budget_exhausted",
+    ),
+)
+def test_ac7_probe_cannot_run_keeps_unknown_and_selectable(
     entry_point: AgentEntryPoint,
+    scenario_name: str,
 ) -> None:
-    observation, controller, _clock = run_matrix_scenario(
-        entry_point, _scenario("probe_budget_exhausted")
-    )
+    observation, controller, _clock = run_matrix_scenario(entry_point, _scenario(scenario_name))
 
     assert observation.outcome_kind == "unknown"
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
-    assert observation.probe_calls == (AGENT_A,)
     assert "spent_agents" not in controller.snapshot()
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
-    _assert_one_ordinary_ledger_charge(observation, AGENT_A)
     record = observation.verdict_record
-    if isinstance(record, dict):
-        assert as_mapping(record).get("probe_outcome") is None
+    assert isinstance(record, dict)
+    typed_record = as_mapping(record)
+    assert typed_record.get("verdict") == "unknown"
+    assert typed_record.get("probe_outcome") is None
+    if entry_point is AgentEntryPoint.CANARY_PROBE:
+        assert observation.probe_calls == ()
+        assert observation.ledger_entries == {}
+    else:
+        assert observation.probe_calls == (AGENT_A,)
+        _assert_one_ordinary_ledger_charge(observation, AGENT_A)
 
 
 @pytest.mark.parametrize(
@@ -964,10 +1064,11 @@ def test_ac14_unattributed_live_session_end_parity(
     scenario = _scenario("unattributed_live_end")
     observation, controller, _clock = run_matrix_scenario(entry_point, scenario)
 
-    assert observation.outcome_kind in ("runtime_ended", "unknown")
+    assert observation.outcome_kind == "runtime_ended"
     assert observation.availability is True
     assert observation.wait_ms == 0
     assert observation.ledger_status == "eligible"
+    assert observation.ledger_entries == {}
     assert "spent_agents" not in controller.snapshot()
 
     script = scenario.attempts[-1]
@@ -980,20 +1081,24 @@ def test_ac14_unattributed_live_session_end_parity(
     assert script.facts.termination.return_code_discrepancy is True
 
     record = observation.verdict_record
-    if isinstance(record, dict) and entry_point is not AgentEntryPoint.CANARY_PROBE:
-        typed_record = as_mapping(record)
-        facts_record = as_mapping(typed_record.get("facts", {}))
-        assert facts_record.get("liveness_observed") is True
-        tool_calls = as_sequence(facts_record.get("tool_calls", []))
-        assert "read_file" in tool_calls
-        term_record = as_mapping(typed_record.get("termination", {}))
-        assert term_record.get("issuer") == "unknown"
-        assert term_record.get("observed_returncode") == -15
-        assert term_record.get("reported_returncode") == 0
-        assert term_record.get("return_code_discrepancy") is True
-        attrib = as_mapping(typed_record.get("attribution", {}))
-        assert attrib.get("attribution") == "runtime"
-        assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
+    assert isinstance(record, dict)
+    typed_record = as_mapping(record)
+    facts_record = as_mapping(typed_record.get("facts", {}))
+    assert facts_record.get("liveness_observed") is True
+    tool_calls = as_sequence(facts_record.get("tool_calls", []))
+    assert "read_file" in tool_calls
+    term_record = as_mapping(typed_record.get("termination", {}))
+    assert term_record.get("issuer") == "unknown"
+    assert term_record.get("observed_returncode") == -15
+    assert term_record.get("reported_returncode") == 0
+    assert term_record.get("return_code_discrepancy") is True
+    attrib = as_mapping(typed_record.get("attribution", {}))
+    assert attrib.get("attribution") == "runtime"
+    assert attrib.get("runtime_cause") == "runtime_kill_unattributed"
+    assert attrib.get("counts_toward_agent_state") is False
+    if entry_point is not AgentEntryPoint.CANARY_PROBE:
+        assert typed_record.get("verdict") == "healthy"
+        assert typed_record.get("probe_outcome") == "passed"
 
 
 @pytest.mark.parametrize(

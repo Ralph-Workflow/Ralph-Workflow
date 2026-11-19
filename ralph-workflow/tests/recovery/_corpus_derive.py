@@ -47,6 +47,7 @@ class CorpusCase:
     expected_verdict: str
     expected_attribution: str
     facts: AttemptFacts
+    peers_fail_identically: bool = False
 
 
 def load_fixtures(directory: Path | None = None) -> tuple[dict[str, object], ...]:
@@ -72,11 +73,14 @@ def derive_attempt_facts(fixture: Mapping[str, object]) -> AttemptFacts:
     transport = AgentTransport(str(fixture["transport"]))
     lines = _captured_lines(fixture.get("captured_lines"))
     event_kinds, tool_calls = _classify(transport, lines)
+    artifact_valid = bool(fixture.get("artifact_valid", False)) or bool(
+        fixture.get("outcome_exists", False)
+    )
     return AttemptFacts(
         event_kinds=event_kinds,
         tool_calls=tool_calls,
         workspace_changed_by_tool=_tri_state(fixture.get("workspace_changed_by_tool", "unknown")),
-        artifact_valid=bool(fixture.get("artifact_valid", False)),
+        artifact_valid=artifact_valid,
         workspace_changed=derive_workspace_change(fixture),
         elapsed_to_terminal_ms=_optional_int(fixture.get("elapsed_to_terminal_ms")),
         exit_status=_optional_str(fixture.get("exit_status")),
@@ -98,6 +102,7 @@ def _case_from_fixture(fixture: Mapping[str, object]) -> CorpusCase:
             str(fixture["expected_attribution"]), ALLOWED_ATTRIBUTIONS, "expected_attribution"
         ),
         facts=derive_attempt_facts(fixture),
+        peers_fail_identically=bool(fixture.get("peers_fail_identically", False)),
     )
 
 

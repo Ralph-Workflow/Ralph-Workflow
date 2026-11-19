@@ -43,10 +43,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails with an unchanged body"
     ),
     "test_every_corpus_case_expected_attribution_matches_attribute_attempt": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+        "operator rule: an agent is either on cooldown or not; the check passes the peer signal from the fixture so peer-identical failures are attributed to peers_fail_identically"
     ),
     "test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+        "operator rule: an agent is either on cooldown or not; the check passes the peer signal from the fixture when building the verdict record"
+    ),
+    "test_ac8_corpus_cases_are_attributed_to_their_intended_rules": (
+        "operator rule: an agent is either on cooldown or not; the check asserts that the AC8 corpus cases pin their intended attribution rules (satisfied_outcome and peers_fail_identically) rather than mid_run_activity"
     ),
     "test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incident": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
@@ -326,7 +329,10 @@ def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_terminat
         for outcome in _outcomes_for(case):
             verdict = decide_dead_agent_verdict(
                 case.facts,
-                attribute_attempt(case.facts),
+                attribute_attempt(
+                    case.facts,
+                    peer_failures_identical=case.peers_fail_identically,
+                ),
                 outcome,
             )
             record = verdict_record(PHASE, case.id, verdict)
@@ -355,7 +361,10 @@ def test_every_corpus_case_expected_attribution_matches_attribute_attempt(
     for case in corpus:
         assert case.expected_attribution in ALLOWED_ATTRIBUTIONS
         seen.add(case.expected_attribution)
-        recorded = attribute_attempt(case.facts)
+        recorded = attribute_attempt(
+            case.facts,
+            peer_failures_identical=case.peers_fail_identically,
+        )
         if recorded.attribution.value != case.expected_attribution:
             mismatches.append((case.id, case.expected_attribution, recorded.attribution.value))
         if case.expected_attribution in {"runtime", "task_or_environment"}:
@@ -380,3 +389,24 @@ def test_every_corpus_case_expected_attribution_matches_attribute_attempt(
         f"mismatches (id, expected, recorded)={mismatches!r}"
     )
     assert {"runtime", "task_or_environment", "unknown"} <= seen
+
+
+def test_ac8_corpus_cases_are_attributed_to_their_intended_rules(
+    corpus: tuple[CorpusCase, ...],
+) -> None:
+    cases = {case.id: case for case in corpus}
+    outcome_case = cases["outcome_already_exists"]
+    outcome_attrib = attribute_attempt(
+        outcome_case.facts,
+        peer_failures_identical=outcome_case.peers_fail_identically,
+    )
+    assert outcome_attrib.reason == "satisfied_outcome"
+    assert outcome_attrib.attribution.value == "task_or_environment"
+
+    peers_case = cases["peers_fail_identically"]
+    peers_attrib = attribute_attempt(
+        peers_case.facts,
+        peer_failures_identical=peers_case.peers_fail_identically,
+    )
+    assert peers_attrib.reason == "peers_fail_identically"
+    assert peers_attrib.attribution.value == "task_or_environment"
