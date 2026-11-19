@@ -18,7 +18,9 @@ from ralph.git.merge import UnmergedPathsObservation
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.pipeline._integration_status import build_integration_status
 from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
+from ralph.pipeline.auto_integrate_recovery_terminal import RESUME_COMMAND
 from ralph.pipeline.integration_decision import (
     AttemptState,
     DecisionContext,
@@ -480,6 +482,29 @@ def _default_warn(message: str) -> None:
     logger.warning("{}", message)
 
 
+def _operator_message(
+    *,
+    cause: str,
+    paths_with_reasons: Sequence[tuple[str, str]] = (),
+    command: str = RESUME_COMMAND,
+    done_count: int | None = None,
+    remaining_count: int | None = None,
+    strategy: str | None = None,
+    strategy_reason: str | None = None,
+) -> str:
+    status = build_integration_status(
+        cause=cause,
+        paths_with_reasons=paths_with_reasons,
+        command=command,
+        agents_can_finish=True,
+        done_count=done_count,
+        remaining_count=remaining_count,
+        strategy=strategy,
+        strategy_reason=strategy_reason,
+    )
+    return status.render_log
+
+
 def _run_residue_cleanup(
     root: Path,
     *,
@@ -493,13 +518,17 @@ def _run_residue_cleanup(
     after_diff = git.tracked_diff_hash(root)
     head = git.head_sha(root)
     if after_blob is None or after_diff is None or head is None:
-        emit("planning residue check unreadable; tree left untouched")
+        emit(_operator_message(cause="planning residue check unreadable; tree left untouched"))
         return ResidueCleanupOutcome(unreadable=True)
     flags = git.index_flag_dirt(root)
     if not flags.is_known_good:
         emit(
-            "index-flag probe unreadable; cleanup backing off rather than "
-            "certifying hidden flagged dirt clean (tree left untouched)"
+            _operator_message(
+                cause=(
+                    "index-flag probe unreadable; cleanup backing off rather than "
+                    "certifying hidden flagged dirt clean (tree left untouched)"
+                )
+            )
         )
         return ResidueCleanupOutcome(flag_probe_unknown=True)
     after_flag_dirt = flags.require_known()
@@ -535,8 +564,12 @@ def _classify_and_clear_residue(
 ) -> ResidueCleanupOutcome:
     if head != baseline.head_sha:
         emit(
-            "planning left residue but HEAD moved "
-            f"({baseline.head_sha[:8]} -> {head[:8]}); restore refused"
+            _operator_message(
+                cause=(
+                    "planning left residue but HEAD moved "
+                    f"({baseline.head_sha[:8]} -> {head[:8]}); restore refused"
+                )
+            )
         )
         return ResidueCleanupOutcome(head_moved=True)
     residue = detect_planning_residue(
@@ -551,8 +584,12 @@ def _classify_and_clear_residue(
         return ResidueCleanupOutcome(clean=True)
     if residue.unmerged_paths:
         emit(
-            "planning left unmerged conflict state; cleanup ladder refuses "
-            f"to touch it: {', '.join(residue.unmerged_paths)}"
+            _operator_message(
+                cause="planning left unmerged conflict state; cleanup ladder refuses to touch it",
+                paths_with_reasons=tuple(
+                    (path, "unmerged conflict state") for path in residue.unmerged_paths
+                ),
+            )
         )
         return ResidueCleanupOutcome(unmerged=True)
     if not (
@@ -573,17 +610,25 @@ def _operation_gate(
     in_progress = git.in_progress_kind(root)
     if not in_progress.is_known_good:
         emit(
-            "operation-state probe unreadable; cleanup refusing to act "
-            "on an unknown operation state (tree left untouched)"
+            _operator_message(
+                cause=(
+                    "operation-state probe unreadable; cleanup refusing to act "
+                    "on an unknown operation state (tree left untouched)"
+                )
+            )
         )
         return ResidueCleanupOutcome(operation_unknown=True)
     kind = in_progress.require_known()
     if kind is InProgressKind.NONE:
         return None
     emit(
-        f"git {_OPERATION_LABELS[kind]} in progress; the operation owns "
-        "staged changes until continue/abort/rebuild — planning-residue "
-        "cleanup takes no restore/reset action"
+        _operator_message(
+            cause=(
+                f"git {_OPERATION_LABELS[kind]} in progress; the operation owns "
+                "staged changes until continue/abort/rebuild — planning-residue "
+                "cleanup takes no restore/reset action"
+            )
+        )
     )
     return ResidueCleanupOutcome(operation_blocked=True, operation_kind=kind)
 
@@ -599,18 +644,29 @@ def _cleanup_blocking_residue(
     action = ledger.charge_residue_attempt(root, residue=residue)
     if action not in _CLEANUP_LADDER_ACTIONS:
         emit(
-            f"decision table returned non-cleanup action {action.value} for "
-            "planning residue; refusing to run it (residue is never committed "
-            "as feature work)"
+            _operator_message(
+                cause=(
+                    f"decision table returned non-cleanup action {action.value} for "
+                    "planning residue; refusing to run it (residue is never committed "
+                    "as feature work)"
+                )
+            )
         )
         return ResidueCleanupOutcome(refused=True)
 
     if residue.index_flag_paths and not git.clear_index_flags(root, residue.index_flag_paths):
         emit(
-            "index flags on "
-            f"{', '.join(residue.index_flag_paths)} could not be cleared; "
-            "cleanup refusing to restore content the backup snapshot "
-            "cannot see (tree left untouched)"
+            _operator_message(
+                cause=(
+                    "index flags on "
+                    f"{', '.join(residue.index_flag_paths)} could not be cleared; "
+                    "cleanup refusing to restore content the backup snapshot "
+                    "cannot see (tree left untouched)"
+                ),
+                paths_with_reasons=tuple(
+                    (path, "index flag could not be cleared") for path in residue.index_flag_paths
+                ),
+            )
         )
         return ResidueCleanupOutcome(refused=True)
 
@@ -689,8 +745,16 @@ def _execute_rung_and_restore(
     _perform_action(root, git, baseline, action, restore_targets, emit)
     if not git.restore_paths(root, source=baseline.head_sha, paths=restore_targets):
         emit(
-            "planning-residue restore failed (backup ref "
-            f"{progress.backup_ref} still holds the saved content)"
+            _operator_message(
+                cause=(
+                    "planning-residue restore failed (backup ref "
+                    f"{progress.backup_ref} still holds the saved content)"
+                ),
+                paths_with_reasons=tuple(
+                    (path, f"restore failed; saved content stays in {progress.backup_ref}")
+                    for path in restore_targets
+                ),
+            )
         )
     return restore_targets
 
@@ -741,34 +805,51 @@ def _report_residue_cleanup(
     restored: tuple[str, ...],
     remaining: tuple[str, ...],
 ) -> None:
-    message_parts = [
-        f"planning residue cleanup ({action.value})",
-        f"restored: {', '.join(restored) if restored else 'none'}",
-        f"backup ref: {backup_ref}",
-    ]
+    paths_with_reasons: dict[str, str] = {}
+
+    def record(path: str, reason: str) -> None:
+        existing = paths_with_reasons.get(path)
+        paths_with_reasons[path] = reason if existing is None else f"{existing}; {reason}"
+
+    for path in restored:
+        record(path, "restored")
     if residue.ambiguous_paths:
         human_ref = baseline.human_work_ref or backup_ref
-        message_parts.append(
-            "pre-existing human work preserved, NOT reverted: "
-            f"{', '.join(residue.ambiguous_paths)} (ref: {human_ref})"
-        )
+        for path in residue.ambiguous_paths:
+            record(path, f"pre-existing human work preserved, NOT reverted (ref: {human_ref})")
     if residue.index_flag_paths:
-        message_parts.append(
-            "index-flag-hidden dirt (assume-unchanged/skip-worktree) unhidden, "
-            f"saved and restored: {', '.join(residue.index_flag_paths)}"
-        )
+        for path in residue.index_flag_paths:
+            record(
+                path,
+                "index-flag-hidden dirt (assume-unchanged/skip-worktree) unhidden, "
+                "saved and restored",
+            )
     if moved_untracked:
-        message_parts.append(
-            f"untracked overwrite-blockers moved aside: {', '.join(moved_untracked)} "
-            "(restore after landing via restore_quarantined_untracked)"
-        )
+        for path in moved_untracked:
+            record(
+                path,
+                "untracked overwrite-blockers moved aside "
+                "(restore after landing via restore_quarantined_untracked)",
+            )
+    for path in remaining:
+        record(path, "still dirty after restore")
+    cause = f"planning residue cleanup ({action.value}); backup ref: {backup_ref}"
+    strategy_reason: str | None = None
     if action in _DEGRADED_RUNGS:
-        message_parts.append(
+        strategy_reason = (
             f"rung {action.value} needs machinery owned elsewhere; executed at quarantine strength"
         )
-    if remaining:
-        message_parts.append(f"still dirty after restore: {', '.join(remaining)}")
-    emit("; ".join(message_parts))
+        cause = f"{cause}; {strategy_reason}"
+    emit(
+        _operator_message(
+            cause=cause,
+            paths_with_reasons=tuple(paths_with_reasons.items()),
+            done_count=len(restored),
+            remaining_count=len(remaining),
+            strategy=action.value,
+            strategy_reason=strategy_reason,
+        )
+    )
 
 
 def _perform_action(
@@ -787,15 +868,24 @@ def _perform_action(
                 root, head_sha=baseline.head_sha, paths=restore_targets
             )
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
-            emit(f"alternate preservation failed ({exc}); continuing with restore")
+            emit(
+                _operator_message(
+                    cause=f"alternate preservation failed ({exc}); continuing with restore"
+                )
+            )
             return
         if preserved is not None:
-            emit(f"alternate preservation ref: {preserved}")
+            emit(_operator_message(cause=f"alternate preservation ref: {preserved}"))
         return
     quarantine_dir = _quarantine_dir(root)
     moved = git.quarantine_paths(root, restore_targets, quarantine_dir=quarantine_dir)
     if moved:
-        emit(f"quarantined residue files: {', '.join(moved)}")
+        emit(
+            _operator_message(
+                cause=f"quarantined residue files: {', '.join(moved)}",
+                paths_with_reasons=tuple((path, "quarantined residue file") for path in moved),
+            )
+        )
 
 
 def _resume_or_start_progress(
@@ -867,7 +957,15 @@ def restore_quarantined_untracked(
     else:
         git.clear_state(root)
     if restored:
-        log(f"restored quarantined untracked files after landing: {', '.join(restored)}")
+        log(
+            _operator_message(
+                cause="restored quarantined untracked files after landing",
+                paths_with_reasons=tuple(
+                    (path, "restored quarantined untracked file after landing") for path in restored
+                ),
+                done_count=len(restored),
+            )
+        )
     return tuple(restored)
 
 

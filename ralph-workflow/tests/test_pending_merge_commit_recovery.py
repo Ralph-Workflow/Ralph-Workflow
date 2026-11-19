@@ -2,18 +2,26 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 from git.exc import GitError
+from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
 from ralph.pipeline._pending_merge_commit import prepare_pending_merge
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.process.manager import (
+    ProcessEvent,
+    ProcessRecord,
+    ProcessStatus,
+    loguru_event_listener,
+)
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._resolver_controller import make_resolver_controller
@@ -31,6 +39,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "ids and file contents, but the helpers no longer open and close a separate "
         "GitPython object reader (and its git helper subprocesses) for every read "
         "and every commit"
+    ),
+    "test_pending_merge_identity_probe_answer_is_classified_as_an_answer": (
+        "the pending merge identity probe runs git show, git rev-parse HEAD^{tree} and "
+        "git rev-parse --verify HEAD, and git answers all three with exit code 128 when "
+        "HEAD does not resolve, so the probe label must classify that exit code as an "
+        "answer instead of logging a process failure"
     ),
 }
 
@@ -395,3 +409,64 @@ def test_unowned_clean_resolution_is_preserved(
     assert _git(root, "rev-parse", "HEAD").stdout == head
     assert _git(root, "write-tree").stdout == tree
     assert workspace.read_bytes(f".git/{marker_name}")[0] == marker_value
+
+
+def _pending_merge_identity_levels(returncode: int) -> list[str]:
+    levels: list[str] = []
+    sink_id = logger.add(
+        lambda message: levels.append(str(message).strip()),
+        level="DEBUG",
+        format="{level}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=9191,
+            pgid=9191,
+            command=("git", "show", "-s", "--format=%P", "HEAD"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=ProcessStatus.EXITED,
+            returncode=returncode,
+            label="pending-merge:identity",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=ProcessStatus.EXITED,
+            timestamp=datetime.now(tz=UTC),
+        )
+        loguru_event_listener(event)
+    finally:
+        logger.remove(sink_id)
+    return levels
+
+
+def test_pending_merge_identity_probe_answer_is_classified_as_an_answer(tmp_path: Path) -> None:
+    root = tmp_path / "unborn"
+    root.mkdir()
+    repo = Repo.init(root)
+    repo.close()
+
+    for args in (
+        ("show", "-s", "--format=%P", "HEAD"),
+        ("rev-parse", "HEAD^{tree}"),
+        ("rev-parse", "--verify", "HEAD"),
+    ):
+        result = run_git(
+            args,
+            cwd=root,
+            label="pending-merge:identity",
+            options=GitRunOptions(timeout=5),
+        )
+        assert result.returncode == 128, (
+            f"git answers {args} on an unborn HEAD with {result.returncode}, "
+            "so the pending merge identity probe must classify that exit code"
+        )
+
+    assert _pending_merge_identity_levels(128) == ["DEBUG"], (
+        "the exit code git uses to answer the pending merge identity probe must stay a "
+        "quiet answer instead of a process failure"
+    )
+    assert _pending_merge_identity_levels(1) == ["WARNING"], (
+        "an exit code git never uses for the pending merge identity probe must stay loud"
+    )

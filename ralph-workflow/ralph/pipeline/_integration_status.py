@@ -42,7 +42,7 @@ class IntegrationStatus:
             else:
                 verb = "needs" if count == 1 else "need"
                 parts.append(f"{count} {verb} operator action: {', '.join(self.paths)}")
-        if self.command and not self.strategy:
+        if self.command:
             parts.append(self.command)
         if not self.agents_can_finish:
             if self.strategy:

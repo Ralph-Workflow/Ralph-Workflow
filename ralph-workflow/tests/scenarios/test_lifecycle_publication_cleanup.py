@@ -11,7 +11,16 @@ from git import Repo
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import build_integration_status
 from ralph.pipeline.auto_integrate_record import read_record
+from ralph.pipeline.auto_integrate_recovery_terminal import RESUME_COMMAND
+from ralph.pipeline.integration_cleanup import (
+    PlanningResidue,
+    RunGitCleanupPort,
+    capture_planning_baseline,
+    run_residue_cleanup,
+)
+from ralph.pipeline.integration_decision import NextAction
 from tests._scenario_harness import git
 from tests.scenarios._content_equivalence import assert_content_equivalence, drive_integration
 
@@ -186,3 +195,39 @@ def test_cleanup_crash_after_landing_is_finished_on_the_next_tick(tmp_path: Path
         feature=feature_sha,
         source_refs=(target_after_landing,),
     )
+
+
+class _SaveAndRestoreLedger:
+    def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
+        return NextAction.SAVE_AND_RESTORE
+
+
+def test_cleanup_operator_messages_are_rendered_by_the_status_model(tmp_path: Path) -> None:
+    root = _materialize_feature(tmp_path / "repo")
+    git_port = RunGitCleanupPort()
+    baseline = capture_planning_baseline(root, git=git_port)
+    assert baseline is not None
+    (root / "README.md").write_text("residue\n", encoding="utf-8")
+    messages: list[str] = []
+    outcome = run_residue_cleanup(
+        root,
+        baseline=baseline,
+        git=git_port,
+        ledger=_SaveAndRestoreLedger(),
+        warn=messages.append,
+    )
+    assert outcome.action is not None
+    expected = build_integration_status(
+        cause=(
+            f"planning residue cleanup ({outcome.action.value}); backup ref: {outcome.backup_ref}"
+        ),
+        paths_with_reasons=tuple((path, "restored") for path in outcome.restored_paths),
+        command=RESUME_COMMAND,
+        agents_can_finish=True,
+        done_count=len(outcome.restored_paths),
+        remaining_count=len(outcome.remaining_paths),
+        strategy=outcome.action.value,
+    )
+    assert messages == [expected.render_log]
+    assert RESUME_COMMAND in messages[0]
+    assert "README.md" in messages[0]

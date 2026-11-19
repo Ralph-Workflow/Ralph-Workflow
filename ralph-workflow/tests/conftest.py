@@ -86,6 +86,10 @@ def _is_nested_session(config: pytest.Config) -> bool:
     return outer_config is not None and config is not outer_config
 
 
+def _xdist_distribution_requested(config: pytest.Config) -> bool:
+    return getattr(config.option, "numprocesses", None) is not None
+
+
 @pytest.fixture(autouse=True)
 def _isolate_test_environment_and_globals(
     request: pytest.FixtureRequest,
@@ -341,7 +345,8 @@ def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     _OUTER_SESSION_CONFIG_HOLDER[0] = config
-    os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    if not _xdist_distribution_requested(config):
+        os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     config.stash[gc_collect_iterations_key] = 0
     _bypass_macos_git_shim()
     from pygments.lexers import get_lexer_by_name

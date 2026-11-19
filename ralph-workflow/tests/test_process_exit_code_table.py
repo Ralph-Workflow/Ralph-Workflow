@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import ast
 import re
 from datetime import UTC, datetime
 from functools import cache
 from hashlib import sha256
 from pathlib import Path
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import ralph
 from ralph.process.manager import (
@@ -19,6 +24,7 @@ from ralph.process.manager import (
 
 _PACKAGE_DIR = Path(ralph.__file__).resolve().parent
 _LABEL_ARGUMENT = re.compile(r"label=(?:f)?[\"']([^\"']*)[\"']")
+_SEVERITY_TABLE_PATH = _PACKAGE_DIR / "process" / "manager" / "_process_manager_runtime.py"
 
 _ANSWER_LABELS = (
     "commit:head-symbolic-ref",
@@ -80,6 +86,17 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "prior notes still cover the integration-preservation reapply labels and the retired "
         "recovery:recorded-identity-status and hardening:porcelain-z probes"
     ),
+    "test_every_git_probe_label_covers_the_answer_exit_codes_of_its_commands": (
+        "the new cell derives every git probe label and the command it runs from the "
+        "package source, classifies the exit codes git uses as answers for that command "
+        "and requires the expected-exit table to cover them, so a benign git answer is "
+        "never logged as a process failure"
+    ),
+    "test_unexpected_exit_code_stays_a_warning": (
+        "the exit codes git uses as answers for a probe are excluded from the loud check "
+        "of that probe, because a widened answer set turns those codes into expected "
+        "answers instead of process failures"
+    ),
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
@@ -95,6 +112,68 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "and hardening:porcelain-z remain absent. Real recovery and conflict-resolution operations "
     "whose nonzero exits are not answers keep the loud default."
 )
+
+_GIT_SUBCOMMANDS: Final[frozenset[str]] = frozenset(
+    {
+        "cat-file",
+        "config",
+        "diff",
+        "log",
+        "ls-files",
+        "merge-base",
+        "rev-list",
+        "rev-parse",
+        "show",
+        "show-ref",
+        "symbolic-ref",
+    }
+)
+
+_GIT_GLOBAL_OPTIONS_WITH_VALUE: Final[frozenset[str]] = frozenset(
+    {
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--work-tree",
+        "-c",
+    }
+)
+
+_GIT_CONFIG_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "--add",
+        "--remove-section",
+        "--rename-section",
+        "--replace-all",
+        "--unset",
+        "--unset-all",
+    }
+)
+
+_GIT_ANSWER_RULES: Final[
+    Mapping[str, tuple[tuple[frozenset[str], frozenset[str], frozenset[int]], ...]]
+] = {
+    "rev-parse": (
+        (frozenset({"--verify", "--quiet"}), frozenset(), frozenset({1})),
+        (frozenset({"--verify"}), frozenset({"--quiet"}), frozenset({128})),
+        (frozenset(), frozenset({"--verify"}), frozenset({128})),
+    ),
+    "show-ref": (
+        (frozenset({"--quiet"}), frozenset(), frozenset({1})),
+        (frozenset(), frozenset({"--quiet"}), frozenset({128})),
+    ),
+    "cat-file": (
+        (frozenset({"-e"}), frozenset(), frozenset({1})),
+        (frozenset({"blob"}), frozenset(), frozenset({128})),
+    ),
+    "merge-base": ((frozenset(), frozenset(), frozenset({1})),),
+    "symbolic-ref": ((frozenset({"--quiet"}), frozenset(), frozenset({1})),),
+    "ls-files": ((frozenset({"--error-unmatch"}), frozenset(), frozenset({1})),),
+    "show": ((frozenset(), frozenset(), frozenset({128})),),
+    "config": ((frozenset(), _GIT_CONFIG_MUTATIONS, frozenset({1})),),
+    "log": ((frozenset(), frozenset(), frozenset({128})),),
+    "rev-list": ((frozenset({"--max-count"}), frozenset(), frozenset({128})),),
+}
 
 
 def _emitted_levels(label: str, returncode: int) -> list[str]:
@@ -127,6 +206,171 @@ def _emitted_levels(label: str, returncode: int) -> list[str]:
     return levels
 
 
+def _git_subcommand(argv: tuple[str, ...]) -> str | None:
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "*":
+            index += 1
+            continue
+        if token in _GIT_GLOBAL_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if token.startswith("-"):
+            index += 1
+            continue
+        return token if token in _GIT_SUBCOMMANDS else None
+    return None
+
+
+def _mentions_revision(argv: tuple[str, ...]) -> bool:
+    return any(
+        token == "HEAD"
+        or "^{" in token
+        or (len(token) == 40 and all(character in "0123456789abcdefABCDEF" for character in token))
+        for token in argv
+    )
+
+
+def _diff_answer_exit_codes(argv: tuple[str, ...]) -> frozenset[int]:
+    flags = frozenset(argv)
+    if "--quiet" in flags:
+        return frozenset({1, 128})
+    if "--no-index" in flags:
+        return frozenset({1})
+    return frozenset({128}) if _mentions_revision(argv) else frozenset()
+
+
+def _git_answer_exit_codes(argv: tuple[str, ...]) -> frozenset[int]:
+    command = _git_subcommand(argv)
+    if command is None:
+        return frozenset()
+    if command == "diff":
+        return _diff_answer_exit_codes(argv)
+    flags = frozenset(argv)
+    for required, forbidden, codes in _GIT_ANSWER_RULES.get(command, ()):
+        if required <= flags and not (forbidden & flags):
+            return codes
+    return frozenset()
+
+
+def _probe_arguments(node: ast.expr) -> tuple[str, ...] | None:
+    if not isinstance(node, ast.Tuple | ast.List):
+        return None
+    arguments: list[str] = []
+    for element in node.elts:
+        if isinstance(element, ast.Constant) and isinstance(element.value, str):
+            arguments.append(element.value)
+        elif isinstance(element, ast.Starred):
+            arguments.append("*")
+        else:
+            arguments.append("{}")
+    return tuple(arguments)
+
+
+def _probe_label(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = [
+            value.value
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+            else "{}"
+            for value in node.values
+        ]
+        return "".join(parts)
+    return None
+
+
+def _label_keyword(call: ast.Call) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg == "label":
+            return keyword.value
+    return None
+
+
+@cache
+def _git_probe_answer_codes() -> dict[str, frozenset[int]]:
+    answers: dict[str, set[int]] = {}
+    for path in sorted(_PACKAGE_DIR.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "label=" not in source:
+            continue
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else None
+            )
+            if name != "run_git":
+                continue
+            arguments = _probe_arguments(node.args[0])
+            label_node = _label_keyword(node)
+            if arguments is None or label_node is None:
+                continue
+            codes = _git_answer_exit_codes(arguments)
+            label = _probe_label(label_node)
+            if not codes or label is None:
+                continue
+            answers.setdefault(label, set()).update(codes)
+    return {label: frozenset(codes) for label, codes in answers.items()}
+
+
+@cache
+def _production_expected_exit_codes() -> dict[str, frozenset[int]]:
+    source = _SEVERITY_TABLE_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(_SEVERITY_TABLE_PATH))
+    table: dict[str, frozenset[int]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AnnAssign | ast.Assign):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if not any(
+            isinstance(target, ast.Name) and target.id == "EXPECTED_EXIT_CODES"
+            for target in targets
+        ):
+            continue
+        if not isinstance(node.value, ast.Dict):
+            continue
+        for key, entry in zip(node.value.keys, node.value.values, strict=True):
+            if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+                continue
+            codes = entry.args[0] if isinstance(entry, ast.Call) else entry
+            if not isinstance(codes, ast.Set | ast.Tuple | ast.List):
+                continue
+            table[key.value] = frozenset(
+                element.value
+                for element in codes.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, int)
+            )
+    return table
+
+
+def _pattern_matches(pattern: str, key: str) -> bool:
+    if key.endswith("*"):
+        prefix = key[:-1]
+        head = pattern.split("{}", maxsplit=1)[0]
+        return head.startswith(prefix) or prefix.startswith(head)
+    expression = ".*".join(re.escape(part) for part in pattern.split("{}"))
+    return re.fullmatch(expression, key) is not None
+
+
+_GIT_PROBE_ANSWER_CODES: Final[Mapping[str, frozenset[int]]] = _git_probe_answer_codes()
+_PRODUCTION_EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = (
+    _production_expected_exit_codes()
+)
+
+
 @pytest.mark.parametrize("label", _ANSWER_LABELS)
 def test_expected_exit_code_is_debug_and_not_warning(label: str) -> None:
     levels = _emitted_levels(label, 1)
@@ -137,6 +381,8 @@ def test_expected_exit_code_is_debug_and_not_warning(label: str) -> None:
 @pytest.mark.parametrize("label", _ANSWER_LABELS)
 @pytest.mark.parametrize("returncode", [2, 128])
 def test_unexpected_exit_code_stays_a_warning(label: str, returncode: int) -> None:
+    if returncode in _GIT_PROBE_ANSWER_CODES.get(label, frozenset()):
+        return
     levels = _emitted_levels(label, returncode)
 
     assert "WARNING" in levels, f"label={label} rc={returncode} must warn, got {levels}"
@@ -224,3 +470,36 @@ def test_registered_label_is_emitted_by_the_package(label: str) -> None:
         f"label {label!r} is never passed as a process label, so the "
         "expected-exit table entry would never apply"
     )
+
+
+def test_every_git_probe_label_covers_the_answer_exit_codes_of_its_commands() -> None:
+    probes = _GIT_PROBE_ANSWER_CODES
+    table = _PRODUCTION_EXPECTED_EXIT_CODES
+
+    assert probes, "no git probe label was derived from the package source"
+
+    for label, codes in sorted(probes.items()):
+        if "{" in label:
+            matching = [key for key in table if _pattern_matches(label, key)]
+            assert matching, f"git probe pattern {label!r} has no expected-exit decision"
+            assert any(codes <= table[key] for key in matching), (
+                f"git probe pattern {label!r} answers with {sorted(codes)} but no row "
+                f"covering it exists among {sorted(matching)}"
+            )
+            continue
+        assert label in table, f"git probe label {label!r} has no expected-exit decision"
+        assert codes <= table[label], (
+            f"git probe label {label!r} answers with {sorted(codes)} but the expected-exit "
+            f"table allows {sorted(table[label])}"
+        )
+
+
+@pytest.mark.parametrize("label", sorted(_GIT_PROBE_ANSWER_CODES))
+def test_a_git_probe_answer_exit_code_is_quiet(label: str) -> None:
+    if "{" in label:
+        pytest.skip("a formatted label has no single concrete instance to probe")
+    for code in sorted(_GIT_PROBE_ANSWER_CODES[label]):
+        levels = _emitted_levels(label, code)
+        assert levels == ["DEBUG"], (
+            f"label={label} rc={code} is git's answer and must be quiet, got {levels}"
+        )

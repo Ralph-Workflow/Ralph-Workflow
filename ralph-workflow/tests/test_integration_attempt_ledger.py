@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections import OrderedDict
 from pathlib import Path
 
@@ -7,8 +9,10 @@ import pytest
 
 from ralph.pipeline.integration_attempt_ledger import (
     ATTEMPT_LEDGER_FILENAME,
+    CURRENT_SCHEMA_VERSION,
     AttemptLedger,
     AttemptLedgerState,
+    LedgerLoadStatus,
     LedgerRebuildFacts,
     attempt_ledger_path,
     rebuild_state_from_git_facts,
@@ -344,3 +348,77 @@ def test_attempt_ledger_rebuild_state_drops_unproven_and_negative_counts() -> No
     assert rebuilt.rung is EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING
     assert list(rebuilt.repeat_counts.items()) == [(("sig-good", "land"), 3)]
     assert rebuilt.unknown_attempts == 0
+
+
+def test_a_known_newer_ledger_payload_is_migrated_forward_and_an_unknown_one_is_quarantined_once(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    known_root = tmp_path / "known-newer"
+    known_path = attempt_ledger_path(known_root)
+    known_path.parent.mkdir(parents=True, exist_ok=True)
+    known_path.write_text(
+        json.dumps(
+            {
+                "version": CURRENT_SCHEMA_VERSION + 1,
+                "rung": "dispatch_resolver",
+                "unknown_attempts": 1,
+                "unknown_budget": 5,
+                "repeat_threshold": 2,
+                "repeat_counts": [
+                    {"signature": "sig-newer", "action": "land", "count": 4},
+                ],
+                "saturated_repeats": 0,
+                "global_actions_charged": 0,
+                "ladder_evidence": {},
+                "shared_rung_results": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    migrated = AttemptLedger(known_root).read()
+
+    assert migrated.load_status is LedgerLoadStatus.RESTORED
+    assert migrated.version == CURRENT_SCHEMA_VERSION
+    assert migrated.rung is EscalationRung.DISPATCH_RESOLVER
+    assert migrated.unknown_attempts == 1
+    assert migrated.unknown_budget == 5
+    assert migrated.repeat_counts.get(("sig-newer", "land")) == 4
+
+    AttemptLedger(known_root).charge("sig-newer", "land", is_unknown=False)
+
+    known_quarantine = known_path.with_name(ATTEMPT_LEDGER_FILENAME + ".quarantine")
+    assert not known_quarantine.exists()
+    persisted = json.loads(known_path.read_text(encoding="utf-8"))
+    assert persisted["version"] == CURRENT_SCHEMA_VERSION
+    assert persisted["repeat_counts"] == [[["sig-newer", "land"], 5]]
+
+    unknown_root = tmp_path / "unknown-future"
+    unknown_path = attempt_ledger_path(unknown_root)
+    unknown_path.parent.mkdir(parents=True, exist_ok=True)
+    unknown_payload = json.dumps(
+        {
+            "version": CURRENT_SCHEMA_VERSION + 2,
+            "rung": "repair",
+            "repeat_counts": [],
+        }
+    )
+    unknown_path.write_text(unknown_payload, encoding="utf-8")
+
+    ledger = AttemptLedger(unknown_root)
+    with caplog.at_level(logging.WARNING, logger="ralph.pipeline.integration_attempt_ledger"):
+        unknown_state = ledger.charge("sig-unknown", "land", is_unknown=False)
+        ledger.charge("sig-unknown", "land", is_unknown=False)
+
+    notices = [
+        record
+        for record in caplog.records
+        if record.name == "ralph.pipeline.integration_attempt_ledger"
+        and record.levelno >= logging.WARNING
+    ]
+    assert len(notices) == 1
+    assert f"version {CURRENT_SCHEMA_VERSION + 2}" in notices[0].getMessage()
+    assert unknown_state.load_status is LedgerLoadStatus.UNKNOWABLE
+    unknown_quarantine = unknown_path.with_name(ATTEMPT_LEDGER_FILENAME + ".quarantine")
+    assert unknown_quarantine.read_text(encoding="utf-8") == unknown_payload

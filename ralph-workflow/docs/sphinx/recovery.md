@@ -403,6 +403,10 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
   `EWOULDBLOCK`) and carries no freshly computed deadline — bounded retry is
   authorized only by a valid, unexpired persisted retry deadline; otherwise the
   run requires operator intervention.
+- **Recorded integration strategy**: the chosen strategy and the reason for it are
+  recorded on the durable record (`integrated_strategy`, `integrated_strategy_reason`),
+  and a fired guard in `ralph.pipeline.integration_strategy.STRATEGY_TRANSITIONS`
+  switches the strategy without discarding resolved work.
 - **Pipeline progression**: The pipeline run loop consults
   `decide_phase_transition`, which returns typed `PhaseDecision` values
   (`CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`,

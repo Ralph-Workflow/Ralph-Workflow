@@ -7,8 +7,8 @@ from ralph.pipeline._integration_relation import IntegrationRelation
 from ralph.pipeline._integration_strategy import IntegrationStrategy
 from ralph.pipeline._integration_work_shape import IntegrationWorkShape
 from ralph.pipeline._observed_integration import ObservedIntegration
-from ralph.pipeline._strategy_decision import StrategyDecision
-from ralph.pipeline._strategy_transition import StrategyTransition
+from ralph.pipeline._strategy_decision import StrategyDecision, record_strategy_decision
+from ralph.pipeline._strategy_transition import StrategyTransition, apply_strategy_transition
 from ralph.pipeline._strategy_transition_guard import StrategyTransitionGuard
 
 __all__ = [
@@ -22,7 +22,9 @@ __all__ = [
     "StrategyDecision",
     "StrategyTransition",
     "StrategyTransitionGuard",
+    "apply_strategy_transition",
     "choose_integration_strategy",
+    "record_strategy_decision",
 ]
 
 STRATEGY_ORDER: Final[tuple[IntegrationStrategy, ...]] = (

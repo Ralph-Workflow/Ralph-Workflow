@@ -48,9 +48,9 @@ class LandedDecision:
 
 def expected_landed_facts(record: IntegrationRecord) -> tuple[str, ...]:
     return (
-        f"integrated_feature_sha={record.integrated_feature_sha or 'unset'}",
-        f"pre_target_sha={record.pre_target_sha or 'unset'}",
-        f"pre_feature_sha={record.pre_feature_sha}",
+        f"advanced_feature_tip={record.integrated_feature_sha or 'unset'}",
+        f"onto_tip={record.pre_target_sha or 'unset'}",
+        f"feature_tip={record.pre_feature_sha or 'unset'}",
         f"rebase_continue_stop={record.rebase_continue_stop or 'unset'}",
         f"rebase_continue_head={record.rebase_continue_head or 'unset'}",
         f"rebase_continue_tree={record.rebase_continue_tree or 'unset'}",

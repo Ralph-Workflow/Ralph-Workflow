@@ -468,9 +468,17 @@ The failure ledger answers eligibility for every agent, and every other consumer
 3. **Projections**: `agents_now_available`, `earliest_wait_ms`, `preferred_agent_index` and the launch gate are derived from the ledger answer rather than computing eligibility independently.
 4. **Sanctioned writes**: every cooldown is started through `RecoveryController.mark_agent_unavailable(phase, agent, reason=...)` or by the ledger itself when an unproductive limit is reached; both write the one `AgentUnavailabilityTracker` with a finite expiry.
 
+### One observed git snapshot per decision
+
+A decision that reads Git reads it once.
+
+1. **The reader**: `ralph.pipeline.operation_snapshot_read.read_integration_snapshot(root, target=..., remote=..., agent_active=...)` returns one `IntegrationSnapshot` carrying the operation state, the HEAD state, the in-progress kind and its ownership, the worktree state, the durable-record state and the target relations.
+2. **The projection**: `ralph.pipeline.operation_snapshot_projection.observation_from_snapshot(snapshot)` is a pure function of that snapshot and derives the `Observation` the decision acts on.
+3. **The consequence**: the status a surface reports and the action the pipeline takes are derived from the same observation, so they cannot disagree about the unmerged set or about HEAD. `ralph.pipeline.integration_director.IntegrationDirector.observe` reads one snapshot and projects it.
+
 ### One landed predicate
 
-`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only authority for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function.
+`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only authority for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function. `ralph.pipeline.landed_verdict.landed_verdict(root, record)` is the projection of that one decision onto the `LandedVerdict` values `landed`, `not_landed` and `unknown`; an unreadable HEAD is `unknown` rather than a negative answer.
 
 ### Terminal states are terminal
 
@@ -481,12 +489,30 @@ The recovery ladder is a table of states with explicit transitions and a persist
 3. **Durable terminal marker**: `IntegrationRecord.resolution_terminal_marker` holds `(resolution_gate_key, "complete_in_place", "ralph --resume")`. It is written only after the completion-in-place attempt, blocks a further attempt while facts are unchanged, and is cleared when `resolution_gate_key` changes.
 4. **Unchanged facts**: the terminal fingerprint covers HEAD, the target tip, the record's proof facts and `resolution_gate_key`. A landed-proof terminal-for-now key also includes the current target tip, so a moved target re-arms the round. Unchanged facts therefore produce no additional CRITICAL line, no diagnostic retry and no resolver selection, including across a supervisor restart that discards process-local state.
 
+### Rung post-conditions are verified
+
+Every cleanup rung declares the post-condition that proves it changed something, and the ladder verifies that post-condition before it decides what happens next.
+
+1. **The condition map**: `ralph.pipeline.integration_ladder` maps each rung of `CleanupLadderRung` to one `RungPostCondition` from `ralph.pipeline._rung_post_condition` — `STOP_GONE`, `BLOCKING_OBSERVATION_CHANGED`, `BRANCH_LANDED` or `TIP_MOVED`.
+2. **The verdict**: a rung that changed nothing is recorded as `failed:post-condition:<condition>` in the attempt ledger, under the rung key, the rung-action key and the rung-name key, and its result carries `post_condition_verified=False`.
+3. **The advance**: a rung whose post-condition failed is not repeated. The transition names the next enabled rung and the ladder escalates to that rung.
+4. **The terminal rung**: when no enabled rung remains, the transition is the terminal `complete_in_place` state, which records the terminal marker and names the resume point `ralph --resume`.
+
 ### One integration status model
 
 The facts about an integration stop are produced once and rendered by every surface that shows them.
 
 1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, whether agents can finish the stop, and the build identity. Its `summary` renders the one sentence for those facts.
-2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths the pipeline will complete in place when agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the agent-completion flag and the build.
+2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar, the residue-cleanup operator message and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths the pipeline will complete in place when agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the agent-completion flag and the build.
+3. **The cleanup path**: `ralph.pipeline.integration_cleanup` builds an `IntegrationStatus` for the residue-cleanup message and renders it through `render_log`, so the cleanup path and the conflict path describe one stop in one vocabulary.
+
+### One recorded, switchable strategy
+
+The chosen integration strategy is a durable fact on the record, and a later observation can switch it without discarding resolved work.
+
+1. **The choice**: `ralph.pipeline.integration_strategy.choose_integration_strategy` picks the strategy from the observed relation and the policy.
+2. **The record**: `IntegrationRecord.integrated_strategy` and `IntegrationRecord.integrated_strategy_reason` hold the chosen strategy and the reason for it in the durable record (`.agent/auto_integrate_in_progress.json`). `ralph.pipeline._strategy_decision.record_strategy_decision(record)` reads that pair back and returns a `StrategyDecision`; a record with no recorded strategy raises rather than defaulting to one.
+3. **The switch**: `ralph.pipeline._strategy_transition.apply_strategy_transition(current_strategy, observed=..., attempts=...)` returns the entry of `STRATEGY_TRANSITIONS` whose guard has fired. Every entry of that table sets `preserves_resolved_work=True`, so a switch keeps the work already resolved.
 
 ### Expected process exit codes and build attribution
 

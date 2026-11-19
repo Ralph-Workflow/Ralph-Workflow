@@ -108,6 +108,8 @@ class IntegrationRecord(RalphBaseModel):
     resolution_terminal_marker: (
         tuple[tuple[str | None, tuple[str, ...], str | None] | None, str, str] | None
     ) = None
+    integrated_strategy: str | None = None
+    integrated_strategy_reason: str | None = None
 
     @property
     def is_integrated(self) -> bool:

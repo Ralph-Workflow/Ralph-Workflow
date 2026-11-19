@@ -10,8 +10,9 @@ from git import GitCommandError, Repo
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_record import adopt_active_rebase_record
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, adopt_active_rebase_record
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.landed_verdict import LandedVerdict, expected_landed_facts, landed_verdict
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.workspace.scope import WorkspaceScope
@@ -670,3 +671,75 @@ def test_symptom_5_unrelated_head_rejected_once_then_quiet(
         f"the unrelated HEAD must be rejected exactly once, got {len(rejections)}"
     )
     assert "resume with" in rejections[0].content
+
+
+def test_landed_proof_facts_name_the_proof_inputs_not_the_retired_three_sha_allowlist() -> None:
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha="2" * 40,
+        integrated_feature_sha="3" * 40,
+        rebase_continue_stop="4" * 40,
+        rebase_continue_head="5" * 40,
+        rebase_continue_tree="6" * 40,
+    )
+
+    rendered = "; ".join(expected_landed_facts(record))
+
+    assert "integrated_feature_sha=" not in rendered, (
+        "the facts list must not render the retired three-SHA allowlist key integrated_feature_sha="
+    )
+    assert "pre_target_sha=" not in rendered, (
+        "the facts list must not render the retired three-SHA allowlist key pre_target_sha="
+    )
+    assert "pre_feature_sha=" not in rendered, (
+        "the facts list must not render the retired three-SHA allowlist key pre_feature_sha="
+    )
+    assert "advanced_feature_tip=" + "3" * 40 in rendered, (
+        "the advanced-completion proof input must be named in the rendered facts"
+    )
+    assert "onto_tip=" + "2" * 40 in rendered, (
+        "the rebased-range proof onto tip must be named in the rendered facts"
+    )
+    assert "feature_tip=" + "1" * 40 in rendered, (
+        "the rebased-range proof feature tip must be named in the rendered facts"
+    )
+    assert "rebase_continue_stop=" + "4" * 40 in rendered
+    assert "rebase_continue_head=" + "5" * 40 in rendered
+    assert "rebase_continue_tree=" + "6" * 40 in rendered
+
+
+def test_landed_verdict_projects_the_recorded_landing_decision(tmp_git_repo: Path) -> None:
+    head = Repo(tmp_git_repo).head.commit.hexsha
+    landed_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha=head,
+        integrated_feature_sha=head,
+    )
+    unlanded_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha=None,
+        integrated_feature_sha="0" * 40,
+    )
+
+    assert landed_verdict(tmp_git_repo, landed_record) is LandedVerdict.LANDED
+    assert landed_verdict(tmp_git_repo, unlanded_record) is LandedVerdict.NOT_LANDED
+
+
+def test_landed_verdict_is_unknown_when_the_head_cannot_be_read(tmp_path: Path) -> None:
+    empty_repo = tmp_path / "empty"
+    empty_repo.mkdir()
+    Repo.init(empty_repo, initial_branch="main")
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="1" * 40,
+        pre_target_sha=None,
+    )
+
+    assert landed_verdict(empty_repo, record) is LandedVerdict.UNKNOWN

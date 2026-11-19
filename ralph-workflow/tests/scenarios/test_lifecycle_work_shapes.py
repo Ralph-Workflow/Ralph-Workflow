@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from ralph.agents.timeout_clock import FakeClock
 from tests._scenario_harness import AgentMode, FakeAgentRunner, commit_file, git
@@ -234,6 +236,89 @@ def test_range_containing_published_commits_lands_without_rewriting_them(
         contract=LANDED,
         feature=feature_sha,
         source_refs=(target_before,),
+    )
+
+
+def test_recorded_strategy_round_trips_and_a_fired_guard_switches_without_losing_resolved_work() -> (
+    None
+):
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord, parse_record_payload
+    from ralph.pipeline.integration_strategy import (
+        IntegrationRelation,
+        IntegrationStrategy,
+        IntegrationWorkShape,
+        ObservedIntegration,
+        apply_strategy_transition,
+        record_strategy_decision,
+    )
+
+    class _LegacyIntegrationRecord(BaseModel):
+        model_config = ConfigDict(frozen=True)
+
+        record_version: int = 1
+        phase: str
+        target: str
+        pre_feature_sha: str
+        pre_target_sha: str | None
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        integrated_strategy="merge",
+        integrated_strategy_reason="Shared history was discovered, so merge preserves it.",
+    )
+    payload = json.loads(record.model_dump_json())
+
+    restored = parse_record_payload(payload)
+    assert restored is not None
+    assert restored.integrated_strategy == "merge"
+    assert restored.integrated_strategy_reason == record.integrated_strategy_reason
+
+    decision = record_strategy_decision(restored)
+    assert decision.strategy is IntegrationStrategy.MERGE
+    assert decision.reason == record.integrated_strategy_reason
+
+    legacy = parse_record_payload(
+        {
+            "record_version": 1,
+            "phase": "integrating",
+            "target": "main",
+            "pre_feature_sha": "a" * 40,
+            "pre_target_sha": "b" * 40,
+        }
+    )
+    assert legacy is not None
+    assert legacy.integrated_strategy is None
+    assert legacy.integrated_strategy_reason is None
+
+    legacy_view = _LegacyIntegrationRecord.model_validate(payload)
+    assert legacy_view.target == "main"
+
+    transition = apply_strategy_transition(
+        IntegrationStrategy.REBASE,
+        observed=ObservedIntegration(
+            relation=IntegrationRelation.DIVERGED,
+            work_shape=IntegrationWorkShape(commit_count=3, history_already_published=True),
+        ),
+        attempts=1,
+    )
+    assert transition is not None
+    assert transition.next_strategy is IntegrationStrategy.MERGE
+    assert transition.preserves_resolved_work
+    assert not transition.restarts_from_zero
+
+    assert (
+        apply_strategy_transition(
+            IntegrationStrategy.REBASE,
+            observed=ObservedIntegration(
+                relation=IntegrationRelation.AHEAD,
+                work_shape=IntegrationWorkShape(commit_count=2),
+            ),
+            attempts=1,
+        )
+        is None
     )
 
 

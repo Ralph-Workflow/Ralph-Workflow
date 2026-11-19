@@ -549,7 +549,7 @@ def test_real_git_all_agents_unavailable_named_external_wait(tmp_path: Path) -> 
     assert (root / "work.txt").read_text(encoding="utf-8") == "work in progress\n"
 
 
-def test_integration_status_autonomous_strategy_removes_operator_phrasing() -> None:
+def test_integration_status_autonomous_strategy_keeps_the_command_and_drops_operator_phrasing() -> None:
     status = build_integration_status(
         cause="CONFLICT",
         paths_with_reasons=(("src/x.py", "content conflict"),),
@@ -563,7 +563,7 @@ def test_integration_status_autonomous_strategy_removes_operator_phrasing() -> N
     summary = status.summary
     assert "operator action" not in summary
     assert "agents cannot finish this" not in summary
-    assert "git add -- src/x.py" not in summary
+    assert "git add -- src/x.py" in summary
     assert "WAITING/next-strategy: completion_in_place" in summary
     assert "next-eligible: agent_alpha" in summary
     assert "until-when: 1700000" in summary

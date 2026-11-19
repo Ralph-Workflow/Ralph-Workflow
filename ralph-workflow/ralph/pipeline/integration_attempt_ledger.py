@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
@@ -21,7 +22,9 @@ from ralph.pipeline.integration_decision import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ATTEMPT_LEDGER_FILENAME",
@@ -50,6 +53,34 @@ TOMBSTONE_FILENAME = "integration_attempt_tombstone.json"
 SHARED_BUDGET_DIRNAME = "ralph"
 
 CURRENT_SCHEMA_VERSION = 1
+
+
+def _migrate_object_shaped_repeat_counts(
+    payload: Mapping[str, object],
+) -> Mapping[str, object]:
+    raw_repeats = payload.get("repeat_counts")
+    if not isinstance(raw_repeats, list):
+        return payload
+    entries: list[object] = []
+    for entry in raw_repeats:
+        if not isinstance(entry, dict):
+            continue
+        signature = entry.get("signature")
+        action = entry.get("action")
+        count = entry.get("count")
+        if not isinstance(signature, str) or not isinstance(action, str):
+            continue
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            continue
+        entries.append([[signature, action], count])
+    return {**payload, "repeat_counts": entries}
+
+
+_KNOWN_FUTURE_SCHEMA_MIGRATIONS: Final[
+    Mapping[int, Callable[[Mapping[str, object]], Mapping[str, object]]]
+] = {
+    CURRENT_SCHEMA_VERSION + 1: _migrate_object_shaped_repeat_counts,
+}
 
 GLOBAL_ACTION_BOUND: Final[int] = 2
 
@@ -111,6 +142,8 @@ class AttemptLedgerState:
     shared_rung_results: dict[str, str] = field(
         default_factory=dict,
     )
+
+    load_status: LedgerLoadStatus = LedgerLoadStatus.FRESH
 
     def __post_init__(self) -> None:
         if self.unknown_attempts < 0:
@@ -277,6 +310,7 @@ class AttemptLedger:
         self._saturated_repeats = 0
         self._unknowable = False
         self._forced_pending = False
+        self._loaded_version: int | None = None
 
     @property
     def ledger_path(self) -> Path:
@@ -323,52 +357,61 @@ class AttemptLedger:
             global_actions_charged=charged,
             ladder_evidence=dict(state.ladder_evidence),
             shared_rung_results=dict(state.shared_rung_results),
+            load_status=state.load_status,
         )
 
     @staticmethod
-    def _payload_status(payload: Mapping[str, object]) -> LedgerLoadStatus:
-        version = payload.get("version")
-        if (
-            not isinstance(version, int)
-            or isinstance(version, bool)
-            or version != CURRENT_SCHEMA_VERSION
-        ):
-            return LedgerLoadStatus.UNKNOWABLE
+    def _payload_shape_is_supported(payload: Mapping[str, object]) -> bool:
         rung_value = payload.get("rung")
         if rung_value is not None and (
             not isinstance(rung_value, str) or rung_value not in _RUNG_VALUES
         ):
-            return LedgerLoadStatus.UNKNOWABLE
-        if not isinstance(payload.get("repeat_counts", []), list):
-            return LedgerLoadStatus.UNKNOWABLE
-        return LedgerLoadStatus.RESTORED
+            return False
+        return isinstance(payload.get("repeat_counts", []), list)
 
-    def _load(self) -> tuple[AttemptLedgerState, LedgerLoadStatus]:
+    @staticmethod
+    def _resolve_payload(
+        payload: Mapping[str, object],
+    ) -> tuple[Mapping[str, object], LedgerLoadStatus, int | None]:
+        version = payload.get("version")
+        if not isinstance(version, int) or isinstance(version, bool):
+            return payload, LedgerLoadStatus.UNKNOWABLE, None
+        if version > CURRENT_SCHEMA_VERSION:
+            migration = _KNOWN_FUTURE_SCHEMA_MIGRATIONS.get(version)
+            if migration is None:
+                return payload, LedgerLoadStatus.UNKNOWABLE, version
+            payload = migration(payload)
+        if not AttemptLedger._payload_shape_is_supported(payload):
+            return payload, LedgerLoadStatus.UNKNOWABLE, version
+        return payload, LedgerLoadStatus.RESTORED, version
+
+    def _load(self) -> AttemptLedgerState:
         path = self._ledger_path
+        self._loaded_version = None
         try:
             raw_text = path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            return self._default_state(), LedgerLoadStatus.FRESH
+            return self._default_state()
         except (OSError, UnicodeError):
-            return self._default_state(), LedgerLoadStatus.UNKNOWABLE
+            return replace(self._default_state(), load_status=LedgerLoadStatus.UNKNOWABLE)
 
         try:
             payload = cast("object", json.loads(raw_text))
         except (ValueError, RecursionError):
-            return self._default_state(), LedgerLoadStatus.UNKNOWABLE
+            return replace(self._default_state(), load_status=LedgerLoadStatus.UNKNOWABLE)
 
         if not isinstance(payload, dict):
-            return self._default_state(), LedgerLoadStatus.UNKNOWABLE
+            return replace(self._default_state(), load_status=LedgerLoadStatus.UNKNOWABLE)
 
-        status = self._payload_status(payload)
-        state = self._migrate_payload(payload)
+        migrated_payload, status, version = self._resolve_payload(payload)
+        self._loaded_version = version
+        state = self._migrate_payload(migrated_payload)
         self._saturated_repeats = max(self._saturated_repeats, state.saturated_repeats)
         self._global_charged = max(self._global_charged, state.global_actions_charged)
-        return state, status
+        return replace(state, load_status=status)
 
     def read(self) -> AttemptLedgerState:
-        state, _status = self._load()
-        return state
+        return self._load()
 
     def with_attempt(
         self,
@@ -392,7 +435,8 @@ class AttemptLedger:
         is_unknown: bool,
     ) -> AttemptLedgerState:
         with self._locked() as acquired:
-            state, status = self._load()
+            state = self._load()
+            status = state.load_status
             charged = self._global_charged_total()
             if self._forced_pending or charged >= GLOBAL_ACTION_BOUND:
                 self._forced_pending = True
@@ -404,7 +448,7 @@ class AttemptLedger:
                 if not granted:
                     self._forced_pending = True
                     return self._exhausted_state(state)
-                self._quarantine_ledger()
+                self._quarantine_ledger(self._quarantine_reason())
                 state = self._exhausted_state(state, global_actions_charged=charged)
             bumped = self._apply_charge(state, signature, action, is_unknown=is_unknown)
             if not acquired:
@@ -435,6 +479,7 @@ class AttemptLedger:
                 global_actions_charged=state.global_actions_charged,
                 ladder_evidence=dict(state.ladder_evidence),
                 shared_rung_results=dict(state.shared_rung_results),
+                load_status=state.load_status,
             )
         key = (signature, action)
         updated: OrderedDict[tuple[str, str], int] = OrderedDict(state.repeat_counts)
@@ -462,6 +507,7 @@ class AttemptLedger:
             global_actions_charged=state.global_actions_charged,
             ladder_evidence=dict(state.ladder_evidence),
             shared_rung_results=dict(state.shared_rung_results),
+            load_status=state.load_status,
         )
 
     def _on_persist_failure(
@@ -481,7 +527,7 @@ class AttemptLedger:
         with self._locked() as acquired:
             if not acquired:
                 raise OSError("integration attempt ledger lock unavailable")
-            self._quarantine_ledger()
+            self._quarantine_ledger("ledger rebuilt from git facts")
             rebuilt = rebuild_state_from_git_facts(
                 facts,
                 unknown_budget=self._default_unknown_budget,
@@ -494,7 +540,7 @@ class AttemptLedger:
         with self._locked() as acquired:
             if not acquired:
                 raise OSError("integration attempt ledger lock unavailable")
-            disk, _status = self._load()
+            disk = self._load()
             self._write_state(state, disk)
 
     def publish_rung_result(self, key: str, value: str) -> AttemptLedgerState:
@@ -503,7 +549,7 @@ class AttemptLedger:
         with self._locked() as acquired:
             if not acquired:
                 raise OSError("integration attempt ledger lock unavailable")
-            state, _status = self._load()
+            state = self._load()
             shared = dict(state.shared_rung_results)
             shared[key] = value
             updated = AttemptLedgerState(
@@ -518,14 +564,14 @@ class AttemptLedger:
                 shared_rung_results=shared,
             )
             self._write_state(updated, state)
-            persisted, _status = self._load()
+            persisted = self._load()
             return persisted
 
     def record_last_resort_wait(self, value: str) -> AttemptLedgerState:
         with self._locked() as acquired:
             if not acquired:
                 raise OSError("integration attempt ledger lock unavailable")
-            state, _status = self._load()
+            state = self._load()
             evidence = dict(state.ladder_evidence)
             evidence[LAST_RESORT_WAIT_KEY] = value
             updated = AttemptLedgerState(
@@ -540,7 +586,7 @@ class AttemptLedger:
                 shared_rung_results=dict(state.shared_rung_results),
             )
             self._write_state(updated, state)
-            persisted, _status = self._load()
+            persisted = self._load()
             return persisted
 
     def read_rung_result(self, key: str) -> str | None:
@@ -576,6 +622,7 @@ class AttemptLedger:
             global_actions_charged=max(state.global_actions_charged, disk.global_actions_charged),
             ladder_evidence=dict(list(merged_evidence.items())[:_LADDER_EVIDENCE_CAP]),
             shared_rung_results=dict(list(merged_results.items())[-_SHARED_RUNG_RESULTS_CAP:]),
+            load_status=state.load_status,
         )
 
     @staticmethod
@@ -633,13 +680,20 @@ class AttemptLedger:
             saturated = _saturating_add(saturated, evicted_count)
         return repeats, saturated
 
-    def _quarantine_ledger(self) -> None:
+    def _quarantine_ledger(self, reason: str) -> None:
         path = self._ledger_path
         quarantine = path.with_name(path.name + _QUARANTINE_SUFFIX)
+        logger.warning("integration attempt ledger quarantined: %s", reason)
         try:
             path.replace(quarantine)
         except OSError:
             return
+
+    def _quarantine_reason(self) -> str:
+        version = self._loaded_version
+        if version is None:
+            return "unreadable ledger payload"
+        return f"unsupported ledger version {version}"
 
     def _global_charged_total(self) -> int:
         return min(max(self._tombstone_charged(), self._global_charged), GLOBAL_ACTION_BOUND)
