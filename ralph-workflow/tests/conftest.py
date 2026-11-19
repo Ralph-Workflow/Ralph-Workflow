@@ -78,6 +78,13 @@ _AGY_DEFAULT_TEST_PATHS = frozenset(
     }
 )
 
+_OUTER_SESSION_CONFIG_HOLDER: list[pytest.Config | None] = [None]
+
+
+def _is_nested_session(config: pytest.Config) -> bool:
+    outer_config = _OUTER_SESSION_CONFIG_HOLDER[0]
+    return outer_config is not None and config is not outer_config
+
 
 @pytest.fixture(autouse=True)
 def _isolate_test_environment_and_globals(
@@ -246,7 +253,8 @@ def _collect_session_guard_violations(
 ) -> list[str]:
     after = _scan_guarded_config_files(guarded_dirs)
     violations = _diff_config_snapshots(before, after)
-    violations.extend(_end_repo_tree_guard(repo_tree_before))
+    if repo_tree_before is not None:
+        violations.extend(_end_repo_tree_guard(repo_tree_before))
     violations.extend(
         _diff_project_local_configs(project_local_before, _scan_project_local_configs())
     )
@@ -269,6 +277,7 @@ def _collect_session_guard_violations(
 @pytest.fixture(scope="session", autouse=True)
 def _guard_real_config_files(
     tmp_path_factory: pytest.TempPathFactory,
+    request: pytest.FixtureRequest,
 ) -> Generator[None, None, None]:
     _install_config_guard_audit_hook()
     _clear_recorded_read_violations()
@@ -277,7 +286,7 @@ def _guard_real_config_files(
     before = _scan_guarded_config_files(guarded_dirs)
     project_local_before = _scan_project_local_configs()
     extra_local_before = _scan_extra_project_local_configs()
-    repo_tree_before = _begin_repo_tree_guard()
+    repo_tree_before = None if _is_nested_session(request.config) else _begin_repo_tree_guard()
     session_home = tmp_path_factory.mktemp("session-home")
     session_config = session_home / ".config"
     session_config.mkdir(parents=True)
@@ -331,6 +340,8 @@ def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    _OUTER_SESSION_CONFIG_HOLDER[0] = config
+    os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     config.stash[gc_collect_iterations_key] = 0
     _bypass_macos_git_shim()
     from pygments.lexers import get_lexer_by_name
