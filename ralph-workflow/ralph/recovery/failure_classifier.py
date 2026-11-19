@@ -14,6 +14,7 @@ from .classified_failure import ClassifiedFailure
 from .conflict_attempt_outcome import ConflictAttemptOutcome
 from .failure_category import FailureCategory
 from .failure_details import FailureDetailParts, contains_casefolded_marker, failure_detail_parts
+from .transport_failure_frames import transport_failure_messages
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
@@ -316,6 +317,14 @@ def typed_signal_unavailability_reason(signal: TypedSignal | None) -> Unavailabi
         return UnavailabilityReason.OUT_OF_CREDITS
     if signal.name == "MissingCredentialsError":
         return UnavailabilityReason.AUTH_CONFIG
+    return None
+
+
+def transport_frame_unavailability_reason(
+    exc: BaseException | None,
+) -> UnavailabilityReason | None:
+    if contains_casefolded_marker(transport_failure_messages(exc), _PROVIDER_OVERLOAD_SUBSTRINGS):
+        return UnavailabilityReason.PROVIDER_UNAVAILABLE
     return None
 
 

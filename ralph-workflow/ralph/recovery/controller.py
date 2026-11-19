@@ -65,6 +65,7 @@ from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import (
+    transport_frame_unavailability_reason,
     typed_signal_unavailability_reason,
     watchdog_unavailability_reason,
 )
@@ -563,6 +564,8 @@ def _attempt_cooldown_reasons(
         cooldown_reason = watchdog_cooldown
     if cooldown_reason is None and isinstance(exc, SupervisionInfrastructureError):
         cooldown_reason = UnavailabilityReason.PROVIDER_UNAVAILABLE
+    if cooldown_reason is None:
+        cooldown_reason = transport_frame_unavailability_reason(exc)
     return cooldown_reason, watchdog_cooldown
 
 

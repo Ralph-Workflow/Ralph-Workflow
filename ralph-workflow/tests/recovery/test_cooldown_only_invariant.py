@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from hypothesis import HealthCheck, given, settings
@@ -76,6 +77,22 @@ def _apply(controller: RecoveryController, failure: Failure, agents: tuple[str, 
         controller.mark_candidate_unavailable(PHASE, AGENT)
     elif kind == "commit_attempt":
         controller.record_attempt(PHASE, AGENT)
+    elif kind == "finalized_provider_overload":
+        overload = AgentInvocationError(
+            AGENT,
+            1,
+            "exit",
+            parsed_output=[
+                json.dumps({"type": "turn.failed", "error": {"message": "status 503 overloaded"}})
+            ],
+        )
+        controller.finalize_attempt(
+            PHASE,
+            AGENT,
+            facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+            attempt_failed=True,
+            exc=overload,
+        )
     elif kind == "dead_agent":
         controller.handle(
             _state(agents),
@@ -93,6 +110,7 @@ FAILURES = st.one_of(
     st.tuples(st.just("candidate_unavailable"), st.none()),
     st.tuples(st.just("commit_attempt"), st.none()),
     st.tuples(st.just("dead_agent"), st.none()),
+    st.tuples(st.just("finalized_provider_overload"), st.none()),
 )
 
 SETTINGS = settings(

@@ -3995,6 +3995,13 @@ ralph.recovery.failure_details
    :members:
    :show-inheritance:
 
+ralph.recovery.transport_failure_frames
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.transport_failure_frames
+   :members:
+   :show-inheritance:
+
 ralph.recovery.retry_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
