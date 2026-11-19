@@ -1605,6 +1605,11 @@ def _reduce_commit_review_event(
             routing_timing=routing_timing,
         )
 
+    if isinstance(event, (CommitReviewGateFailed, CommitReviewLoopback)):
+        reviewer = state.current_agent()
+        if recovery is not None and reviewer is not None:
+            recovery.charge_artifactless_completion(state.phase, reviewer)
+
     if isinstance(event, CommitReviewGateFailed):
         reason = f"Commit review gate failed: {event.detail}"
         target = (

@@ -173,6 +173,11 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "daily limit exceeded",
     "weekly limit exceeded",
     "monthly limit exceeded",
+    "usage limit has been reached",
+    "token plan usage limit",
+    "token plan rate limit",
+    "(2067)",
+    "(2062)",
 )
 
 _PROVIDER_OVERLOAD_SUBSTRINGS: tuple[str, ...] = (
@@ -325,20 +330,26 @@ def typed_signal_unavailability_reason(signal: TypedSignal | None) -> Unavailabi
     return None
 
 
+def provider_text_unavailability_reason(
+    texts: tuple[str, ...] | list[str],
+) -> UnavailabilityReason | None:
+    if contains_casefolded_marker(texts, _SUBSCRIPTION_LIMIT_SUBSTRINGS):
+        return UnavailabilityReason.OUT_OF_CREDITS
+    if contains_casefolded_marker(texts, _CONTEXT_EXHAUSTED_SUBSTRINGS):
+        return UnavailabilityReason.CONTEXT_EXHAUSTED
+    if contains_casefolded_marker(texts, _PROVIDER_OVERLOAD_SUBSTRINGS):
+        return UnavailabilityReason.PROVIDER_UNAVAILABLE
+    return None
+
+
 def transport_frame_unavailability_reason(
     exc: BaseException | None,
 ) -> UnavailabilityReason | None:
-    if contains_casefolded_marker(transport_failure_messages(exc), _PROVIDER_OVERLOAD_SUBSTRINGS):
-        return UnavailabilityReason.PROVIDER_UNAVAILABLE
-    return None
+    return provider_text_unavailability_reason(transport_failure_messages(exc))
 
 
-def terminal_transport_overload_reason(lines: list[str]) -> UnavailabilityReason | None:
-    if contains_casefolded_marker(
-        terminal_transport_failure_messages(lines), _PROVIDER_OVERLOAD_SUBSTRINGS
-    ):
-        return UnavailabilityReason.PROVIDER_UNAVAILABLE
-    return None
+def terminal_transport_unavailability_reason(lines: list[str]) -> UnavailabilityReason | None:
+    return provider_text_unavailability_reason(terminal_transport_failure_messages(lines))
 
 
 def is_unsubmitted_artifact_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:

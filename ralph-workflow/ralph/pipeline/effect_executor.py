@@ -1230,7 +1230,7 @@ def _invoke_agent_with_recovery(
                     agent_label_scope=effective_run_id,
                     raw_line_sink=raw_line_sink,
                 )
-                _raise_if_transcript_ended_on_provider_overload(ctx, raw_output)
+                _raise_if_transcript_ended_on_provider_failure(ctx, raw_output)
                 missing_artifact = _missing_required_artifact_event(
                     ctx,
                     state,
@@ -1823,19 +1823,19 @@ def _consume_attempt_output(
     return carried if isinstance(carried, AttemptEnded) else None
 
 
-def _raise_if_transcript_ended_on_provider_overload(
+def _raise_if_transcript_ended_on_provider_failure(
     ctx: _AgentInvocationCtx,
     raw_output: deque[str],
 ) -> None:
-    from ralph.recovery.failure_classifier import terminal_transport_overload_reason
+    from ralph.recovery.failure_classifier import terminal_transport_unavailability_reason
 
     lines = list(raw_output)
-    if terminal_transport_overload_reason(lines) is None:
+    if terminal_transport_unavailability_reason(lines) is None:
         return
     raise AgentInvocationError(
         ctx.effect.agent_name,
         0,
-        "the agent exited after its provider reported an overload",
+        "the agent exited after its provider reported it unavailable",
         parsed_output=lines,
     )
 

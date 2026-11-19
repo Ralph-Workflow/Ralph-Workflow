@@ -82,9 +82,7 @@ def _apply(controller: RecoveryController, failure: Failure, agents: tuple[str, 
             AGENT,
             1,
             "exit",
-            parsed_output=[
-                json.dumps({"type": "turn.failed", "error": {"message": "status 503 overloaded"}})
-            ],
+            parsed_output=[json.dumps({"type": "turn.failed", "error": {"message": str(detail)}})],
         )
         controller.finalize_attempt(
             PHASE,
@@ -118,7 +116,16 @@ FAILURES = st.one_of(
     st.tuples(st.just("candidate_unavailable"), st.none()),
     st.tuples(st.just("commit_attempt"), st.none()),
     st.tuples(st.just("dead_agent"), st.none()),
-    st.tuples(st.just("finalized_provider_overload"), st.none()),
+    st.tuples(
+        st.just("finalized_provider_overload"),
+        st.sampled_from(
+            [
+                "status 503 overloaded",
+                "The Token Plan usage limit has been reached. (2067)",
+                "Token Plan rate limit reached (2062)",
+            ]
+        ),
+    ),
     st.tuples(
         st.just("slow_unproductive_attempt"),
         st.integers(min_value=0, max_value=6 * 3600 * 1000),

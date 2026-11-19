@@ -182,3 +182,35 @@ def test_an_unproductive_cooldown_outlasts_the_failing_attempt(tmp_git_repo: Pat
     wait_ms = harness.controller.earliest_eligible_wait_ms(_PHASE, [harness.primary])
     assert wait_ms is not None
     assert wait_ms >= int(_SLOW_ATTEMPT_SECONDS * 1000)
+
+
+def _minimax_quota_transcript() -> list[str]:
+    frame = {
+        "type": "error",
+        "error": {
+            "name": "APIError",
+            "data": {
+                "message": "The Token Plan usage limit has been reached. To avoid "
+                "interruption, please upgrade your plan or buy credits and turn on auto "
+                "consumption. (2067)",
+            },
+        },
+    }
+    return [json.dumps({"type": "step_start"}), json.dumps(frame)]
+
+
+def test_a_minimax_quota_on_a_clean_exit_starts_an_out_of_credits_cooldown(
+    tmp_git_repo: Path,
+) -> None:
+    harness, _launched = _opencode_harness(tmp_git_repo)
+    harness.deps = replace(
+        harness.deps,
+        invoke_agent=lambda *_args, **_kwargs: iter(_minimax_quota_transcript()),
+    )
+
+    _route(harness, harness.dispatch())
+
+    status = harness.controller.agent_eligibility(_PHASE, harness.primary)
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.OUT_OF_CREDITS)
+    assert harness.dispatch().agent_name != harness.primary

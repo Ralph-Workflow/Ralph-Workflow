@@ -212,3 +212,37 @@ def test_every_known_cli_overload_frame_starts_a_provider_cooldown(cli: str) -> 
     status = controller.agent_eligibility(_PHASE, cli)
     assert isinstance(status, Cooldown)
     assert status.reason == str(UnavailabilityReason.PROVIDER_UNAVAILABLE)
+
+
+_QUOTA_MESSAGES: tuple[str, ...] = (
+    "The Token Plan usage limit has been reached. To avoid interruption, please upgrade "
+    "your plan or buy credits and turn on auto consumption. (2067)",
+    "Token Plan rate limit reached: Upgrade your Token Plan or switch to pay-as-you-go "
+    "API usage. (2062)",
+)
+
+
+@pytest.mark.parametrize("message", _QUOTA_MESSAGES)
+def test_a_provider_quota_in_an_opencode_error_frame_starts_an_out_of_credits_cooldown(
+    message: str,
+) -> None:
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    controller.register_phase_chain(_PHASE, ["minimax", _FALLBACK])
+    frame = {
+        "type": "error",
+        "error": {"name": "APIError", "data": {"message": message, "statusCode": 429}},
+    }
+    failure = AgentInvocationError("minimax", 0, "exit", parsed_output=[json.dumps(frame)])
+
+    controller.finalize_attempt(
+        _PHASE,
+        "minimax",
+        facts=attempt_facts_for_failure(failure),
+        attempt_failed=True,
+        exc=failure,
+    )
+
+    status = controller.agent_eligibility(_PHASE, "minimax")
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.OUT_OF_CREDITS)
+    assert controller.preferred_agent_index(_PHASE, ["minimax", _FALLBACK]).agent == _FALLBACK

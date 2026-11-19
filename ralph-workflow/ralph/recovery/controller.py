@@ -1302,6 +1302,23 @@ class RecoveryController:
     def register_phase_chain(self, phase: str, agents: Sequence[str]) -> None:
         self._phase_chains[phase] = tuple(agents)
 
+    def charge_artifactless_completion(
+        self,
+        phase: str,
+        agent: str,
+        *,
+        workspace_changed: bool | None = False,
+    ) -> None:
+        claimed = self._claim_memoized_attempt(phase, agent)
+        if claimed is None or claimed[0].kind is not AttemptOutcomeKind.COMPLETED:
+            return
+        self.record_attempt_fact(
+            phase,
+            agent,
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
+        )
+
     def record_attempt_fact(
         self,
         phase: str,
