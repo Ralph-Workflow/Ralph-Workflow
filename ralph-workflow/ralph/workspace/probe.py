@@ -14,12 +14,24 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT_MAX_SNAPSHOT_FILES",
+    "ENGINE_ROOT_RELATIVE_CACHE_PATHS",
     "DefaultWorkspaceChangeProbe",
     "WorkspaceChangeProbe",
     "take_workspace_snapshot",
 ]
 
 DEFAULT_MAX_SNAPSHOT_FILES: int = 1000
+
+ENGINE_ROOT_RELATIVE_CACHE_PATHS: frozenset[str] = frozenset(
+    {
+        "checkpoint.json",
+        ".agents/mcp_config.json",
+        ".cursor/mcp.json",
+        ".kimi-code/mcp.json",
+    }
+)
+_DELETED_FINGERPRINT = "__deleted__"
+_VERSION_KEY = "__workspace_version__"
 
 _IGNORED_ROOT_DIRECTORIES: frozenset[str] = frozenset(
     {
@@ -47,6 +59,8 @@ def _normalize_workspace_path(path: str) -> str:
 
 def _is_ignored_workspace_path(path: str) -> bool:
     norm = _normalize_workspace_path(path)
+    if norm in ENGINE_ROOT_RELATIVE_CACHE_PATHS:
+        return True
     parts = norm.split("/")
     first = parts[0] if parts else ""
     if first in _IGNORED_ROOT_DIRECTORIES:
@@ -234,33 +248,63 @@ def take_workspace_snapshot(
     *,
     max_files: int = DEFAULT_MAX_SNAPSHOT_FILES,
 ) -> dict[str, str]:
-    snapshot: dict[str, str] = {}
-    ver = _extract_workspace_version(workspace)
-    if ver is not None:
-        snapshot["__workspace_version__"] = ver
-
     tracked_paths = _extract_tracked_dirty_paths(workspace)
     if tracked_paths is not None:
-        count = 0
-        for raw_path in sorted(tracked_paths):
-            p = _normalize_workspace_path(str(raw_path))
-            if _is_ignored_workspace_path(p):
-                continue
-            fp = _fingerprint_file(workspace, p)
-            snapshot[p] = fp if fp is not None else "__deleted__"
-            count += 1
-            if count >= max_files:
-                break
+        snapshot = _versioned(workspace)
+        snapshot.update(_tracked_fingerprints(workspace, tracked_paths, max_files=max_files))
         return snapshot
+    return _walk_snapshot(workspace, max_files=max_files)
 
-    file_paths = _collect_file_paths(workspace, limit=max_files)
-    for p in file_paths:
+
+def _versioned(workspace: Workspace) -> dict[str, str]:
+    ver = _extract_workspace_version(workspace)
+    return {} if ver is None else {_VERSION_KEY: ver}
+
+
+def _walk_snapshot(workspace: Workspace, *, max_files: int) -> dict[str, str]:
+    snapshot = _versioned(workspace)
+    count = 0
+    for p in _collect_file_paths(workspace, limit=max_files):
+        if _is_ignored_workspace_path(p):
+            continue
         fp = _fingerprint_file(workspace, p)
         if fp is not None:
             snapshot[p] = fp
-            if len(snapshot) >= max_files:
+            count += 1
+            if count >= max_files:
                 break
     return snapshot
+
+
+def _tracked_fingerprints(
+    workspace: Workspace,
+    tracked_paths: Iterable[object],
+    *,
+    max_files: int,
+) -> dict[str, str]:
+    fingerprints: dict[str, str] = {}
+    for raw_path in sorted({_normalize_workspace_path(str(p)) for p in tracked_paths}):
+        if _is_ignored_workspace_path(raw_path):
+            continue
+        fp = _fingerprint_file(workspace, raw_path)
+        fingerprints[raw_path] = fp if fp is not None else _DELETED_FINGERPRINT
+        if len(fingerprints) >= max_files:
+            break
+    return fingerprints
+
+
+def _tracked_paths_changed(
+    workspace: Workspace,
+    baseline: dict[str, str],
+    *,
+    max_files: int,
+) -> bool:
+    current = _extract_tracked_dirty_paths(workspace) or []
+    after = _tracked_fingerprints(workspace, [*baseline, *current], max_files=max_files)
+    return any(
+        fingerprint != baseline.get(path, _DELETED_FINGERPRINT)
+        for path, fingerprint in after.items()
+    )
 
 
 @runtime_checkable
@@ -276,6 +320,7 @@ WorkspaceChangeProbe = _WorkspaceChangeProbe
 class DefaultWorkspaceChangeProbe:
     def __init__(self, *, max_files: int = DEFAULT_MAX_SNAPSHOT_FILES) -> None:
         self._baselines: dict[str, dict[str, str]] = {}
+        self._tracked_baselines: dict[str, dict[str, str]] = {}
         self._version_baselines: dict[str, str | None] = {}
         self._max_files = max_files
 
@@ -283,7 +328,14 @@ class DefaultWorkspaceChangeProbe:
         ver = _extract_workspace_version(workspace)
         if ver is not None:
             self._version_baselines[phase] = ver
-        self._baselines[phase] = take_workspace_snapshot(workspace, max_files=self._max_files)
+        self._baselines[phase] = _walk_snapshot(workspace, max_files=self._max_files)
+        tracked = _extract_tracked_dirty_paths(workspace)
+        if tracked is None:
+            self._tracked_baselines.pop(phase, None)
+        else:
+            self._tracked_baselines[phase] = _tracked_fingerprints(
+                workspace, tracked, max_files=self._max_files
+            )
 
     def has_changed(self, phase: str, workspace: Workspace) -> bool:
         before_ver = self._version_baselines.pop(phase, None)
@@ -291,9 +343,12 @@ class DefaultWorkspaceChangeProbe:
             current_ver = _extract_workspace_version(workspace)
             if current_ver is not None and current_ver != before_ver:
                 self._baselines.pop(phase, None)
+                self._tracked_baselines.pop(phase, None)
                 return True
         before = self._baselines.pop(phase, None)
-        after = take_workspace_snapshot(workspace, max_files=self._max_files)
+        tracked_before = self._tracked_baselines.pop(phase, {})
         if before is None:
             return False
-        return before != after
+        if before != _walk_snapshot(workspace, max_files=self._max_files):
+            return True
+        return _tracked_paths_changed(workspace, tracked_before, max_files=self._max_files)

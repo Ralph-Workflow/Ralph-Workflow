@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.workspace import MemoryWorkspace
+from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.probe import (
     DEFAULT_MAX_SNAPSHOT_FILES,
     DefaultWorkspaceChangeProbe,
@@ -191,3 +194,83 @@ def test_probe_bounded_observation_with_iter_files_bounded() -> None:
     snap = take_workspace_snapshot(ws, max_files=5)
     assert ws.bounded_calls == [5]
     assert "file1.txt" in snap
+
+
+def test_probe_ignores_engine_owned_root_files_rewritten_during_an_attempt() -> None:
+    workspace = MemoryWorkspace()
+    workspace.write("src/app.py", "print('hello')\n")
+    engine_owned = (
+        "checkpoint.json",
+        ".agents/mcp_config.json",
+        ".cursor/mcp.json",
+        ".kimi-code/mcp.json",
+    )
+    for path in engine_owned:
+        workspace.write(path, "{}")
+
+    probe = DefaultWorkspaceChangeProbe()
+    probe.observe_before("development_analysis", workspace)
+    for path in engine_owned:
+        workspace.write(path, '{"checkpoint_saved_count": 2}')
+
+    assert probe.has_changed("development_analysis", workspace) is False
+    assert not set(engine_owned) & set(take_workspace_snapshot(workspace))
+
+
+def _fs_workspace(root: Path) -> FsWorkspace:
+    (root / "src").mkdir()
+    (root / "README.md").write_text("readme\n", encoding="utf-8")
+    (root / "src" / "app.py").write_text("print('hello')\n", encoding="utf-8")
+    return FsWorkspace(root)
+
+
+def test_probe_reports_no_change_when_the_awareness_registry_comes_and_goes(
+    tmp_path: Path,
+) -> None:
+    workspace = _fs_workspace(tmp_path)
+    probe = DefaultWorkspaceChangeProbe()
+    probe.observe_before("development_analysis", workspace)
+    try:
+        awareness_for_workspace(tmp_path).set_watch_active()
+        probe.observe_before("development_analysis", workspace)
+    finally:
+        release_workspace_awareness(tmp_path)
+
+    assert probe.has_changed("development_analysis", workspace) is False
+
+
+def test_probe_reports_no_change_when_the_awareness_queue_is_drained(
+    tmp_path: Path,
+) -> None:
+    workspace = _fs_workspace(tmp_path)
+    awareness = awareness_for_workspace(tmp_path)
+    try:
+        awareness.record(str(tmp_path / "README.md"))
+        probe = DefaultWorkspaceChangeProbe()
+        probe.observe_before("development_analysis", workspace)
+        awareness.drain()
+        scratch = tmp_path / "src" / "scratch.tmp"
+        scratch.write_text("x", encoding="utf-8")
+        awareness.record(str(scratch))
+        scratch.unlink()
+
+        assert probe.has_changed("development_analysis", workspace) is False
+    finally:
+        release_workspace_awareness(tmp_path)
+
+
+def test_probe_detects_an_edit_the_awareness_recorded_beyond_the_walk_limit(
+    tmp_path: Path,
+) -> None:
+    workspace = _fs_workspace(tmp_path)
+    awareness = awareness_for_workspace(tmp_path)
+    try:
+        probe = DefaultWorkspaceChangeProbe(max_files=1)
+        probe.observe_before("development", workspace)
+        edited = tmp_path / "src" / "app.py"
+        edited.write_text("print('changed by the agent')\n", encoding="utf-8")
+        awareness.record(str(edited))
+
+        assert probe.has_changed("development", workspace) is True
+    finally:
+        release_workspace_awareness(tmp_path)

@@ -12,6 +12,7 @@ from ralph.agents.idle_watchdog._workspace_change_kind import (
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     WorkspaceChangeKind,
 )
+from ralph.workspace.probe import ENGINE_ROOT_RELATIVE_CACHE_PATHS
 
 __all__ = [
     "ARTIFACT_PARENT_DIRS",
@@ -49,15 +50,6 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
         ".agent/prompt_history",
         ".agent/artifact-formats",
         ".agent/logs",
-    }
-)
-
-ENGINE_ROOT_RELATIVE_CACHE_PATHS: frozenset[str] = frozenset(
-    {
-        "checkpoint.json",
-        ".agents/mcp_config.json",
-        ".cursor/mcp.json",
-        ".kimi-code/mcp.json",
     }
 )
 
