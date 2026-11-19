@@ -167,3 +167,48 @@ def test_provider_overload_is_read_from_transport_frames_not_from_agent_prose(
     status = controller.agent_eligibility(_PHASE, "codex")
     assert isinstance(status, Cooldown)
     assert status.reason == str(UnavailabilityReason.PROVIDER_UNAVAILABLE)
+
+
+_PER_CLI_OVERLOAD_FRAMES: dict[str, dict[str, object]] = {
+    "opencode": {
+        "type": "error",
+        "error": {
+            "name": "APIError",
+            "data": {"message": "Service temporarily unavailable", "statusCode": 503},
+        },
+    },
+    "claude": {"type": "result", "is_error": True, "result": "API Error: 529 overloaded_error"},
+    "claude_retry": {
+        "type": "system",
+        "subtype": "api_retry",
+        "error": "overloaded",
+        "error_status": 529,
+    },
+    "cursor": {"type": "result", "is_error": True, "result": "status 503 from provider"},
+    "pi": {
+        "type": "message_end",
+        "message": {"stopReason": "error", "errorMessage": "Model is overloaded"},
+    },
+    "agy": {"event": "error", "message": "HTTP 503 service overloaded"},
+}
+
+
+@pytest.mark.parametrize("cli", sorted(_PER_CLI_OVERLOAD_FRAMES))
+def test_every_known_cli_overload_frame_starts_a_provider_cooldown(cli: str) -> None:
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=FakeClock(start=0.0)))
+    controller.register_phase_chain(_PHASE, [cli, _FALLBACK])
+    failure = AgentInvocationError(
+        cli, 1, "exit", parsed_output=[json.dumps(_PER_CLI_OVERLOAD_FRAMES[cli])]
+    )
+
+    controller.finalize_attempt(
+        _PHASE,
+        cli,
+        facts=attempt_facts_for_failure(failure),
+        attempt_failed=True,
+        exc=failure,
+    )
+
+    status = controller.agent_eligibility(_PHASE, cli)
+    assert isinstance(status, Cooldown)
+    assert status.reason == str(UnavailabilityReason.PROVIDER_UNAVAILABLE)

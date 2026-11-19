@@ -50,6 +50,7 @@ class _AttemptFact:
     artifact_valid: bool
     workspace_changed: bool | None = False
     free_retry_category: bool = False
+    min_cooldown_ms: int = 0
 
 
 class _AgentStatus:
@@ -406,7 +407,7 @@ class AgentFailureLedger:
                     consecutive_unproductive=consecutive,
                     total_unproductive=total,
                 )
-            duration_ms = self._limit_cooldown_ms(entry)
+            duration_ms = max(self._limit_cooldown_ms(entry), fact.min_cooldown_ms)
             entry.consecutive_unproductive = 0
             entry.total_unproductive = 0
             entry.cooldown_count += 1

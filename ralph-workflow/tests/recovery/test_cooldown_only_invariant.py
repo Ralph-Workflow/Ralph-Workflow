@@ -93,6 +93,14 @@ def _apply(controller: RecoveryController, failure: Failure, agents: tuple[str, 
             attempt_failed=True,
             exc=overload,
         )
+    elif kind == "slow_unproductive_attempt":
+        controller.finalize_attempt(
+            PHASE,
+            AGENT,
+            facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+            attempt_failed=True,
+            attempt_duration_ms=int(str(detail)),
+        )
     elif kind == "dead_agent":
         controller.handle(
             _state(agents),
@@ -111,6 +119,10 @@ FAILURES = st.one_of(
     st.tuples(st.just("commit_attempt"), st.none()),
     st.tuples(st.just("dead_agent"), st.none()),
     st.tuples(st.just("finalized_provider_overload"), st.none()),
+    st.tuples(
+        st.just("slow_unproductive_attempt"),
+        st.integers(min_value=0, max_value=6 * 3600 * 1000),
+    ),
 )
 
 SETTINGS = settings(

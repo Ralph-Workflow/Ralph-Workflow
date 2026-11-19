@@ -148,7 +148,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/attempt_runner.py",
         "run_agent_attempt",
-        245,
+        250,
         "canonical attempt dispatch inside the registered attempt runner",
     ),
     (
@@ -160,7 +160,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/effect_executor.py",
         "_consume_attempt_output",
-        1783,
+        1784,
         "effect executor dispatch owned by the registered effect route",
     ),
 )

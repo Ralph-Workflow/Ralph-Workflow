@@ -206,11 +206,15 @@ def run_agent_attempt(
     finalized: dict[int, tuple[AttemptFacts, AttemptOutcome]] = {}
     finalized_failures: list[BaseException] = []
     carried_facts: AttemptFacts | None = None
+    attempt_started_s = [controller.clock.monotonic()]
 
     def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
         recorded = finalized.get(finalization.attempt_ordinal)
         if recorded is not None:
             return recorded[1]
+        finished_s = controller.clock.monotonic()
+        attempt_duration_ms = int(max(0.0, finished_s - attempt_started_s[0]) * 1000)
+        attempt_started_s[0] = finished_s
         if finalization.exc is not None:
             finalized_failures.append(finalization.exc)
         facts = _attempt_facts(finalization, carried_facts)
@@ -228,6 +232,7 @@ def run_agent_attempt(
             ),
             config_fingerprint=fingerprint,
             session_ref=session_ref,
+            attempt_duration_ms=attempt_duration_ms,
         )
         finalized[finalization.attempt_ordinal] = (facts, outcome)
         return outcome

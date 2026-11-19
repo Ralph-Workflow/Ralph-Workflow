@@ -573,6 +573,7 @@ class RecoveryController:
     _failure_ledger: object
     __slots__ = (
         "_attempt_counts",
+        "_attempt_durations",
         "_attempt_ordinals",
         "_attempt_outcome_keys",
         "_attempt_outcome_memo",
@@ -672,6 +673,7 @@ class RecoveryController:
         self._peer_failure_signatures: dict[str, dict[str, tuple[object, ...]]] = {}
         self._attempt_ordinals: dict[tuple[str, str], int] = {}
         self._attempt_counts: dict[tuple[str, str], int] = {}
+        self._attempt_durations: dict[tuple[str, str], int] = {}
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
             existing_ledger: object = read_attr(
@@ -805,7 +807,7 @@ class RecoveryController:
             failure=failure,
         )
         if (
-            failure.must_charge_ledger
+            (failure.must_charge_ledger or outcome.kind is AttemptOutcomeKind.COMPLETED)
             and current_agent is not None
             and not artifact_valid
             and not self._last_attempt_charged_ledger
@@ -913,7 +915,10 @@ class RecoveryController:
         session_ref: Mapping[str, str] | None = None,
         charge_ledger: bool = True,
         failure: ClassifiedFailure | None = None,
+        attempt_duration_ms: int | None = None,
     ) -> AttemptOutcome:
+        if attempt_duration_ms is not None and agent is not None:
+            self._attempt_durations[(phase, agent)] = max(0, attempt_duration_ms)
         if attempt_key is not None:
             memoized = self._attempt_outcome_memo.get(attempt_key)
             if memoized is not None:
@@ -1312,6 +1317,7 @@ class RecoveryController:
             artifact_valid=artifact_valid,
             workspace_changed=workspace_changed,
             free_retry_category=free_retry_category,
+            min_cooldown_ms=self._attempt_durations.get((phase, agent), 0),
         )
         outcome = self._ledger.record(fact)
         status = outcome.status
@@ -1500,6 +1506,12 @@ class RecoveryController:
         multiplier: int = pow(2, entry.attempt)
         computed = entry.base_backoff_ms * multiplier
         duration_ms = min(computed, entry.max_backoff_ms)
+        attempt_ms = self._attempt_durations.get((phase, agent), 0)
+        if attempt_ms > duration_ms:
+            entry = self._unavailability_tracker.mark_unavailable(
+                phase, agent, reason, duration_ms=attempt_ms
+            )
+            duration_ms = attempt_ms
         effective_reason = reason or UnavailabilityReason.DEAD_AGENT_NO_PROGRESS
         self._log_cooldown_decision(
             phase,

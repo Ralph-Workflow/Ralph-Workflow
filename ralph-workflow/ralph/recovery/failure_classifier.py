@@ -14,7 +14,10 @@ from .classified_failure import ClassifiedFailure
 from .conflict_attempt_outcome import ConflictAttemptOutcome
 from .failure_category import FailureCategory
 from .failure_details import FailureDetailParts, contains_casefolded_marker, failure_detail_parts
-from .transport_failure_frames import transport_failure_messages
+from .transport_failure_frames import (
+    terminal_transport_failure_messages,
+    transport_failure_messages,
+)
 from .unavailability_reason import UnavailabilityReason
 
 if TYPE_CHECKING:
@@ -183,6 +186,8 @@ _PROVIDER_OVERLOAD_SUBSTRINGS: tuple[str, ...] = (
     "(529)",
     "http 503",
     "status 503",
+    "service temporarily unavailable",
+    "resource pressure",
 )
 
 _CONTEXT_EXHAUSTED_SUBSTRINGS: tuple[str, ...] = (
@@ -324,6 +329,14 @@ def transport_frame_unavailability_reason(
     exc: BaseException | None,
 ) -> UnavailabilityReason | None:
     if contains_casefolded_marker(transport_failure_messages(exc), _PROVIDER_OVERLOAD_SUBSTRINGS):
+        return UnavailabilityReason.PROVIDER_UNAVAILABLE
+    return None
+
+
+def terminal_transport_overload_reason(lines: list[str]) -> UnavailabilityReason | None:
+    if contains_casefolded_marker(
+        terminal_transport_failure_messages(lines), _PROVIDER_OVERLOAD_SUBSTRINGS
+    ):
         return UnavailabilityReason.PROVIDER_UNAVAILABLE
     return None
 
