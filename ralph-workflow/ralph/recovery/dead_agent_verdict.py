@@ -27,9 +27,9 @@ __all__ = (
     "probe_outcome_verdict",
     "runtime_issued_termination_is_not_agent_fault",
     "task_or_environment_attribution_is_not_agent_fault",
-    "verdict_benches_agent",
     "verdict_counts_toward_agent_state",
     "verdict_record",
+    "verdict_starts_cooldown",
 )
 
 _VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
@@ -126,7 +126,7 @@ def _decide_verdict(
     return probe_outcome_verdict(probe_outcome)
 
 
-def verdict_benches_agent(verdict: DeadAgentVerdict) -> bool:
+def verdict_starts_cooldown(verdict: DeadAgentVerdict) -> bool:
     return verdict is DeadAgentVerdict.AGENT_DEAD
 
 

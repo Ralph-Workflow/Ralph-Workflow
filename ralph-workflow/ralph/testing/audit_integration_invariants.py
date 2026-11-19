@@ -106,8 +106,6 @@ _LEDGER_ELIGIBILITY_KEYS: Final[frozenset[str]] = frozenset(
     {
         "cooldown_until_epoch_ms",
         "cooldown_until_ms",
-        "is_spent",
-        "spent_reason",
         "unavailable_reason",
     }
 )

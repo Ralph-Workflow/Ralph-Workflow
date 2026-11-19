@@ -467,7 +467,7 @@ def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[
             _FORBIDDEN_RESOLUTION_SYMBOLS,
             "deleted legacy resolution symbol reappeared",
             "'ExhaustedResolutionFailure' and '_controller_for_key' were deleted; use the "
-            "sealed RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED) and the "
+            "sealed RetryLaterOutcome(terminal_reason=NO_RUNNABLE_CANDIDATE) and the "
             "session/pipeline_deps recovery controller chain",
         ),
         *_forbidden_identifier_violations(

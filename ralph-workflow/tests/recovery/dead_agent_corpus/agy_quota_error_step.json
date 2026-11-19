@@ -5,7 +5,7 @@
   "transport": "agy",
   "incident": 1,
   "expected_attribution": "unknown",
-  "expected_bench": true,
+  "expected_cooldown": true,
   "expected_verdict": "agent_dead",
   "captured_lines": [
     "{\"event\":\"step_update\",\"step_update\":{\"conversation_id\":\"00000000-0000-0000-0000-0000000000a1\",\"step_index\":0,\"state\":\"DONE\",\"step_type\":\"error_message\",\"message\":\"the upstream admission gate refused this conversation before any step was admitted\"}}"

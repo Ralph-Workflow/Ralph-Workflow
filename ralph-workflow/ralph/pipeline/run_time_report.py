@@ -125,18 +125,18 @@ def _redirect_line(state: PipelineState) -> str:
     return f"- [CT-2] Redirected cycles: {count}; {detail}.\n"
 
 
-def _false_bench_line(state: PipelineState) -> str:
-    snapshot = state.false_bench_feedback
+def _false_cooldown_line(state: PipelineState) -> str:
+    snapshot = state.false_cooldown_feedback
     if snapshot is None:
         return ""
     count = snapshot.get("count", 0)
     events = snapshot.get("events", ())
     if not isinstance(count, int):
-        return "- [SG-4] False benches: 0.\n"
+        return "- [SG-4] False cooldowns: 0.\n"
     try:
         event_items = as_sequence(events)
     except TypeError:
-        return "- [SG-4] False benches: 0.\n"
+        return "- [SG-4] False cooldowns: 0.\n"
     labels: list[str] = []
     for event in event_items:
         try:
@@ -149,7 +149,7 @@ def _false_bench_line(state: PipelineState) -> str:
         if isinstance(agent, str) and isinstance(phase, str) and isinstance(fingerprint, str):
             labels.append(f"{_safe_text(agent)}@{_safe_text(phase)} [{_safe_text(fingerprint)}]")
     detail = f" ({', '.join(labels)})" if labels else ""
-    return f"- [SG-4] False benches: {_format_count(count)}{detail}.\n"
+    return f"- [SG-4] False cooldowns: {_format_count(count)}{detail}.\n"
 
 
 def render_run_time_report(
@@ -250,7 +250,7 @@ def render_run_time_report(
                 if state.rebase.integration_unresolved
                 else ""
             )
-            + _false_bench_line(state)
+            + _false_cooldown_line(state)
             + (
                 (
                     "\n## Development Timebox\n"

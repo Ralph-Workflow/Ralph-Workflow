@@ -22,6 +22,16 @@ from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.typed_signal import TypedSignal
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_typed_skip_route_cools_down_on_first_failure_and_persists_verdict_and_feedback (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_typed_skip_route_benches_first_failure_and_persists_verdict_and_feedback with an unchanged body"
+    ),
+    "test_typed_skip_route_cools_down_on_first_failure_and_persists_verdict_and_feedback": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 PHASE = "development"
 AGENT = "agent_a"
 PEER = "agent_b"
@@ -110,7 +120,7 @@ def test_both_reducer_routes_finalize_identical_facts_identically() -> None:
     assert ordinary.unavailability_store.snapshot() == skip.unavailability_store.snapshot()
 
 
-def test_typed_skip_route_benches_first_failure_and_persists_verdict_and_feedback() -> None:
+def test_typed_skip_route_cools_down_on_first_failure_and_persists_verdict_and_feedback() -> None:
     controller = _controller()
     facts = replace(
         _ordinary_failure_facts(),
@@ -134,8 +144,8 @@ def test_typed_skip_route_benches_first_failure_and_persists_verdict_and_feedbac
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
     assert reduced.dead_agent_verdict_record is not None
     assert reduced.dead_agent_verdict_record["verdict"] == "agent_dead"
-    feedback = reduced.false_bench_feedback
-    assert feedback == controller.false_bench_feedback.snapshot()
+    feedback = reduced.false_cooldown_feedback
+    assert feedback == controller.false_cooldown_feedback.snapshot()
     assert feedback is not None
     assert feedback["candidates"]
 

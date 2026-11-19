@@ -36,6 +36,9 @@ from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_failure_recoverable_falls_back_when_the_owner_cools_the_agent_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_phase_failure_recoverable_falls_back_when_the_owner_demotes_the_agent with an unchanged body"
+    ),
     "rollback_pending at the rejection ceiling and after the cycle timebox": (
         "a rejection that skipped the rollback left the rejected tree in place, so "
         "recovery re-entered commit review and rejected the same tree on every pass; "
@@ -402,7 +405,7 @@ class TestPhaseFailureEvent:
         assert new_state.phase == "development"
         assert effects == []
 
-    def test_phase_failure_recoverable_falls_back_when_the_owner_demotes_the_agent(
+    def test_phase_failure_recoverable_falls_back_when_the_owner_cools_the_agent_down(
         self,
     ) -> None:
         ledger = AgentFailureLedger(clock=FakeClock())

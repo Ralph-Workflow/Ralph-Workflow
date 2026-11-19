@@ -11,6 +11,9 @@ from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resume_after_two_agent_chain_first_cooling_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_resume_after_two_agent_chain_first_exhausted with an unchanged body"
+    ),
     "test_resume_after_single_agent_chain_cooldown_waits_without_counting": "operator rule: an agent is either on cooldown or not; replaces test_resume_after_single_agent_chain_exhaustion_increments_count because a sole agent reaching the unproductive limit now waits for its expiring cooldown instead of entering the failed phase and counting a recovery cycle",
 }
 
@@ -169,7 +172,7 @@ def test_resume_after_single_agent_chain_cooldown_waits_without_counting() -> No
     assert controller.agent_eligibility("development", "claude").is_eligible
 
 
-def test_resume_after_two_agent_chain_first_exhausted() -> None:
+def test_resume_after_two_agent_chain_first_cooling_down() -> None:
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 

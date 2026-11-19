@@ -14,7 +14,7 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 from ralph.pipeline.resolution_outcome_config_failure import ConfigFailure
-from ralph.pipeline.resolution_outcome_exhausted import Exhausted
+from ralph.pipeline.resolution_outcome_cooling_down import ResolversCoolingDown
 from ralph.pipeline.resolution_outcome_resolved import Resolved
 from ralph.pipeline.resolution_outcome_retry_later import RetryLater
 
@@ -58,10 +58,10 @@ def classify_resolution_failure(
         )
     if terminal_reason is ResolutionTerminationReason.OUT_OF_REACH:
         return NextStrategyOutcome(strategy="completion_in_place")
-    if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+    if terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
         return RetryLaterOutcome(
             on_change=reason or "resolver_agent_eligibility_changed",
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             unresolved_paths=tuple(paths),
             failure_cause=None if failure_cause is ResolutionFailureCause.NONE else failure_cause,
         )
@@ -94,8 +94,10 @@ def stop_resolution_outcome_from_legacy(
             result = ResolvedOutcome()
         case RetryLater(until=until, on_change=on_change):
             result = RetryLaterOutcome(until=until, on_change=on_change)
-        case Exhausted(agents=agents):
-            result = NextStrategyOutcome(strategy=f"resolver agents exhausted: {', '.join(agents)}")
+        case ResolversCoolingDown(agents=agents):
+            result = NextStrategyOutcome(
+                strategy=f"resolver agents on cooldown: {', '.join(agents)}"
+            )
         case ConfigFailure(file=file, parse_error=parse_error):
             return ConfigFailureOutcome(file=file, parse_error=parse_error)
         case _:

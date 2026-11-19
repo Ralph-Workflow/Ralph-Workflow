@@ -78,8 +78,9 @@ class GeneralConfig(RalphBaseModel):
         default=AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
         ge=1,
         description=(
-            "Maximum total unproductive execution attempts allowed across the phase"
-            " before an agent is spent."
+            "Maximum total unproductive execution attempts allowed across the phase;"
+            " reaching it starts an unproductive_limit cooldown, and the agent is retried"
+            " when that cooldown expires."
         ),
     )
     max_retries: int = Field(default=3, ge=0)

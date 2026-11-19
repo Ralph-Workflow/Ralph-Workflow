@@ -21,16 +21,22 @@ from ralph.pipeline.resolution_outcome_type import ResolutionOutcomeType
 from ralph.workspace.errors import WorkspaceContextError
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cooled_chain_defers_until_resolver_eligibility_changes (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_spent_chain_defers_until_resolver_eligibility_changes with an unchanged body"
+    ),
+    "test_a_dead_tool_surface_without_a_charged_budget_is_retry_later (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_exhausted_but_not_spent_is_retry_later with an unchanged body"
+    ),
     "restored_gated_e6e382c62_version": (
         "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
         "rns to the gated e6e382c62 version, which pins the restored behaviour"
     ),
     "test_config_failure_uses_typed_file_and_parse_error": "migrate assertion from retired ConfigFailure to canonical ConfigFailureOutcome",
     "test_config_text_alone_does_not_create_config_failure": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
-    "test_spent_chain_defers_until_resolver_eligibility_changes": "verify spent chain defers with RetryLaterOutcome on resolver_agent_eligibility_changed without marking resolution_exhausted",
+    "test_cooled_chain_defers_until_resolver_eligibility_changes": "verify spent chain defers with RetryLaterOutcome on resolver_agent_eligibility_changed without marking resolution_exhausted",
     "test_out_of_reach_is_needs_operator": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
     "test_out_of_reach_advances_to_completion_in_place": "verify out-of-reach classification returns canonical NextStrategyOutcome with completion_in_place strategy",
-    "test_exhausted_but_not_spent_is_retry_later": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
+    "test_a_dead_tool_surface_without_a_charged_budget_is_retry_later": "migrate assertion from retired RetryLater to canonical RetryLaterOutcome",
     "test_union_is_closed_and_consumer_rejects_unknown_variant": "assert ResolutionOutcomeType union matches canonical closed variants including UnknownOutcome",
 }
 
@@ -71,9 +77,9 @@ def test_config_text_alone_does_not_create_config_failure(tmp_path: Path) -> Non
             raise AssertionError(f"expected RetryLaterOutcome, got {unreachable!r}")
 
 
-def test_spent_chain_defers_until_resolver_eligibility_changes() -> None:
+def test_cooled_chain_defers_until_resolver_eligibility_changes() -> None:
     outcome = classify_resolution_failure(
-        terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         paths=("app.py",),
         agents=("primary", "fallback"),
@@ -106,7 +112,7 @@ def test_out_of_reach_advances_to_completion_in_place() -> None:
     assert state.last_reason == "continuing with autonomous strategy: completion_in_place"
 
 
-def test_exhausted_but_not_spent_is_retry_later() -> None:
+def test_a_dead_tool_surface_without_a_charged_budget_is_retry_later() -> None:
     outcome = classify_resolution_failure(
         terminal_reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
         failure_cause=ResolutionFailureCause.AGENT_FAILURE,

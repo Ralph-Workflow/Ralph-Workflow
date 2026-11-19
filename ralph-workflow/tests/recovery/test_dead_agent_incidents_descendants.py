@@ -18,8 +18,20 @@ if TYPE_CHECKING:
 PHASE = "development"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_incident_5_live_session_with_partial_progress_never_marked_spent_or_benched": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
-    "test_incident_6_watchdog_failure_accounting_no_spent_no_bench_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+    "test_incident_5_live_session_with_partial_progress_never_starts_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_incident_5_live_session_with_partial_progress_never_marked_spent_or_benched with an unchanged body"
+    ),
+    "test_incident_6_watchdog_failure_accounting_leaves_the_agent_selectable_without_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_incident_6_watchdog_failure_accounting_no_spent_no_bench_selectable with an unchanged body"
+    ),
+    "test_incident_6_hung_descendant_is_ordinary_child_and_kill_is_runtime_attributed": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_incident_6_watchdog_kill_with_a_passing_probe_is_still_not_the_agents_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_incident_5_live_session_with_partial_progress_never_starts_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+    "test_incident_6_watchdog_failure_accounting_leaves_the_agent_selectable_without_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
 }
 
 INCIDENT_6_OPENCODE_TOOL_USE_LINE = (
@@ -148,7 +160,7 @@ def test_incident_5_reported_code_zero_and_discrepancy_reporting() -> None:
     )
 
 
-def test_incident_5_live_session_with_partial_progress_never_marked_spent_or_benched() -> None:
+def test_incident_5_live_session_with_partial_progress_never_starts_a_dead_agent_cooldown() -> None:
     from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
 
     clock = FakeClock(start=0.0)
@@ -269,7 +281,7 @@ def test_incident_6_hung_descendant_is_ordinary_child_and_kill_is_runtime_attrib
     from ralph.recovery.dead_agent_verdict import (
         DeadAgentVerdict,
         decide_dead_agent_verdict,
-        verdict_benches_agent,
+        verdict_starts_cooldown,
     )
     from ralph.recovery.typed_signal import runtime_issued_termination_is_not_agent_fault
 
@@ -311,7 +323,7 @@ def test_incident_6_hung_descendant_is_ordinary_child_and_kill_is_runtime_attrib
     assert dead_agent_verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT, (
         f"decided verdict must be not_agent_fault (observed: {dead_agent_verdict.verdict!r})"
     )
-    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+    assert verdict_starts_cooldown(dead_agent_verdict.verdict) is False, (
         "not_agent_fault verdict must never bench the agent"
     )
 
@@ -323,8 +335,8 @@ def test_incident_6_watchdog_kill_with_a_passing_probe_is_still_not_the_agents_f
     from ralph.recovery.dead_agent_verdict import (
         DeadAgentVerdict,
         decide_dead_agent_verdict,
-        verdict_benches_agent,
         verdict_counts_toward_agent_state,
+        verdict_starts_cooldown,
     )
 
     facts = AttemptFacts(
@@ -357,7 +369,7 @@ def test_incident_6_watchdog_kill_with_a_passing_probe_is_still_not_the_agents_f
         "not_agent_fault: the watchdog's own kill is never counted as the agent's "
         f"failure (observed: {dead_agent_verdict.verdict!r})"
     )
-    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+    assert verdict_starts_cooldown(dead_agent_verdict.verdict) is False, (
         "a passing probe must never convert the watchdog kill into a bench "
         f"(observed verdict: {dead_agent_verdict.verdict!r})"
     )
@@ -398,7 +410,9 @@ def test_incident_6_code_0_route_flags_discrepancy_only_when_conflicting() -> No
     )
 
 
-def test_incident_6_watchdog_failure_accounting_no_spent_no_bench_selectable() -> None:
+def test_incident_6_watchdog_failure_accounting_leaves_the_agent_selectable_without_a_dead_agent_cooldown() -> (
+    None
+):
     from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
 
     clock = FakeClock(start=0.0)

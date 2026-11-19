@@ -66,6 +66,12 @@ def _legacy_chain_current_agent(
     return agents[raw_index]
 
 
+def _migrate_false_cooldown_feedback(d: dict[str, object]) -> None:
+    from ralph.recovery.legacy_guard_migration import migrate_false_cooldown_feedback_key
+
+    migrate_false_cooldown_feedback_key(d)
+
+
 def _migrate_legacy_guard_into_ledger(d: dict[str, object]) -> None:
     from ralph.recovery.agent_failure_ledger import (
         LEDGER_SNAPSHOT_MALFORMED_REASON,
@@ -303,7 +309,7 @@ class PipelineState(_FrozenPipelineStateModel):
     wait_until_monotonic_ms: int | None = None
     ledger_snapshot: dict[str, object] | None = None
     dead_agent_verdict_record: dict[str, object] | None = None
-    false_bench_feedback: dict[str, object] | None = None
+    false_cooldown_feedback: dict[str, object] | None = None
 
     @field_validator("run_id")
     @classmethod
@@ -398,6 +404,7 @@ class PipelineState(_FrozenPipelineStateModel):
         d.pop("budget_remaining", None)
 
         _migrate_legacy_guard_into_ledger(d)
+        _migrate_false_cooldown_feedback(d)
 
         return d
 

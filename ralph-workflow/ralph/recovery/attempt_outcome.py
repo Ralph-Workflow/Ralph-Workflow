@@ -27,7 +27,7 @@ class _AttemptOutcome:
             raise ValueError("an agent-dead outcome requires a persisted verdict")
 
     @property
-    def benches_agent(self) -> bool:
+    def starts_cooldown(self) -> bool:
         return self.kind is AttemptOutcomeKind.AGENT_DEAD
 
     @property

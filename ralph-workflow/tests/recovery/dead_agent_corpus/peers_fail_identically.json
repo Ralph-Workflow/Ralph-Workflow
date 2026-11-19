@@ -5,7 +5,7 @@
   "transport": "codex",
   "incident": null,
   "expected_attribution": "task_or_environment",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "not_agent_fault",
   "captured_lines": [
     "{\"type\":\"item.started\",\"item\":{\"id\":\"cmd-1\",\"type\":\"command_execution\",\"command\":\"uv run pytest -q\",\"status\":\"in_progress\"}}",

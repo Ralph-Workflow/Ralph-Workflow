@@ -10,6 +10,12 @@ from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_end_attempt_maps_every_outcome_kind": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
 
 class _OutcomeCase(NamedTuple):
     name: str
@@ -104,7 +110,7 @@ def test_end_attempt_maps_every_outcome_kind(case: _OutcomeCase) -> None:
 
     assert outcome.kind is case.expected_kind
     assert outcome.issuer is case.expected_issuer
-    assert outcome.benches_agent is (case.expected_kind is AttemptOutcomeKind.AGENT_DEAD)
+    assert outcome.starts_cooldown is (case.expected_kind is AttemptOutcomeKind.AGENT_DEAD)
     assert outcome.retries_same_agent is (
         case.expected_kind is AttemptOutcomeKind.RETRYABLE_FAILURE
     )

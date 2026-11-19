@@ -20,8 +20,20 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_limit": "operator rule: an agent is either on cooldown or not; the total limit now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown reason and that the agent is preferred again once it expires",
-    "test_demotion_is_logged_with_the_phase_agent_and_counts": "operator rule: an agent is either on cooldown or not; the demotion log and the consecutive_unproductive_limit_reached reason no longer exist, so the test asserts the cooldown_decision log line with reason unproductive_limit and the unproductive counts",
+    "test_agent_that_keeps_changing_the_workspace_cools_down_only_at_the_total_limit (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_limit with an unchanged body"
+    ),
+    "test_agent_that_changes_nothing_cools_down_at_the_consecutive_limit": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_that_changes_nothing_is_demoted_at_the_consecutive_limit with an unchanged body"
+    ),
+    "test_cooldown_is_logged_with_the_phase_agent_and_counts (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_demotion_is_logged_with_the_phase_agent_and_counts with an unchanged body"
+    ),
+    "test_ledger_owns_agent_cooldown module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_ledger_owns_agent_demotion.py with unchanged content"
+    ),
+    "test_agent_that_keeps_changing_the_workspace_cools_down_only_at_the_total_limit": "operator rule: an agent is either on cooldown or not; the total limit now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown reason and that the agent is preferred again once it expires",
+    "test_cooldown_is_logged_with_the_phase_agent_and_counts": "operator rule: an agent is either on cooldown or not; the demotion log and the consecutive_unproductive_limit_reached reason no longer exist, so the test asserts the cooldown_decision log line with reason unproductive_limit and the unproductive counts",
 }
 
 _PHASE = "development"
@@ -75,7 +87,7 @@ def _fail(
     return new_state
 
 
-def test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_limit() -> None:
+def test_agent_that_keeps_changing_the_workspace_cools_down_only_at_the_total_limit() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller([_AGENT_A, _AGENT_B], clock)
     state = _make_state([_AGENT_A, _AGENT_B])
@@ -112,7 +124,7 @@ def test_agent_that_keeps_changing_the_workspace_is_demoted_only_at_the_total_li
     assert controller.preferred_agent_index(_PHASE, [_AGENT_A, _AGENT_B]).agent == _AGENT_A
 
 
-def test_agent_that_changes_nothing_is_demoted_at_the_consecutive_limit() -> None:
+def test_agent_that_changes_nothing_cools_down_at_the_consecutive_limit() -> None:
     controller = _controller([_AGENT_A, _AGENT_B])
     state = _make_state([_AGENT_A, _AGENT_B])
 
@@ -136,7 +148,7 @@ def test_agent_that_changes_nothing_is_demoted_at_the_consecutive_limit() -> Non
     assert chain.current_index == 1
 
 
-def test_demotion_is_logged_with_the_phase_agent_and_counts() -> None:
+def test_cooldown_is_logged_with_the_phase_agent_and_counts() -> None:
     sink = io.StringIO()
     handler_id = logger.add(sink, level="WARNING", format="{level} {message}")
     try:

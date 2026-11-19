@@ -1,9 +1,42 @@
-# Agent cooldown: the single-owner invariant
+# Agent cooldown: the sole cooldown system
 
-> **Role:** This page is the contract for agent failure handling in the
-> Ralph Workflow Python package. It names the one component that owns
-> cooldown, budget charge and backoff, lists the audited agent-invoking
-> call sites, and names the checks that keep the contract true.
+> **Role:** This page is the one and only definition of agent availability
+> in the Ralph Workflow Python package. It defines the cooldown system, its
+> rules and durations, names the one component that owns cooldown, budget
+> charge and backoff, lists the audited agent-invoking call sites, and names
+> the checks that keep the contract true. No other document defines agent
+> cooldown, availability, demotion or benching rules; other pages summarise
+> this one and link here.
+
+## Terminology: every name means the cooldown system
+
+An agent has exactly two states: **on cooldown**, with a finite expiry, or
+**available**. There is no other agent-availability system, no third state
+and no second set of rules. Every word in the table below, wherever it
+appears (code, logs, operator output, older changelog entries, issues or
+conversation), refers to this same cooldown system and means one thing:
+**the agent is on cooldown, with a finite expiry, and is retried when the
+cooldown expires.**
+
+| Alias | Meaning |
+| --- | --- |
+| bench, benched, benching | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires |
+| demote, demoted, demotion | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires |
+| spent | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires |
+| exhausted | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires; an "exhausted chain" is a chain whose every agent is on cooldown, and the phase waits for the earliest expiry |
+| unavailable | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires |
+| excluded | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires (`excluded_from_this_selection` only skips an agent for one selection, for example a resolver already invoked in the current round) |
+| skipped | the agent is on cooldown, with a finite expiry, and is retried when the cooldown expires |
+| dead-agent bench | a `dead_agent_no_progress` cooldown, with a finite expiry; the agent is retried when it expires |
+
+These words are not names for anything else about an agent. The engine and
+the docs use only the cooldown terms ("on cooldown", "cooling down",
+"available", "eligible"); `ralph/testing/audit_cooldown_only.py` rejects the
+old vocabulary for agent availability. The same words keep unrelated meanings
+that are not agent availability: a spent or exhausted budget (CPU, conflict,
+analysis or probe budget), an exhausted provider quota or context window
+(which starts the `out_of_credits` or `context_exhausted` cooldown), display
+colour demotion, and the explore `bench` benchmark harness.
 
 ## The invariant
 
@@ -57,6 +90,100 @@ Every cooldown is logged once, by the owner, with the phase, the
 agent, the `UnavailabilityReason`, the duration and the expiry
 (`cooldown_decision` in `ralph/recovery/controller.py`).
 
+## Cooldown rules
+
+These are the only agent cooldown rules. Other pages summarise them and
+link here.
+
+### Reasons and durations
+
+Every cooldown carries one `UnavailabilityReason`. Its first duration is
+the reason's base delay; each repeat of a failure for the same agent
+doubles it, up to the reason's cap.
+
+| Reason | Started by | Base | Cap |
+| --- | --- | --- | --- |
+| `out_of_credits`, `provider_unavailable` | rate or quota limits, provider overloads, `QuotaExhaustedError` | 60 s | 5 h |
+| `context_exhausted`, `process_exited`, `auth_config`, `broken_agent`, `no_output_at_start` | a full context window, an unexplained non-zero exit, credential or configuration failures, `BrokenAgentExitError`, no output at start | 5 s | 5 h |
+| `no_output_after_activity`, `suspicious_timeout_no_output`, `dead_agent_no_progress` | silence after activity, a suspicious timeout, a confirmed dead-agent verdict | 10 s | 5 h |
+| `stale_child_quiet`, `strictly_stuck` | a quiet stale child process, a strictly stuck session | 15 s | 5 h |
+| `unproductive_limit`, `retry_limit`, `candidate_unavailable` | the ledger's unproductive limits, commit retry limits, a dead conflict-resolution tool surface or unregistered commit agent | 60 s | 1 h |
+
+Pi's structured retry and context-length events keep their specific reason
+even when the Pi process exits non-zero. The activity transcript emits a
+`RECOVERING` line with the reason, the cooldown and the fallback choice.
+
+### Growth, caps and reset
+
+- Each `AgentUnavailabilityTracker.mark_unavailable` call doubles the
+  reason's base delay using the agent's prior attempt counter. History is
+  keyed by agent alone and survives cooldown expiry and phase changes.
+- The delay is clamped at the smaller of the reason's cap and the universal
+  5-hour ceiling (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000` ms); the attempt
+  counter saturates with it.
+- A custom `RecoveryControllerOptions.unavailability_backoff_policy` may set
+  smaller caps; caps above the universal ceiling are clamped to it.
+- A later, shorter cooldown never shortens a longer one the agent is
+  already on.
+- A successful attempt that produces a valid artifact clears only that
+  agent's cooldown and backoff history (`RecoveryController.reset_backoff`);
+  its next failure starts at the reason's base delay. When a cooldown
+  expires, the agent's next invocation is the probe: success resets its
+  history and a repeat failure starts the next, longer cooldown.
+
+### Unproductive limits (`AgentFailureLedger`)
+
+An attempt is unproductive when it ends without a valid artifact.
+
+- `[general] agent_max_consecutive_unproductive` (default `3`): that many
+  consecutive unproductive attempts in one phase start an
+  `unproductive_limit` cooldown. A workspace change resets only this count.
+- `[general] agent_max_total_unproductive` (default `9`): that many
+  unproductive attempts in total, with or without a workspace change, start
+  the same `unproductive_limit` cooldown.
+- The `unproductive_limit` cooldown starts at 60 seconds, doubles for each
+  earlier `unproductive_limit` cooldown since the agent's last valid
+  artifact, and is capped at 3600 seconds; the durations are not
+  configurable. Starting it resets both counts. A valid artifact clears the
+  agent's ledger history. Counts survive restarts in persisted state.
+
+### Dead-agent and broken-agent cooldowns
+
+- A confirmed dead-agent verdict (see
+  [Broken-agent detection](broken-agent-detection.md) for how it is judged)
+  starts a `dead_agent_no_progress` cooldown in the same tracker: 10 seconds
+  first, doubling on each repeat, capped at 5 hours. An `unknown` verdict or
+  an inconclusive canary probe never starts one.
+- A `BrokenAgentExitError` starts a `broken_agent` cooldown and skips
+  same-agent retries, so the chain falls over at once when it has another
+  agent.
+- Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`,
+  `BrokenAgentExitError` prompt echoes) start their cooldown on the first
+  failure without a canary probe.
+- False-cooldown measurement: each dead-agent cooldown opens a candidate
+  keyed by the agent configuration fingerprint (agent name, binary, model,
+  model flag, parser, transport). A later success under the same
+  fingerprint closes it and counts one false cooldown
+  (`FalseCooldownFeedback`); the run-time report prints the count as
+  `False cooldowns`.
+
+### When every agent is on cooldown
+
+- Selection skips agents on cooldown. When every agent in a chain is on
+  cooldown, including a sole configured agent, the phase waits until the
+  earliest expiry and then retries; it never fails for that.
+- Conflict resolution follows the same rule. A round whose candidates are
+  all cooling down with a known expiry ends `CANDIDATE_UNAVAILABLE` and waits
+  for the expiry without charging the conflict budget. A round that has no
+  runnable candidate left ends `NO_RUNNABLE_CANDIDATE`; its message names
+  every resolver agent with its cooldown reason and expiry ("all N resolver
+  agents are on cooldown (...)"), or says "no resolver agents are
+  configured" when the candidate list is empty. Integration stays pending
+  with the rebase preserved and resumes when a resolver agent is eligible
+  again.
+- Every cooldown is logged once, when it starts, as a `cooldown_decision`
+  line with the phase, agent, reason, duration and expiry.
+
 ## Audited agent-invoking call sites
 
 Each path is marked **already compliant** or **fixed**. Optional pipeline
@@ -96,9 +223,27 @@ the agent owner by construction. They are exemptions, not gaps.
   status other than `Eligible` and an expiring `Cooldown`, when
   `WaitKind` gains a member beyond `AVAILABLE_NOW`, `COOLING_DOWN` and
   `NO_CANDIDATES`, when a module outside the owner calls
-  `mark_unavailable`, or when a demotion, spent, benched or
-  never-eligible identifier appears under `ralph/recovery/` or
-  `ralph/pipeline/`. It also requires its guard tests to exist and not be skipped or xfailed:
+  `mark_unavailable`, or when an exclusion-state identifier appears under
+  `ralph/recovery/` or `ralph/pipeline/`. It also bans the old agent
+  vocabulary (`bench`, `spent`, `demot`, `exhaust` word forms) in
+  identifiers and string literals under `ralph/recovery/`,
+  `ralph/pipeline/conflict_resolution/` and the agent-selection and
+  resolver-candidate modules of `ralph/pipeline/`, with a short, reasoned
+  allowlist for unrelated meanings (budgets, provider quota and context
+  exhaustion, persisted conflict-ladder fields, legacy checkpoint keys).
+  The same ban covers test module filenames and `test_*` function names
+  under `tests/`, with a reasoned allowlist for unrelated meanings (the
+  explore benchmark harness, display colour demotion, parser iterator
+  exhaustion, cycle, gate and integration-ladder budgets, legacy-migration
+  tests that must name the legacy field).
+  It scans `docs/**/*.md`, `AGENTS.md` and `CONTRIBUTING.md` for
+  agent-availability bench, demotion or spent phrasing, requires this page
+  and its Terminology section with every alias, requires every other
+  `docs/` section whose heading names cooldown, demotion, bench, backoff or
+  agent availability to link here, requires `AGENTS.md` to name this page,
+  and requires `AgentUnavailabilityTracker` and `AgentFailureLedger` to
+  declare `COOLDOWN_SYSTEM_DOC` pointing here. It also requires its guard
+  tests to exist and not be skipped or xfailed:
   `tests/recovery/test_cooldown_only_invariant.py`,
   `tests/recovery/test_unproductive_limit_cooldown_regression.py`, and
   `tests/test_audit_cooldown_only.py`.
@@ -175,5 +320,7 @@ the agent owner by construction. They are exemptions, not gaps.
 
 - [Recovery](../sphinx/recovery.md) — the operator-facing view of retries,
   fallover and resume.
+- [Broken-agent detection](broken-agent-detection.md) — how an attempt is
+  judged before a dead-agent or broken-agent cooldown starts.
 - [Agent invoke architecture](architecture.md) — how an attempt reaches
   the owner.

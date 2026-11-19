@@ -6,7 +6,7 @@
   "incident": 2,
   "incidents": [2, 3],
   "expected_attribution": "runtime",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "healthy",
   "captured_lines": [
     "{\"type\":\"item.started\",\"item\":{\"id\":\"mcp-1\",\"type\":\"mcp_tool_call\",\"tool\":\"read_multiple_files\",\"arguments\":{\"paths\":[\"README.md\"]},\"status\":\"in_progress\"}}",

@@ -5,7 +5,7 @@
   "transport": "opencode",
   "incident": 4,
   "expected_attribution": "runtime",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "unknown",
   "captured_lines": [
     "{\"type\":\"tool_use\",\"sessionID\":\"s_0001\",\"part\":{\"type\":\"tool\",\"tool\":\"task\",\"callID\":\"c_0001\",\"state\":{\"status\":\"running\",\"input\":{\"description\":\"map the repository layout\",\"prompt\":\"map the repository layout\",\"subagent_type\":\"explorer\"}}}}",

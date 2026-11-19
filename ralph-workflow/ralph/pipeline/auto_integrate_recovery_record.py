@@ -643,7 +643,7 @@ def _recover_pending_merge(
         raw_reason: object = (
             resumed.terminal_reason
             if isinstance(resumed, RetryLaterOutcome)
-            and resumed.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+            and resumed.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
             else None
         )
         terminal_reason = (
@@ -693,7 +693,7 @@ def _resumed_failure_outcome(
 
     effective_cause = record.last_failure_cause
 
-    if terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+    if terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
         from ralph.pipeline.auto_integrate_outcome import record_resolution_exhausted
 
         integration_outcome_log().record(_emit_critical, reason, key=f"{root}\0{reason}")

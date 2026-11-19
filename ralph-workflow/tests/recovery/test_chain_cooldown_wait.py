@@ -11,8 +11,23 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_chain_exhaustion_last_error_is_non_sentinel": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the failed-phase last_error is driven through a chain with no agents, the only route that still reaches the failed phase",
-    "test_chain_exhaustion_increments_recovery_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_ledger_cooldown_advances_the_chain_to_the_next_agent": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ledger_demotion_advances_the_chain_to_the_next_agent with an unchanged body"
+    ),
+    "test_every_cooling_agent_makes_the_controller_wait_instead_of_failing": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_every_demoted_agent_makes_the_controller_wait_instead_of_failing with an unchanged body"
+    ),
+    "test_no_selectable_agent_last_error_is_non_sentinel (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_chain_exhaustion_last_error_is_non_sentinel with an unchanged body"
+    ),
+    "test_no_selectable_agent_increments_recovery_cycle_count (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_chain_exhaustion_increments_recovery_cycle_count with an unchanged body"
+    ),
+    "test_chain_cooldown_wait module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_chain_exhaustion.py with unchanged content"
+    ),
+    "test_no_selectable_agent_last_error_is_non_sentinel": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the failed-phase last_error is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_no_selectable_agent_increments_recovery_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
     "test_single_agent_chain_cooldown_waits_and_retains_no_fallover_records": "operator rule: an agent is either on cooldown or not; replaces test_single_agent_chain_exhaustion_retains_no_fallover_records because a sole agent reaching the unproductive limit now waits for its cooldown instead of entering the failed phase, and still records no fallover",
 }
 
@@ -66,7 +81,7 @@ def _fail_repeatedly(
     return state
 
 
-def test_ledger_demotion_advances_the_chain_to_the_next_agent() -> None:
+def test_ledger_cooldown_advances_the_chain_to_the_next_agent() -> None:
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
@@ -90,7 +105,7 @@ def test_ledger_demotion_advances_the_chain_to_the_next_agent() -> None:
     assert len(state.fallover_history) == 1
 
 
-def test_every_demoted_agent_makes_the_controller_wait_instead_of_failing() -> None:
+def test_every_cooling_agent_makes_the_controller_wait_instead_of_failing() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -108,7 +123,7 @@ def test_every_demoted_agent_makes_the_controller_wait_instead_of_failing() -> N
     assert len(state.fallover_history) == 1
 
 
-def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
+def test_no_selectable_agent_last_error_is_non_sentinel() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
@@ -126,7 +141,7 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     assert len(state.last_error) > _MIN_ERROR_LEN
 
 
-def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
+def test_no_selectable_agent_increments_recovery_cycle_count() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )

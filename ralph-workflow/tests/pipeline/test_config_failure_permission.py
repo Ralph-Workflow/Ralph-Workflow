@@ -21,6 +21,12 @@ from ralph.workspace.context import WorkspaceContextError, workspace_context
 from ralph.workspace.scope import WorkspaceScope
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_auto_integrate_resolver_directory_in_place_of_config (cooldown vocabulary)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_auto_integrate_resolver_unreadable_permission_denied_config (cooldown vocabulary)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_auto_integrate_resolver_directory_in_place_of_config": (
         "align outcome assertion with ConfigFailureOutcome returned by resolver on config error"
     ),
@@ -130,8 +136,8 @@ def test_auto_integrate_resolver_directory_in_place_of_config(tmp_path: Path) ->
 
     assert isinstance(outcome, ConfigFailureOutcome)
     assert outcome.file == cfg_dir
-    assert session.exhaustion_reason is not None
-    assert f"fix {cfg_dir} then run ralph --check-config" in session.exhaustion_reason
+    assert session.halt_reason is not None
+    assert f"fix {cfg_dir} then run ralph --check-config" in session.halt_reason
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -195,8 +201,8 @@ def test_auto_integrate_resolver_unreadable_permission_denied_config(
 
         assert isinstance(outcome, ConfigFailureOutcome)
         assert outcome.file == cfg_file
-        assert session.exhaustion_reason is not None
-        assert f"fix {cfg_file} then run ralph --check-config" in session.exhaustion_reason
+        assert session.halt_reason is not None
+        assert f"fix {cfg_file} then run ralph --check-config" in session.halt_reason
         assert session.charge_conflict_budget is False
         assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
         assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE

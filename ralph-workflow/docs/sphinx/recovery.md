@@ -59,9 +59,7 @@ Recovery resumed after offline
 
 ## Retry and fallover
 
-Each phase uses an agent chain. If an agent exhausts its retry budget or enters backoff, Ralph Workflow falls over to the preferred available agent in the chain.
-
-Provider failures enter cooldown before selection continues. Rate or quota limits and provider overloads start at 60 seconds; context exhaustion and otherwise unexplained non-zero agent exits start at 5 seconds. Pi's structured retry-exhaustion and context-length events keep their specific reason even when the Pi process exits non-zero. The activity transcript emits a `RECOVERING` line with the reason, cooldown, and fallback choice, so the terminal does not remain on a stale provider-error line while recovery proceeds.
+Each phase uses an agent chain. A failed agent goes on cooldown, with a finite expiry, and Ralph Workflow falls over to the preferred available agent in the chain; the agent is retried when its cooldown expires. An agent is either on cooldown or available; the reasons, durations, growth, caps, unproductive limits and the all-agents-cooling wait are defined only in [Agent cooldown: the sole cooldown system](../agents/cooldown-invariant.md). The activity transcript emits a `RECOVERING` line with the reason, cooldown, and fallback choice, so the terminal does not remain on a stale provider-error line while recovery proceeds.
 
 ### Priority-first reselection
 
@@ -81,31 +79,9 @@ When no agent in the chain is selectable, both the normal and skip-same-agent `A
 
 Conflict-resolution rounds reconsider priority before each invocation, excluding candidates already invoked in that round; a dead tool surface starts a `candidate_unavailable` cooldown. Cooling candidates are skipped; when all remaining candidates are cooling, resolution waits for expiry. Successful resolvers reset their cooldown history without advancing the chain.
 
-### Exponential cooldown growth
+### Cooldown rules
 
-Unavailable-agent cooldowns double on repeated failures, retaining history across cooldown expiry and phase changes. The exponential growth is bounded:
-
-- Each call to `AgentUnavailabilityTracker.mark_unavailable` doubles the reason-specific base delay (`base_backoff_ms`) using the agent's prior attempt counter.
-- The computed delay is clamped at the smaller of the per-reason `max_backoff_ms` and the **universal 5-hour ceiling** (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000 ms`).
-- The recorded attempt counter is also clamped at the saturation threshold so repeated failures cannot construct arbitrarily large integers — the counter and the cooldown both stabilize at the cap.
-- Per-agent failure history is keyed by agent alone, with no phase scoping: claude failing in `development` escalates the same backoff counter and cooldown in `review`. The reason-specific base delay applies only on the first failure for that agent; a success clears the counter via `reset_backoff`.
-
-### Custom policy caps
-
-Operators can supply a tighter custom policy via `RecoveryControllerOptions.unavailability_backoff_policy`. Custom caps **smaller** than 18,000,000 ms are honored. Custom caps **larger** than 18,000,000 ms are clamped to the universal ceiling so no operator override can grow a cooldown past 5 hours.
-
-### Success reset
-
-A successful invocation clears only that agent's cooldown and backoff history. The runner calls `RecoveryController.reset_backoff(phase, agent_name)` from the successful `InvokeAgentEffect` completion seam; the next failure for that agent starts at the reason's base delay, not the prior accumulated cooldown. Other agents' histories are unaffected by the reset, so a successful claude run does not erase opencode or agy's accumulated cooldown.
-
-### Unproductive agent bounds (`AgentFailureLedger`)
-
-Every attempt that ends without producing an accepted, valid artifact is classified as *unproductive*. To prevent infinite retry loops across free-retry categories (such as missing or invalid artifacts, environmental failures, and ambiguous failures that do not debit budget), agent unproductivity is tracked by a single conceptual owner: `AgentFailureLedger` in `ralph/recovery/agent_failure_ledger.py`.
-
-- **Consecutive unproductive ceiling (`agent_max_consecutive_unproductive`)**: After a configurable number of consecutive unproductive attempts by the same agent in the same phase (default `3` via `[general] agent_max_consecutive_unproductive`), the agent is placed on cooldown with exponential backoff and Ralph Workflow falls over to the next eligible agent in the chain.
-- **Total unproductive ceiling (`agent_max_total_unproductive`)**: When an attempt modifies workspace files but still ends without a valid artifact, the consecutive counter resets to allow genuine iterative progress. However, `[general] agent_max_total_unproductive` (default `9`) imposes an absolute upper limit on total unproductive attempts; reaching it starts the same `unproductive_limit` cooldown for agents that continuously mutate files without producing the required artifact.
-- **Sole-agent cooldown**: When every agent in the chain is cooling down, including a sole configured agent, the phase waits until the earliest cooldown expiry and then retries; it never fails for that. When every conflict-resolution candidate is cooling down, integration remains pending/waiting (the `MERGE_COMMIT_PENDING` outcome), the rebase state is preserved on disk, and resolution retries when a candidate comes off cooldown. That stop never hands off to the operator and never reports a failed rebase or integration.
-- **Cooldown expiry and success reset**: The cooldown reason is `unproductive_limit`; it starts at 60 seconds, doubles for each earlier `unproductive_limit` cooldown since the agent's last valid artifact, and is capped at 3600 seconds. Starting it resets the counters, and upon expiry the agent is selectable again and is retried. Producing an accepted, valid artifact completely clears the agent's failure ledger history. In-progress counts survive restarts through persisted state.
+Cooldown growth, the 5-hour universal ceiling, custom policy caps, the success reset, and the `AgentFailureLedger` unproductive limits (`agent_max_consecutive_unproductive`, `agent_max_total_unproductive` and their `unproductive_limit` cooldown) are defined in [Agent cooldown: the sole cooldown system](../agents/cooldown-invariant.md). When every agent in the chain is on cooldown, including a sole configured agent, the phase waits for the earliest expiry and never fails for that.
 
 ### Lock-in regression coverage
 
@@ -396,24 +372,9 @@ When attribution leaves an agent as suspect, Ralph Workflow runs a canary probe 
 
 Typed provider signals (`QuotaExhaustedError`, `MissingCredentialsError`, and `BrokenAgentExitError` prompt echoes) start a cooldown on first failure without running a canary probe.
 
-### Dead-agent cooldown duration
+### Dead-agent cooldown
 
-When a dead-agent verdict is confirmed, the agent is placed on cooldown with `UnavailabilityReason.DEAD_AGENT_NO_PROGRESS`:
-
-- **Backoff schedule**: Initial backoff is 10 seconds, doubling on each consecutive repeat failure.
-- **Universal ceiling**: Backoff is capped at the 5-hour universal ceiling (`_UNIVERSAL_COOLDOWN_CAP_MS = 18_000_000` ms).
-- **One cooldown system**: The dead-agent cooldown and the ledger's `unproductive_limit` cooldown (3 consecutive or 9 total unproductive attempts) live in the same tracker; an agent is either on cooldown or available. During cooldown, chain selection skips the agent in favor of available alternatives.
-
-### Clearing backoff
-
-When an agent's cooldown expires, its next invocation serves as a production probe:
-
-- A successful attempt producing a valid artifact resets backoff history via `reset_backoff`.
-- A repeat failure starts the next, longer cooldown.
-
-### Persisted verdicts and false-bench measurement
-
-Every dead-agent verdict is recorded in the checkpoint with its underlying facts, attribution, probe outcome, and termination log (`PersistedVerdict`). Each dead-agent cooldown opens a candidate metric keyed by the agent configuration fingerprint (agent name, binary, model, parser, transport). A subsequent success under that same configuration closes the candidate and increments the false-bench count. The run-time report displays false-bench counts to surface verdict accuracy.
+A confirmed dead-agent verdict starts a `dead_agent_no_progress` cooldown in the same cooldown system as every other reason; its duration, growth, reset and the false-cooldown measurement (`False cooldowns` in the run-time report) are defined in [Agent cooldown: the sole cooldown system](../agents/cooldown-invariant.md). Every dead-agent verdict is recorded in the checkpoint with its underlying facts, attribution, probe outcome, and termination log (`PersistedVerdict`).
 
 ## Integration lifecycle authority
 

@@ -11,6 +11,12 @@ from ralph.display.status_bar import StatusBar, StatusBarModel, render_status_ba
 from ralph.pipeline import build_integration_status
 from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_partial_out_of_reach_status_is_present_on_conflict_entry": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
 
 def _context(width: int = 72) -> tuple[DisplayContext, StringIO]:
     output = StringIO()
@@ -25,8 +31,8 @@ def _status(cause: str = "OUT_OF_REACH"):
         command="git add -- vendor/Ralph-Workflow",
         agents_can_finish=False,
         agent_reasons=(
-            "claude: spent",
-            "opencode: unavailable",
+            "claude: cooldown unproductive_limit",
+            "opencode: cooldown out_of_credits",
         ),
         done_count=3,
         remaining_count=1,
@@ -121,4 +127,4 @@ def test_partial_out_of_reach_status_is_present_on_conflict_entry() -> None:
     assert rendered_status is not None
     assert "vendor/Ralph-Workflow" in rendered_status.summary
     assert "agents cannot finish" not in rendered_status.summary
-    assert "spent/unavailable" in rendered_status.summary
+    assert "on cooldown" in rendered_status.summary

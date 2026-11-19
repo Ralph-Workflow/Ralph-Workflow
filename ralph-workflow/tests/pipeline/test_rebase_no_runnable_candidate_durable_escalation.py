@@ -15,7 +15,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.round_verdict import (
-    resolution_exhaustion_reason,
+    resolution_halt_reason,
     round_termination_reason,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -31,10 +31,28 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rebase_no_runnable_candidate_regression_continuation_is_durable_and_charges_once (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once with an unchanged body"
+    ),
+    "test_rebase_no_runnable_candidate_regression_initial_attempt_is_durable_and_charges_once (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_rebase_exhaustion_regression_initial_attempt_is_durable_and_charges_once with an unchanged body"
+    ),
+    "test_rebase_no_runnable_candidate_regression_config_failure_is_exempt_from_durable_charge": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_rebase_exhaustion_regression_config_failure_is_exempt_from_durable_charge with an unchanged body"
+    ),
+    "test_rebase_no_runnable_candidate_durable_escalation module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/pipeline/test_rebase_exhaustion_durable_escalation.py with unchanged content"
+    ),
+    "test_rebase_no_runnable_candidate_regression_continuation_is_durable_and_charges_once": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_rebase_no_runnable_candidate_regression_initial_attempt_is_durable_and_charges_once": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "_set_spent_chain_terminal_reason": (
         "operator rule: an agent is either on cooldown or not; the total limit now starts an "
         "expiring unproductive_limit cooldown instead of Spent, a cooling chain reports "
-        "CANDIDATE_UNAVAILABLE, and an uninvoked round reports CANDIDATE_EXHAUSTED only once "
+        "CANDIDATE_UNAVAILABLE, and an uninvoked round reports NO_RUNNABLE_CANDIDATE only once "
         "the fake clock passes every expiry"
     ),
 }
@@ -64,7 +82,7 @@ def _set_spent_chain_terminal_reason(session: ResolutionSession) -> None:
         invoked=False,
         candidates=_CANDIDATES,
     )
-    session.exhaustion_reason = resolution_exhaustion_reason(
+    session.halt_reason = resolution_halt_reason(
         session,
         session.unresolved_paths,
     )
@@ -82,13 +100,13 @@ class _TerminalRunner:
         *,
         session: ResolutionSession,
     ) -> bool:
-        if self.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        if self.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
             _set_spent_chain_terminal_reason(session)
         else:
             session.terminal_reason = self.terminal_reason
             session.unresolved_paths = ("app.py",)
         if self.terminal_reason is ResolutionTerminationReason.CONFIG_FAILURE:
-            session.exhaustion_reason = "fix .agent/agents.toml then run ralph --check-config"
+            session.halt_reason = "fix .agent/agents.toml then run ralph --check-config"
             session.charge_conflict_budget = False
             session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
         return False
@@ -130,7 +148,7 @@ def _critical_messages() -> tuple[list[str], int]:
     return messages, logger.add(sink, level="CRITICAL")
 
 
-def test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once(
+def test_rebase_no_runnable_candidate_regression_continuation_is_durable_and_charges_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _setup_rebase(tmp_path)
@@ -153,7 +171,7 @@ def test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once(
         assert first is not None
         assert first.resolution_exhausted is True
         assert first.resolution_exhaustion_reason is not None
-        assert first.resolution_exhaustion_reason.startswith("CANDIDATE_EXHAUSTED: ")
+        assert first.resolution_exhaustion_reason.startswith("NO_RUNNABLE_CANDIDATE: ")
         assert first.recovery_record_retained is False
         assert "retained for next agent" not in (first.last_reason or "")
         after = ladder_charge_count(AttemptLedger(tmp_path).read())
@@ -170,7 +188,7 @@ def test_rebase_exhaustion_regression_continuation_is_durable_and_charges_once(
             logger.remove(sink_id)
 
 
-def test_rebase_exhaustion_regression_initial_attempt_is_durable_and_charges_once(
+def test_rebase_no_runnable_candidate_regression_initial_attempt_is_durable_and_charges_once(
     tmp_path: Path,
 ) -> None:
     _setup_rebase(tmp_path)
@@ -182,19 +200,19 @@ def test_rebase_exhaustion_regression_initial_attempt_is_durable_and_charges_onc
         lambda *_args: False,
         None,
         None,
-        agent_runner=_TerminalRunner(ResolutionTerminationReason.CANDIDATE_EXHAUSTED),
+        agent_runner=_TerminalRunner(ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE),
     )
 
     assert result is not None and result.short_circuit is not None
     state = result.short_circuit
     assert state.resolution_exhausted is True
     assert state.resolution_exhaustion_reason is not None
-    assert state.resolution_exhaustion_reason.startswith("CANDIDATE_EXHAUSTED: ")
+    assert state.resolution_exhaustion_reason.startswith("NO_RUNNABLE_CANDIDATE: ")
     assert state.recovery_record_retained is False
     assert ladder_charge_count(AttemptLedger(tmp_path).read()) == before + 1
 
 
-def test_rebase_exhaustion_regression_config_failure_is_exempt_from_durable_charge(
+def test_rebase_no_runnable_candidate_regression_config_failure_is_exempt_from_durable_charge(
     tmp_path: Path,
 ) -> None:
     _setup_rebase(tmp_path)

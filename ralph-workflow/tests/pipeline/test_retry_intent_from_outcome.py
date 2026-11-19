@@ -35,6 +35,13 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.attempt_finalizer import AttemptFinalization
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_quota_like_words_without_a_typed_signal_never_skip_to_a_cooldown_or_terminate": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate with an unchanged body"
+    ),
+}
+
+
 PHASE = "development"
 AGENT = "claude"
 _LIMIT_PHRASE = "You've hit your session limit"
@@ -253,7 +260,7 @@ def test_agent_dead_outcome_stops_the_same_agent_retry(tmp_path: Path) -> None:
     )
 
 
-def test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate(
+def test_quota_like_words_without_a_typed_signal_never_skip_to_a_cooldown_or_terminate(
     tmp_path: Path,
 ) -> None:
     events: list[str] = []

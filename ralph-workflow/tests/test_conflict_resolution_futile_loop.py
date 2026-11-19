@@ -38,6 +38,24 @@ _CONFIG = UnifiedConfig.model_validate({"general": {}})
 pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_cooling_candidates_wait_on_cooldown_then_report_no_runnable_candidate (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted with an unchanged body"
+    ),
+    "test_ralph_infrastructure_faults_are_not_recorded_as_a_chain_without_a_runnable_resolver": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain with an unchanged body"
+    ),
+    "test_a_real_no_runnable_resolver_stop_is_still_recorded": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_real_resolver_exhaustion_is_still_recorded with an unchanged body"
+    ),
+    "test_a_clean_stop_is_not_reported_as_a_failure_reason": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_every_reason_less_exit_now_names_itself": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_the_durable_evidence_does_not_assert_a_scan_that_never_ran": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_dead_tool_surface_fails_fast_and_hands_over": (
         "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
         "the test asserts the candidate_unavailable cooldown and its expiry"
@@ -78,9 +96,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_all_spent_candidates_yields_candidate_exhausted_terminal_reason": (
         "operator rule: an agent is either on cooldown or not; the total limit starts a 60 s "
         "unproductive_limit cooldown instead of Spent, so the chain reports "
-        "CANDIDATE_UNAVAILABLE and only reports CANDIDATE_EXHAUSTED after the expiry"
+        "CANDIDATE_UNAVAILABLE and only reports NO_RUNNABLE_CANDIDATE after the expiry"
     ),
-    "test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted": (
+    "test_all_cooling_candidates_wait_on_cooldown_then_report_no_runnable_candidate": (
         "operator rule: an agent is either on cooldown or not; replaces the Spent exhaustion "
         "test with the expiring cooldown contract"
     ),
@@ -426,7 +444,7 @@ def test_an_unspendable_chain_reports_candidate_unavailable_until_its_cooldowns_
     assert called[0] == "primary"
 
 
-def test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted(
+def test_all_cooling_candidates_wait_on_cooldown_then_report_no_runnable_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
@@ -476,7 +494,7 @@ def test_all_spent_candidates_wait_on_cooldown_then_report_candidate_exhausted(
     )
     assert (
         round_termination_reason(expired, invoked=False, candidates=candidates)
-        is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     )
 
     cooldown_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
@@ -546,7 +564,7 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
-def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
+def test_ralph_infrastructure_faults_are_not_recorded_as_a_chain_without_a_runnable_resolver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
@@ -555,7 +573,7 @@ def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
 
     def _fake_resolve(root: Path, target: str, resolver: object, *, session: object) -> bool:
         captured["session"] = session
-        session.exhaustion_reason = "TOOL_SURFACE_DEAD: conflict markers survive in: a.py"
+        session.halt_reason = "TOOL_SURFACE_DEAD: conflict markers survive in: a.py"
         session.charge_conflict_budget = False
         return False
 
@@ -571,13 +589,13 @@ def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
     )
 
 
-def test_a_real_resolver_exhaustion_is_still_recorded(
+def test_a_real_no_runnable_resolver_stop_is_still_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.pipeline import auto_integrate_rebase_merge as rebase_merge
 
     def _fake_resolve(root: Path, target: str, resolver: object, *, session: object) -> bool:
-        session.exhaustion_reason = "ATTEMPT_FAILED: conflict markers survive in: a.py"
+        session.halt_reason = "ATTEMPT_FAILED: conflict markers survive in: a.py"
         return False
 
     monkeypatch.setattr(rebase_merge, "resolve_rebase_in_progress", _fake_resolve)
@@ -794,7 +812,7 @@ def test_every_reason_less_exit_now_names_itself(
         session=session,
     )
     assert session.terminal_reason is ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
-    assert session.exhaustion_reason is not None
+    assert session.halt_reason is not None
 
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_k: None)
@@ -814,7 +832,7 @@ def test_every_reason_less_exit_now_names_itself(
         session=session,
     )
     assert session.terminal_reason is ResolutionTerminationReason.PROMPT_UNAVAILABLE
-    assert session.exhaustion_reason is not None
+    assert session.halt_reason is not None
 
 
 def test_the_operator_headline_names_what_the_resolver_reported() -> None:
@@ -941,9 +959,9 @@ def test_the_durable_evidence_does_not_assert_a_scan_that_never_ran(
         invoke=lambda *_a: True,
         session=session,
     )
-    assert session.exhaustion_reason is not None
-    assert "markers survive" not in session.exhaustion_reason
-    assert "vendor/sub" in session.exhaustion_reason
+    assert session.halt_reason is not None
+    assert "markers survive" not in session.halt_reason
+    assert "vendor/sub" in session.halt_reason
     assert session.unresolved_paths == ("vendor/sub",)
 
 
@@ -968,7 +986,7 @@ def test_a_clean_stop_is_not_reported_as_a_failure_reason(
         session=session,
     )
     assert session.terminal_reason is None
-    assert session.exhaustion_reason is None
+    assert session.halt_reason is None
 
 
 def test_mechanical_staging_never_masks_a_path_nobody_can_repair(

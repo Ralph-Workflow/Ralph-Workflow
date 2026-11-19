@@ -41,6 +41,12 @@ if TYPE_CHECKING:
 PHASE = "development"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_incident_5_unattributed_exit0_with_a_passing_probe_never_starts_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_spent with an unchanged body"
+    ),
+    "test_incident_5_live_session_without_completion_evidence_records_unknown_issuer_and_liveness": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "assert probed (recovery probe boundary via dead_agent_probe.run_canary_probe)": (
         "the killed-codex probe boundary stays asserted by outcome.probe_invocations "
         "through the injected scripted seam; the removed assertion monkeypatched "
@@ -50,7 +56,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_incident_2_codex_kill_route_records_the_attempt_fact_with_workspace_unchanged": "operator rule: an agent is either on cooldown or not; the ledger resets its counters when the unproductive limit starts an expiring unproductive_limit cooldown, so the test asserts the cooldown count and the finite cooldown instead of a nonzero total counter",
     "test_ledger_reaches_the_cooldown_after_three_attempts_without_a_workspace_change": "operator rule: an agent is either on cooldown or not; the third unproductive attempt starts a 60 s unproductive_limit cooldown and resets the counters, so the test asserts the per-attempt counts, the cooldown and its expiry instead of the removed snapshot cooldown_reason",
-    "test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_spent": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
+    "test_incident_5_unattributed_exit0_with_a_passing_probe_never_starts_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
 }
 
 INCIDENT_1_AGY_ERROR_STEP = '{"type":"error_message","message":"provider rejected the request"}'
@@ -811,7 +817,7 @@ def test_incident_5_live_session_without_completion_evidence_records_unknown_iss
     from ralph.recovery.dead_agent_verdict import (
         DeadAgentVerdict,
         decide_dead_agent_verdict,
-        verdict_benches_agent,
+        verdict_starts_cooldown,
     )
 
     facts = AttemptFacts(
@@ -852,19 +858,21 @@ def test_incident_5_live_session_without_completion_evidence_records_unknown_iss
         "without a canary probe verdict the outcome remains unknown "
         f"(observed: {dead_agent_verdict.verdict!r})"
     )
-    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+    assert verdict_starts_cooldown(dead_agent_verdict.verdict) is False, (
         "an unknown verdict must never bench the agent"
     )
 
 
-def test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_spent() -> None:
+def test_incident_5_unattributed_exit0_with_a_passing_probe_never_starts_a_dead_agent_cooldown() -> (
+    None
+):
     from ralph.recovery.attempt_facts import AttemptFacts, TerminationRecord
     from ralph.recovery.attribution import Attribution, RuntimeCause, attribute_attempt
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.dead_agent_verdict import (
         DeadAgentVerdict,
         decide_dead_agent_verdict,
-        verdict_benches_agent,
+        verdict_starts_cooldown,
     )
     from ralph.recovery.typed_signal import runtime_issued_termination_is_not_agent_fault
 
@@ -905,7 +913,7 @@ def test_incident_5_unattributed_exit0_with_a_passing_probe_is_never_benched_or_
         "with a passing canary probe the agent is healthy, never convicted "
         f"(observed: {dead_agent_verdict.verdict!r})"
     )
-    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+    assert verdict_starts_cooldown(dead_agent_verdict.verdict) is False, (
         "a passing probe must never bench the agent "
         f"(observed verdict: {dead_agent_verdict.verdict!r})"
     )

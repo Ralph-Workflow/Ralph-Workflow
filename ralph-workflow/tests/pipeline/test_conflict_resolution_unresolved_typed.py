@@ -342,24 +342,36 @@ def _resolves_on_third_attempt() -> tuple[_AttemptStep, ...]:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_B2_cooldown_requires_three_no_progress_attempts_after_a_drop (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_B2_demotion_requires_three_no_progress_attempts_after_a_drop with an unchanged body"
+    ),
+    "test_C_cooling_resolver_is_skipped_and_the_next_eligible_lands (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands with an unchanged body"
+    ),
+    "test_C_all_resolvers_cooling_down_reports_pending_not_failed (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_C_all_resolvers_demoted_reports_pending_not_failed with an unchanged body"
+    ),
+    "test_E_sole_resolver_cooling_down_reports_pending_without_operator_handoff (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_E_sole_resolver_demoted_reports_pending_without_operator_handoff with an unchanged body"
+    ),
     "test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
         "so the no-progress attempts that reach demotion interleave with the next candidate; "
         "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
         "unproductive_limit cooldown_decision line with its counters"
     ),
-    "test_B2_demotion_requires_three_no_progress_attempts_after_a_drop": (
+    "test_B2_cooldown_requires_three_no_progress_attempts_after_a_drop": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
         "so the no-progress attempts that reach demotion interleave with the next candidate; "
         "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
         "unproductive_limit cooldown_decision line with its counters"
     ),
-    "test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands": (
+    "test_C_cooling_resolver_is_skipped_and_the_next_eligible_lands": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so the cooled lead is ineligible in every phase until expiry and selectable in "
         "every phase after it, and the demotion log is now the unproductive_limit cooldown_decision"
     ),
-    "test_C_all_resolvers_demoted_reports_pending_not_failed": (
+    "test_C_all_resolvers_cooling_down_reports_pending_not_failed": (
         "a stalled attempt cools its agent down before the same agent is invoked again, "
         "so the no-progress attempts that reach demotion interleave with the next candidate; "
         "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
@@ -382,7 +394,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: an agent is either on cooldown or not, so the demoted log is now the "
         "unproductive_limit cooldown_decision line with its counters"
     ),
-    "test_E_sole_resolver_demoted_reports_pending_without_operator_handoff": (
+    "test_E_sole_resolver_cooling_down_reports_pending_without_operator_handoff": (
         "operator rule: an agent is either on cooldown or not; the sole-agent demoted message no "
         "longer exists, the sole resolver gets an unproductive_limit cooldown_decision instead"
     ),
@@ -441,7 +453,7 @@ def test_B1_count_drop_restarts_the_consecutive_streak(
     _assert_not_ambiguous(logs)
 
 
-def test_B2_demotion_requires_three_no_progress_attempts_after_a_drop(
+def test_B2_cooldown_requires_three_no_progress_attempts_after_a_drop(
     tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
@@ -497,7 +509,7 @@ def _rebase_stop() -> RebaseStop:
     )
 
 
-def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
+def test_C_cooling_resolver_is_skipped_and_the_next_eligible_lands(
     tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, session = _drive_captured(
@@ -546,7 +558,7 @@ def test_C_demoted_resolver_is_skipped_and_the_next_eligible_lands(
         assert all(skipped_agent != "lead" for skipped_agent, _ in selection.skipped_reasons)
 
 
-def test_C_all_resolvers_demoted_reports_pending_not_failed(
+def test_C_all_resolvers_cooling_down_reports_pending_not_failed(
     tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(
@@ -740,7 +752,7 @@ def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
     )
 
 
-def test_E_sole_resolver_demoted_reports_pending_without_operator_handoff(
+def test_E_sole_resolver_cooling_down_reports_pending_without_operator_handoff(
     tmp_path: Path, shared_clock: _SharedRecoveryClock
 ) -> None:
     outcome, invocations, logs, _ = _drive_captured(

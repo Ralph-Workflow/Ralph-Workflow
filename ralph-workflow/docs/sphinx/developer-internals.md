@@ -382,7 +382,7 @@ Target worktree activation is isolated via `workspace_context(target_root)` in `
    - `session.charge_conflict_budget = False`
    - `session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE`
    - `session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE`
-   - `session.exhaustion_reason = f"fix {exc.file} then run ralph --check-config"`
+   - `session.halt_reason = f"fix {exc.file} then run ralph --check-config"`
    The resolver returns a `ResolutionOutcome` marked with `failure_cause=ResolutionFailureCause.CONFIG_FAILURE`.
 3. **Engine-level propagation**: In `ralph.pipeline._auto_integrate_rebase_resolve`, `carried_cause` evaluates `session.last_failure_cause` and `session.terminal_reason`. When either matches `ResolutionFailureCause.CONFIG_FAILURE` or `ResolutionTerminationReason.CONFIG_FAILURE`, `RebaseResolutionResult(False, carried_reason, carried_cause)` propagates the typed failure out of the rebase resolution runner.
 
@@ -390,7 +390,7 @@ Target worktree activation is isolated via `workspace_context(target_root)` in `
 
 Configuration defects are environment and setup errors, not failed LLM resolution attempts. To ensure that an operator repairing a syntax error does not return to an exhausted conflict budget:
 
-- **Resolver not spent**: `ResolutionTerminationReason.CONFIG_FAILURE` is registered in `RESOLVER_NOT_SPENT_TERMINATION_REASONS`. Because `session.charge_conflict_budget = False`, the resolver chain is not recorded as exhausted.
+- **Conflict budget uncharged**: `ResolutionTerminationReason.CONFIG_FAILURE` is registered in `BUDGET_UNCHARGED_TERMINATION_REASONS`. Because `session.charge_conflict_budget = False`, the stop does not charge the conflict budget.
 - **Counter protection across both seams**:
   - In `ralph.pipeline.run_loop` (`_handle_pending_retry`), rebases with `last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE` or `ResolutionFailureCause.CONTEXT_FAILURE` transition to `OperationDisplayState.WAITING` without incrementing the `consecutive_conflicts` counter.
   - In `ralph.pipeline.auto_integrate_budget_seam` (`apply_completed_attempt_budget`), both `ResolutionFailureCause.CONFIG_FAILURE` and `ResolutionFailureCause.CONTEXT_FAILURE` are handled as non-repository failures via `charge_non_repository_failure`, keeping `consecutive_conflicts` unchanged and preserving repository conflict identity unassigned.
@@ -414,19 +414,19 @@ When a rebase pauses on a configuration failure, Ralph Workflow enters a waiting
    - When the operator edits and repairs the file, the file's content hash changes. `should_retry()` detects the distinct fingerprint, marks it as attempted, and allows exactly one paused rebase continuation attempt.
    - If the repair succeeds, rebase continuation proceeds. If the file is still invalid (or introduces a new error), a new distinct fingerprint is recorded, awaiting the next file modification.
 
-### Resolution candidate exhaustion versus tool surface death
+### No runnable resolution candidate versus tool surface death
 
-When auto-integrate conflict resolution runs through its configured resolver agent chain:
+When auto-integrate conflict resolution runs through its configured resolver agent chain (resolver agents go on cooldown under [the sole cooldown system](../agents/cooldown-invariant.md)):
 
 1. **Candidate classification**:
    - `ResolutionTerminationReason.TOOL_SURFACE_DEAD` is used strictly when an agent candidate was actively launched and its tool surface died, failed, or was terminated.
-   - When the round ends with no candidate cooling down (the live candidate list is empty, or a candidate is available now), the termination reason is `ResolutionTerminationReason.CANDIDATE_EXHAUSTED`.
+   - When the round ends with no candidate cooling down (the live candidate list is empty, or a candidate is available now), the termination reason is `ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE`.
    - When an agent is currently on cooldown with a finite wait remaining, `ResolutionTerminationReason.CANDIDATE_UNAVAILABLE` indicates a wait for that cooldown to expire.
 2. **Failure ledger and escalation ladder**:
-   - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `RESOLVER_NOT_SPENT_TERMINATION_REASONS`), `CANDIDATE_EXHAUSTED` charges the conflict budget. This permits the recovery escalation ladder to progress rather than looping indefinitely.
+   - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `BUDGET_UNCHARGED_TERMINATION_REASONS`), `NO_RUNNABLE_CANDIDATE` charges the conflict budget. This permits the recovery escalation ladder to progress rather than looping indefinitely.
    - `RecoveryController` exposes `agents_now_available` and `earliest_eligible_wait_ms` to differentiate between chains with an agent available now and chains whose agents are all cooling down.
-3. **Candidate-exhausted and out-of-reach outcomes**:
-   - When the round ends with `CANDIDATE_EXHAUSTED`, the sealed outcome is `RetryLaterOutcome(terminal_reason=CANDIDATE_EXHAUSTED)`: integration remains pending/waiting, the rebase state is preserved, and resolution retries when eligibility changes. That stop never hands off to a person.
+3. **No-runnable-candidate and out-of-reach outcomes**:
+   - When the round ends with `NO_RUNNABLE_CANDIDATE`, the sealed outcome is `RetryLaterOutcome(terminal_reason=NO_RUNNABLE_CANDIDATE)`: integration remains pending/waiting, the rebase state is preserved, and resolution retries when eligibility changes. That stop never hands off to a person.
    - When conflicts are out of reach for agents, the sealed outcome is `NextStrategyOutcome(strategy="completion_in_place")`, and the ladder completes in place rather than requesting manual staging.
    - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` so the stop stays pending rather than reporting a failed rebase or a hand-off-to-human summary.
 

@@ -91,6 +91,12 @@ def test_resolver_falls_over_after_three_failures(
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_all_cooling_candidates_preserve_pending_rebase_state": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_all_demoted_candidates_preserve_pending_rebase_state with an unchanged body"
+    ),
+    "test_false_positive_resolver_success_remains_unproductive_and_cools_down (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_false_positive_resolver_success_remains_unproductive_and_demotes with an unchanged body"
+    ),
     "test_phase_isolation_through_public_integration_flow": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so a development unproductive_limit cooldown keeps the agent out of resolution "
@@ -140,7 +146,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "each failed attempt falls over to the fallback candidate in that round, "
         "so the remaining two failures that reach consecutive limit interleave with agentB"
     ),
-    "test_false_positive_resolver_success_remains_unproductive_and_demotes": (
+    "test_false_positive_resolver_success_remains_unproductive_and_cools_down": (
         "a false-positive success cools its agent down before it is invoked again, "
         "so the two charged attempts that demote it interleave with the next candidate"
     ),
@@ -210,7 +216,7 @@ def test_all_cooling_pending_state_preserves_rebase_state_then_resumes(
         reset_executors(token)
 
 
-def test_all_demoted_candidates_preserve_pending_rebase_state(
+def test_all_cooling_candidates_preserve_pending_rebase_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED)
@@ -580,7 +586,7 @@ def test_fake_clock_shows_no_invocation_before_eligibility(
         reset_executors(token)
 
 
-def test_false_positive_resolver_success_remains_unproductive_and_demotes(
+def test_false_positive_resolver_success_remains_unproductive_and_cools_down(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     resolved = False
@@ -750,7 +756,7 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
         assert session.unresolved_paths == tuple(_CONFLICTED)
 
         short_circuit = record_conflict(
-            reason=session.exhaustion_reason,
+            reason=session.halt_reason,
             target="main",
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         )

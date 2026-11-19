@@ -15,8 +15,17 @@ from ralph.pipeline.resolution_outcome import (
     WaitingOutcome,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_chain_without_a_runnable_resolver_advances_to_the_named_autonomous_strategy": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_exhausted_chain_advances_to_the_named_autonomous_strategy with an unchanged body"
+    ),
+    "test_auto_integrate_unsuccessful_resolution_merge_seam module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/test_auto_integrate_exhausted_merge_seam.py with unchanged content"
+    ),
+}
 
-def test_exhausted_chain_advances_to_the_named_autonomous_strategy() -> None:
+
+def test_a_chain_without_a_runnable_resolver_advances_to_the_named_autonomous_strategy() -> None:
     result = handle_unsuccessful_resolution(
         NextStrategyOutcome("completion_in_place"),
         reason=None,

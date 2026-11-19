@@ -138,7 +138,7 @@ class ResolutionSession:
     unavailability_store: UnavailabilityStore | None = None
     ledger: AgentFailureLedger | None = None
     recovery_state: object | None = None
-    exhaustion_reason: str | None = None
+    halt_reason: str | None = None
     operator_action_message: str | None = None
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
@@ -171,7 +171,7 @@ def begin_resolution_stop(
     session.last_activity_kind = None
     session.last_activity_at = None
     session.last_duration_seconds = None
-    session.exhaustion_reason = None
+    session.halt_reason = None
     session.operator_action_message = None
     session.charge_conflict_budget = True
 

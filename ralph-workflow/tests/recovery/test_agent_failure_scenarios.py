@@ -37,6 +37,12 @@ if TYPE_CHECKING:
     from ralph.config.agent_config import AgentConfig
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_2_changes_files_never_finishes_cools_down_at_total_limit": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_2_changes_files_never_finishes_demoted_at_total_limit with an unchanged body"
+    ),
+    "test_scenario_3_recovers_within_consecutive_limit_never_cools_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_3_recovers_within_consecutive_limit_never_demoted with an unchanged body"
+    ),
     "test_scenario_5_all_agents_dead_wait_out_their_cooldowns_instead_of_spinning": "operator rule: an agent is either on cooldown or not; replaces test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded because an all-dead chain now waits out expiring unproductive_limit cooldowns and retries instead of entering the failed phase, so the bound is the waited cooldown rather than a terminal exit",
     "test_scenario_7_sole_agent_chain_cools_down_and_retries_with_clear_message": "operator rule: an agent is either on cooldown or not; replaces test_scenario_7_sole_agent_chain_fails_phase_with_clear_message because a sole agent reaching the unproductive limit now cools down and is retried after expiry instead of failing the phase, and the cooldown_decision log names the reason",
 }
@@ -61,7 +67,7 @@ def test_scenario_1_reproduces_bug_fallback_after_unproductive_streak(tmp_path: 
     assert outcome.exit_code == 0
 
 
-def test_scenario_2_changes_files_never_finishes_demoted_at_total_limit(tmp_path: Path) -> None:
+def test_scenario_2_changes_files_never_finishes_cools_down_at_total_limit(tmp_path: Path) -> None:
 
     def script(agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:
         if agent == "agent_b":
@@ -81,7 +87,7 @@ def test_scenario_2_changes_files_never_finishes_demoted_at_total_limit(tmp_path
     assert outcome.exit_code == 0
 
 
-def test_scenario_3_recovers_within_consecutive_limit_never_demoted(tmp_path: Path) -> None:
+def test_scenario_3_recovers_within_consecutive_limit_never_cools_down(tmp_path: Path) -> None:
 
     def script(agent: str, _phase: str, attempt: int, _workspace: object) -> AgentAttemptResult:
         if agent == "agent_a" and attempt == 3:

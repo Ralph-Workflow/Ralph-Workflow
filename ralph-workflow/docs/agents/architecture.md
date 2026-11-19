@@ -201,8 +201,9 @@ Agents are configured in `ralph-workflow.toml` under four top-level sections:
 - `[ccs_aliases.<name>]` — creates a short alias that expands to an agent name,
   used in `agent_chains` and `agent_drains`.
 - `[agent_chains]` — an ORDERED FALLBACK LIST of agent names for one role.
-  Ralph tries the first agent; if it fails or exhausts its retries, Ralph
-  moves to the next one instead of stopping immediately. This is the
+  Ralph tries the first agent; when that agent fails it goes on cooldown, and
+  Ralph moves to the next one instead of stopping immediately (see
+  [the sole cooldown system](cooldown-invariant.md)). This is the
   canonical definition; do NOT describe it as inter-agent piping.
 - `[agent_drains]` — a ROUTING LABEL that binds a pipeline phase to a chain.
   The drain name is the pipeline key (`planning`, `development`, `analysis`,

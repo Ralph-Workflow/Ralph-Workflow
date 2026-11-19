@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Exhausted"]
+__all__ = ["ResolversCoolingDown"]
 
 
 @dataclass(frozen=True, slots=True)
-class Exhausted:
+class ResolversCoolingDown:
     agents: tuple[str, ...] = ()

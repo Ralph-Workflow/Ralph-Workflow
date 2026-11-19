@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable, Iterator
 from dataclasses import fields
 from importlib import import_module
@@ -50,6 +51,28 @@ _PHASE = "development"
 _AGENT = "fake"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_entry_point_registry_rejects_duplicate_registration": (
+        "the test registered a stub COMMIT_GENERATION runner into the process-wide registry "
+        "whenever commit plumbing had not been imported yet, so later commit-plumbing tests in "
+        "the same pytest process ran the stub instead of the production runner; it now imports "
+        "commit plumbing so the production runner is registered and still asserts that a "
+        "duplicate registration is rejected"
+    ),
+    "test_a_judged_failure_cools_the_agent_down_and_a_later_success_clears_the_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_judged_failure_benches_the_agent_and_a_later_success_clears_the_bench with an unchanged body"
+    ),
+    "test_a_false_cooldown_event_carries_the_agent_configuration_fingerprint": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_bench_feedback_event_carries_the_agent_configuration_fingerprint with an unchanged body"
+    ),
+    "test_the_canary_probe_entry_point_never_starts_a_cooldown_and_never_charges_the_ledger (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_canary_probe_entry_point_never_benches_and_never_charges_the_ledger with an unchanged body"
+    ),
+    "test_a_judged_failure_cools_the_agent_down_and_a_later_success_clears_the_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_the_canary_probe_entry_point_never_starts_a_cooldown_and_never_charges_the_ledger": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_raw_attempt_invoke_returns_the_carried_attempt_ended": (
         "a raw attempt that returns normally carries the recorder facts with artifact_valid "
         "marked true so the shared attempt runner does not read the success as a failure"
@@ -204,8 +227,8 @@ def test_entry_point_registry_reflects_each_registration() -> None:
 
 def test_entry_point_registry_rejects_duplicate_registration() -> None:
     entry_point = AgentEntryPoint.COMMIT_GENERATION
-    if entry_point not in registered_entry_points():
-        register_entry_point(entry_point, _entry_point_runner)
+    importlib.import_module("ralph.pipeline.plumbing.commit_plumbing")
+    assert entry_point in registered_entry_points()
     with pytest.raises(ValueError, match=entry_point.value):
         register_entry_point(entry_point, _entry_point_runner)
     assert entry_point in registered_entry_points()
@@ -357,7 +380,7 @@ def test_a_terminal_exception_that_was_never_finalized_still_charges(
     assert "duration_ms=120000" in charges[1]
 
 
-def test_a_judged_failure_benches_the_agent_and_a_later_success_clears_the_bench() -> None:
+def test_a_judged_failure_cools_the_agent_down_and_a_later_success_clears_the_cooldown() -> None:
     deps = _deps(_fail_then_succeed_invoke, _dead_probe)
     controller = _controller(deps)
     result = run_agent_attempt(
@@ -373,10 +396,10 @@ def test_a_judged_failure_benches_the_agent_and_a_later_success_clears_the_bench
     assert result.attempt_outcomes[0][1].kind is AttemptOutcomeKind.AGENT_DEAD
     assert result.outcome.kind is AttemptOutcomeKind.COMPLETED
     assert controller.unavailability_store.is_available(_PHASE, _AGENT) is True
-    assert controller.false_bench_feedback.count == 1
+    assert controller.false_cooldown_feedback.count == 1
 
 
-def test_a_bench_feedback_event_carries_the_agent_configuration_fingerprint() -> None:
+def test_a_false_cooldown_event_carries_the_agent_configuration_fingerprint() -> None:
     deps = _deps(_fail_then_succeed_invoke, _dead_probe)
     controller = _controller(deps)
     run_agent_attempt(
@@ -389,7 +412,7 @@ def test_a_bench_feedback_event_carries_the_agent_configuration_fingerprint() ->
         session_id="session-1",
     )
 
-    events = controller.false_bench_feedback.events
+    events = controller.false_cooldown_feedback.events
     assert len(events) == 1
     assert events[0]["config_fingerprint"] == _FINGERPRINT
     assert events[0]["session_ref"] == {
@@ -401,7 +424,9 @@ def test_a_bench_feedback_event_carries_the_agent_configuration_fingerprint() ->
     }
 
 
-def test_the_canary_probe_entry_point_never_benches_and_never_charges_the_ledger() -> None:
+def test_the_canary_probe_entry_point_never_starts_a_cooldown_and_never_charges_the_ledger() -> (
+    None
+):
     def failing_invoke(_target: object, **kwargs: object) -> object:
         finalizer = kwargs["attempt_finalizer"]
         assert callable(finalizer)
@@ -418,9 +443,9 @@ def test_the_canary_probe_entry_point_never_benches_and_never_charges_the_ledger
         deps=deps,
     )
 
-    assert result.outcome.benches_agent is False
+    assert result.outcome.starts_cooldown is False
     assert controller.unavailability_store.is_available(_PHASE, _AGENT) is True
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0
     assert controller.ledger.status(_PHASE, _AGENT).is_eligible is True
 
 

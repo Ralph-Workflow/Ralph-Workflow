@@ -18,7 +18,10 @@ from tests.recovery._scenario_harness import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_scenario_executor_recovery_route_demotes_at_nine_total_attempts": "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached demotion log no longer exists, so the test asserts the unproductive_limit cooldown_decision log line carrying total=9",
+    "test_scenario_executor_recovery_route_cools_down_at_nine_total_attempts (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_executor_recovery_route_demotes_at_nine_total_attempts with an unchanged body"
+    ),
+    "test_scenario_executor_recovery_route_cools_down_at_nine_total_attempts": "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached demotion log no longer exists, so the test asserts the unproductive_limit cooldown_decision log line carrying total=9",
     "test_scenario_executor_recovery_route_charges_each_physical_failure_once": "operator rule: an agent is either on cooldown or not; the demotion log marker is replaced by the unproductive_limit cooldown_decision log line, whose total must still be exactly 9",
     "test_recovery_regression_executor_failure_is_charged_once": "operator rule: an agent is either on cooldown or not; the total_unproductive_limit_reached demotion log no longer exists, so the test asserts the unproductive_limit cooldown_decision log line carrying total=9",
 }
@@ -155,7 +158,7 @@ def _cooldown_totals(logs: list[str]) -> list[int]:
     return totals
 
 
-def test_scenario_executor_recovery_route_demotes_at_nine_total_attempts(
+def test_scenario_executor_recovery_route_cools_down_at_nine_total_attempts(
     tmp_path: Path,
 ) -> None:
     outcome = _run_executor_route_scenario(

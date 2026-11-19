@@ -45,10 +45,19 @@ from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, Pr
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolver_chain_without_a_runnable_candidate_reports_typed_terminal_evidence (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_exhausted_resolver_chain_reports_typed_terminal_evidence with an unchanged body"
+    ),
+    "test_resolver_chain_without_a_runnable_candidate_persists_terminal_state_that_blocks_planning (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning with an unchanged body"
+    ),
+    "test_resolver_chain_without_a_runnable_candidate_persists_terminal_state_that_blocks_planning": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_bounded_at_max_resolution_rounds": (
         "with max_rounds_per_stop=3 the pipeline runs up to 3 rounds when unmerged paths persist"
     ),
-    "test_exhausted_resolver_chain_reports_typed_terminal_evidence": (
+    "test_resolver_chain_without_a_runnable_candidate_reports_typed_terminal_evidence": (
         "fallback resolver attempt failure records typed terminal evidence with retries set to 0 under the shared controller"
     ),
     "test_failed_resolver_attempt_uses_the_next_fallback_candidate": (
@@ -345,7 +354,7 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
     assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
-def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
+def test_resolver_chain_without_a_runnable_candidate_reports_typed_terminal_evidence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
@@ -380,7 +389,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
 
     assert not isinstance(outcome, ResolvedOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
-    assert session.exhaustion_reason is not None
+    assert session.halt_reason is not None
     assert calls == ["primary", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
@@ -388,7 +397,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert chain == AgentChainState(agents=["primary", "fallback"], current_index=1, retries=0)
 
 
-def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
+def test_resolver_chain_without_a_runnable_candidate_persists_terminal_state_that_blocks_planning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
@@ -415,9 +424,9 @@ def test_exhausted_resolver_chain_persists_terminal_state_that_blocks_planning(
     )
 
     assert not isinstance(outcome, ResolvedOutcome)
-    assert session.exhaustion_reason is not None
+    assert session.halt_reason is not None
     persisted = record_resolution_exhausted(
-        reason=session.exhaustion_reason,
+        reason=session.halt_reason,
         target="main",
     )
     verdict = inspect_integration_resolution(

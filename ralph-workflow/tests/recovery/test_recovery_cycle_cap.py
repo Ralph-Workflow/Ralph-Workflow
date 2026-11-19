@@ -13,7 +13,10 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 from ralph.recovery.cycle_cap import CycleCap
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_agent_failure_chain_exhaustion_increments_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits for its cooldown instead of entering the failed phase, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
+    "test_agent_failure_with_no_selectable_agent_increments_cycle_count (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_failure_chain_exhaustion_increments_cycle_count with an unchanged body"
+    ),
+    "test_agent_failure_with_no_selectable_agent_increments_cycle_count": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits for its cooldown instead of entering the failed phase, so the cycle count is driven through a chain with no agents, the only route that still reaches the failed phase",
     "test_cooling_sole_agent_waits_without_counting_a_recovery_cycle": "operator rule: an agent is either on cooldown or not; pins that a sole agent reaching the unproductive limit yields the wait state with a finite delay and becomes eligible again after it expires",
     "test_cycle_cap_exceeded_emits_exit_failure_effect": "operator rule: an agent is either on cooldown or not; a cooled sole agent now waits instead of failing, so the cycle cap is driven through a chain with no agents, the only route that still reaches the failed phase",
 }
@@ -60,7 +63,7 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
     assert effects == []
 
 
-def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
+def test_agent_failure_with_no_selectable_agent_increments_cycle_count() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )

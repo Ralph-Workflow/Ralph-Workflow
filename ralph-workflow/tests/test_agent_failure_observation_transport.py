@@ -19,6 +19,13 @@ if TYPE_CHECKING:
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_workspace_changing_failure_cools_down_at_total_nine_not_three": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_workspace_changing_failure_is_demoted_at_total_nine_not_three with an unchanged body"
+    ),
+}
+
+
 _PHASE = "development"
 _AGENT_A = "agent_a"
 _AGENT_B = "agent_b"
@@ -92,7 +99,7 @@ def _capture_observation(
     return captured[0]
 
 
-def test_workspace_changing_failure_is_demoted_at_total_nine_not_three(tmp_path: Path) -> None:
+def test_workspace_changing_failure_cools_down_at_total_nine_not_three(tmp_path: Path) -> None:
     probe = _ScriptedProbe(changed=True)
     observation = _capture_observation(tmp_path, probe=probe)
 

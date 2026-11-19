@@ -215,7 +215,7 @@ def build_agent_rebase_stop_resolver(
                 session.charge_conflict_budget = False
                 session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
                 session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-                session.exhaustion_reason = reason_text
+                session.halt_reason = reason_text
             emit_config_failure_warning(
                 exc.file,
                 kind="ralph-workflow",
@@ -270,7 +270,7 @@ def build_agent_rebase_stop_resolver(
                 session.charge_conflict_budget = False
                 session.terminal_reason = term_reason
                 session.last_failure_cause = failure_cause
-                session.exhaustion_reason = reason_text
+                session.halt_reason = reason_text
             emit_integration_warn_line(
                 display,
                 f"rebase conflict resolution unavailable: {reason_text}",

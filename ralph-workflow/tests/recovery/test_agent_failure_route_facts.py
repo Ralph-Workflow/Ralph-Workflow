@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine": "operator rule: an agent is either on cooldown or not; the demotion log and total_unproductive_limit_reached reason no longer exist, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with total=9",
+    "test_scenario_ordinary_agent_failure_route_workspace_changes_cools_down_at_nine (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine with an unchanged body"
+    ),
+    "test_scenario_ordinary_agent_failure_route_workspace_changes_cools_down_at_nine": "operator rule: an agent is either on cooldown or not; the demotion log and total_unproductive_limit_reached reason no longer exist, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with total=9",
     "test_scenario_varying_output_cannot_evade_the_consecutive_limit": "operator rule: an agent is either on cooldown or not; the demotion log no longer exists, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with consecutive=3",
     "test_scenario_missing_observation_never_inherits_the_previous_attempt_fact": "operator rule: an agent is either on cooldown or not; the demotion log and consecutive_unproductive_limit_reached reason no longer exist, so the test asserts one unproductive_limit cooldown_decision line for agent_a in development with consecutive=3 total=4",
 }
@@ -33,7 +36,7 @@ def _cooldown_counts(logs: list[str]) -> list[tuple[int, int]]:
     return counts
 
 
-def test_scenario_ordinary_agent_failure_route_workspace_changes_demotes_at_nine(
+def test_scenario_ordinary_agent_failure_route_workspace_changes_cools_down_at_nine(
     tmp_path: Path,
 ) -> None:
 

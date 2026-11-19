@@ -11,20 +11,29 @@ from ralph.recovery.controller import RecoveryController, RecoveryControllerOpti
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_retry_limit_cooling_agent_never_picked (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_allowance_spent_agent_never_picked with an unchanged body"
+    ),
+    "test_select_preferred_agent_skips_cooling_agents_in_priority_order (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order with an unchanged body"
+    ),
+    "test_preferred_agent_index_deduplicates_unchanged_cooling_chain (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_preferred_agent_index_deduplicates_unchanged_spent_chain with an unchanged body"
+    ),
     "test_lowest_index_wins_among_selectable_agents": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
     "test_agent_in_cooldown_never_picked_even_if_index_zero": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
-    "test_allowance_spent_agent_never_picked": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
+    "test_retry_limit_cooling_agent_never_picked": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
     "test_current_agent_returned_when_highest_priority_selectable": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
     "test_returns_none_when_nothing_selectable": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
     "test_skipped_reasons_formatting_and_evidence": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
     "test_unavailable_agent_with_zero_cooldown_remainder_reports_unavailable_not_zero_ms": "operator rule: an agent is either on cooldown or not; a non-cooling excluded agent is now reported excluded_from_this_selection instead of unavailable",
     "test_select_preferred_agent_is_a_pure_index_zero_scan": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
-    "test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason; the zero-cooldown excluded agent is reported excluded_from_this_selection",
+    "test_select_preferred_agent_skips_cooling_agents_in_priority_order": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason; the zero-cooldown excluded agent is reported excluded_from_this_selection",
     "test_select_preferred_agent_returns_none_when_no_agent_selectable": "operator rule: an agent is either on cooldown or not; the removed spent flag is replaced by a finite retry_limit cooldown row, so the test asserts the cooldown skip reason",
     "test_select_preferred_agent_index_zero_with_full_remaining_cooldown": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
     "test_select_preferred_agent_repeated_calls_with_same_rows_are_stable": "operator rule: an agent is either on cooldown or not; the removed spent argument is dropped from the rows with identical assertions",
     "test_select_preferred_agent_zero_cooldown_unavailable_is_unavailable": "operator rule: an agent is either on cooldown or not; a non-cooling excluded agent is now reported excluded_from_this_selection instead of unavailable",
-    "test_preferred_agent_index_deduplicates_unchanged_spent_chain": "operator rule: an agent is either on cooldown or not; the removed note_retry_exhaustion spent marking is replaced by record_attempt reaching the retry_limit cooldown, and the test also asserts the agent is selected again after the cooldown expires",
+    "test_preferred_agent_index_deduplicates_unchanged_cooling_chain": "operator rule: an agent is either on cooldown or not; the removed note_retry_exhaustion spent marking is replaced by record_attempt reaching the retry_limit cooldown, and the test also asserts the agent is selected again after the cooldown expires",
 }
 
 
@@ -58,7 +67,7 @@ def test_agent_in_cooldown_never_picked_even_if_index_zero() -> None:
     )
 
 
-def test_allowance_spent_agent_never_picked() -> None:
+def test_retry_limit_cooling_agent_never_picked() -> None:
     rows = [
         agent_availability(
             agent="claude",
@@ -215,7 +224,7 @@ def test_select_preferred_agent_is_a_pure_index_zero_scan() -> None:
         assert selection.agent == "claude"
 
 
-def test_select_preferred_agent_skips_unavailable_cooldown_spent_in_priority_order() -> None:
+def test_select_preferred_agent_skips_cooling_agents_in_priority_order() -> None:
     rows = [
         agent_availability(
             agent="claude",
@@ -362,7 +371,7 @@ def test_preferred_agent_index_deduplicates_unchanged_all_unavailable_logs() -> 
         logger.remove(sink_id)
 
 
-def test_preferred_agent_index_deduplicates_unchanged_spent_chain() -> None:
+def test_preferred_agent_index_deduplicates_unchanged_cooling_chain() -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     for agent in ("agent_a", "agent_b"):

@@ -59,7 +59,7 @@ class IntegrationStatus:
                 count = len(self.agent_reasons)
                 parts.append(
                     f"all {count} resolver {'agent is' if count == 1 else 'agents are'} "
-                    f"spent/unavailable ({'; '.join(self.agent_reasons)})"
+                    f"on cooldown ({'; '.join(self.agent_reasons)})"
                 )
             else:
                 parts.append("agents cannot finish this")

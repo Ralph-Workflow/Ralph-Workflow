@@ -43,7 +43,7 @@ _TOOL_USE = "tool_use"
 class CorpusCase:
     id: str
     label: str
-    expected_bench: bool
+    expected_cooldown: bool
     expected_verdict: str
     expected_attribution: str
     facts: AttemptFacts
@@ -90,7 +90,7 @@ def _case_from_fixture(fixture: Mapping[str, object]) -> CorpusCase:
     return CorpusCase(
         id=str(fixture["id"]),
         label=_validated(str(fixture["label"]), ALLOWED_LABELS, "label"),
-        expected_bench=bool(fixture["expected_bench"]),
+        expected_cooldown=bool(fixture["expected_cooldown"]),
         expected_verdict=_validated(
             str(fixture["expected_verdict"]), ALLOWED_VERDICTS, "expected_verdict"
         ),

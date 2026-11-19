@@ -142,8 +142,9 @@ Agents are configured in `ralph-workflow.toml` under four top-level sections:
 - `[ccs_aliases.<name>]` — creates a short alias that expands to an agent name,
   used in `agent_chains` and `agent_drains`.
 - `[agent_chains]` — an ORDERED FALLBACK LIST of agent names for one role.
-  Ralph tries the first agent; if it fails or exhausts its retries, Ralph
-  moves to the next one instead of stopping immediately. This is the
+  Ralph tries the first agent; when that agent fails it goes on cooldown, and
+  Ralph moves to the next one instead of stopping immediately (see
+  [the sole cooldown system](../../ralph-workflow/docs/agents/cooldown-invariant.md)). This is the
   canonical definition; do NOT describe it as inter-agent piping.
 - `[agent_drains]` — a ROUTING LABEL that binds a pipeline phase to a chain.
   The drain name is the pipeline key (`planning`, `development`, `analysis`,
@@ -187,7 +188,7 @@ Summary:
 | Main pipeline phase loop | already compliant | Phase candidate selection uses the controller; attempts use the `MAIN_PHASE_LOOP` entry point. |
 | Parallel worker | already compliant | Phase candidate selection uses the controller; attempts use the `PARALLEL_WORKER` entry point. |
 | Integration continuation | fixed | Phase candidate selection uses the controller; continuation attempts use the `INTEGRATION_CONTINUATION` entry point. |
-| Conflict resolution | fixed | Resolver selection, cooldown waits, exhaustion, and attempts use the shared controller. |
+| Conflict resolution | fixed | Resolver selection, cooldown waits, the no-runnable-candidate stop, and attempts use the shared controller. |
 | Pending-merge repair | fixed | `choose_resolver` selects through the controller; failed or unproductive repairs are finalised through it. |
 | Integration diagnostics | fixed | `next_resolver` delegates selection to the controller; diagnostic attempts report their outcome through it. |
 | Smoke-test plumbing | already compliant | Attempts report through the shared owner. |

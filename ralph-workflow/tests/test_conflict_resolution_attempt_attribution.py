@@ -25,6 +25,9 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_unavailable_candidate_does_not_answer_for_the_one_after_it (cooldown vocabulary)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_the_executor_names_a_missing_agent_instead_of_failing_anonymously": (
         "the agent-not-found branch names the cause and the missing agent inline; "
         "the retired helper it used to delegate to is gone"
@@ -355,8 +358,8 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     assert called == ["ghost", "healthy"]
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
-    assert session.exhaustion_reason is not None
-    assert session.exhaustion_reason.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value)
+    assert session.halt_reason is not None
+    assert session.halt_reason.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value)
 
 
 def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously() -> None:

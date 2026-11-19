@@ -135,9 +135,10 @@ class PhaseDefinition(_FrozenPolicyModel):
     workflow_fallback: PhaseWorkflowFallback | None = Field(
         default=None,
         description=(
-            "Policy-declared fallback route when this phase's agent chain is exhausted. "
+            "Policy-declared fallback route when no agent in this phase's chain can be "
+            "selected. "
             "When set, routes to target instead of the global recovery.failed_route. "
-            "Takes precedence over recovery.failed_route on chain exhaustion."
+            "Takes precedence over recovery.failed_route when no agent can be selected."
         ),
     )
     clear_drains_on_fresh_entry: list[str] = Field(

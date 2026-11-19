@@ -37,13 +37,22 @@ from tests._fake_git_agent_adapter import RealRepoAgentAdapter
 from tests._integration_ladder_fakes import _seed_terminal_rungs
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cooling_resolver_chain_records_the_stop_and_escalates_once (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_cooling_resolver_chain_records_exhaustion_and_escalates_once with an unchanged body"
+    ),
+    'assert "on cooldown" in status_reason or "conflict resolution incomplete" in status_reason': (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only "
+        "name; the resolver message now says the agents are on cooldown instead of "
+        "spent/unavailable, and the terminal reason CANDIDATE_EXHAUSTED is renamed "
+        "NO_RUNNABLE_CANDIDATE; the checks are otherwise unchanged"
+    ),
     "test_spent_resolver_chain_records_exhaustion_and_escalates_once": (
         "operator rule: an agent is either on cooldown or not; note_retry_exhaustion and "
         "all_exhausted are gone, so the chain is cooled with expiring unproductive_limit "
         "cooldowns, the test asserts a positive wait, the same single escalation, and that "
         "the first agent is selectable again after the fake clock passes the expiry"
     ),
-    "test_cooling_resolver_chain_records_exhaustion_and_escalates_once": (
+    "test_cooling_resolver_chain_records_the_stop_and_escalates_once": (
         "operator rule: an agent is either on cooldown or not; renamed from the spent chain "
         "test, which now cools every agent instead of spending it"
     ),
@@ -59,7 +68,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "and consult the resolver; without it the attempt returns WAITING before ConfigFailureOutcome "
         "can surface the agents.toml path and ralph --check-config; verify corrupt config with "
         "load_toml so ConfigFailureOutcome is returned on syntax error; the post-repair continuation "
-        "is read as the typed RetryLaterOutcome carrying CANDIDATE_EXHAUSTED that replaced the "
+        "is read as the typed RetryLaterOutcome carrying NO_RUNNABLE_CANDIDATE that replaced the "
         "ExhaustedResolutionFailure string, and the terminal reason is now asserted as well as the "
         "non-WAITING message"
     ),
@@ -330,7 +339,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     )
 
     assert isinstance(third, RetryLaterOutcome)
-    assert third.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert third.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     assert third.on_change is not None
     assert is_stop_resolution_outcome(third)
     third_reason = stop_resolution_outcome_reason(third)
@@ -338,7 +347,7 @@ def test_config_corrupt_agents_toml_surfaces_file_and_check_config(
     assert len(consulted) == 2
 
 
-def test_cooling_resolver_chain_records_exhaustion_and_escalates_once(
+def test_cooling_resolver_chain_records_the_stop_and_escalates_once(
     tmp_path: Path,
     conflicted_repo: Path,
 ) -> None:
@@ -375,11 +384,11 @@ def test_cooling_resolver_chain_records_exhaustion_and_escalates_once(
     )
 
     assert isinstance(status, RetryLaterOutcome)
-    assert status.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert status.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     assert status.on_change is not None
     assert is_stop_resolution_outcome(status)
     status_reason = stop_resolution_outcome_reason(status)
-    assert "spent/unavailable" in status_reason or "conflict resolution incomplete" in status_reason
+    assert "on cooldown" in status_reason or "conflict resolution incomplete" in status_reason
     charged = {action: count for (_signature, action), count in ledger.read().repeat_counts.items()}
     assert charged == {NextAction.LAST_RESORT_RECOVERY.value: 1}
     assert ledger.read().global_actions_charged == 0

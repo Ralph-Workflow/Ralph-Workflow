@@ -20,7 +20,7 @@ pytestmark = pytest.mark.timeout_seconds(10)
 
 _OPTIONS = GitRunOptions(timeout=5)
 _ON_CHANGE_MESSAGE = (
-    "all resolver agents are spent/unavailable; conflict on shared.txt; "
+    "all resolver agents are on cooldown; conflict on shared.txt; "
     "resume point: git add -- shared.txt"
 )
 
@@ -90,7 +90,7 @@ def test_target_reconcile_retry_later_outcome_retains_record(tmp_path: Path) -> 
         consulted_stops.append(resolver_stop.sha)
         return RetryLaterOutcome(
             on_change=_ON_CHANGE_MESSAGE,
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
             unresolved_paths=("shared.txt",),
         )

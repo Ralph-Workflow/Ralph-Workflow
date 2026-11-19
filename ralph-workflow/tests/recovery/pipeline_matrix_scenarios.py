@@ -117,7 +117,7 @@ class MatrixScenario:
         ledger_status: str
         ledger_entries: dict[str, object]
         verdict_record: object
-        false_bench_count: int
+        false_cooldown_count: int
         invocations: tuple[str, ...]
         probe_calls: tuple[str, ...]
         outcome_kinds: tuple[str, ...] = ()
@@ -136,7 +136,7 @@ class MatrixScenario:
                 self.wait_positive,
                 self.ledger_status,
                 self.verdict_record,
-                self.false_bench_count,
+                self.false_cooldown_count,
                 self.waiting_payload,
                 tuple(sorted(self.unavailability_reasons.items())),
             )
@@ -531,7 +531,7 @@ SCENARIOS = (
         expected_kind="agent_dead",
     ),
     MatrixScenario(
-        "false_bench_feedback",
+        "false_cooldown_feedback",
         ("AC12",),
         (
             MatrixScenario.Script(typed_signal=DEAD_SIGNAL),
@@ -888,7 +888,7 @@ def _observe(
         ledger_status="cooldown" if status.is_cooldown else "eligible",
         ledger_entries=dict(raw_entries),
         verdict_record=_stable(controller.last_verdict_record),
-        false_bench_count=controller.false_bench_feedback.count,
+        false_cooldown_count=controller.false_cooldown_feedback.count,
         invocations=invocations,
         probe_calls=probe_calls,
         outcome_kinds=outcome_kinds,

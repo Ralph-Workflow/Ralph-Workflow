@@ -13,7 +13,10 @@ from ralph.recovery.agent_failure_ledger import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_ledger_exhaustion_persists_across_restart": "operator rule: an agent is either on cooldown or not; hitting the unproductive limits now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown, its expiry, and that the persisted backoff count lengthens the next cooldown after restart",
+    "test_ledger_cooldown_growth_persists_across_restart (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ledger_exhaustion_persists_across_restart with an unchanged body"
+    ),
+    "test_ledger_cooldown_growth_persists_across_restart": "operator rule: an agent is either on cooldown or not; hitting the unproductive limits now starts an expiring unproductive_limit cooldown instead of a permanent Spent state, so the test asserts the cooldown, its expiry, and that the persisted backoff count lengthens the next cooldown after restart",
     "test_legacy_progress_guard_translation_fail_closed": "operator rule: an agent is either on cooldown or not; an exhausted or failed-closed legacy guard now migrates to counters at the limit instead of a permanent Spent state, so the next unproductive attempt starts an expiring cooldown",
     "test_pipeline_state_legacy_guard_migration": "operator rule: an agent is either on cooldown or not; ledger snapshot entries no longer carry is_spent, so the test asserts the migrated counters instead",
 }
@@ -52,7 +55,7 @@ class TestRetryLedgerDurability:
         assert outcome3.cooldown_started
         assert isinstance(outcome3.status, Cooldown)
 
-    def test_ledger_exhaustion_persists_across_restart(self) -> None:
+    def test_ledger_cooldown_growth_persists_across_restart(self) -> None:
         clock = FakeClock(start=100.0)
         ledger = AgentFailureLedger(clock=clock, consecutive_limit=2, total_limit=4)
 

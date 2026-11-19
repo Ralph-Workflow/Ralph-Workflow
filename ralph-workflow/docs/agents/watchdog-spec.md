@@ -713,12 +713,12 @@ plumbing. The emitted lines are:
 |-------|-----|-------|-------|-------|
 | ``FalloverEvent`` | ``fallover`` | ``RECOVERING`` | yellow | ``falling over from <from_agent> to <to_agent> (<reason>)`` |
 | ``FailureEvent`` with ``watchdog_reason`` and ``chain_capacity_remaining > 0`` | ``watchdog_recoverable`` | ``RECOVERING`` | yellow | ``agent stalled: <watchdog_reason>; resuming`` |
-| ``FailureEvent`` with ``chain_capacity_remaining <= 0`` | ``terminal`` | ``STOPPING`` | red | ``agent stalled: <watchdog_reason>; chain exhausted (<category>: <reason>)`` (or, when ``watchdog_reason is None``, ``chain exhausted (<category>: <reason>)``) |
+| ``FailureEvent`` with ``chain_capacity_remaining <= 0`` | ``terminal`` | ``STOPPING`` | red | ``agent stalled: <watchdog_reason>; no selectable agent left in the chain (<category>: <reason>)`` (or, when ``watchdog_reason is None``, ``no selectable agent left in the chain (<category>: <reason>)``) |
 
 The third row matches the product-brief 'or stopping' half:
 the run-loop's terminal-phase ``state.last_error or 'Unknown
 error'`` fallback sits behind a separate user-facing line
-that names the actual root cause (cycle cap, exhausted chain,
+that names the actual root cause (cycle cap, no selectable agent,
 category, reason) so an operator is never left with 'Unknown
 error' alone.
 

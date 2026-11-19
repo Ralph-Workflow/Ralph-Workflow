@@ -17,8 +17,9 @@ from ralph.pipeline.config_file_fingerprint_watcher import (
 )
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
 )
+from ralph.pipeline.conflict_resolution.resolver_cooldown_text import resolvers_on_cooldown_reason
 from ralph.pipeline.key_unavailable import KeyUnavailable
 from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
@@ -531,59 +532,56 @@ def _record_post_attempt(
             )
 
 
-def _warn_chain_not_spent(target: str, session: ResolutionSession) -> None:
+def _warn_conflict_budget_uncharged(target: str, session: ResolutionSession) -> None:
     if session.terminal_reason is None:
         return
     if session.charge_conflict_budget and (
-        session.terminal_reason not in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+        session.terminal_reason not in BUDGET_UNCHARGED_TERMINATION_REASONS
     ):
         return
     logger.warning(
-        "auto_integrate: rebase conflict resolution for '{}' ended on {} without the "
-        "resolver chain being spent; not recording it as exhausted",
+        "auto_integrate: rebase conflict resolution for '{}' ended on {}, which does not "
+        "charge the conflict budget; not recording the conflict as unresolvable",
         target,
         session.terminal_reason.value if session.terminal_reason else "no terminal evidence",
     )
 
 
-def _determine_not_spent_reason(
+def _determine_uncharged_reason(
     session: ResolutionSession, carried_cause: ResolutionFailureCause
 ) -> str | None:
     if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH:
-        reason = session.operator_action_message or session.exhaustion_reason
+        reason = session.operator_action_message or session.halt_reason
         if not reason and session.unresolved_paths:
             from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
 
             return gitlink_escalation_message(session.unresolved_paths)
         return reason
-    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        reason = session.operator_action_message or session.exhaustion_reason
+    if session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
+        reason = session.operator_action_message or session.halt_reason
         if not reason or "resume point:" not in reason:
             from ralph.pipeline.conflict_resolution._operator_command import (
                 operator_command_for_paths,
             )
 
             paths = tuple(session.unresolved_paths)
-            return (
-                "all resolver agents are spent/unavailable; conflict on "
-                f"{', '.join(paths)}; resume point: {operator_command_for_paths(paths)}"
-            )
+            return resolvers_on_cooldown_reason(paths, operator_command_for_paths(paths))
         return reason
     if carried_cause in (
         ResolutionFailureCause.CONFIG_FAILURE,
         ResolutionFailureCause.CONTEXT_FAILURE,
     ):
-        return session.exhaustion_reason or (
+        return session.halt_reason or (
             session.terminal_reason.value if session.terminal_reason is not None else None
         )
     return None
 
 
-def _not_spent_resolution_outcome(
+def _uncharged_resolution_outcome(
     session: ResolutionSession,
     carried_cause: ResolutionFailureCause,
 ) -> tuple[StopResolutionOutcome, str | None]:
-    reason = _determine_not_spent_reason(session, carried_cause)
+    reason = _determine_uncharged_reason(session, carried_cause)
     outcome: StopResolutionOutcome
     if session.last_resolution_outcome is not None and not isinstance(
         session.last_resolution_outcome, ResolvedOutcome
@@ -639,20 +637,20 @@ def _session_carried_cause(session: ResolutionSession) -> ResolutionFailureCause
     return carried_cause
 
 
-def _handle_unspent_session(
+def _handle_uncharged_session(
     root: Path,
     target: str,
     session: ResolutionSession,
     carried_cause: ResolutionFailureCause,
     record: IntegrationRecord | None,
 ) -> RebaseResolutionResult:
-    _warn_chain_not_spent(target, session)
-    outcome, reason = _not_spent_resolution_outcome(session, carried_cause)
+    _warn_conflict_budget_uncharged(target, session)
+    outcome, reason = _uncharged_resolution_outcome(session, carried_cause)
     _persist_resolution_cause(root, carried_cause, reason=reason, record=record)
     return RebaseResolutionResult(outcome, reason, carried_cause, session.terminal_reason)
 
 
-def _handle_spent_session(
+def _handle_charged_session(
     root: Path,
     session: ResolutionSession,
     carried_cause: ResolutionFailureCause,
@@ -661,28 +659,25 @@ def _handle_spent_session(
     reason = (
         session.operator_action_message
         if session.operator_action_message and "resume point:" in session.operator_action_message
-        else session.exhaustion_reason
+        else session.halt_reason
     )
-    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED and (
+    if session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE and (
         not reason or "resume point:" not in reason
     ):
         from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
         paths = tuple(session.unresolved_paths)
-        reason = (
-            "all resolver agents are spent/unavailable; conflict on "
-            f"{', '.join(paths)}; resume point: {operator_command_for_paths(paths)}"
-        )
+        reason = resolvers_on_cooldown_reason(paths, operator_command_for_paths(paths))
     effective_cause = (
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT
     )
     outcome: StopResolutionOutcome
-    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+    if session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
         outcome = RetryLaterOutcome(
             on_change=reason or "resolver_agent_eligibility_changed",
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             unresolved_paths=tuple(session.unresolved_paths),
             failure_cause=effective_cause,
         )
@@ -725,10 +720,10 @@ def _resolve_rebase_with_config(
     carried_cause = _session_carried_cause(session)
     if (
         not session.charge_conflict_budget
-        or session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+        or session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS
     ):
-        return _handle_unspent_session(root, target, session, carried_cause, record)
-    return _handle_spent_session(root, session, carried_cause, record)
+        return _handle_uncharged_session(root, target, session, carried_cause, record)
+    return _handle_charged_session(root, session, carried_cause, record)
 
 
 def _persist_resolution_cause(

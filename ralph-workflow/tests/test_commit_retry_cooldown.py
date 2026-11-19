@@ -40,6 +40,9 @@ COMMIT_PHASE = _COMMIT_PHASE
 COMMIT_AGENT_NAME = _COMMIT_AGENT_NAME
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_cooldown_state (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_bench_state with an unchanged body"
+    ),
     "test_commit_outer_retry_regression_owner_controller_preserves_cooldown": (
         "the check no longer records two attempt facts on a hand-built controller; "
         "it drives the real commit outer retry loop and reads the owner's public "
@@ -50,7 +53,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "length, so the test accepts either limit reason and asserts the agent is "
         "eligible again after expiry"
     ),
-    "test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_bench_state": (
+    "test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_cooldown_state": (
         "the new check pins the regression the cooldown contract depends on: an owner "
         "rebuilt per outer attempt never accumulates the unproductive charges, so no "
         "owner reports a cooldown and the bench state cannot survive the outer retries"
@@ -369,7 +372,7 @@ def test_commit_outer_retry_regression_owner_controller_preserves_cooldown(
     assert controller.agent_eligibility(_COMMIT_PHASE, _COMMIT_AGENT_NAME).is_eligible is True
 
 
-def test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_bench_state(
+def test_commit_outer_retry_owner_rebuilt_per_attempt_loses_the_cooldown_state(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:

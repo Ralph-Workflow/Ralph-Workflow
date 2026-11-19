@@ -15,6 +15,15 @@ from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_invocation_boundary_skips_cooling_agent_returns_to_preferred": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_invocation_boundary_skips_exhausted_agent_returns_to_preferred with an unchanged body"
+    ),
+    "test_priority_first_selection_cooling_at_cursor_picks_highest_priority_available": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_priority_first_selection_spent_at_cursor_picks_highest_priority_unspent with an unchanged body"
+    ),
+}
+
 
 def _minimal_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as d:
@@ -351,7 +360,7 @@ def test_successful_preferred_agent_remains_preferred_on_later_invocations() -> 
     assert chain2.agents[chain2.current_index] == "claude"
 
 
-def test_invocation_boundary_skips_exhausted_agent_returns_to_preferred() -> None:
+def test_invocation_boundary_skips_cooling_agent_returns_to_preferred() -> None:
     clock = FakeClock(start=0.0)
     initial_entries = {
         "opencode": UnavailabilityEntry(
@@ -508,7 +517,7 @@ def test_priority_first_selection_persisted_current_index_does_not_introduce_rou
     assert selection.agent == "claude"
 
 
-def test_priority_first_selection_spent_at_cursor_picks_highest_priority_unspent() -> None:
+def test_priority_first_selection_cooling_at_cursor_picks_highest_priority_available() -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(

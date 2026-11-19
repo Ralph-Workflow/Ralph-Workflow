@@ -37,11 +37,32 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_only_the_recovery_controller_benches_agents_as_dead": "operator rule: an agent is either on cooldown or not; the ledger now starts its own unproductive_limit cooldown in the shared tracker, so agent_failure_ledger.py is the second sanctioned mark_unavailable caller",
-    "test_spent_state_is_only_written_through_the_ledger_threshold_outcome": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the test asserts _spent_agents, note_retry_exhaustion and is_spent are absent from the package",
-    "test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
-    "test_an_end_in_an_unseen_format_never_benches_without_failed_probe_evidence": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
-    "test_a_crashing_probe_runner_never_benches_and_never_breaks_recovery": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_a_live_session_that_ends_for_any_reason_never_starts_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent with an unchanged body"
+    ),
+    "test_an_end_in_an_unseen_format_never_cools_down_without_failed_probe_evidence (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_an_end_in_an_unseen_format_never_benches_without_failed_probe_evidence with an unchanged body"
+    ),
+    "test_a_failed_probe_cools_the_inert_agent_down_whatever_the_transcript_says": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_failed_probe_benches_the_inert_agent_whatever_the_transcript_says with an unchanged body"
+    ),
+    "test_a_crashing_probe_runner_never_starts_a_cooldown_and_never_breaks_recovery (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_crashing_probe_runner_never_benches_and_never_breaks_recovery with an unchanged body"
+    ),
+    "test_only_the_recovery_controller_starts_dead_agent_cooldowns (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_only_the_recovery_controller_benches_agents_as_dead with an unchanged body"
+    ),
+    "test_no_non_expiring_exclusion_state_exists_in_the_package (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_spent_state_is_only_written_through_the_ledger_threshold_outcome with an unchanged body"
+    ),
+    "test_nothing_sets_a_per_call_allowance_hint": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_nothing_sets_the_per_call_current_allowance_spent_hint with an unchanged body"
+    ),
+    "test_only_the_recovery_controller_starts_dead_agent_cooldowns": "operator rule: an agent is either on cooldown or not; the ledger now starts its own unproductive_limit cooldown in the shared tracker, so agent_failure_ledger.py is the second sanctioned mark_unavailable caller",
+    "test_no_non_expiring_exclusion_state_exists_in_the_package": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the test asserts _spent_agents, note_retry_exhaustion and is_spent are absent from the package",
+    "test_a_live_session_that_ends_for_any_reason_never_starts_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_an_end_in_an_unseen_format_never_cools_down_without_failed_probe_evidence": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
+    "test_a_crashing_probe_runner_never_starts_a_cooldown_and_never_breaks_recovery": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
     "test_an_exhausted_probe_budget_never_benches": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
     "test_a_failed_attempt_on_a_one_agent_chain_with_no_evidence_is_an_ordinary_failure": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so clean means not benched and any status is eligible or a non-dead expiring cooldown",
 }
@@ -164,7 +185,7 @@ def _live_facts(
     code=ANY_RETURN_CODE,
     probe=st.sampled_from(HEALTHY_AGENT_OUTCOMES),
 )
-def test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent(
+def test_a_live_session_that_ends_for_any_reason_never_starts_a_dead_agent_cooldown(
     issuer: TerminationIssuer,
     observed: int | None,
     reported: int | None,
@@ -202,7 +223,7 @@ def test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent(
     attach_facts=st.booleans(),
     with_runner=st.booleans(),
 )
-def test_an_end_in_an_unseen_format_never_benches_without_failed_probe_evidence(
+def test_an_end_in_an_unseen_format_never_cools_down_without_failed_probe_evidence(
     wording: str,
     code: int | None,
     tool_text: list[str],
@@ -305,7 +326,7 @@ def test_the_verdict_for_an_unproven_probe_is_independent_of_transcript_wording(
 
 @SLOW
 @given(events=st.lists(WORDING, max_size=5), message=WORDING)
-def test_a_failed_probe_benches_the_inert_agent_whatever_the_transcript_says(
+def test_a_failed_probe_cools_the_inert_agent_down_whatever_the_transcript_says(
     events: list[str], message: str
 ) -> None:
     controller = _controller(lambda _phase, _agent: ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
@@ -328,7 +349,7 @@ def test_a_failed_probe_benches_the_inert_agent_whatever_the_transcript_says(
     assert reasons.get(AGENT) == DEAD
 
 
-def test_a_crashing_probe_runner_never_benches_and_never_breaks_recovery() -> None:
+def test_a_crashing_probe_runner_never_starts_a_cooldown_and_never_breaks_recovery() -> None:
     def crashing(_phase: str, _agent: str) -> ProbeOutcome | None:
         raise RuntimeError("probe infrastructure exploded")
 
@@ -370,7 +391,7 @@ def _files_containing(pattern: str) -> set[str]:
     return {name for name, text in _package_sources().items() if compiled.search(text)}
 
 
-def test_only_the_recovery_controller_benches_agents_as_dead() -> None:
+def test_only_the_recovery_controller_starts_dead_agent_cooldowns() -> None:
     assert _files_containing(r"DEAD_AGENT_NO_PROGRESS") == {
         "recovery/controller.py",
         "recovery/unavailability_reason.py",
@@ -382,13 +403,13 @@ def test_only_the_recovery_controller_benches_agents_as_dead() -> None:
     }
 
 
-def test_spent_state_is_only_written_through_the_ledger_threshold_outcome() -> None:
+def test_no_non_expiring_exclusion_state_exists_in_the_package() -> None:
     assert _files_containing(r"note_retry_exhaustion") == set()
     assert _files_containing(r"_spent_agents\b") == set()
     assert _files_containing(r"\.is_spent\b") == set()
 
 
-def test_nothing_sets_the_per_call_current_allowance_spent_hint() -> None:
+def test_nothing_sets_a_per_call_allowance_hint() -> None:
     assert _files_containing(r"current_allowance_spent") == set()
 
 

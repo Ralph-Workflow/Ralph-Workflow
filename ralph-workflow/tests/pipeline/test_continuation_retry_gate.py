@@ -781,7 +781,7 @@ def test_recorded_failure_cause_is_not_inferred_from_the_reason_text(
     def fake_resolve_in_progress(
         root: Path, target: str, resolver: object, *, session: ResolutionSession | None = None
     ) -> bool:
-        session.exhaustion_reason = "fix /tmp/ralph-workflow.toml then run ralph --check-config"
+        session.halt_reason = "fix /tmp/ralph-workflow.toml then run ralph --check-config"
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         return False
 

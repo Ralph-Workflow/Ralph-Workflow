@@ -10,8 +10,8 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
     INFRASTRUCTURE_TERMINATION_REASONS,
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.resolution_outcome import (
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 __all__ = [
     "is_effectively_empty",
     "reset_round_reporting",
-    "resolution_exhaustion_reason",
+    "resolution_halt_reason",
     "resolution_outcome",
     "round_termination_reason",
 ]
@@ -45,14 +45,12 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResol
     if not succeeded:
         if session.last_failure_cause != ResolutionFailureCause.NONE:
             cause = session.last_failure_cause
-        elif session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+        elif session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS:
             cause = ResolutionFailureCause.AGENT_FAILURE
         elif session.terminal_reason is not None:
             cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
     ex_msg = (
-        session.operator_action_message
-        if session.operator_action_message
-        else session.exhaustion_reason
+        session.operator_action_message if session.operator_action_message else session.halt_reason
     )
     return classify_resolution_failure(
         terminal_reason=session.terminal_reason,
@@ -107,7 +105,7 @@ def _uninvoked_round_reason(
         if target and ledger.earliest_wait_ms(PHASE_RESOLUTION, target) > 0:
             return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
 
-    return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    return ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
 
 
 def round_termination_reason(
@@ -132,7 +130,7 @@ def round_termination_reason(
     return ResolutionTerminationReason.RESOLUTION_INCOMPLETE
 
 
-def resolution_exhaustion_reason(
+def resolution_halt_reason(
     session: ResolutionSession,
     unresolved_paths: tuple[str, ...],
 ) -> str:
@@ -140,14 +138,14 @@ def resolution_exhaustion_reason(
         session.operator_action_message
         if session.operator_action_message and "resume point:" in session.operator_action_message
         else (
-            session.exhaustion_reason
-            if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
+            session.halt_reason
+            if session.halt_reason and "resume point:" in session.halt_reason
             else None
         )
     )
     if action_msg:
-        if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-            prefix = f"{ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value}: "
+        if session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
+            prefix = f"{ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE.value}: "
             return action_msg if action_msg.startswith(prefix) else f"{prefix}{action_msg}"
         return action_msg
     if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH and unresolved_paths:
@@ -155,23 +153,25 @@ def resolution_exhaustion_reason(
 
         return gitlink_escalation_message(unresolved_paths)
     if (
-        session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
         and unresolved_paths
     ):
         from ralph.pipeline.conflict_resolution._operator_command import (
             operator_command_for_paths,
         )
+        from ralph.pipeline.conflict_resolution.resolver_cooldown_text import (
+            resolvers_on_cooldown_reason,
+        )
 
-        paths = ", ".join(unresolved_paths)
         cmd = operator_command_for_paths(unresolved_paths)
         return (
-            f"CANDIDATE_EXHAUSTED: all resolver agents are spent/unavailable; "
-            f"conflict on {paths}; resume point: {cmd}"
+            f"{ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE.value}: "
+            f"{resolvers_on_cooldown_reason(unresolved_paths, cmd)}"
         )
     reason = (
-        session.terminal_reason.value
+        session.terminal_reason
         if session.terminal_reason is not None
-        else "RESOLUTION_CHAIN_EXHAUSTED"
-    )
+        else ResolutionTerminationReason.RESOLUTION_INCOMPLETE
+    ).value
     paths = ", ".join(unresolved_paths) or "none still carrying markers"
     return f"{reason}: unresolved paths: {paths}"

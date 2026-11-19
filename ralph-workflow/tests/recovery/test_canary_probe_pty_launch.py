@@ -45,6 +45,12 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 pytestmark = pytest.mark.subprocess_e2e
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_untrusted_cwd_dialog_exit_is_inconclusive_and_starts_no_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_untrusted_cwd_dialog_exit_is_inconclusive_and_benches_nothing with an unchanged body"
+    ),
+    "test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker (cooldown vocabulary)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker": "operator rule: an agent is either on cooldown or not; with a one-attempt unproductive limit the charged attempt now starts an expiring unproductive_limit cooldown in the shared tracker, so the test asserts that non-dead cooldown and that the agent is selectable again once it expires",
 }
 
@@ -122,7 +128,7 @@ def _probe_env(trusted_root: Path, **extra: str) -> dict[str, str]:
 
 
 @pytest.mark.timeout_seconds(8)
-def test_untrusted_cwd_dialog_exit_is_inconclusive_and_benches_nothing(
+def test_untrusted_cwd_dialog_exit_is_inconclusive_and_starts_no_cooldown(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
 ) -> None:
@@ -316,7 +322,7 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
         "a probe that could not run (blocked first-run dialog) must keep the attempt "
         f"verdict unknown, not agent_dead (observed: {outcome.kind})"
     )
-    assert outcome.benches_agent is False
+    assert outcome.starts_cooldown is False
     store = controller.unavailability_store
     reasons = store.snapshot().get("unavailability_reasons", {})
     assert reasons.get(_AGENT_NAME) == str(UnavailabilityReason.UNPRODUCTIVE_LIMIT), (
@@ -326,7 +332,7 @@ def test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker(
     )
     assert store.earliest_unavailable_wait_ms(_PROBE_PHASE, [_AGENT_NAME]) == 60_000
     assert "spent_agents" not in controller.snapshot()
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0
     assert list(tmp_path.rglob(CANARY_MARKER_FILENAME)) == []
 
     assert len(probe_results) == 1

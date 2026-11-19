@@ -48,7 +48,7 @@ def test_failed_resolver_is_skipped_in_favour_of_next_candidate() -> None:
     assert choose_resolver(controller, CHAIN).agent == "cursor/auto"
 
 
-def test_unrecognised_failure_text_still_benches_the_resolver() -> None:
+def test_unrecognised_failure_text_still_cools_the_resolver_down() -> None:
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "codex/a", "")
@@ -70,7 +70,7 @@ def test_repeated_failures_back_off_longer_each_time() -> None:
     assert waits[0] < waits[1] < waits[2]
 
 
-def test_cursor_usage_limit_text_benches_for_a_long_time() -> None:
+def test_cursor_usage_limit_text_cools_down_for_a_long_time() -> None:
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "cursor/auto", CURSOR_USAGE_LIMIT)
@@ -80,7 +80,7 @@ def test_cursor_usage_limit_text_benches_for_a_long_time() -> None:
     assert choice.wait_ms >= 60_000
 
 
-def test_every_candidate_benched_reports_the_earliest_wait() -> None:
+def test_every_candidate_cooling_down_reports_the_earliest_wait() -> None:
     controller = _controller(FakeClock())
     _bench_unproductive(controller, "codex/a", "kaboom")
     _bench_unproductive(controller, "cursor/auto", CURSOR_USAGE_LIMIT)
@@ -120,7 +120,7 @@ def test_empty_chain_offers_nothing_and_does_not_wait() -> None:
 
 
 @pytest.mark.parametrize("failure", [ValueError("boom"), "boom", ""])
-def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
+def test_cooldown_accepts_any_failure_shape(failure: BaseException | str) -> None:
     controller = _controller(FakeClock())
 
     _bench_unproductive(controller, "codex/a", failure)
@@ -129,6 +129,18 @@ def test_bench_accepts_any_failure_shape(failure: BaseException | str) -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_unrecognised_failure_text_still_cools_the_resolver_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_unrecognised_failure_text_still_benches_the_resolver with an unchanged body"
+    ),
+    "test_cursor_usage_limit_text_cools_down_for_a_long_time": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_cursor_usage_limit_text_benches_for_a_long_time with an unchanged body"
+    ),
+    "test_every_candidate_cooling_down_reports_the_earliest_wait": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_every_candidate_benched_reports_the_earliest_wait with an unchanged body"
+    ),
+    "test_cooldown_accepts_any_failure_shape": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_bench_accepts_any_failure_shape with an unchanged body"
+    ),
     "test_integration_health_does_not_contaminate_development_phase": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so a resolution cooldown also keeps the agent out of development until it "

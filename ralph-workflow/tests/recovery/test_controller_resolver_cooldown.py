@@ -25,7 +25,7 @@ from ralph.pipeline.conflict_resolution import (
     driver as driver_module,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_outcome
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
@@ -54,6 +54,12 @@ _CONFIG = UnifiedConfig.model_validate({"general": {}})
 pytestmark = pytest.mark.timeout_seconds(10)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_controller_resolver_cooldown module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_controller_spent_exhaustion.py with unchanged content"
+    ),
+    "test_prior_dead_launch_records_tool_surface_dead": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_all_unproductive_limit_resolvers_end_rounds_with_a_finite_wait": "operator rule: an agent is either on cooldown or not; note_retry_exhaustion and the permanent controller spent set are gone, so every resolver is put on an expiring unproductive_limit cooldown and the test asserts the finite wait, the retry-later outcome, and selectability after expiry",
     "test_mixed_unproductive_limit_and_cooldown_yields_candidate_unavailable": "operator rule: an agent is either on cooldown or not; the spent resolver is replaced by an expiring unproductive_limit cooldown, and all_exhausted is gone, so the mixed chain is asserted through its positive wait",
     "test_continuation_gate_key_changes_on_retry_limit_cooldown_and_admits_one_retry": "operator rule: an agent is either on cooldown or not; note_retry_exhaustion is gone; exhausting retries now starts an expiring retry_limit cooldown, which is what changes the continuation gate key",
@@ -211,7 +217,7 @@ def test_prior_dead_launch_records_tool_surface_dead(
     assert isinstance(outcome, RetryLaterOutcome)
     assert invoked_agents == ["primary", "fallback"]
     assert session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS
 
 
 def test_all_unproductive_limit_resolvers_end_rounds_with_a_finite_wait(
@@ -300,7 +306,7 @@ def test_mixed_unproductive_limit_and_cooldown_yields_candidate_unavailable(
 
     assert isinstance(outcome, RetryLaterOutcome)
     assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS
 
 
 def test_continuation_gate_key_changes_on_retry_limit_cooldown_and_admits_one_retry(
@@ -477,7 +483,7 @@ def test_sequential_dead_launch_to_unproductive_limit_repeat(
     assert isinstance(result1, RetryLaterOutcome)
     assert invoked == ["primary", "fallback"]
     assert session.terminal_reason == ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    assert session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS
     assert result1.on_change is not None
 
     _cool_for_unproductive_limit(controller, PHASE_RESOLUTION, "primary")

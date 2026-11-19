@@ -26,6 +26,13 @@ from ralph.pipeline.conflict_resolution.sight import (
     policy_gitlink_paths,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_unfetchable_gitlink_pointer_is_resolved_by_policy_without_operator": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "Test Author",
     "GIT_AUTHOR_EMAIL": "author@example.com",
@@ -130,4 +137,4 @@ def test_unfetchable_gitlink_pointer_is_resolved_by_policy_without_operator(
     assert _git(repo, "ls-files", "-s", "sub").stdout.startswith(f"160000 {ours} 0")
     assert session.terminal_reason is None
     assert session.operator_action_message is None
-    assert session.exhaustion_reason is None
+    assert session.halt_reason is None

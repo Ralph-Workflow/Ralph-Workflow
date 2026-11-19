@@ -42,8 +42,35 @@ OTHER_AGENT = "opencode"
 QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_a_runtime_issued_quota_termination_cools_without_benching_or_charging": "a provider quota kill of a live session now cools the agent so the next selection falls over instead of re-invoking the rate-limited agent; the ledger-untouched and no-bench checks are kept",
-    "test_ac14_the_bench_writes_no_spent_entry_and_no_spent_agent": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires and leaves the agent selectable",
+    "test_ac10_a_typed_quota_failure_cools_the_agent_down_on_the_first_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_a_typed_quota_failure_benches_the_agent_on_the_first_failure with an unchanged body"
+    ),
+    "test_ac10_a_missing_credentials_failure_cools_the_agent_down_on_the_first_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_a_missing_credentials_failure_benches_the_agent_on_the_first_failure with an unchanged body"
+    ),
+    "test_ac10_a_prompt_echo_broken_agent_cools_the_agent_down_on_the_first_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_a_prompt_echo_broken_agent_benches_the_agent_on_the_first_failure with an unchanged body"
+    ),
+    "test_ac14_the_dead_agent_cooldown_writes_no_non_expiring_entry (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac14_the_bench_writes_no_spent_entry_and_no_spent_agent with an unchanged body"
+    ),
+    "test_ac5_an_inconclusive_probe_does_not_cool_the_agent_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac5_an_inconclusive_probe_does_not_bench_the_agent with an unchanged body"
+    ),
+    "test_a_runtime_issued_quota_termination_cools_without_a_dead_agent_cooldown_or_charge (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_runtime_issued_quota_termination_cools_without_benching_or_charging with an unchanged body"
+    ),
+    "test_the_skip_same_agent_retries_route_records_the_attempt_and_cools_the_agent_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_skip_same_agent_retries_route_records_the_attempt_and_benches_the_agent with an unchanged body"
+    ),
+    "test_the_dead_agent_cooldown_warning_carries_the_verdict_evidence": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_bench_warning_carries_the_verdict_evidence with an unchanged body"
+    ),
+    "test_dead_agent_cooldown_routes module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_dead_agent_bench_routes.py with unchanged content"
+    ),
+    "test_a_runtime_issued_quota_termination_cools_without_a_dead_agent_cooldown_or_charge": "a provider quota kill of a live session now cools the agent so the next selection falls over instead of re-invoking the rate-limited agent; the ledger-untouched and no-bench checks are kept",
+    "test_ac14_the_dead_agent_cooldown_writes_no_non_expiring_entry": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires and leaves the agent selectable",
 }
 
 
@@ -138,7 +165,7 @@ def warning_sink() -> Iterator[list[str]]:
 
 
 @pytest.mark.parametrize("connectivity_state", ("online", "offline"))
-def test_ac10_a_typed_quota_failure_benches_the_agent_on_the_first_failure(
+def test_ac10_a_typed_quota_failure_cools_the_agent_down_on_the_first_failure(
     connectivity_state: str,
 ) -> None:
     clock = FakeClock(start=0.0)
@@ -171,7 +198,7 @@ def test_ac10_a_second_confirmed_failure_escalates_the_cooldown() -> None:
     assert second_wait > first_wait
 
 
-def test_ac10_a_missing_credentials_failure_benches_the_agent_on_the_first_failure() -> None:
+def test_ac10_a_missing_credentials_failure_cools_the_agent_down_on_the_first_failure() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
 
@@ -185,7 +212,7 @@ def test_ac10_a_missing_credentials_failure_benches_the_agent_on_the_first_failu
     assert _bench_reason(controller) == str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 
 
-def test_ac10_a_prompt_echo_broken_agent_benches_the_agent_on_the_first_failure() -> None:
+def test_ac10_a_prompt_echo_broken_agent_cools_the_agent_down_on_the_first_failure() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
 
@@ -199,7 +226,7 @@ def test_ac10_a_prompt_echo_broken_agent_benches_the_agent_on_the_first_failure(
     assert _bench_reason(controller) == str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 
 
-def test_ac14_the_bench_writes_no_spent_entry_and_no_spent_agent() -> None:
+def test_ac14_the_dead_agent_cooldown_writes_no_non_expiring_entry() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
 
@@ -232,7 +259,7 @@ def test_ac5_a_healthy_probe_drops_the_legacy_broken_agent_reason() -> None:
     assert controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [AGENT]) == 0
 
 
-def test_ac5_an_inconclusive_probe_does_not_bench_the_agent() -> None:
+def test_ac5_an_inconclusive_probe_does_not_cool_the_agent_down() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.INCONCLUSIVE)
 
@@ -246,7 +273,7 @@ def test_ac5_an_inconclusive_probe_does_not_bench_the_agent() -> None:
     assert controller.unavailability_store.earliest_unavailable_wait_ms(PHASE, [AGENT]) == 0
 
 
-def test_a_runtime_issued_quota_termination_cools_without_benching_or_charging() -> None:
+def test_a_runtime_issued_quota_termination_cools_without_a_dead_agent_cooldown_or_charge() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
     termination = TerminationRecord.create(
@@ -271,7 +298,7 @@ def test_a_runtime_issued_quota_termination_cools_without_benching_or_charging()
     assert _counter(entry, "consecutive_unproductive") == 0
 
 
-def test_the_skip_same_agent_retries_route_records_the_attempt_and_benches_the_agent() -> None:
+def test_the_skip_same_agent_retries_route_records_the_attempt_and_cools_the_agent_down() -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
     intent = AgentRetryIntent(
@@ -332,7 +359,9 @@ def test_the_legacy_broken_agent_route_is_unchanged_without_a_verdict_runner() -
     assert _bench_reason(controller) == str(UnavailabilityReason.BROKEN_AGENT)
 
 
-def test_the_bench_warning_carries_the_verdict_evidence(warning_sink: list[str]) -> None:
+def test_the_dead_agent_cooldown_warning_carries_the_verdict_evidence(
+    warning_sink: list[str],
+) -> None:
     clock = FakeClock(start=0.0)
     controller = _probe_controller(clock, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
     termination = TerminationRecord.create(

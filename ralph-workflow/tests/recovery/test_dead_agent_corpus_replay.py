@@ -20,8 +20,8 @@ from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_verdict import (
     decide_dead_agent_verdict,
-    verdict_benches_agent,
     verdict_record,
+    verdict_starts_cooldown,
 )
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
@@ -33,8 +33,26 @@ if TYPE_CHECKING:
 from tests.recovery._corpus_derive import CorpusCase, load_corpus, load_fixtures
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_no_negative_is_ever_marked_spent_or_left_unavailable": "operator rule: an agent is either on cooldown or not; the spent state is gone, so a negative must not be excluded without a bench and any exclusion must expire once the clock passes it",
-    "test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails": "operator rule: an agent is either on cooldown or not; the bench is a finite dead_agent_no_progress cooldown, so the test asserts it expires instead of asserting the agent is not spent",
+    "test_replaying_the_labelled_corpus_yields_zero_false_cooldowns_and_reports_the_rate": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_replaying_the_labelled_corpus_yields_zero_false_benches_and_reports_the_rate with an unchanged body"
+    ),
+    "test_no_negative_is_ever_left_on_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_no_negative_is_ever_marked_spent_or_left_unavailable with an unchanged body"
+    ),
+    "test_the_genuine_positive_case_cools_down_on_the_first_attempt_when_the_probe_fails (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails with an unchanged body"
+    ),
+    "test_every_corpus_case_expected_attribution_matches_attribute_attempt": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incident": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_no_negative_is_ever_left_on_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent state is gone, so a negative must not be excluded without a bench and any exclusion must expire once the clock passes it",
+    "test_the_genuine_positive_case_cools_down_on_the_first_attempt_when_the_probe_fails": "operator rule: an agent is either on cooldown or not; the bench is a finite dead_agent_no_progress cooldown, so the test asserts it expires instead of asserting the agent is not spent",
 }
 
 PHASE = "development"
@@ -49,8 +67,8 @@ REQUIRED_INCIDENTS = frozenset({1, 2, 3, 4, 5, 6})
 class Replay:
     case_id: str
     probe_outcome: ProbeOutcome | None
-    benched: bool
-    excluded_without_bench: bool
+    dead_agent_cooldown: bool
+    excluded_without_cooldown: bool
     cooldown_expires: bool
     probes_run: int
 
@@ -95,9 +113,9 @@ def _replay(case: CorpusCase, agent: str, probe_outcome: ProbeOutcome | None) ->
     reduce(state, event, _policy(), recovery=controller)
 
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
-    benched = isinstance(reasons, dict) and reasons.get(agent) == DEAD
+    dead_agent_cooldown = isinstance(reasons, dict) and reasons.get(agent) == DEAD
     store = controller.unavailability_store
-    excluded_without_bench = not store.is_available(PHASE, agent) and not benched
+    excluded_without_cooldown = not store.is_available(PHASE, agent) and not dead_agent_cooldown
     wait_ms = store.earliest_unavailable_wait_ms(PHASE, [agent])
     clock.advance(wait_ms / 1000.0 + 0.001)
     cooldown_expires = (
@@ -108,8 +126,8 @@ def _replay(case: CorpusCase, agent: str, probe_outcome: ProbeOutcome | None) ->
     return Replay(
         case.id,
         probe_outcome,
-        benched,
-        excluded_without_bench,
+        dead_agent_cooldown,
+        excluded_without_cooldown,
         cooldown_expires,
         len(probes),
     )
@@ -158,30 +176,30 @@ def _negative_replays_for(
     return [corpus_replays[(case.id, outcome)] for outcome in _outcomes_for(case)]
 
 
-def test_replaying_the_labelled_corpus_yields_zero_false_benches_and_reports_the_rate(
+def test_replaying_the_labelled_corpus_yields_zero_false_cooldowns_and_reports_the_rate(
     capsys: pytest.CaptureFixture[str],
     negative_replays: tuple[Replay, ...],
 ) -> None:
     replays = negative_replays
-    false_benches = [replay for replay in replays if replay.benched]
-    report = f"false_benches={len(false_benches)}/{len(replays)}"
+    false_cooldowns = [replay for replay in replays if replay.dead_agent_cooldown]
+    report = f"false_cooldowns={len(false_cooldowns)}/{len(replays)}"
 
     with capsys.disabled():
         print(f"\ndead-agent corpus replay: {report}")
 
-    assert report == f"false_benches=0/{len(replays)}"
+    assert report == f"false_cooldowns=0/{len(replays)}"
     assert len(replays) >= 3 * 9, (
         "every negative must be replayed under every healthy probe outcome"
     )
 
 
-def test_no_negative_is_ever_marked_spent_or_left_unavailable(
+def test_no_negative_is_ever_left_on_a_dead_agent_cooldown(
     negative_replays: tuple[Replay, ...],
 ) -> None:
     offenders = [
         replay
         for replay in negative_replays
-        if replay.excluded_without_bench or not replay.cooldown_expires
+        if replay.excluded_without_cooldown or not replay.cooldown_expires
     ]
 
     assert offenders == []
@@ -193,10 +211,10 @@ def test_the_genuine_positive_case_is_cleared_by_a_passing_probe(
 ) -> None:
     agy = next(case for case in corpus if case.label == "positive")
 
-    assert corpus_replays[(agy.id, ProbeOutcome.PASSED)].benched is False
+    assert corpus_replays[(agy.id, ProbeOutcome.PASSED)].dead_agent_cooldown is False
 
 
-def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_fails(
+def test_the_genuine_positive_case_cools_down_on_the_first_attempt_when_the_probe_fails(
     corpus: tuple[CorpusCase, ...],
     corpus_replays: Mapping[tuple[str, ProbeOutcome | None], Replay],
 ) -> None:
@@ -205,8 +223,8 @@ def test_the_genuine_positive_case_benches_on_the_first_attempt_when_the_probe_f
     assert [case.id for case in positives] == ["agy_quota_error_step"]
     replay = corpus_replays[(positives[0].id, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)]
 
-    assert replay.benched is True
-    assert replay.excluded_without_bench is False
+    assert replay.dead_agent_cooldown is True
+    assert replay.excluded_without_cooldown is False
     assert replay.cooldown_expires is True
     assert replay.probes_run == 1
 
@@ -219,7 +237,7 @@ def test_the_genuine_positive_case_stays_unknown_when_the_probe_cannot_decide(
 ) -> None:
     agy = next(case for case in corpus if case.label == "positive")
 
-    assert corpus_replays[(agy.id, outcome)].benched is False
+    assert corpus_replays[(agy.id, outcome)].dead_agent_cooldown is False
 
 
 def test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incident(
@@ -239,9 +257,11 @@ def test_every_labelled_negative_stays_clean_and_the_corpus_contains_each_incide
     )
     assert negatives
     for case in negatives:
-        assert case.expected_bench is False
+        assert case.expected_cooldown is False
         assert case.expected_verdict != "agent_dead"
-        assert not any(replay.benched for replay in _negative_replays_for(case, corpus_replays))
+        assert not any(
+            replay.dead_agent_cooldown for replay in _negative_replays_for(case, corpus_replays)
+        )
 
 
 def test_a_new_fixture_is_replayed_without_editing_the_test(
@@ -318,11 +338,11 @@ def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_terminat
             assert verdict.termination is case.facts.termination
             assert record["return_code_discrepancy"] == verdict.return_code_discrepancy
             if case.label == "negative":
-                assert verdict_benches_agent(verdict.verdict) is False
+                assert verdict_starts_cooldown(verdict.verdict) is False
                 assert record["verdict"] != "agent_dead"
             else:
-                expected_bench = outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK
-                assert verdict_benches_agent(verdict.verdict) is expected_bench
+                expected_cooldown = outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK
+                assert verdict_starts_cooldown(verdict.verdict) is expected_cooldown
 
 
 def test_every_corpus_case_expected_attribution_matches_attribute_attempt(
@@ -339,16 +359,16 @@ def test_every_corpus_case_expected_attribution_matches_attribute_attempt(
         if recorded.attribution.value != case.expected_attribution:
             mismatches.append((case.id, case.expected_attribution, recorded.attribution.value))
         if case.expected_attribution in {"runtime", "task_or_environment"}:
-            assert case.expected_bench is False
+            assert case.expected_cooldown is False
             assert case.expected_verdict != "agent_dead"
         if case.label == "positive":
-            assert case.expected_bench is True
+            assert case.expected_cooldown is True
             assert case.expected_verdict == "agent_dead"
         if recorded.cleared or recorded.attribution.value in {
             "runtime",
             "task_or_environment",
         }:
-            assert case.expected_bench is False
+            assert case.expected_cooldown is False
         for outcome in _outcomes_for(case):
             verdict = decide_dead_agent_verdict(case.facts, recorded, outcome)
             record = verdict_record(PHASE, case.id, verdict)

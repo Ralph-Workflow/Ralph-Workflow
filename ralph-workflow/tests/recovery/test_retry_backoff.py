@@ -22,6 +22,13 @@ from ralph.recovery.controller import (
 )
 from ralph.recovery.failure_category import FailureCategory
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ledger_cooldown_falls_over_to_the_next_agent": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ledger_demotion_falls_over_to_the_next_agent with an unchanged body"
+    ),
+}
+
+
 _BASE_MS = 1000
 _MAX_MS = 30_000
 _ATTEMPT_0_EXPECTED = 1000
@@ -178,7 +185,7 @@ def test_backoff_grows_per_agent() -> None:
     assert opencode_first.retry_delay_ms == 500
 
 
-def test_ledger_demotion_falls_over_to_the_next_agent() -> None:
+def test_ledger_cooldown_falls_over_to_the_next_agent() -> None:
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, agents=["claude", "opencode"])
     controller = RecoveryController(
         options=RecoveryControllerOptions(

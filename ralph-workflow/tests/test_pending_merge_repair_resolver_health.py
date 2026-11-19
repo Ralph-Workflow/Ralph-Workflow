@@ -18,6 +18,15 @@ CHAIN = ("first", "second")
 DECLARATION = ROOT / ".agent" / "tmp" / "pending_commit_repair_paths.json"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_declared_repair_is_a_verified_artifact_and_never_starts_a_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_declared_repair_is_a_verified_artifact_and_is_never_benched with an unchanged body"
+    ),
+    "test_agent_that_changes_the_workspace_cools_down_only_at_the_total_limit": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_that_changes_the_workspace_is_demoted_only_by_the_total_limit with an unchanged body"
+    ),
+    "test_agent_that_raises_cools_down_too": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_that_raises_is_benched_too with an unchanged body"
+    ),
     "test_integration_phase_standing_does_not_leak_into_other_phases": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so a resolution unproductive_limit cooldown also applies in development, and "
@@ -103,7 +112,7 @@ def test_truthy_invocation_without_a_repair_is_an_unproductive_attempt() -> None
     assert invoked == ["first", "first", "first", "second"]
 
 
-def test_declared_repair_is_a_verified_artifact_and_is_never_benched() -> None:
+def test_declared_repair_is_a_verified_artifact_and_never_starts_a_cooldown() -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
@@ -114,7 +123,7 @@ def test_declared_repair_is_a_verified_artifact_and_is_never_benched() -> None:
     assert invoked == ["first"] * 12
 
 
-def test_agent_that_changes_the_workspace_is_demoted_only_by_the_total_limit() -> None:
+def test_agent_that_changes_the_workspace_cools_down_only_at_the_total_limit() -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock(), probe=_ChangingWorkspaceProbe())
@@ -157,7 +166,7 @@ def test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt() -> None
     assert after.merge_commit_tree == "tree"
 
 
-def test_agent_that_raises_is_benched_too() -> None:
+def test_agent_that_raises_cools_down_too() -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())

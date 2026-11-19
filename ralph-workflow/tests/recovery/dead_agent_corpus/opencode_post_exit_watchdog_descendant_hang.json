@@ -5,7 +5,7 @@
   "transport": "opencode",
   "incident": 6,
   "expected_attribution": "runtime",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "not_agent_fault",
   "captured_lines": [
     "{\"type\": \"tool_use\", \"sessionID\": \"s_0001\", \"part\": {\"type\": \"tool\", \"tool\": \"read_file\", \"callID\": \"c_0001\", \"state\": {\"status\": \"completed\", \"input\": {\"path\": \"docs/agents/verification.md\"}, \"output\": \"verification\"}}}",

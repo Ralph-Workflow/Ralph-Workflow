@@ -6,8 +6,6 @@ from ralph.testing._single_owner_rules import SingleOwnerViolation
 
 _PRIVATE_LEDGER_COUNTERS: frozenset[str] = frozenset(
     {
-        "is_spent",
-        "spent_reason",
         "cooldown_until_ms",
         "cooldown_count",
         "consecutive_unproductive",

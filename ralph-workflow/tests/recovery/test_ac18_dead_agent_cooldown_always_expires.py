@@ -32,10 +32,28 @@ DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 QuotaExhaustedError = subprocess_executor.QuotaExhaustedError
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_benching_a_confirmed_dead_agent_never_marks_it_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
-    "test_escalating_the_bench_still_never_marks_the_agent_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the escalated bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
-    "test_the_bench_routes_all_leave_the_agent_unspent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts each bench route leaves a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
-    "test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_a_confirmed_dead_agent_cooldown_always_has_an_expiry (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_benching_a_confirmed_dead_agent_never_marks_it_spent with an unchanged body"
+    ),
+    "test_escalating_the_dead_agent_cooldown_still_keeps_an_expiry (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_escalating_the_bench_still_never_marks_the_agent_spent with an unchanged body"
+    ),
+    "test_every_dead_agent_cooldown_route_leaves_an_expiring_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_bench_routes_all_leave_the_agent_unspent with an unchanged body"
+    ),
+    "test_the_skip_same_agent_retries_cooldown_route_leaves_an_expiring_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent with an unchanged body"
+    ),
+    "test_the_dead_agent_cooldown_never_uses_a_per_call_allowance_hint": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_bench_never_uses_a_per_call_allowance_spent_hint with an unchanged body"
+    ),
+    "test_ac18_dead_agent_cooldown_always_expires module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_ac18_no_spent_on_dead_agent_bench.py with unchanged content"
+    ),
+    "test_a_confirmed_dead_agent_cooldown_always_has_an_expiry": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_escalating_the_dead_agent_cooldown_still_keeps_an_expiry": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the escalated bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_every_dead_agent_cooldown_route_leaves_an_expiring_cooldown": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts each bench route leaves a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
+    "test_the_skip_same_agent_retries_cooldown_route_leaves_an_expiring_cooldown": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts the bench is a dead_agent_no_progress cooldown with a finite expiry after which the agent is selectable",
 }
 
 
@@ -84,7 +102,7 @@ def _assert_bench_is_an_expiring_cooldown(controller: RecoveryController, clock:
     assert controller.ledger.status(PHASE, AGENT).is_eligible
 
 
-def test_benching_a_confirmed_dead_agent_never_marks_it_spent() -> None:
+def test_a_confirmed_dead_agent_cooldown_always_has_an_expiry() -> None:
     clock = FakeClock(start=0.0)
     controller = _bench_controller(clock)
 
@@ -100,7 +118,7 @@ def test_benching_a_confirmed_dead_agent_never_marks_it_spent() -> None:
     _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
-def test_escalating_the_bench_still_never_marks_the_agent_spent() -> None:
+def test_escalating_the_dead_agent_cooldown_still_keeps_an_expiry() -> None:
     clock = FakeClock(start=0.0)
     controller = _bench_controller(clock)
     failure = QuotaExhaustedError(AGENT, "credits exhausted for this account")
@@ -117,7 +135,7 @@ def test_escalating_the_bench_still_never_marks_the_agent_spent() -> None:
     _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
-def test_the_bench_routes_all_leave_the_agent_unspent() -> None:
+def test_every_dead_agent_cooldown_route_leaves_an_expiring_cooldown() -> None:
     for failure in (
         QuotaExhaustedError(AGENT, "credits exhausted for this account"),
         BrokenAgentExitError(AGENT, reason="no_output"),
@@ -135,7 +153,7 @@ def test_the_bench_routes_all_leave_the_agent_unspent() -> None:
         _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
-def test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent() -> None:
+def test_the_skip_same_agent_retries_cooldown_route_leaves_an_expiring_cooldown() -> None:
     clock = FakeClock(start=0.0)
     controller = _bench_controller(clock)
     intent = AgentRetryIntent(
@@ -169,6 +187,6 @@ def test_the_skip_same_agent_retries_bench_route_leaves_the_agent_unspent() -> N
     _assert_bench_is_an_expiring_cooldown(controller, clock)
 
 
-def test_the_bench_never_uses_a_per_call_allowance_spent_hint() -> None:
+def test_the_dead_agent_cooldown_never_uses_a_per_call_allowance_hint() -> None:
     options = RecoveryControllerOptions(clock=FakeClock(start=0.0))
     assert not hasattr(options, "current_allowance_spent")

@@ -3706,7 +3706,7 @@ def _build_recovery_controller(
             connectivity=None,
         ),
         ledger_snapshot=state.ledger_snapshot,
-        false_bench_snapshot=state.false_bench_feedback,
+        false_cooldown_snapshot=state.false_cooldown_feedback,
         cycle_cap=_cycle_cap,
         agent_max_consecutive_unproductive=consecutive_limit,
         agent_max_total_unproductive=total_limit,
@@ -3816,11 +3816,14 @@ def _subscribe_recovery_display(
                     if evt.watchdog_reason is not None:
                         value = (
                             f"agent stalled: {evt.watchdog_reason}; "
-                            f"chain exhausted ({evt.category}: "
+                            f"no selectable agent left in the chain ({evt.category}: "
                             f"{evt.reason or 'no detail'})"
                         )
                     else:
-                        value = f"chain exhausted ({evt.category}: {evt.reason or 'no detail'})"
+                        value = (
+                            f"no selectable agent left in the chain "
+                            f"({evt.category}: {evt.reason or 'no detail'})"
+                        )
                     style = "red"
                     tag = "terminal"
                 elif evt.category == "artifact_validation":

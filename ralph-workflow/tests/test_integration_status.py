@@ -34,6 +34,9 @@ from ralph.pipeline.integration_strategy import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integration_status_fields_and_properties": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_waiting_lines_emitted_once_per_change_never_per_tick": (
         "the old emitted waiting line and the emitted counts 1, 1, 2, 3, 4 came from a private seam "
         "that this module may not use, so the public status bar now carries the observation"
@@ -50,7 +53,7 @@ def test_integration_status_fields_and_properties() -> None:
         ),
         command="git add -- vendor/Ralph-Workflow asset.bin",
         agents_can_finish=False,
-        agent_reasons=("claude: spent", "opencode: unavailable"),
+        agent_reasons=("claude: cooldown unproductive_limit", "opencode: cooldown out_of_credits"),
         done_count=3,
         remaining_count=1,
     )
@@ -68,7 +71,7 @@ def test_integration_status_fields_and_properties() -> None:
     assert "OUT_OF_REACH" in status.summary
     assert "vendor/Ralph-Workflow" in status.summary
     assert "git add -- vendor/Ralph-Workflow" in status.summary
-    assert "spent/unavailable" in status.summary
+    assert "on cooldown" in status.summary
 
 
 def test_path_details_falls_back_to_cause_when_reason_empty() -> None:

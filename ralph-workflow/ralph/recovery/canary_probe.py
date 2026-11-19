@@ -246,10 +246,10 @@ def _preflight_failure(
     if budget_exhausted is None:
         return None
     try:
-        exhausted = bool(budget_exhausted())
+        out_of_budget = bool(budget_exhausted())
     except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
-    if exhausted:
+    if out_of_budget:
         return _inconclusive_result(PROBE_REASON_BUDGET_EXHAUSTED, started)
     return None
 

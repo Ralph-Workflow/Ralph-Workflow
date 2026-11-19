@@ -39,7 +39,7 @@ REQUIRED_FIXTURE_FIELDS = (
     "transport",
     "captured_lines",
     "expected_attribution",
-    "expected_bench",
+    "expected_cooldown",
     "expected_verdict",
     "tool_calls",
     "workspace_changed",

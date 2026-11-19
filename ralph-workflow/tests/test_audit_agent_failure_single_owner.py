@@ -15,6 +15,18 @@ from ralph.testing.audit_agent_failure_single_owner import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_test_public_controller_seam_is_accepted": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_test_public_ledger_answers_are_accepted": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_test_reading_private_ledger_entry_counter_is_flagged": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_test_reading_serialised_ledger_counter_is_flagged": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_conflict_resolution_retry_delay_is_flagged": (
         "conflict_resolution must not compute agent retry delays outside RecoveryController"
     ),
@@ -1004,7 +1016,7 @@ def _invocation_retry_allowed_or_raise(retries_used, max_retries):
 def test_test_reading_serialised_ledger_counter_is_flagged() -> None:
     source = """
 def test_snapshot(state):
-    assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
+    assert state.ledger_snapshot["entries"]["development:claude"]["cooldown_count"] == 1
 """
     violations = audit_test_source("tests/recovery/test_ledger_migration.py", source)
     assert any(v.rule == "test_serialised_ledger_access" for v in violations), (
@@ -1012,13 +1024,13 @@ def test_snapshot(state):
     )
     flagged = next(v for v in violations if v.rule == "test_serialised_ledger_access")
     assert flagged.path == "tests/recovery/test_ledger_migration.py"
-    assert "is_spent" in flagged.detail
+    assert "cooldown_count" in flagged.detail
 
 
 def test_test_reading_serialised_ledger_counter_via_get_is_flagged() -> None:
     source = """
 def test_snapshot(state):
-    reason = state.ledger_snapshot["entries"]["development:claude"].get("spent_reason")
+    reason = state.ledger_snapshot["entries"]["development:claude"].get("cooldown_until_ms")
     assert reason is not None
 """
     violations = audit_test_source("tests/recovery/test_ledger_migration.py", source)
@@ -1030,7 +1042,7 @@ def test_snapshot(state):
 def test_test_reading_private_ledger_entry_counter_is_flagged() -> None:
     source = """
 def test_private(ledger):
-    assert ledger._entries["development:claude"]["is_spent"] is True
+    assert ledger._entries["development:claude"]["cooldown_count"] == 1
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert any(v.rule == "test_serialised_ledger_access" for v in violations), (
@@ -1042,10 +1054,10 @@ def test_test_public_ledger_answers_are_accepted() -> None:
     source = """
 def test_public_seam(ledger, fact):
     status = ledger.status("development", "claude")
-    assert status.is_spent is False
+    assert status.reason == ""
     assert ledger.is_available("development", "claude")
     outcome = ledger.record(fact)
-    assert outcome.demoted is False
+    assert outcome.cooldown_started is False
     snap = ledger.snapshot()
     restored = AgentFailureLedger.from_snapshot(snap)
     assert restored.is_available("development", "claude")
@@ -1177,7 +1189,7 @@ def test_controller_public_seam(controller):
     controller.reset_backoff("development", "opencode")
     assert controller.preferred_agent_index("development", ["opencode"]) == 0
     assert controller.unavailability_store.is_available("development", "opencode")
-    assert controller.ledger.status("development", "opencode").is_spent is False
+    assert controller.ledger.status("development", "opencode").reason == ""
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert not violations

@@ -290,8 +290,8 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/recovery/controller.py", "RecoveryController.__init__", "unbounded_accumulator"),
         ("ralph/recovery/events.py", "FailureEventBus.__init__", "unbounded_accumulator"),
         (
-            "ralph/recovery/false_bench_feedback.py",
-            "FalseBenchFeedback.__init__",
+            "ralph/recovery/false_cooldown_feedback.py",
+            "FalseCooldownFeedback.__init__",
             "unbounded_accumulator",
         ),
         ("ralph/recovery/testing.py", "FakeConnectivityMonitor.__init__", "unbounded_accumulator"),

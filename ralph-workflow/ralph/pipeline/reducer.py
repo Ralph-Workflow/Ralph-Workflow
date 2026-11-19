@@ -569,9 +569,9 @@ def reduce(
         verdict_record = recovery.last_verdict_record
         if verdict_record is not None and verdict_record != routed_state.dead_agent_verdict_record:
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
-        feedback_snapshot = recovery.false_bench_feedback.snapshot()
-        if feedback_snapshot != routed_state.false_bench_feedback:
-            routed_state = routed_state.copy_with(false_bench_feedback=feedback_snapshot)
+        feedback_snapshot = recovery.false_cooldown_feedback.snapshot()
+        if feedback_snapshot != routed_state.false_cooldown_feedback:
+            routed_state = routed_state.copy_with(false_cooldown_feedback=feedback_snapshot)
     return routed_state, effects
 
 
@@ -938,7 +938,7 @@ def _handle_owned_agent_failure(
     if selected_attempt is not None:
         return selected_attempt
 
-    return _handle_chain_exhausted(
+    return _handle_no_selectable_agent(
         state,
         chain,
         policy,
@@ -965,7 +965,7 @@ def _fail_closed_without_owner(
         f"in phase '{state.phase}', so the phase fails closed instead of "
         "granting another attempt"
     )
-    return _handle_chain_exhausted(
+    return _handle_no_selectable_agent(
         state,
         chain,
         policy,
@@ -975,7 +975,7 @@ def _fail_closed_without_owner(
     )
 
 
-def _handle_chain_exhausted(
+def _handle_no_selectable_agent(
     state: PipelineState,
     chain: AgentChainState,
     policy: PipelinePolicy | None,
@@ -997,7 +997,7 @@ def _handle_chain_exhausted(
                     state.phase,
                     fallback_target,
                     "workflow_fallback",
-                    "agent chain exhausted — routing via policy workflow_fallback",
+                    "no agent in the chain can be selected — routing via policy workflow_fallback",
                 )
             )
             advanced_state, advanced_target = _prepare_phase_advance(
@@ -1012,7 +1012,7 @@ def _handle_chain_exhausted(
         else _failure_reason(
             state,
             (
-                f"Agent chain exhausted in phase='{state.phase}' after "
+                f"No agent in the chain can be selected in phase='{state.phase}' after "
                 f"{chain.retries} retries across {len(chain.agents)} agents"
             ),
         )
@@ -1071,8 +1071,8 @@ def _handle_skip_same_agent_retries(
     failure_reason = _failure_reason(
         state,
         (
-            f"Agent chain exhausted in phase='{state.phase}' after "
-            "context-exhausted agent requested fallback"
+            f"No agent in the chain can be selected in phase='{state.phase}' after "
+            "the agent whose context window filled up requested fallback"
         ),
     )
     return _enter_failed_recovery(state, failure_reason, policy)

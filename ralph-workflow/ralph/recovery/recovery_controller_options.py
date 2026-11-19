@@ -8,7 +8,11 @@ from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
-from ralph.recovery.false_bench_feedback import FalseBenchFeedback
+from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
+from ralph.recovery.legacy_guard_migration import (
+    FALSE_COOLDOWN_FEEDBACK_KEY,
+    migrate_false_cooldown_feedback_key,
+)
 from ralph.recovery.unavailability_reason import (
     _UNIVERSAL_COOLDOWN_CAP_MS,
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
@@ -121,7 +125,7 @@ class RecoveryControllerOptions:
     unavailability_store: UnavailabilityStore | None = None
     dead_agent_probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
     dead_agent_verdict_runner: _DeadAgentVerdictRunner | None = None
-    false_bench_feedback: FalseBenchFeedback | None = None
+    false_cooldown_feedback: FalseCooldownFeedback | None = None
 
     @classmethod
     def from_snapshot(
@@ -173,8 +177,10 @@ class RecoveryControllerOptions:
         if isinstance(ledger_snap, Mapping):
             ledger = AgentFailureLedger.from_snapshot(ledger_snap, clock=effective_clock)
 
-        feedback_snap = snapshot.get("false_bench_feedback")
-        false_bench_feedback = FalseBenchFeedback.from_snapshot(
+        feedback_fields = dict(snapshot)
+        migrate_false_cooldown_feedback_key(feedback_fields)
+        feedback_snap = feedback_fields.get(FALSE_COOLDOWN_FEEDBACK_KEY)
+        false_cooldown_feedback = FalseCooldownFeedback.from_snapshot(
             feedback_snap if isinstance(feedback_snap, Mapping) else None
         )
 
@@ -188,5 +194,5 @@ class RecoveryControllerOptions:
             classifier=classifier,
             event_bus=event_bus,
             ledger=ledger,
-            false_bench_feedback=false_bench_feedback,
+            false_cooldown_feedback=false_cooldown_feedback,
         )

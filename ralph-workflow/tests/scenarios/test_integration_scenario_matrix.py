@@ -48,11 +48,14 @@ from tests.scenarios._sixth_symptom_unstaged_gitlink import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_symptom_2_cooling_resolver_chain_enters_waiting_state_without_spinning (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_symptom_2_spent_resolver_chain_enters_waiting_state_without_spinning with an unchanged body"
+    ),
     "test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds": (
         "reuses a cached diverged conflicted-repo template via materialize_conflicted_repo "
         "instead of git-init plus three commits per call; assertions unchanged"
     ),
-    "test_symptom_2_spent_resolver_chain_enters_waiting_state_without_spinning": (
+    "test_symptom_2_cooling_resolver_chain_enters_waiting_state_without_spinning": (
         "reuses the cached conflicted-repo template; assertions unchanged"
     ),
     "test_symptom_3_completed_rebase_advances_record_and_promotes": (
@@ -183,7 +186,7 @@ def test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds(
     assert "agentA" in invocations
 
 
-def test_symptom_2_spent_resolver_chain_enters_waiting_state_without_spinning(
+def test_symptom_2_cooling_resolver_chain_enters_waiting_state_without_spinning(
     tmp_path: Path,
 ) -> None:
     repo_dir = materialize_conflicted_repo(tmp_path / "repo")

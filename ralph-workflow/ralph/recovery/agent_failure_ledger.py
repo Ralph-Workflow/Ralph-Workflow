@@ -27,6 +27,7 @@ from ralph.recovery.wait_kind import WaitKind
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
 
+COOLDOWN_SYSTEM_DOC: Final[str] = "docs/agents/cooldown-invariant.md"
 LEGACY_DEFAULT_AGENT: Final[str] = "claude"
 LEDGER_VERSION: Final[int] = 1
 _LEDGER_VERSION_DRIFT_NOTICES: deque[str] = deque(maxlen=256)
@@ -563,6 +564,7 @@ class AgentFailureLedger:
 
 
 __all__ = [
+    "COOLDOWN_SYSTEM_DOC",
     "LEDGER_SNAPSHOT_MALFORMED_REASON",
     "LEDGER_VERSION",
     "LEGACY_DEFAULT_AGENT",

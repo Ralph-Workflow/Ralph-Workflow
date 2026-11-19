@@ -29,6 +29,16 @@ from ralph.pipeline.conflict_resolution.sight import (
     policy_gitlink_paths,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_diverged_gitlink_with_unfetchable_object_still_resolves_by_policy": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_gitlink_conflict_completes_in_place_by_policy_without_operator_escalation": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "Test Author",
     "GIT_AUTHOR_EMAIL": "author@example.com",
@@ -235,7 +245,7 @@ def test_gitlink_conflict_completes_in_place_by_policy_without_operator_escalati
 
     assert session.terminal_reason is None
     assert session.operator_action_message is None
-    assert session.exhaustion_reason is None
+    assert session.halt_reason is None
     assert session.unresolved_paths == ()
 
 
@@ -355,7 +365,7 @@ def test_diverged_gitlink_with_unfetchable_object_still_resolves_by_policy(
 
     assert session.terminal_reason is None
     assert session.operator_action_message is None
-    assert session.exhaustion_reason is None
+    assert session.halt_reason is None
 
 
 @pytest.mark.timeout_seconds(5)

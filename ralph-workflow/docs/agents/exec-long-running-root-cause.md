@@ -745,7 +745,7 @@ property list holds under the shipped aggregate:
   (R5 only, `s = 0`), raising any single working signal non-decreases
   `s`.
 - **Baseline-relative classification safety** — raising working signals
-  never demotes a working/suspicious verdict to stalled/unknown.
+  never lowers a working/suspicious verdict to stalled/unknown.
 - **Determinism and bounds** — the same window and config produce the
   same verdicts; `P` is never negative; an all-idle trace is killed at
   `stall_window` plus or minus one integration interval.

@@ -15,7 +15,7 @@ from ralph.pipeline.conflict_resolution import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.rebase_loop import (
     bind_active_rebase_resolution_session,
@@ -44,10 +44,10 @@ from ralph.workspace.scope import WorkspaceScope
 def test_resolution_failure_cause_and_termination_reason() -> None:
     assert ResolutionFailureCause.CONFIG_FAILURE == "CONFIG_FAILURE"
     assert ResolutionTerminationReason.CONFIG_FAILURE == "CONFIG_FAILURE"
-    assert ResolutionTerminationReason.CONFIG_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert ResolutionTerminationReason.CONFIG_FAILURE in BUDGET_UNCHARGED_TERMINATION_REASONS
     assert ResolutionFailureCause.CONTEXT_FAILURE == "CONTEXT_FAILURE"
     assert ResolutionTerminationReason.CONTEXT_FAILURE == "CONTEXT_FAILURE"
-    assert ResolutionTerminationReason.CONTEXT_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert ResolutionTerminationReason.CONTEXT_FAILURE in BUDGET_UNCHARGED_TERMINATION_REASONS
 
 
 def test_workspace_context_error_structure(tmp_path: Path) -> None:
@@ -97,6 +97,9 @@ def test_workspace_context_wraps_system_exit(tmp_path: Path) -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolution_failure_cause_and_termination_reason": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_auto_integrate_agent_resolver_catches_workspace_context_error": (
         "align outcome assertion with ConfigFailureOutcome returned by resolver on config error"
     ),
@@ -139,8 +142,8 @@ def test_auto_integrate_agent_resolver_catches_workspace_context_error(tmp_path:
 
     assert isinstance(outcome, ConfigFailureOutcome)
     assert outcome.file == cfg_file
-    assert session.exhaustion_reason is not None
-    assert f"fix {cfg_file} then run ralph --check-config" in session.exhaustion_reason
+    assert session.halt_reason is not None
+    assert f"fix {cfg_file} then run ralph --check-config" in session.halt_reason
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
@@ -176,9 +179,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
                 getattr(outcome, "failure_cause", None) or ResolutionFailureCause.CONFIG_FAILURE
             )
             session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
-            session.exhaustion_reason = (
-                "fix .agent/ralph-workflow.toml then run ralph --check-config"
-            )
+            session.halt_reason = "fix .agent/ralph-workflow.toml then run ralph --check-config"
         return False
 
     mock_runner = MagicMock()
@@ -189,7 +190,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
         session.charge_conflict_budget = False
         session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
         session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-        session.exhaustion_reason = "fix .agent/ralph-workflow.toml then run ralph --check-config"
+        session.halt_reason = "fix .agent/ralph-workflow.toml then run ralph --check-config"
         return RetryLaterOutcome(on_change="configuration changed")
 
     public_result = resolve_conflicted_rebase(
@@ -250,7 +251,7 @@ def _deferred_rebase_failure_cause(
                 if failure_cause is ResolutionFailureCause.CONFIG_FAILURE
                 else None
             )
-            session.exhaustion_reason = (
+            session.halt_reason = (
                 "fix .agent/ralph-workflow.toml then run ralph --check-config"
                 if failure_cause is ResolutionFailureCause.CONFIG_FAILURE
                 else "conflict remains unresolved"

@@ -5,7 +5,7 @@
   "transport": "opencode",
   "incident": null,
   "expected_attribution": "task_or_environment",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "not_agent_fault",
   "captured_lines": [
     "{\"type\":\"tool_use\",\"sessionID\":\"s_0002\",\"part\":{\"type\":\"tool\",\"tool\":\"write\",\"callID\":\"c_0101\",\"state\":{\"status\":\"completed\",\"input\":{\"filePath\":\"/workspace/src/module.py\",\"content\":\"VALUE = 1\\n\"},\"output\":\"Wrote file successfully.\"}}}",

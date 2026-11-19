@@ -21,6 +21,15 @@ pytestmark = pytest.mark.timeout_seconds(5)
 CHAIN = ("codex/a", "cursor/auto", "opencode/b")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cursor_usage_limit_failure_cools_cursor_down_for_every_later_pass": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_cursor_usage_limit_failure_benches_cursor_for_every_later_pass with an unchanged body"
+    ),
+    "test_agent_whose_invocation_raises_cools_down_before_the_error_propagates": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_whose_invocation_raises_is_benched_before_the_error_propagates with an unchanged body"
+    ),
+    "test_observed_workspace_change_defers_the_cooldown_to_the_total_limit": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_observed_workspace_change_defers_the_demotion_to_the_total_limit with an unchanged body"
+    ),
     "test_phase_histories_remain_independent": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so a resolution unproductive_limit cooldown also applies in development, and "
@@ -180,7 +189,7 @@ def test_candidate_is_offered_again_after_its_cooldown(tmp_path: Path) -> None:
     assert len(invoked) == 4
 
 
-def test_cursor_usage_limit_failure_benches_cursor_for_every_later_pass(tmp_path: Path) -> None:
+def test_cursor_usage_limit_failure_cools_cursor_down_for_every_later_pass(tmp_path: Path) -> None:
     backend = _RecordBackend()
     _record(tmp_path, backend=backend)
     clock = FakeClock()
@@ -222,7 +231,7 @@ def test_cursor_usage_limit_failure_benches_cursor_for_every_later_pass(tmp_path
     assert invoked == ["cursor/auto", "cursor/auto", "cursor/auto", "opencode/b"]
 
 
-def test_agent_whose_invocation_raises_is_benched_before_the_error_propagates(
+def test_agent_whose_invocation_raises_cools_down_before_the_error_propagates(
     tmp_path: Path,
 ) -> None:
     backend = _RecordBackend()
@@ -293,7 +302,7 @@ def test_truthy_invocation_without_a_verified_completion_is_unproductive(
     assert invoked == ["codex/a", "codex/a", "codex/a", "cursor/auto"]
 
 
-def test_observed_workspace_change_defers_the_demotion_to_the_total_limit(
+def test_observed_workspace_change_defers_the_cooldown_to_the_total_limit(
     tmp_path: Path,
 ) -> None:
     backend = _RecordBackend()

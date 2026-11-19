@@ -38,6 +38,15 @@ _RESOLUTION_PHASE = "rebase_conflict_resolution"
 _OTHER_PHASES = ("development", "review")
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_a_unproductive_resolver_cools_down_and_the_next_one_resolves (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves with an unchanged body"
+    ),
+    "test_scenario_b_cooling_resolvers_report_pending_and_keep_the_rebase_state": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state with an unchanged body"
+    ),
+    "test_scenario_b_agents_cooled_down_while_resolving_report_pending_and_keep_the_rebase (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase with an unchanged body"
+    ),
     "test_scenario_c_integration_demotion_leaves_other_phases_untouched": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so an integration unproductive_limit cooldown also keeps the agent out of "
@@ -56,12 +65,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: an agent is either on cooldown or not; replaces the phase isolation "
         "test with the agent-keyed cooldown contract"
     ),
-    "test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves": (
+    "test_scenario_a_unproductive_resolver_cools_down_and_the_next_one_resolves": (
         "operator rule: an agent is either on cooldown or not; demotion no longer exists, so "
         "the test asserts the unproductive_limit cooldown_decision log instead of the removed "
         "demoted log; each failed attempt still falls over to the fallback candidate"
     ),
-    "test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase": (
+    "test_scenario_b_agents_cooled_down_while_resolving_report_pending_and_keep_the_rebase": (
         "operator rule: an agent is either on cooldown or not; demotion no longer exists, so "
         "the test asserts each agent logs an unproductive_limit cooldown_decision instead of "
         "the removed demoted log; the typed AGENT_FAILURE cause is still asserted"
@@ -163,7 +172,7 @@ def _run_integration(
     return outcome, invocations, logs
 
 
-def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
+def test_scenario_a_unproductive_resolver_cools_down_and_the_next_one_resolves(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -193,7 +202,7 @@ def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
     )
 
 
-def test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state(
+def test_scenario_b_cooling_resolvers_report_pending_and_keep_the_rebase_state(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:
@@ -227,7 +236,7 @@ def test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state(
     ), "the skipped resolver must be reported for the target it was skipped for"
 
 
-def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase(
+def test_scenario_b_agents_cooled_down_while_resolving_report_pending_and_keep_the_rebase(
     tmp_path: Path,
     _template_repo: Path,
 ) -> None:

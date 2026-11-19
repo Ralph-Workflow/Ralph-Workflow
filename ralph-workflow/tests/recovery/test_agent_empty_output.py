@@ -17,7 +17,13 @@ from ralph.recovery.controller import (
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_agent_fault_chain_exhaustion_enters_phase_failed": "operator rule: an agent is either on cooldown or not; a sole agent hitting the unproductive limit starts an expiring unproductive_limit cooldown and the controller returns the all-agents-unavailable wait state instead of the failed phase, so the test asserts the wait, its delay and that the agent is selectable after the expiry",
+    "test_agent_fault_causes_fallover_when_the_agent_cools_down": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_fault_causes_fallover_when_the_agent_is_demoted with an unchanged body"
+    ),
+    "test_agent_fault_with_no_selectable_agent_enters_phase_failed (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_fault_chain_exhaustion_enters_phase_failed with an unchanged body"
+    ),
+    "test_agent_fault_with_no_selectable_agent_enters_phase_failed": "operator rule: an agent is either on cooldown or not; a sole agent hitting the unproductive limit starts an expiring unproductive_limit cooldown and the controller returns the all-agents-unavailable wait state instead of the failed phase, so the test asserts the wait, its delay and that the agent is selectable after the expiry",
 }
 
 
@@ -58,7 +64,7 @@ def test_agent_fault_is_charged_to_the_agent() -> None:
     assert controller.ledger.is_available("development", "claude") is True
 
 
-def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
+def test_agent_fault_causes_fallover_when_the_agent_cools_down() -> None:
     collected_fallovers: list[FalloverEvent] = []
 
     bus = FailureEventBus()
@@ -84,7 +90,7 @@ def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
     assert len(new_state.fallover_history) == 1
 
 
-def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
+def test_agent_fault_with_no_selectable_agent_enters_phase_failed() -> None:
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(

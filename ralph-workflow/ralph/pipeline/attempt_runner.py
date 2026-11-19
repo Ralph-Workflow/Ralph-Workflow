@@ -28,7 +28,7 @@ from ralph.recovery.dead_agent_probe import (
     build_dead_agent_probe_runner,
     production_dead_agent_probe_runner,
 )
-from ralph.recovery.false_bench_feedback import FalseBenchFeedback
+from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
@@ -137,7 +137,7 @@ def build_entry_point_recovery_controller(
     deps: AttemptRunnerDeps,
     ledger: AgentFailureLedger | None = None,
     ledger_snapshot: Mapping[str, object] | None = None,
-    false_bench_snapshot: Mapping[str, object] | None = None,
+    false_cooldown_snapshot: Mapping[str, object] | None = None,
     unavailability_store: UnavailabilityStore | None = None,
     cycle_cap: int | None = None,
     agent_max_consecutive_unproductive: int | None = None,
@@ -166,7 +166,7 @@ def build_entry_point_recovery_controller(
         workspace_probe=deps.workspace_probe,
         unavailability_store=unavailability_store,
         dead_agent_probe_runner=probe_runner,
-        false_bench_feedback=FalseBenchFeedback.from_snapshot(false_bench_snapshot),
+        false_cooldown_feedback=FalseCooldownFeedback.from_snapshot(false_cooldown_snapshot),
     )
     if agent_max_consecutive_unproductive is not None or agent_max_total_unproductive is not None:
         options = replace(

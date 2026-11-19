@@ -5,7 +5,7 @@
   "transport": "claude",
   "incident": 5,
   "expected_attribution": "runtime",
-  "expected_bench": false,
+  "expected_cooldown": false,
   "expected_verdict": "not_agent_fault",
   "captured_lines": [
     "{\"type\": \"assistant\", \"message\": {\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"Read\", \"input\": {\"file_path\": \"ralph/recovery/controller.py\"}}]}}",

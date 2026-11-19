@@ -22,9 +22,67 @@ from ralph.recovery.dead_agent_verdict import (
     probe_outcome_verdict,
     runtime_issued_termination_is_not_agent_fault,
     task_or_environment_attribution_is_not_agent_fault,
-    verdict_benches_agent,
     verdict_counts_toward_agent_state,
+    verdict_starts_cooldown,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_quota_error_step_shape_cools_down_on_its_first_verdict (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_the_quota_error_step_shape_benches_on_its_first_verdict with an unchanged body"
+    ),
+    "test_a_runtime_termination_with_a_failed_probe_never_starts_a_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_runtime_termination_with_a_failed_probe_is_never_benched with an unchanged body"
+    ),
+    "test_only_a_dead_agent_starts_a_cooldown_and_only_a_non_agent_fault_is_excluded (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_only_a_dead_agent_benches_and_only_a_non_agent_fault_is_excluded with an unchanged body"
+    ),
+    "test_a_passing_probe_clears_a_silent_exit_zero_attempt": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_probe_failure_convicts_an_arbitrary_wording_exit_zero_attempt": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_runtime_issued_termination_is_never_the_agents_fault": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_runtime_termination_with_a_failed_probe_never_starts_a_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_satisfied_outcome_is_not_the_agents_fault": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_task_or_environment_attribution_is_not_the_agents_fault": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_typed_signal_that_is_not_provider_originated_does_not_convict": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_an_absent_probe_leaves_the_verdict_unknown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_an_authoritative_typed_signal_convicts_without_a_probe": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_an_inconclusive_probe_leaves_the_verdict_unknown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_an_unattributed_kill_with_a_failing_probe_convicts_the_agent": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_an_unattributed_kill_with_a_passing_probe_is_healthy": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_only_a_dead_agent_starts_a_cooldown_and_only_a_non_agent_fault_is_excluded": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_peers_failing_identically_is_not_the_agents_fault": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_the_quota_error_step_shape_cools_down_on_its_first_verdict": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
 
 _UNKNOWN_ATTRIBUTION = AttributionVerdict(
     attribution=Attribution.UNKNOWN,
@@ -284,7 +342,7 @@ def test_a_runtime_issued_termination_is_never_the_agents_fault(
     )
 
     assert verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
     assert verdict_counts_toward_agent_state(verdict.verdict) is False
 
 
@@ -340,7 +398,7 @@ def test_a_task_or_environment_attribution_is_not_the_agents_fault() -> None:
     )
 
     assert verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
     assert verdict_counts_toward_agent_state(verdict.verdict) is False
 
 
@@ -371,7 +429,7 @@ def test_an_authoritative_typed_signal_convicts_without_a_probe() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, None, _QUOTA_TYPED_SIGNAL)
 
     assert verdict.verdict is DeadAgentVerdict.AGENT_DEAD
-    assert verdict_benches_agent(verdict.verdict) is True
+    assert verdict_starts_cooldown(verdict.verdict) is True
     assert verdict_counts_toward_agent_state(verdict.verdict) is True
     assert verdict.probe_outcome is None
 
@@ -393,7 +451,7 @@ def test_a_typed_signal_that_is_not_provider_originated_does_not_convict() -> No
     )
 
     assert verdict.verdict is DeadAgentVerdict.UNKNOWN
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
 
 
 def test_a_provider_originated_signal_that_is_not_agent_initiated_does_not_convict() -> None:
@@ -509,7 +567,7 @@ def test_the_four_incident_shapes_map_to_their_expected_verdict(
     assert verdict.verdict is expected
 
 
-def test_the_quota_error_step_shape_benches_on_its_first_verdict() -> None:
+def test_the_quota_error_step_shape_cools_down_on_its_first_verdict() -> None:
     facts = _quota_error_step_incident()
     attribution = attribute_attempt(
         facts,
@@ -520,7 +578,7 @@ def test_the_quota_error_step_shape_benches_on_its_first_verdict() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, None, _QUOTA_TYPED_SIGNAL)
 
     assert verdict.verdict is DeadAgentVerdict.AGENT_DEAD
-    assert verdict_benches_agent(verdict.verdict) is True
+    assert verdict_starts_cooldown(verdict.verdict) is True
 
 
 def test_a_probe_failure_convicts_an_arbitrary_wording_exit_zero_attempt() -> None:
@@ -533,7 +591,7 @@ def test_a_probe_failure_convicts_an_arbitrary_wording_exit_zero_attempt() -> No
     )
 
     assert verdict.verdict is DeadAgentVerdict.AGENT_DEAD
-    assert verdict_benches_agent(verdict.verdict) is True
+    assert verdict_starts_cooldown(verdict.verdict) is True
     assert verdict_counts_toward_agent_state(verdict.verdict) is True
 
 
@@ -547,7 +605,7 @@ def test_a_passing_probe_clears_a_silent_exit_zero_attempt() -> None:
     )
 
     assert verdict.verdict is DeadAgentVerdict.HEALTHY
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
 
 
 def test_an_absent_probe_leaves_the_verdict_unknown() -> None:
@@ -556,7 +614,7 @@ def test_an_absent_probe_leaves_the_verdict_unknown() -> None:
     verdict = decide_dead_agent_verdict(facts, attribute_attempt(facts), None)
 
     assert verdict.verdict is DeadAgentVerdict.UNKNOWN
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
     assert verdict_counts_toward_agent_state(verdict.verdict) is True
 
 
@@ -570,7 +628,7 @@ def test_an_inconclusive_probe_leaves_the_verdict_unknown() -> None:
     )
 
     assert verdict.verdict is DeadAgentVerdict.UNKNOWN
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
 
 
 def test_a_satisfied_outcome_is_not_the_agents_fault() -> None:
@@ -585,7 +643,7 @@ def test_a_satisfied_outcome_is_not_the_agents_fault() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, None)
 
     assert verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
     assert verdict_counts_toward_agent_state(verdict.verdict) is False
 
 
@@ -598,11 +656,11 @@ def test_peers_failing_identically_is_not_the_agents_fault() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, None)
 
     assert verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
     assert verdict_counts_toward_agent_state(verdict.verdict) is False
 
 
-def test_a_runtime_termination_with_a_failed_probe_is_never_benched() -> None:
+def test_a_runtime_termination_with_a_failed_probe_never_starts_a_cooldown() -> None:
     facts = _codex_tool_result_quote_kill()
     attribution = attribute_attempt(facts)
 
@@ -613,7 +671,7 @@ def test_a_runtime_termination_with_a_failed_probe_is_never_benched() -> None:
     )
 
     assert verdict.verdict is DeadAgentVerdict.NOT_AGENT_FAULT
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
 
 
 def test_an_unattributed_kill_with_a_passing_probe_is_healthy() -> None:
@@ -623,7 +681,7 @@ def test_an_unattributed_kill_with_a_passing_probe_is_healthy() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, ProbeOutcome.PASSED)
 
     assert verdict.verdict is DeadAgentVerdict.HEALTHY
-    assert verdict_benches_agent(verdict.verdict) is False
+    assert verdict_starts_cooldown(verdict.verdict) is False
 
 
 def test_an_unattributed_kill_with_a_failing_probe_convicts_the_agent() -> None:
@@ -633,7 +691,7 @@ def test_an_unattributed_kill_with_a_failing_probe_convicts_the_agent() -> None:
     verdict = decide_dead_agent_verdict(facts, attribution, ProbeOutcome.FAILED_REPRODUCING_NO_WORK)
 
     assert verdict.verdict is DeadAgentVerdict.AGENT_DEAD
-    assert verdict_benches_agent(verdict.verdict) is True
+    assert verdict_starts_cooldown(verdict.verdict) is True
 
 
 @pytest.mark.parametrize(
@@ -645,12 +703,12 @@ def test_an_unattributed_kill_with_a_failing_probe_convicts_the_agent() -> None:
         (DeadAgentVerdict.UNKNOWN, False, True),
     ),
 )
-def test_only_a_dead_agent_benches_and_only_a_non_agent_fault_is_excluded(
+def test_only_a_dead_agent_starts_a_cooldown_and_only_a_non_agent_fault_is_excluded(
     verdict: DeadAgentVerdict,
     benches: bool,
     counts: bool,
 ) -> None:
-    assert verdict_benches_agent(verdict) is benches
+    assert verdict_starts_cooldown(verdict) is benches
     assert verdict_counts_toward_agent_state(verdict) is counts
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -59,6 +60,7 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
     select_resolution_action,
 )
+from ralph.pipeline.conflict_resolution.resolver_cooldown_text import resolver_cooldown_summary
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
 )
@@ -69,7 +71,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
     reset_round_reporting as _reset_round_reporting,
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
-    resolution_exhaustion_reason as _resolution_exhaustion_reason,
+    resolution_halt_reason as _resolution_halt_reason,
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
     resolution_outcome as _verdict_resolution_outcome,
@@ -163,15 +165,12 @@ def stop_outcome_from_attempt_result(
 def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopResolutionOutcome:
     outcome = _verdict_resolution_outcome(session, succeeded)
     if (
-        session.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
-        or (
-            session.exhaustion_reason
-            and session.exhaustion_reason.startswith("CANDIDATE_EXHAUSTED")
-        )
+        session.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
+        or (session.halt_reason and session.halt_reason.startswith("NO_RUNNABLE_CANDIDATE"))
     ) and isinstance(outcome, NextStrategyOutcome):
         return RetryLaterOutcome(
             on_change="resolver_agent_eligibility_changed",
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             unresolved_paths=session.unresolved_paths,
             failure_cause=session.last_failure_cause,
         )
@@ -256,7 +255,6 @@ def emit_conflict_phase_line(
 
 if TYPE_CHECKING:
     import threading
-    from datetime import datetime
     from pathlib import Path
 
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
@@ -280,7 +278,7 @@ _CHAIN_STATE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = froze
     {
         ResolutionTerminationReason.TOOL_SURFACE_DEAD,
         ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
     }
 )
 
@@ -608,7 +606,7 @@ def _prepare_conflicted_paths(
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
         session.unresolved_paths = tuple(conflicted)
         session.initial_conflicted_count = len(conflicted)
-        session.exhaustion_reason = "OUT_OF_REACH: the conflicted paths could not be read"
+        session.halt_reason = "OUT_OF_REACH: the conflicted paths could not be read"
         emit_conflict_phase_line(
             display, "conflicted paths unreadable; nothing a resolver can repair"
         )
@@ -652,12 +650,12 @@ def _prepare_conflicted_paths(
             if session.operator_action_message
             and "resume point:" in session.operator_action_message
             else (
-                session.exhaustion_reason
-                if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
+                session.halt_reason
+                if session.halt_reason and "resume point:" in session.halt_reason
                 else out_of_reach_escalation_message(unreachable, reasons)
             )
         )
-        session.exhaustion_reason = msg
+        session.halt_reason = msg
         session.operator_action_message = msg
         emit_conflict_phase_line(
             display,
@@ -669,7 +667,7 @@ def _prepare_conflicted_paths(
         session.out_of_reach_paths = unreachable
         msg = out_of_reach_escalation_message(unreachable, reasons)
         session.operator_action_message = msg
-        session.exhaustion_reason = msg
+        session.halt_reason = msg
         integration_status = build_integration_status(
             cause=ResolutionTerminationReason.OUT_OF_REACH.value,
             paths_with_reasons=tuple(
@@ -793,7 +791,7 @@ def _bootstrap_resolution_session(
     if session.recovery_controller is None:
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
-        session.exhaustion_reason = "recovery controller unavailable"
+        session.halt_reason = "recovery controller unavailable"
         emit_conflict_phase_line(
             display, "conflict resolution blocked: recovery controller unavailable"
         )
@@ -943,10 +941,10 @@ def _run_rounds(
     if resolved:
         return True
     unresolved = session.unresolved_paths
-    session.exhaustion_reason = _resolution_exhaustion_reason(session, unresolved)
+    session.halt_reason = _resolution_halt_reason(session, unresolved)
     emit_conflict_phase_line(
         display,
-        "abandoning conflict resolution; " + session.exhaustion_reason,
+        "abandoning conflict resolution; " + session.halt_reason,
     )
     return False
 
@@ -1056,7 +1054,7 @@ def _execute_round_loop(
             if prompt_path is None:
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
                 session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-                session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
+                session.halt_reason = _resolution_halt_reason(session, conflicted)
                 emit_conflict_phase_line(display, "could not materialize the resolution prompt")
                 return False
             attempt_started = clock()
@@ -1219,7 +1217,7 @@ def _record_unconfigured_resolver(
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = conflicted
     session.initial_conflicted_count = len(conflicted)
-    session.exhaustion_reason = _resolution_exhaustion_reason(session, conflicted)
+    session.halt_reason = _resolution_halt_reason(session, conflicted)
     emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
 
 
@@ -1234,27 +1232,35 @@ def _dead_chain_reason(
     elif ledger is not None:
         wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(live_candidates))
     if wait is None:
-        return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        return ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     if wait > 0:
         return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    return ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
 
 
-def _agent_unavailability_reason(
+def _agent_cooldown_detail(
     agent: str,
     ledger: AgentFailureLedger | None,
     controller: RecoveryController | None,
-) -> str:
+) -> str | None:
     if controller is not None:
         snap = controller.unavailability_store.snapshot()
         u_reasons = snap.get("unavailability_reasons", {})
+        expiries = snap.get("unavailable_until_epoch_ms", {})
         if isinstance(u_reasons, dict) and agent in u_reasons:
-            return str(u_reasons[agent])
+            expiry = expiries.get(agent) if isinstance(expiries, dict) else None
+            until = (
+                datetime.fromtimestamp(expiry / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if isinstance(expiry, int)
+                else "its recorded expiry"
+            )
+            return f"cooldown {u_reasons[agent] or 'cooldown'} until {until}"
     elif ledger is not None:
         reason = ledger.failure_reason(PHASE_RESOLUTION, agent)
         if reason:
-            return reason
-    return "no cooldown"
+            wait_ms = ledger.earliest_wait_ms(PHASE_RESOLUTION, [agent])
+            return f"cooldown {reason}, expires in {max(wait_ms, 0) // 1000}s"
+    return None
 
 
 def _handle_dead_candidate_chain(
@@ -1292,18 +1298,15 @@ def _handle_dead_candidate_chain(
             display,
             "all resolution candidates are unavailable or on cooldown; conflict resolution remains pending",
         )
-    elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
-        reasons_list = [
-            f"{agent}: {_agent_unavailability_reason(agent, ledger, controller)}"
-            for agent in candidates
-        ]
-        reasons_str = ", ".join(reasons_list)
+    elif session.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE:
+        summary = resolver_cooldown_summary(
+            [(agent, _agent_cooldown_detail(agent, ledger, controller)) for agent in candidates]
+        )
         paths_str = ", ".join(paths)
         cmd = operator_command_for_paths(paths)
         msg = (
-            f"{ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value}: "
-            f"all {len(candidates)} resolver agents are spent/unavailable ({reasons_str}); "
-            f"conflict on {paths_str}; resume point: {cmd}"
+            f"{ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE.value}: "
+            f"{summary}; conflict on {paths_str}; resume point: {cmd}"
         )
         session.operator_action_message = msg
         emit_conflict_phase_line(display, msg)
@@ -1328,12 +1331,12 @@ def _escalate_unreachable_remainder(
         session.operator_action_message
         if session.operator_action_message and "resume point:" in session.operator_action_message
         else (
-            session.exhaustion_reason
-            if session.exhaustion_reason and "resume point:" in session.exhaustion_reason
+            session.halt_reason
+            if session.halt_reason and "resume point:" in session.halt_reason
             else out_of_reach_escalation_message(session.out_of_reach_paths)
         )
     )
-    session.exhaustion_reason = msg
+    session.halt_reason = msg
     session.operator_action_message = msg
     emit_conflict_phase_line(
         display,

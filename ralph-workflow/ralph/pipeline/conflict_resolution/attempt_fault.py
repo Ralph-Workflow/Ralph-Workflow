@@ -28,8 +28,8 @@ class AttemptFault(StrEnum):
 
 
 __all__ = [
+    "BUDGET_UNCHARGED_TERMINATION_REASONS",
     "INFRASTRUCTURE_TERMINATION_REASONS",
-    "RESOLVER_NOT_SPENT_TERMINATION_REASONS",
     "AttemptFault",
     "attempt_fault_to_termination_reason",
     "classify_attempt_fault",
@@ -47,7 +47,7 @@ INFRASTRUCTURE_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = fro
 )
 
 
-RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = (
+BUDGET_UNCHARGED_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] = (
     INFRASTRUCTURE_TERMINATION_REASONS
     | frozenset(
         {
@@ -67,7 +67,7 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
 _REASON_TO_OUTCOME: dict[ResolutionTerminationReason, ConflictAttemptOutcome] = {
     ResolutionTerminationReason.CANDIDATE_EXITED: ConflictAttemptOutcome.NO_ACTIVITY,
     ResolutionTerminationReason.ATTEMPT_FAILED: ConflictAttemptOutcome.ATTEMPT_FAILED,
-    ResolutionTerminationReason.CANDIDATE_EXHAUSTED: ConflictAttemptOutcome.ATTEMPT_FAILED,
+    ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE: ConflictAttemptOutcome.ATTEMPT_FAILED,
 }
 
 _LOCAL_REASON_TO_FAULT: dict[ResolutionTerminationReason, AttemptFault] = {

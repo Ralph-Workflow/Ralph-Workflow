@@ -44,6 +44,51 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_canary_probe_owner_managed_exemption_records_without_charge_cooldown_or_probe (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe with an unchanged body"
+    ),
+    "test_ac9_corpus_replay_over_the_matrix_reports_zero_false_cooldowns": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches with an unchanged body"
+    ),
+    "test_ac9_the_genuine_positive_cools_down_on_the_first_attempt": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac9_the_genuine_positive_benches_on_the_first_attempt with an unchanged body"
+    ),
+    "test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched with an unchanged body"
+    ),
+    "test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched with an unchanged body"
+    ),
+    "test_ac4_prompt_side_quota_words_never_start_a_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac4_prompt_side_quota_words_never_bench with an unchanged body"
+    ),
+    "test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason with an unchanged body"
+    ),
+    "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac16_positive_proof_only_exit_zero_alone_never_benches with an unchanged body"
+    ),
+    "test_ac10_the_second_confirmed_failure_escalates_the_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_the_second_confirmed_failure_escalates_the_bench with an unchanged body"
+    ),
+    "test_ac12_an_expired_cooldown_leaves_no_tracker_trace_but_feeds_back (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back with an unchanged body"
+    ),
+    "_assert_corpus_expectations": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "_assert_observation": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_ac12_an_expired_cooldown_leaves_no_tracker_trace_but_feeds_back": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_canary_probe_mode_contract_explicit_exception": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_reducer_style_finalize_claims_the_outcome_without_double_charge": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "_assert_one_ordinary_ledger_charge": "operator rule: an agent is either on cooldown or not; ledger entries hold only counters, so instead of reading is_spent, cooldown and unavailable fields the helper asserts no exclusion field exists and the agent is eligible with no cooldown wait",
     "test_ac12_unavailability_store_snapshot_restore_round_trip": (
         "assert prune_expired via public return code rather than inspecting private "
@@ -51,15 +96,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_matrix_scenario_over_every_entry_point": "operator rule: an agent is either on cooldown or not; the spent state is gone, so instead of asserting never spent the harness asserts every excluded agent has a finite cooldown and is selectable again after the clock passes its expiry",
     "test_parity_across_non_probe_entry_points": "operator rule: an agent is either on cooldown or not; the spent state is gone, so each entry point asserts every exclusion is an expiring cooldown instead of an empty spent_agents map",
-    "test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the probe-mode check asserts every exclusion expires instead of an empty spent_agents map",
-    "test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
-    "test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched": "operator rule: an agent is either on cooldown or not; is_spent no longer exists, so the test asserts the ledger status is eligible",
-    "test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
+    "test_canary_probe_owner_managed_exemption_records_without_charge_cooldown_or_probe": "operator rule: an agent is either on cooldown or not; the spent state is gone, so the probe-mode check asserts every exclusion expires instead of an empty spent_agents map",
+    "test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
+    "test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down": "operator rule: an agent is either on cooldown or not; is_spent no longer exists, so the test asserts the ledger status is eligible",
+    "test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason": "operator rule: an agent is either on cooldown or not; the bench is a dead_agent_no_progress cooldown with a finite expiry, so the test asserts A is selectable again after the expiry instead of asserting A is not spent",
     "test_ac16_probe_could_not_run_keeps_a_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac3_runtime_attribution_label_and_selectability": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac4_prompt_side_quota_words_never_bench": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac4_prompt_side_quota_words_never_start_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
-    "test_ac16_positive_proof_only_exit_zero_alone_never_benches": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac17_pending_subagents_recorded_as_unattributed_end": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac14_unattributed_live_session_end_parity": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
@@ -170,7 +215,7 @@ def _assert_corpus_expectations(
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
     assert case.expected_attribution in {"agent", "runtime", "task_or_environment", "unknown"}
     if case.expected_attribution in {"runtime", "task_or_environment"}:
-        assert case.expected_bench is False
+        assert case.expected_cooldown is False
         assert case.expected_verdict != "agent_dead"
     if case.label == "negative":
         assert observation.outcome_kind != "agent_dead"
@@ -179,7 +224,7 @@ def _assert_corpus_expectations(
         if isinstance(record, dict):
             assert record.get("verdict") != "agent_dead"
         return
-    assert case.expected_bench is True
+    assert case.expected_cooldown is True
     assert case.expected_verdict == "agent_dead"
     assert observation.invocations == (agent,)
     if scenario.probe_outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK:
@@ -228,7 +273,7 @@ def _assert_observation(
         assert observation.wait_positive is False
         assert observation.ledger_status == "eligible"
         assert observation.ledger_entries == {}
-        assert observation.false_bench_count == 0
+        assert observation.false_cooldown_count == 0
         agent = scenario.attempts[-1].agent
         store = controller.unavailability_store
         assert store.is_available(PHASE, agent) is True
@@ -389,7 +434,7 @@ def test_reducer_style_finalize_claims_the_outcome_without_double_charge(
     last = scenario.attempts[-1]
     ledger_before = controller.ledger.snapshot()
     tracker_before = controller.unavailability_store.snapshot()
-    false_benches_before = controller.false_bench_feedback.count
+    false_cooldowns_before = controller.false_cooldown_feedback.count
     verdict_before = controller.last_verdict_record
 
     outcome = controller.finalize_attempt(
@@ -406,12 +451,12 @@ def test_reducer_style_finalize_claims_the_outcome_without_double_charge(
     assert outcome.kind.value == observation.outcome_kind
     assert controller.ledger.snapshot() == ledger_before
     assert controller.unavailability_store.snapshot() == tracker_before
-    assert controller.false_bench_feedback.count == false_benches_before
+    assert controller.false_cooldown_feedback.count == false_cooldowns_before
     assert controller.last_verdict_record == verdict_before
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=_scenario_ids(ALL_SCENARIOS))
-def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_probe(
+def test_canary_probe_owner_managed_exemption_records_without_charge_cooldown_or_probe(
     scenario: MatrixScenario,
 ) -> None:
     observation, controller, clock = run_matrix_scenario(AgentEntryPoint.CANARY_PROBE, scenario)
@@ -419,7 +464,7 @@ def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_pr
     assert observation.probe_calls == ()
     assert observation.availability is True
     assert observation.ledger_entries == {}
-    assert observation.false_bench_count == 0
+    assert observation.false_cooldown_count == 0
     _assert_every_exclusion_expires(controller, clock)
 
 
@@ -428,13 +473,13 @@ def test_canary_probe_owner_managed_exemption_records_without_charge_bench_or_pr
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
+def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_cooldowns(
     entry_point: AgentEntryPoint,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     replays = [run_matrix_scenario(entry_point, scenario) for scenario in NEGATIVE_CORPUS_SCENARIOS]
-    false_benches = [replay for replay, _controller, _clock in replays if not replay.availability]
-    report = f"false_benches={len(false_benches)}/{len(replays)}"
+    false_cooldowns = [replay for replay, _controller, _clock in replays if not replay.availability]
+    report = f"false_cooldowns={len(false_cooldowns)}/{len(replays)}"
     matrix_sample = len(replays) * len(NON_PROBE_ENTRY_POINTS)
 
     with capsys.disabled():
@@ -443,10 +488,10 @@ def test_ac9_corpus_replay_over_the_matrix_reports_zero_false_benches(
             f"entry_point={entry_point.value} matrix_sample={matrix_sample}"
         )
 
-    assert report == f"false_benches=0/{len(replays)}"
+    assert report == f"false_cooldowns=0/{len(replays)}"
 
 
-def test_ac9_the_genuine_positive_benches_on_the_first_attempt() -> None:
+def test_ac9_the_genuine_positive_cools_down_on_the_first_attempt() -> None:
     agy_failed = next(
         scenario
         for scenario in corpus_scenarios()
@@ -471,7 +516,7 @@ def test_ac9_the_genuine_positive_benches_on_the_first_attempt() -> None:
         "ac2_ordinary_nonzero_exit_selects_b",
     ),
 )
-def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
+def test_ac1_and_ac2_production_selection_dispatches_b_after_a_cools_down(
     entry_point: AgentEntryPoint,
     scenario_name: str,
 ) -> None:
@@ -511,7 +556,7 @@ def test_ac1_and_ac2_production_selection_dispatches_b_after_a_is_benched(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac6_slow_productive_agent_with_mid_run_error_is_not_benched(
+def test_ac6_slow_productive_agent_with_mid_run_error_does_not_cool_down(
     entry_point: AgentEntryPoint,
 ) -> None:
     observation, controller, _clock = run_matrix_scenario(
@@ -577,7 +622,7 @@ def test_ac3_runtime_attribution_label_and_selectability(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac4_prompt_side_quota_words_never_bench(
+def test_ac4_prompt_side_quota_words_never_start_a_cooldown(
     entry_point: AgentEntryPoint,
 ) -> None:
     observation, controller, _clock = run_matrix_scenario(
@@ -600,7 +645,7 @@ def test_ac4_prompt_side_quota_words_never_bench(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac5_failed_probe_benches_with_availability_false_and_mapped_reason(
+def test_ac5_failed_probe_cools_down_with_availability_false_and_mapped_reason(
     entry_point: AgentEntryPoint,
 ) -> None:
     observation, controller, clock = run_matrix_scenario(
@@ -650,7 +695,7 @@ def test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac16_positive_proof_only_exit_zero_alone_never_benches(
+def test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown(
     entry_point: AgentEntryPoint,
 ) -> None:
     observation, controller, _clock = run_matrix_scenario(
@@ -736,7 +781,7 @@ def _case_for(scenario: MatrixScenario) -> CorpusCase:
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac10_the_second_confirmed_failure_escalates_the_bench(
+def test_ac10_the_second_confirmed_failure_escalates_the_cooldown(
     entry_point: AgentEntryPoint,
 ) -> None:
     _observation, controller, _clock = run_matrix_scenario(
@@ -800,17 +845,17 @@ def test_ac11_the_wait_listing_names_agent_reason_and_remaining_time(
     NON_PROBE_ENTRY_POINTS,
     ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
 )
-def test_ac12_an_expired_bench_leaves_no_tracker_trace_but_feeds_back(
+def test_ac12_an_expired_cooldown_leaves_no_tracker_trace_but_feeds_back(
     entry_point: AgentEntryPoint,
 ) -> None:
     observation, controller, clock = run_matrix_scenario(
-        entry_point, _scenario("false_bench_feedback")
+        entry_point, _scenario("false_cooldown_feedback")
     )
 
     assert observation.outcome_kind == "completed"
-    assert observation.false_bench_count == 1
-    assert controller.false_bench_feedback.count == 1
-    events = controller.false_bench_feedback.events
+    assert observation.false_cooldown_count == 1
+    assert controller.false_cooldown_feedback.count == 1
+    events = controller.false_cooldown_feedback.events
     assert len(events) == 1
     assert events[0]["verdict_ref"]
     assert clock.monotonic() >= _BENCH_POLICY.base_backoff_ms / 1000
@@ -1056,7 +1101,7 @@ def test_canary_probe_mode_contract_explicit_exception(
     assert observation.wait_positive is False
     assert observation.ledger_status == "eligible"
     assert observation.ledger_entries == {}
-    assert observation.false_bench_count == 0
+    assert observation.false_cooldown_count == 0
     store = controller.unavailability_store
     assert store.is_available(PHASE, agent) is True
     assert store.earliest_unavailable_wait_ms(PHASE, [agent]) == 0

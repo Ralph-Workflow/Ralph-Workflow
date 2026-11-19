@@ -5,14 +5,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.recovery.false_bench_fixture import false_bench_fixture_draft
+from ralph.recovery.false_cooldown_fixture import false_cooldown_fixture_draft
 from tests.recovery._corpus_derive import load_corpus
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_false_bench_fixture_draft_loads_and_preserves_termination_issuer(
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_false_cooldown_fixture module": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; module renamed from tests/recovery/test_false_bench_fixture.py with unchanged content"
+    ),
+}
+
+
+def test_false_cooldown_fixture_draft_loads_and_preserves_termination_issuer(
     tmp_path: Path,
 ) -> None:
     event: dict[str, object] = {
@@ -53,14 +60,14 @@ def test_false_bench_fixture_draft_loads_and_preserves_termination_issuer(
         },
     }
 
-    draft = false_bench_fixture_draft(event)
+    draft = false_cooldown_fixture_draft(event)
     (tmp_path / "draft.json").write_text(json.dumps(draft), encoding="utf-8")
     cases = load_corpus(tmp_path)
 
     assert draft == {
-        "id": "false_bench_codex_abc123",
+        "id": "false_cooldown_codex_abc123",
         "label": "negative",
-        "expected_bench": False,
+        "expected_cooldown": False,
         "expected_verdict": "not_agent_fault",
         "expected_attribution": "runtime",
         "agent": "codex",
@@ -92,9 +99,9 @@ def test_false_bench_fixture_draft_loads_and_preserves_termination_issuer(
     assert cases[0].facts.termination.issuer.value == "quota_detector"
 
 
-def test_false_bench_fixture_draft_rejects_missing_verdict_reference() -> None:
+def test_false_cooldown_fixture_draft_rejects_missing_verdict_reference() -> None:
     with pytest.raises(ValueError, match="verdict_ref"):
-        false_bench_fixture_draft(
+        false_cooldown_fixture_draft(
             {
                 "agent": "codex",
                 "transport": "codex",

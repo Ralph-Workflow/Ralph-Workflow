@@ -1,5 +1,7 @@
 # startup_and_cooldown_recovery
 
+The cooldown in this packet is the integration retry deadline on `RebaseState`, a git-operation retry and not agent availability. Agent cooldown is defined only in [the sole cooldown system](../../agents/cooldown-invariant.md).
+
 ## Authoritative owner
 `ralph.pipeline.auto_integrate_recovery.recover_incomplete_integration`
 is the single authority for the startup recovery choice

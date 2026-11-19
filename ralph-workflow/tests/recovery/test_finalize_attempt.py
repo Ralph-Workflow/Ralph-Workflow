@@ -11,9 +11,39 @@ from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched with an unchanged body"
+    ),
+    "test_ac10_a_typed_signal_cools_the_agent_down_on_the_first_failure (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure with an unchanged body"
+    ),
+    "test_a_success_after_a_cooldown_counts_one_false_cooldown_under_the_same_fingerprint (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_success_after_a_bench_counts_one_false_bench_under_the_same_fingerprint with an unchanged body"
+    ),
+    "test_a_success_under_another_fingerprint_counts_no_false_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_success_under_another_fingerprint_counts_no_false_bench with an unchanged body"
+    ),
+    "test_a_probe_mode_attempt_neither_cools_down_nor_charges (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_probe_mode_attempt_neither_benches_nor_charges with an unchanged body"
+    ),
+    "test_a_probe_mode_attempt_neither_cools_down_nor_charges": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_success_after_a_cooldown_counts_one_false_cooldown_under_the_same_fingerprint": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_a_success_under_another_fingerprint_counts_no_false_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_ac8_a_failed_attempt_with_a_valid_artifact_is_a_task_or_environment_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_the_false_cooldown_feedback_survives_a_snapshot_round_trip": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charged": "operator rule: an agent is either on cooldown or not; the charged attempt now starts an expiring unproductive_limit cooldown in the shared tracker instead of a ledger-only state, so the test asserts that cooldown, its reason and that the agent is selectable after expiry instead of tracker availability and is_spent",
-    "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key and is_spent are gone and the ordinary charge now cools the agent in the shared tracker, so the test asserts an expiring unproductive_limit cooldown rather than a dead-agent bench",
-    "test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure": "operator rule: an agent is either on cooldown or not; the ledger now shares the tracker so a consecutive limit of one would overlay a longer unproductive_limit cooldown, so this test uses the default limit of three to observe the dead-agent cooldown reason alone",
+    "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key and is_spent are gone and the ordinary charge now cools the agent in the shared tracker, so the test asserts an expiring unproductive_limit cooldown rather than a dead-agent bench",
+    "test_ac10_a_typed_signal_cools_the_agent_down_on_the_first_failure": "operator rule: an agent is either on cooldown or not; the ledger now shares the tracker so a consecutive limit of one would overlay a longer unproductive_limit cooldown, so this test uses the default limit of three to observe the dead-agent cooldown reason alone",
     "test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_failure": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the first peer holds an expiring unproductive_limit cooldown and is selectable after it expires",
 }
 
@@ -142,11 +172,13 @@ def test_ac14_an_unattributed_live_end_with_a_passing_probe_is_unknown_and_charg
     )
 
     assert outcome.kind is AttemptOutcomeKind.UNKNOWN
-    assert outcome.benches_agent is False
+    assert outcome.starts_cooldown is False
     _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 
-def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() -> None:
+def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_dead_agent_cooldown() -> (
+    None
+):
     clock = FakeClock(start=0.0)
     controller = _controller(probe_raises=True, clock=clock)
 
@@ -158,7 +190,7 @@ def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() 
     )
 
     assert outcome.kind is AttemptOutcomeKind.UNKNOWN
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0
     assert controller.ledger.registered_agents(PHASE) == (AGENT_A,), (
         "a probe that could not run charges the ordinary ledger entry for the "
         "agent; observed ledger agents: "
@@ -167,7 +199,7 @@ def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_unbenched() 
     _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 
-def test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure() -> None:
+def test_ac10_a_typed_signal_cools_the_agent_down_on_the_first_failure() -> None:
     controller = _controller(consecutive_limit=3)
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
 
@@ -180,7 +212,7 @@ def test_ac10_a_typed_signal_benches_the_agent_on_the_first_failure() -> None:
     )
 
     assert outcome.kind is AttemptOutcomeKind.AGENT_DEAD
-    assert outcome.benches_agent is True
+    assert outcome.starts_cooldown is True
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is False
     reasons = controller.unavailability_store.snapshot().get("unavailability_reasons")
     assert isinstance(reasons, dict)
@@ -198,11 +230,11 @@ def test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_fai
 
     assert first.kind is AttemptOutcomeKind.UNKNOWN
     assert second.kind is AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
-    assert second.benches_agent is False
+    assert second.starts_cooldown is False
     assert _cooldown_until_ms(controller, AGENT_A) is not None
     assert isinstance(controller.ledger.status(PHASE, AGENT_B), Eligible)
     assert controller.unavailability_store.is_available(PHASE, AGENT_B) is True
-    assert first.benches_agent is False
+    assert first.starts_cooldown is False
     first_reasons = controller.unavailability_store.snapshot().get("unavailability_reasons", {})
     assert first_reasons.get(AGENT_A) != str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS), (
         "the first peer must not be benched for a dead-agent verdict when it only "
@@ -222,7 +254,7 @@ def test_ac8_a_failed_attempt_with_a_valid_artifact_is_a_task_or_environment_fai
     )
 
     assert outcome.kind is AttemptOutcomeKind.TASK_OR_ENVIRONMENT_FAILURE
-    assert outcome.benches_agent is False
+    assert outcome.starts_cooldown is False
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
 
 
@@ -273,7 +305,7 @@ def test_an_unkeyed_call_claims_the_keyed_outcome_once_and_then_finalizes_fresh(
     assert (_cooldown_until_ms(controller, AGENT_A) or 0) > (charged_until or 0)
 
 
-def test_a_success_after_a_bench_counts_one_false_bench_under_the_same_fingerprint() -> None:
+def test_a_success_after_a_cooldown_counts_one_false_cooldown_under_the_same_fingerprint() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller(clock=clock)
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
@@ -288,7 +320,7 @@ def test_a_success_after_a_bench_counts_one_false_bench_under_the_same_fingerpri
         config_fingerprint=FINGERPRINT,
         session_ref=SESSION_REF,
     )
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0
 
     clock.advance(10.1)
     _tracker(controller).prune_expired()
@@ -302,7 +334,7 @@ def test_a_success_after_a_bench_counts_one_false_bench_under_the_same_fingerpri
         config_fingerprint=FINGERPRINT,
     )
 
-    feedback = controller.false_bench_feedback
+    feedback = controller.false_cooldown_feedback
     assert feedback.count == 1
     event = feedback.events[0]
     assert event["agent"] == AGENT_A
@@ -311,7 +343,7 @@ def test_a_success_after_a_bench_counts_one_false_bench_under_the_same_fingerpri
     assert event["verdict_ref"] == controller.last_verdict_record
 
 
-def test_a_success_under_another_fingerprint_counts_no_false_bench() -> None:
+def test_a_success_under_another_fingerprint_counts_no_false_cooldown() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller(clock=clock)
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
@@ -336,10 +368,10 @@ def test_a_success_under_another_fingerprint_counts_no_false_bench() -> None:
         config_fingerprint=OTHER_FINGERPRINT,
     )
 
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0
 
 
-def test_the_false_bench_feedback_survives_a_snapshot_round_trip() -> None:
+def test_the_false_cooldown_feedback_survives_a_snapshot_round_trip() -> None:
     controller = _controller()
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
 
@@ -362,7 +394,7 @@ def test_the_false_bench_feedback_survives_a_snapshot_round_trip() -> None:
     )
 
     snapshot = controller.snapshot()
-    feedback_snapshot = snapshot["false_bench_feedback"]
+    feedback_snapshot = snapshot["false_cooldown_feedback"]
     assert isinstance(feedback_snapshot, dict)
     assert feedback_snapshot["count"] == 1
 
@@ -370,11 +402,11 @@ def test_the_false_bench_feedback_survives_a_snapshot_round_trip() -> None:
         options=RecoveryControllerOptions.from_snapshot(snapshot),
     )
 
-    assert restored.false_bench_feedback.count == 1
-    assert restored.false_bench_feedback.events[0]["config_fingerprint"] == FINGERPRINT
+    assert restored.false_cooldown_feedback.count == 1
+    assert restored.false_cooldown_feedback.events[0]["config_fingerprint"] == FINGERPRINT
 
 
-def test_a_probe_mode_attempt_neither_benches_nor_charges() -> None:
+def test_a_probe_mode_attempt_neither_cools_down_nor_charges() -> None:
     controller = _controller()
     signal = TypedSignal(name="quota_exhausted", provider_originated=True, agent_initiated=True)
 
@@ -390,4 +422,4 @@ def test_a_probe_mode_attempt_neither_benches_nor_charges() -> None:
     assert outcome.kind is AttemptOutcomeKind.AGENT_DEAD
     assert controller.unavailability_store.is_available(PHASE, AGENT_A) is True
     assert isinstance(controller.ledger.status(PHASE, AGENT_A), Eligible)
-    assert controller.false_bench_feedback.count == 0
+    assert controller.false_cooldown_feedback.count == 0

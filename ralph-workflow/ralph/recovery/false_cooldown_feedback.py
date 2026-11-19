@@ -9,7 +9,7 @@ _MAX_EVENTS = 32
 _MAX_CANDIDATES = 128
 
 
-class FalseBenchFeedback:
+class FalseCooldownFeedback:
     def __init__(self) -> None:
         self._count = 0
         self._events: tuple[dict[str, object], ...] = ()
@@ -23,7 +23,7 @@ class FalseBenchFeedback:
     def events(self) -> tuple[dict[str, object], ...]:
         return deepcopy(self._events)
 
-    def note_bench(
+    def note_cooldown(
         self,
         phase: str,
         agent: str,
@@ -62,7 +62,7 @@ class FalseBenchFeedback:
         }
 
     @classmethod
-    def from_snapshot(cls, snapshot: Mapping[str, object] | None) -> FalseBenchFeedback:
+    def from_snapshot(cls, snapshot: Mapping[str, object] | None) -> FalseCooldownFeedback:
         feedback = cls()
         if not isinstance(snapshot, Mapping):
             return feedback
@@ -124,4 +124,4 @@ class FalseBenchFeedback:
         }
 
 
-__all__ = ["FalseBenchFeedback"]
+__all__ = ["FalseCooldownFeedback"]

@@ -12,6 +12,13 @@ from ralph.agents.chain import (
 )
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_chain_has_no_current_agent_when_empty": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 _config_models.Path = _RuntimePath
 _config_models.GeneralConfig.model_rebuild()
 _config_models.UnifiedConfig.model_rebuild()
@@ -89,11 +96,11 @@ def test_chain_manager_validate_reports_unknown_chain_and_empty_agents() -> None
     ]
 
 
-def test_agent_chain_is_exhausted_when_empty() -> None:
+def test_agent_chain_has_no_current_agent_when_empty() -> None:
     chain = AgentChain(agents=[])
 
     assert chain.current_agent is None
-    assert chain.is_exhausted
+    assert chain.has_no_current_agent
 
 
 def test_agent_chain_waits_on_backoff() -> None:

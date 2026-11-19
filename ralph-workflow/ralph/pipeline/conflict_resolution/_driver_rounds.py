@@ -17,7 +17,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
 )
@@ -179,16 +179,16 @@ def _record_invoker_outcome(
         case ResolvedOutcome():
             session.last_failure_cause = ResolutionFailureCause.NONE
         case WaitingOutcome(external_condition=condition):
-            session.exhaustion_reason = condition
+            session.halt_reason = condition
         case RetryLaterOutcome(on_change=on_change, until=until):
-            session.exhaustion_reason = on_change or f"retry at {until}"
+            session.halt_reason = on_change or f"retry at {until}"
         case NextStrategyOutcome(strategy=strategy):
-            session.exhaustion_reason = strategy
+            session.halt_reason = strategy
         case ConfigFailureOutcome(parse_error=parse_error):
             session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
-            session.exhaustion_reason = str(parse_error) if parse_error is not None else None
+            session.halt_reason = str(parse_error) if parse_error is not None else None
         case UnknownOutcome(error=error):
-            session.exhaustion_reason = str(error)
+            session.halt_reason = str(error)
         case _ as unreachable:
             assert_never(unreachable)
 
@@ -232,7 +232,7 @@ def _handle_candidate_failure(
         failed_index=offset,
         policy_bundle=policy_bundle,
     )
-    if session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS:
+    if session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     else:
         session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT

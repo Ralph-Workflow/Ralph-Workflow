@@ -4,24 +4,24 @@ from collections.abc import Mapping
 from typing import cast
 
 
-class FalseBenchFixtureError(ValueError, TypeError):
+class FalseCooldownFixtureError(ValueError, TypeError):
     pass
 
 
-def false_bench_fixture_draft(event: Mapping[str, object]) -> dict[str, object]:
+def false_cooldown_fixture_draft(event: Mapping[str, object]) -> dict[str, object]:
     verdict_ref = event.get("verdict_ref")
     if not isinstance(verdict_ref, Mapping):
-        raise FalseBenchFixtureError("event must contain a verdict_ref mapping")
+        raise FalseCooldownFixtureError("event must contain a verdict_ref mapping")
     verdict_ref = cast("Mapping[str, object]", verdict_ref)
 
     facts = verdict_ref.get("facts")
     if not isinstance(facts, Mapping):
-        raise FalseBenchFixtureError("verdict_ref must contain a facts mapping")
+        raise FalseCooldownFixtureError("verdict_ref must contain a facts mapping")
     facts = cast("Mapping[str, object]", facts)
 
     session_ref = event.get("session_ref")
     if not isinstance(session_ref, Mapping):
-        raise FalseBenchFixtureError("event must contain a session_ref mapping")
+        raise FalseCooldownFixtureError("event must contain a session_ref mapping")
     session_ref = cast("Mapping[str, object]", session_ref)
 
     attribution = verdict_ref.get("attribution")
@@ -29,9 +29,9 @@ def false_bench_fixture_draft(event: Mapping[str, object]) -> dict[str, object]:
         attribution = cast("Mapping[str, object]", attribution).get("attribution")
 
     fixture: dict[str, object] = {
-        "id": f"false_bench_{event['agent']}_{event['config_fingerprint']}",
+        "id": f"false_cooldown_{event['agent']}_{event['config_fingerprint']}",
         "label": "negative",
-        "expected_bench": False,
+        "expected_cooldown": False,
         "expected_verdict": "not_agent_fault",
         "expected_attribution": attribution,
         "agent": event["agent"],

@@ -24,6 +24,13 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_status_model_and_operator_message_share_the_current_conflict_facts": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 def _config(*, enabled: bool):
     from ralph.config.models import UnifiedConfig
 
@@ -119,11 +126,11 @@ def test_rebase_stop_resolver_declines_with_the_same_typed_contract(
 
 def test_status_model_and_operator_message_share_the_current_conflict_facts() -> None:
     status = build_integration_status(
-        cause="CANDIDATE_EXHAUSTED",
+        cause="NO_RUNNABLE_CANDIDATE",
         paths_with_reasons=(("conflict_a.py", "content conflict"),),
         command="git add -- conflict_a.py",
         agents_can_finish=False,
-        agent_reasons=("primary spent", "fallback unavailable"),
+        agent_reasons=("primary: cooldown unproductive_limit", "fallback: cooldown out_of_credits"),
     )
 
     message = format_auto_integrate_message(
@@ -135,7 +142,7 @@ def test_status_model_and_operator_message_share_the_current_conflict_facts() ->
 
     assert "conflict_a.py" in status.summary
     assert "git add -- conflict_a.py" in status.summary
-    assert "spent/unavailable" in status.summary
+    assert "on cooldown" in status.summary
     assert status.summary in message
 
 

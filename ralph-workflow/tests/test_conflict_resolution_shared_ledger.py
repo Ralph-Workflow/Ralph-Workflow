@@ -30,6 +30,12 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_cooling_down_elsewhere_in_the_run_is_skipped_by_the_resolver": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_benched_elsewhere_in_the_run_is_skipped_by_the_resolver with an unchanged body"
+    ),
+    "test_when_every_candidate_is_cooling_down_the_one_returning_soonest_goes_first": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_when_every_candidate_is_benched_the_one_returning_soonest_goes_first with an unchanged body"
+    ),
     "test_resolver_that_failed_in_an_earlier_session_is_not_offered_first": (
         "shared ledger benches primary resolver after reaching consecutive limit so "
         "benched primary is skipped in the second session"
@@ -130,7 +136,7 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     assert second == ["fallback"]
 
 
-def test_agent_benched_elsewhere_in_the_run_is_skipped_by_the_resolver(
+def test_agent_cooling_down_elsewhere_in_the_run_is_skipped_by_the_resolver(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -148,7 +154,7 @@ def test_agent_benched_elsewhere_in_the_run_is_skipped_by_the_resolver(
     assert calls == ["fallback"]
 
 
-def test_when_every_candidate_is_benched_the_one_returning_soonest_goes_first(
+def test_when_every_candidate_is_cooling_down_the_one_returning_soonest_goes_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from ralph.recovery.unavailability_reason import UnavailabilityReason

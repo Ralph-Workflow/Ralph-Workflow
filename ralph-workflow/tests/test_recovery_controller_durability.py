@@ -24,6 +24,15 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.memory import MemoryWorkspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_cooling_agent_is_skipped_in_preferred_agent_selection": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_spent_agent_is_skipped_in_preferred_agent_selection with an unchanged body"
+    ),
+    "test_prepopulated_workspace_no_change_cools_down_at_consecutive_limit": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_prepopulated_workspace_no_change_demotes_at_consecutive_limit with an unchanged body"
+    ),
+}
+
 
 def _make_failure(
     *,
@@ -81,7 +90,7 @@ class TestRecoveryControllerDurability:
         assert restored_snap["cycle_cap"] == 50
         assert restored_backoff["claude"] == 2
 
-    def test_spent_agent_is_skipped_in_preferred_agent_selection(self) -> None:
+    def test_cooling_agent_is_skipped_in_preferred_agent_selection(self) -> None:
         clock = FakeClock(start=100.0)
         options = RecoveryControllerOptions(
             clock=clock,
@@ -110,7 +119,7 @@ class TestRecoveryControllerDurability:
         selection = controller.preferred_agent_index("development", ["claude", "gemini"])
         assert selection.agent == "gemini"
 
-    def test_prepopulated_workspace_no_change_demotes_at_consecutive_limit(self) -> None:
+    def test_prepopulated_workspace_no_change_cools_down_at_consecutive_limit(self) -> None:
         bundle = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
         workspace = MemoryWorkspace()
         workspace.write("README.md", "# Project\nInitial readme.\n")

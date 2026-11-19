@@ -25,6 +25,9 @@ from tests.agents.invoke.test_pending_subagents_turn_end import (
 pytestmark = pytest.mark.subprocess_e2e
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fault (cooldown vocabulary)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fault": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key is gone, so the test asserts it is absent and the ledger status is eligible",
 }
 
@@ -244,7 +247,7 @@ def test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fa
     from ralph.recovery.dead_agent_verdict import (
         DeadAgentVerdict,
         decide_dead_agent_verdict,
-        verdict_benches_agent,
+        verdict_starts_cooldown,
     )
 
     facts = AttemptFacts(
@@ -274,7 +277,7 @@ def test_session_ending_with_dispatch_still_pending_is_unattributed_not_agent_fa
         "an end with pending subagents must never convict the agent "
         f"(observed: {dead_agent_verdict.verdict!r})"
     )
-    assert verdict_benches_agent(dead_agent_verdict.verdict) is False, (
+    assert verdict_starts_cooldown(dead_agent_verdict.verdict) is False, (
         "an end with pending subagents must never bench the agent"
     )
 

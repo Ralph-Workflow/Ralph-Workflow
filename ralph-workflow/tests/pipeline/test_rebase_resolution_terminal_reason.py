@@ -16,15 +16,34 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resolve_rebase_with_config_exposes_no_runnable_candidate_terminal_reason (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_resolve_rebase_with_config_exposes_candidate_exhausted_terminal_reason with an unchanged body"
+    ),
+    "test_rebase_resolution_result_keeps_typed_contract": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_record_resolution_exhausted_records_the_terminal_reason": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolve_rebase_with_config_exposes_no_runnable_candidate_terminal_reason": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolve_rebase_with_config_result_unpacks_into_three_values": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 _PENDING_REASON = "rebase resolution remains pending after continuation"
 _OPERATOR_ACTION_MESSAGE = (
-    "all resolver agents are spent/unavailable; conflict on app.py; resume point: git add -- app.py"
+    "all resolver agents are on cooldown; conflict on app.py; resume point: git add -- app.py"
 )
 
 
-class _CandidateExhaustedRunner:
+class _NoRunnableCandidateRunner:
     def resolve_rebase(
         self,
         root: Path,
@@ -33,7 +52,7 @@ class _CandidateExhaustedRunner:
         *,
         session: ResolutionSession,
     ) -> bool:
-        session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        session.terminal_reason = ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
         session.unresolved_paths = ("app.py",)
         session.operator_action_message = _OPERATOR_ACTION_MESSAGE
         return False
@@ -51,7 +70,7 @@ class _ResolvedRunner:
         return True
 
 
-def test_resolve_rebase_with_config_exposes_candidate_exhausted_terminal_reason(
+def test_resolve_rebase_with_config_exposes_no_runnable_candidate_terminal_reason(
     tmp_path: Path,
 ) -> None:
     result = resolve_conflicted_rebase(
@@ -60,14 +79,14 @@ def test_resolve_rebase_with_config_exposes_candidate_exhausted_terminal_reason(
         lambda *_args: False,
         None,
         None,
-        agent_runner=_CandidateExhaustedRunner(),
+        agent_runner=_NoRunnableCandidateRunner(),
     )
 
     assert result is not None
     assert result.short_circuit is not None
     assert result.short_circuit.resolution_exhaustion_reason is not None
     assert result.short_circuit.resolution_exhaustion_reason.startswith(
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE.value
     )
 
 
@@ -94,25 +113,25 @@ def test_resolve_rebase_with_config_result_unpacks_into_three_values(tmp_path: P
         lambda *_args: False,
         None,
         None,
-        agent_runner=_CandidateExhaustedRunner(),
+        agent_runner=_NoRunnableCandidateRunner(),
     )
     assert public_result is not None
     assert public_result.short_circuit is not None
     result = RebaseResolutionResult(
         RetryLaterOutcome(
             on_change=_OPERATOR_ACTION_MESSAGE,
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
         ),
         _OPERATOR_ACTION_MESSAGE,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
     )
 
     assert isinstance(result.outcome, RetryLaterOutcome)
     assert result.reason == _OPERATOR_ACTION_MESSAGE
     assert result.failure_cause is ResolutionFailureCause.UNRESOLVED_CONFLICT
-    assert result.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert result.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
 
 
 def test_rebase_resolution_result_keeps_typed_contract() -> None:
@@ -120,7 +139,7 @@ def test_rebase_resolution_result_keeps_typed_contract() -> None:
         RetryLaterOutcome(on_change=_PENDING_REASON),
         _PENDING_REASON,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
     )
     defaulted = RebaseResolutionResult(
         RetryLaterOutcome(on_change=_PENDING_REASON),
@@ -133,29 +152,29 @@ def test_rebase_resolution_result_keeps_typed_contract() -> None:
         assert result.outcome.on_change == _PENDING_REASON
 
     assert defaulted.terminal_reason is None
-    assert positional.terminal_reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert positional.terminal_reason is ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     assert positional == RebaseResolutionResult(
         RetryLaterOutcome(on_change=_PENDING_REASON),
         _PENDING_REASON,
         ResolutionFailureCause.UNRESOLVED_CONFLICT,
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
     )
 
 
 def test_record_resolution_exhausted_records_the_terminal_reason() -> None:
     state = record_resolution_exhausted(
-        reason="all resolver agents are spent/unavailable",
+        reason="all resolver agents are on cooldown",
         target="main",
-        terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
     )
 
     assert state.resolution_exhausted is True
-    assert state.last_reason == "all resolver agents are spent/unavailable"
+    assert state.last_reason == "all resolver agents are on cooldown"
     assert state.resolution_exhaustion_reason is not None
     assert state.resolution_exhaustion_reason.startswith(
-        ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
+        ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE.value
     )
-    assert "all resolver agents are spent/unavailable" in state.resolution_exhaustion_reason
+    assert "all resolver agents are on cooldown" in state.resolution_exhaustion_reason
 
 
 def test_record_resolution_exhausted_without_terminal_reason_keeps_the_reason() -> None:

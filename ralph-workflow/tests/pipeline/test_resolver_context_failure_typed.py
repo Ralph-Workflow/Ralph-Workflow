@@ -27,7 +27,7 @@ from ralph.pipeline.conflict_resolution import (
     bind_active_rebase_resolution_session,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    BUDGET_UNCHARGED_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.resolution_outcome import (
@@ -47,6 +47,30 @@ from ralph.workspace.context import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_context_failure_enum_and_budget_uncharged (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_context_failure_enum_and_not_spent with an unchanged body"
+    ),
+    "test_resolve_conflicted_rebase_carries_context_failure_not_a_no_runnable_candidate_stop": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_resolve_conflicted_rebase_carries_context_failure_not_exhausted with an unchanged body"
+    ),
+    "test_context_failure_enum_and_budget_uncharged": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolver_config_related_exception_classifies_as_config_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolver_generic_context_failure_populates_all_sinks": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolver_generic_optional_config_files_classify_as_config_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolver_generic_pipeline_toml_config_failure_formats_remediation": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+    "test_resolver_workspace_path_with_project_name_retains_context_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
     "test_integrated_transport_reaches_run_loop_alert_and_status_bar": (
         "removed white-box private attribute assertion assert sb._model == model to comply "
         "with zero white-box test policy; the status bar rendering is verified via render_status_bar"
@@ -57,9 +81,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-def test_context_failure_enum_and_not_spent() -> None:
+def test_context_failure_enum_and_budget_uncharged() -> None:
     assert ResolutionTerminationReason.CONTEXT_FAILURE == "CONTEXT_FAILURE"
-    assert ResolutionTerminationReason.CONTEXT_FAILURE in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+    assert ResolutionTerminationReason.CONTEXT_FAILURE in BUDGET_UNCHARGED_TERMINATION_REASONS
     assert ResolutionFailureCause.CONTEXT_FAILURE == "CONTEXT_FAILURE"
 
 
@@ -106,7 +130,7 @@ def test_resolver_generic_context_failure_populates_all_sinks(tmp_path: Path) ->
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
-    assert session.exhaustion_reason == "target worktree context failed: simulated filesystem error"
+    assert session.halt_reason == "target worktree context failed: simulated filesystem error"
 
 
 def test_resolver_workspace_path_with_project_name_retains_context_failure(
@@ -158,8 +182,8 @@ def test_resolver_workspace_path_with_project_name_retains_context_failure(
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONTEXT_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
-    assert session.exhaustion_reason == expected_reason
-    assert "ralph --check-config" not in str(session.exhaustion_reason)
+    assert session.halt_reason == expected_reason
+    assert "ralph --check-config" not in str(session.halt_reason)
 
 
 def test_resolver_config_related_exception_classifies_as_config_failure(
@@ -206,7 +230,7 @@ def test_resolver_config_related_exception_classifies_as_config_failure(
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert session.exhaustion_reason == "fix agents.toml then run ralph --check-config"
+    assert session.halt_reason == "fix agents.toml then run ralph --check-config"
 
 
 def test_resolver_generic_pipeline_toml_config_failure_formats_remediation(
@@ -253,7 +277,7 @@ def test_resolver_generic_pipeline_toml_config_failure_formats_remediation(
     assert session.charge_conflict_budget is False
     assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
     assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-    assert session.exhaustion_reason == "fix pipeline.toml then run ralph --check-config"
+    assert session.halt_reason == "fix pipeline.toml then run ralph --check-config"
 
 
 def test_resolver_generic_optional_config_files_classify_as_config_failure(
@@ -312,7 +336,7 @@ def test_resolver_generic_optional_config_files_classify_as_config_failure(
         assert session.charge_conflict_budget is False
         assert session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
         assert session.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE
-        assert session.exhaustion_reason == expected_reason
+        assert session.halt_reason == expected_reason
 
 
 def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_evidence(
@@ -326,7 +350,7 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
         session.charge_conflict_budget = False
         session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
-        session.exhaustion_reason = "target worktree context failed: simulated context fault"
+        session.halt_reason = "target worktree context failed: simulated context fault"
         return RetryLaterOutcome(
             on_change="target worktree context failed: simulated context fault"
         )
@@ -344,7 +368,7 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
                 outcome, "failure_cause", ResolutionFailureCause.CONTEXT_FAILURE
             )
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
-            session.exhaustion_reason = "target worktree context failed: simulated context fault"
+            session.halt_reason = "target worktree context failed: simulated context fault"
         return False
 
     mock_runner = MagicMock()
@@ -367,9 +391,7 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
         )
 
         warning_messages = [
-            r["message"]
-            for r in records
-            if "without the resolver chain being spent" in r["message"]
+            r["message"] for r in records if "does not charge the conflict budget" in r["message"]
         ]
         assert len(warning_messages) >= 1
         assert all("no terminal evidence" not in msg for msg in warning_messages)
@@ -378,7 +400,7 @@ def test_resolve_rebase_with_config_carries_context_failure_never_no_terminal_ev
         logger.remove(sink_id)
 
 
-def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
+def test_resolve_conflicted_rebase_carries_context_failure_not_a_no_runnable_candidate_stop(
     tmp_path: Path,
 ) -> None:
     mock_display = MagicMock()
@@ -417,7 +439,7 @@ def test_resolve_conflicted_rebase_carries_context_failure_not_exhausted(
                 outcome, "failure_cause", ResolutionFailureCause.CONTEXT_FAILURE
             )
             session.terminal_reason = ResolutionTerminationReason.CONTEXT_FAILURE
-            session.exhaustion_reason = (
+            session.halt_reason = (
                 getattr(outcome, "reason", None)
                 or getattr(outcome, "on_change", None)
                 or "target worktree context failed: simulated context fault"
@@ -564,9 +586,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
         assert "no terminal evidence" not in paused_rebase_warns[0]
 
         chain_warns = [
-            r["message"]
-            for r in records
-            if "without the resolver chain being spent" in r["message"]
+            r["message"] for r in records if "does not charge the conflict budget" in r["message"]
         ]
         assert len(chain_warns) >= 1
         assert "ended on CONTEXT_FAILURE" in chain_warns[0]
@@ -778,9 +798,7 @@ def test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_
         assert "no terminal evidence" not in cfg_rebase_warns[0]
 
         chain_warns = [
-            r["message"]
-            for r in records
-            if "without the resolver chain being spent" in r["message"]
+            r["message"] for r in records if "does not charge the conflict budget" in r["message"]
         ]
         assert len(chain_warns) >= 1
         assert "ended on CONFIG_FAILURE" in chain_warns[0]

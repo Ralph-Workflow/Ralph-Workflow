@@ -55,10 +55,40 @@ LIMIT_PHRASE = "You've hit your session limit"
 DEAD = str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the agent stays eligible and the key is absent",
-    "test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires",
-    "test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so the test asserts the agent stays eligible and the key is absent",
-    "test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts two attempts below the limit leave the agent eligible without a cooldown",
+    "test_ac2_ac14_a_live_session_end_on_the_skip_route_never_starts_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent with an unchanged body"
+    ),
+    "test_ac2_the_selection_evidence_never_labels_the_agent_cooling_after_one_attempt": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac2_the_selection_evidence_never_labels_the_agent_spent_after_one_attempt with an unchanged body"
+    ),
+    "test_ac10_typed_provider_signals_cool_down_on_first_failure_without_a_probe": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_typed_provider_signals_bench_on_first_failure_without_a_probe with an unchanged body"
+    ),
+    "test_ac10_the_skip_route_cools_down_a_typed_signal_without_any_probe_runner (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner with an unchanged body"
+    ),
+    "test_ac8_the_production_controller_cools_down_typed_signals_on_first_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_benches_typed_signals_on_first_failure with an unchanged body"
+    ),
+    "test_ac8_the_production_controller_never_cools_down_on_an_unresolvable_probe": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_never_benches_on_an_unresolvable_probe with an unchanged body"
+    ),
+    "test_ac8_an_inconclusive_probe_never_starts_a_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_an_inconclusive_probe_never_benches with an unchanged body"
+    ),
+    "test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_dead_agent_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench with an unchanged body"
+    ),
+    "test_ac11_a_dead_agent_on_cooldown_is_not_reselected_while_the_peer_is_on_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac11_a_benched_agent_is_not_reselected_while_the_peer_is_on_cooldown with an unchanged body"
+    ),
+    "test_ac15_repeated_live_session_ends_below_the_thresholds_never_start_a_cooldown (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent with an unchanged body"
+    ),
+    "test_ac2_ac14_a_live_session_end_on_the_skip_route_never_starts_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the agent stays eligible and the key is absent",
+    "test_ac10_the_skip_route_cools_down_a_typed_signal_without_any_probe_runner": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires",
+    "test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; is_spent and spent_agents are gone, so the test asserts the agent stays eligible and the key is absent",
+    "test_ac15_repeated_live_session_ends_below_the_thresholds_never_start_a_cooldown": "operator rule: an agent is either on cooldown or not; the Spent type is gone, so the test asserts two attempts below the limit leave the agent eligible without a cooldown",
     "test_ac15_an_unknown_workspace_change_does_not_reset_the_consecutive_streak": "operator rule: an agent is either on cooldown or not; demoted was renamed cooldown_started, so the test asserts the third attempt starts an unproductive_limit cooldown",
     "test_ac15_an_observed_workspace_change_still_resets_the_consecutive_streak": "operator rule: an agent is either on cooldown or not; demoted was renamed cooldown_started with identical assertions",
 }
@@ -180,7 +210,7 @@ def test_ac1_tool_output_quoting_a_limit_phrase_does_not_make_a_timeout_non_retr
     assert retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
 
 
-def test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent() -> None:
+def test_ac2_ac14_a_live_session_end_on_the_skip_route_never_starts_a_dead_agent_cooldown() -> None:
     controller = _controller()
     state = _state(intent=_skip_intent("AgentInvocationError"))
 
@@ -190,7 +220,7 @@ def test_ac2_ac14_a_live_session_end_on_the_skip_route_is_never_spent() -> None:
     assert "spent_agents" not in controller.snapshot()
 
 
-def test_ac2_the_selection_evidence_never_labels_the_agent_spent_after_one_attempt(
+def test_ac2_the_selection_evidence_never_labels_the_agent_cooling_after_one_attempt(
     info_logs: list[str],
 ) -> None:
     controller = _controller()
@@ -211,7 +241,7 @@ def test_ac2_the_selection_evidence_never_labels_the_agent_spent_after_one_attem
     ],
     ids=["quota", "credentials", "prompt_echo"],
 )
-def test_ac10_typed_provider_signals_bench_on_first_failure_without_a_probe(
+def test_ac10_typed_provider_signals_cool_down_on_first_failure_without_a_probe(
     exc: Exception, connectivity: str
 ) -> None:
     controller = _controller()
@@ -224,7 +254,7 @@ def test_ac10_typed_provider_signals_bench_on_first_failure_without_a_probe(
     assert _reasons(controller)[AGENT] == DEAD
 
 
-def test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner() -> None:
+def test_ac10_the_skip_route_cools_down_a_typed_signal_without_any_probe_runner() -> None:
     clock = FakeClock(start=0.0)
     controller = _controller(clock)
 
@@ -258,7 +288,7 @@ def test_ac10_the_second_confirmed_failure_escalates_per_the_policy_table() -> N
     assert second == policy.base_backoff_ms * 2
 
 
-def test_ac8_the_production_controller_benches_typed_signals_on_first_failure() -> None:
+def test_ac8_the_production_controller_cools_down_typed_signals_on_first_failure() -> None:
     bundle = _build_policy_bundle([AGENT, OTHER])
     controller, _cap = build_recovery_controller(
         _state(agents=(AGENT, OTHER)), bundle, UnifiedConfig.model_validate({})
@@ -273,7 +303,7 @@ def test_ac8_the_production_controller_benches_typed_signals_on_first_failure() 
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
 
 
-def test_ac8_the_production_controller_never_benches_on_an_unresolvable_probe() -> None:
+def test_ac8_the_production_controller_never_cools_down_on_an_unresolvable_probe() -> None:
     bundle = _build_policy_bundle(["no_such_agent_cmd_xyz"])
     state = _state(agents=("no_such_agent_cmd_xyz",))
     controller, _cap = build_recovery_controller(state, bundle, UnifiedConfig.model_validate({}))
@@ -287,7 +317,7 @@ def test_ac8_the_production_controller_never_benches_on_an_unresolvable_probe() 
     assert _reasons(controller).get("no_such_agent_cmd_xyz") != DEAD
 
 
-def test_ac8_an_inconclusive_probe_never_benches() -> None:
+def test_ac8_an_inconclusive_probe_never_starts_a_cooldown() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             clock=FakeClock(start=0.0),
@@ -304,7 +334,9 @@ def test_ac8_an_inconclusive_probe_never_benches() -> None:
     assert _reasons(controller).get(AGENT) != DEAD
 
 
-def test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench() -> None:
+def test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_dead_agent_cooldown() -> (
+    None
+):
     controller = _controller()
     termination = TerminationRecord.create(
         TerminationIssuer.QUOTA_DETECTOR,
@@ -397,7 +429,7 @@ def test_ac12_the_cooldown_reason_and_policy_survive_a_snapshot_restore() -> Non
     )
 
 
-def test_ac11_a_benched_agent_is_not_reselected_while_the_peer_is_on_cooldown(
+def test_ac11_a_dead_agent_on_cooldown_is_not_reselected_while_the_peer_is_on_cooldown(
     tmp_path: Path,
 ) -> None:
     clock = FakeClock(start=0.0)
@@ -422,7 +454,7 @@ def test_ac11_a_benched_agent_is_not_reselected_while_the_peer_is_on_cooldown(
     assert any(DEAD in line for line in evidence)
 
 
-def test_ac15_repeated_live_session_ends_below_the_thresholds_never_reach_spent() -> None:
+def test_ac15_repeated_live_session_ends_below_the_thresholds_never_start_a_cooldown() -> None:
     ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
 
     ledger.record(AttemptFact(PHASE, AGENT, artifact_valid=False, workspace_changed=None))

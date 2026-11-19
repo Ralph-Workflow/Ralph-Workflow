@@ -1342,6 +1342,13 @@ ralph.pipeline.conflict_resolution.resolver_health
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.resolver_cooldown_text
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.resolver_cooldown_text
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -5565,17 +5572,17 @@ ralph.recovery.end_attempt
    :members:
    :show-inheritance:
 
-ralph.recovery.false_bench_feedback
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.recovery.false_cooldown_feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.recovery.false_bench_feedback
+.. automodule:: ralph.recovery.false_cooldown_feedback
    :members:
    :show-inheritance:
 
-ralph.recovery.false_bench_fixture
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.recovery.false_cooldown_fixture
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.recovery.false_bench_fixture
+.. automodule:: ralph.recovery.false_cooldown_fixture
    :members:
    :show-inheritance:
 
@@ -5705,10 +5712,10 @@ ralph.pipeline.resolution_outcome_config_failure
    :members:
    :show-inheritance:
 
-ralph.pipeline.resolution_outcome_exhausted
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.pipeline.resolution_outcome_cooling_down
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.pipeline.resolution_outcome_exhausted
+.. automodule:: ralph.pipeline.resolution_outcome_cooling_down
    :members:
    :show-inheritance:
 

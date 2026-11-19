@@ -301,7 +301,7 @@ def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:
 
     if phase.workflow_fallback is not None:
         fallback_target, fallback_note = phase.workflow_fallback
-        lines.append(f"    Workflow fallback (chain exhausted) → {fallback_target}")
+        lines.append(f"    Workflow fallback (no selectable agent) → {fallback_target}")
         if fallback_note:
             lines.append(f"      Note: {fallback_note}")
 

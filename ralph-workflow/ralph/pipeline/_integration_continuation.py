@@ -23,6 +23,10 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
+from ralph.pipeline.conflict_resolution.resolver_cooldown_text import (
+    ALL_RESOLVERS_WAITING_MESSAGE,
+    names_resolver_cooldown,
+)
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
 from ralph.pipeline.rebase_state import StartupRetentionReason
@@ -265,7 +269,7 @@ def _rebase_failure_transport(
                 )
             return failure_reason
         case RetryLaterOutcome(
-            terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+            terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
             on_change=on_change,
             failure_cause=failure_cause,
             unresolved_paths=unresolved_paths,
@@ -280,12 +284,12 @@ def _rebase_failure_transport(
             )
             msg = on_change or (
                 failure_reason
-                if "spent/unavailable" in failure_reason
-                else f"all resolver agents are spent/unavailable; {failure_reason}"
+                if names_resolver_cooldown(failure_reason)
+                else f"{ALL_RESOLVERS_WAITING_MESSAGE}; {failure_reason}"
             )
             return RetryLaterOutcome(
                 on_change=msg,
-                terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+                terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
                 unresolved_paths=unresolved_paths,
                 failure_cause=failure_cause,
             )

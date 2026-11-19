@@ -30,6 +30,19 @@ from ralph.pipeline.resolution_outcome import (
     RetryLaterOutcome,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_next_strategy_outcome_returns_the_completion_strategy_text": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_next_strategy_outcome_does_not_raise_exhausted_failure with an unchanged body"
+    ),
+    "test_no_runnable_candidate_returns_a_typed_retry_later_outcome (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_candidate_exhausted_raises_exhausted_resolution_failure with an unchanged body"
+    ),
+    "test_no_runnable_candidate_returns_a_typed_retry_later_outcome": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+    ),
+}
+
+
 pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 _OPTIONS = GitRunOptions(timeout=10)
 
@@ -239,7 +252,7 @@ def test_next_strategy_outcome_never_parks_in_rebase_resolve(tmp_path: Path) -> 
     )
 
 
-def test_next_strategy_outcome_does_not_raise_exhausted_failure(tmp_path: Path) -> None:
+def test_next_strategy_outcome_returns_the_completion_strategy_text(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     _init_repo(root)
@@ -256,7 +269,7 @@ def test_next_strategy_outcome_does_not_raise_exhausted_failure(tmp_path: Path) 
     assert "complete_in_place" in failure
 
 
-def test_candidate_exhausted_raises_exhausted_resolution_failure(tmp_path: Path) -> None:
+def test_no_runnable_candidate_returns_a_typed_retry_later_outcome(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     _init_repo(root)
@@ -268,12 +281,12 @@ def test_candidate_exhausted_raises_exhausted_resolution_failure(tmp_path: Path)
         resolving_rebase=True,
     )
     outcome = RetryLaterOutcome(
-        terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+        terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
         on_change="all agents failed",
     )
     failure = _rebase_failure_transport(root, record, None, outcome, ())
     assert isinstance(failure, RetryLaterOutcome)
-    assert failure.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    assert failure.terminal_reason == ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE
     assert "all agents failed" in (failure.on_change or "")
 
 

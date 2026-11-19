@@ -48,6 +48,9 @@ from tests._conflict_resolution_phase_parity_seams import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_round_after_a_cooled_chain_invokes_one_shared_selected_candidate (renamed)": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_round_after_a_spent_chain_invokes_one_shared_selected_candidate with an unchanged body"
+    ),
     "test_structural_parity_resolver_and_ordinary_phase_same_fake_agent": (
         "moved to tests/scenarios/test_integration_parity_matrix.py because it drives a "
         "real paused rebase, which crosses the Git boundary only subprocess_e2e files may "
@@ -60,13 +63,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_an_uninstalled_candidate_is_unavailable_not_declining": "the sealed StopResolutionOutcome contract requires an exact typed retry result while preserving unavailable attribution",
     "test_a_dead_chain_stops_burning_rounds": "driver now stops before an ineligible round rather than burning an initial round on an already-dead chain",
     "test_conflict_retry_uses_shared_controller_eligibility_without_resolver_delay": "R0 forbids resolver-local retry delay; shared eligibility falls over immediately to the next eligible candidate",
-    "test_round_after_a_spent_chain_invokes_one_shared_selected_candidate": "shared controller candidate selection exhausts retries per candidate across rounds; restores the round order c14583b81 rewrote without a reason, where a spent primary is skipped in later rounds instead of being re-invoked beside the fallback",
+    "test_round_after_a_cooled_chain_invokes_one_shared_selected_candidate": "shared controller candidate selection exhausts retries per candidate across rounds; restores the round order c14583b81 rewrote without a reason, where a spent primary is skipped in later rounds instead of being re-invoked beside the fallback",
     "test_shared_controller_advances_past_a_cooling_candidate": "R0 removes skip_same_agent_retries and exposes fall-over through shared controller eligibility",
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
     "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
     "test_an_uninstalled_candidate_hands_over_to_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts the candidate_unavailable cooldown on the uninstalled candidate and that it expires on the fake clock",
-    "test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt": "operator rule: an agent is either on cooldown or not; a chain at its total limit is cooling down instead of Spent, so the uninvoked round reports CANDIDATE_UNAVAILABLE rather than CANDIDATE_EXHAUSTED",
+    "test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt": "operator rule: an agent is either on cooldown or not; a chain at its total limit is cooling down instead of Spent, so the uninvoked round reports CANDIDATE_UNAVAILABLE rather than NO_RUNNABLE_CANDIDATE",
     "test_ordinary_phase_two_agent_fall_over_then_wait": "operator rule: an agent is either on cooldown or not; the unproductive limit cooldown reason is now unproductive_limit",
     "test_one_candidates_infrastructure_fault_does_not_bury_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts no candidate is on a candidate_unavailable cooldown after an infrastructure fault",
 }
@@ -748,7 +751,7 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
         reset_executors(token)
 
 
-def test_round_after_a_spent_chain_invokes_one_shared_selected_candidate(
+def test_round_after_a_cooled_chain_invokes_one_shared_selected_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))

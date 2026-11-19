@@ -225,7 +225,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
     lines.append("  ==FAILURE==>       terminal failure outcome")
     lines.append("  +--[decision]-->   analysis decision branch")
     lines.append("  <<==[loopback]==   loopback to earlier phase")
-    lines.append("  +--[workflow_fallback]--> fallback on chain exhaustion")
+    lines.append("  +--[workflow_fallback]--> fallback when no agent can be selected")
     lines.append("  >>> FAN_OUT ...    parallel worker fan-out")
     lines.append("  <<< REJOIN >>>     workers rejoin after fan-out")
 

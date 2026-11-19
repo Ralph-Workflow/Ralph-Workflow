@@ -7,6 +7,9 @@ type EntryStrictness = Callable[[Mapping[str, object], int, int], tuple[int, int
 
 LEGACY_DEFAULT_AGENT = "claude"
 
+LEGACY_FALSE_COOLDOWN_FEEDBACK_KEY = "false_bench_feedback"
+FALSE_COOLDOWN_FEEDBACK_KEY = "false_cooldown_feedback"
+
 _DEFAULT_CONSECUTIVE_LIMIT = 3
 _DEFAULT_TOTAL_LIMIT = 9
 _DEFAULT_BASE_COOLDOWN_SECONDS = 60.0
@@ -240,9 +243,20 @@ def migrate_legacy_guard_history(
     }
 
 
+def migrate_false_cooldown_feedback_key(payload: dict[str, object]) -> None:
+    if LEGACY_FALSE_COOLDOWN_FEEDBACK_KEY not in payload:
+        return
+    legacy = payload.pop(LEGACY_FALSE_COOLDOWN_FEEDBACK_KEY)
+    if payload.get(FALSE_COOLDOWN_FEEDBACK_KEY) is None:
+        payload[FALSE_COOLDOWN_FEEDBACK_KEY] = legacy
+
+
 __all__ = [
+    "FALSE_COOLDOWN_FEEDBACK_KEY",
     "LEGACY_DEFAULT_AGENT",
+    "LEGACY_FALSE_COOLDOWN_FEEDBACK_KEY",
     "_LegacyGuardSource",
+    "migrate_false_cooldown_feedback_key",
     "migrate_legacy_guard_history",
     "translate_legacy_entry",
 ]

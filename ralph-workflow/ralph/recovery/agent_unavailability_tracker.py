@@ -248,6 +248,7 @@ class AgentUnavailabilityTracker:
 
 
 UNSPECIFIED_COOLDOWN_REASON = "cooldown"
+COOLDOWN_SYSTEM_DOC = "docs/agents/cooldown-invariant.md"
 
 
 def cooldown_windows(store: UnavailabilityStore, *, now_ms: int) -> dict[str, tuple[int, str]]:
@@ -267,6 +268,7 @@ def cooldown_windows(store: UnavailabilityStore, *, now_ms: int) -> dict[str, tu
 
 
 __all__ = [
+    "COOLDOWN_SYSTEM_DOC",
     "UNSPECIFIED_COOLDOWN_REASON",
     "AgentUnavailabilityTracker",
     "UnavailabilityEntry",

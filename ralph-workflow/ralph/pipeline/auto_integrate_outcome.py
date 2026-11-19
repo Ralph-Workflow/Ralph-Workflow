@@ -74,11 +74,11 @@ def record_resolution_exhausted(
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.UNRESOLVED_CONFLICT,
     terminal_reason: ResolutionTerminationReason | None = None,
 ) -> RebaseState:
-    exhaustion_reason = reason
+    halt_reason = reason
     if terminal_reason is not None:
         prefix = f"{terminal_reason.value}: "
-        if not exhaustion_reason.startswith(prefix):
-            exhaustion_reason = f"{prefix}{exhaustion_reason}"
+        if not halt_reason.startswith(prefix):
+            halt_reason = f"{prefix}{halt_reason}"
     return RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason=reason,
@@ -86,7 +86,7 @@ def record_resolution_exhausted(
         last_target=target,
         fast_forwarded=False,
         resolution_exhausted=True,
-        resolution_exhaustion_reason=exhaustion_reason,
+        resolution_exhaustion_reason=halt_reason,
     )
 
 

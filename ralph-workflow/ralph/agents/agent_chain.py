@@ -33,7 +33,7 @@ class AgentChain:
         return self.agents[self.current_index]
 
     @property
-    def is_exhausted(self) -> bool:
+    def has_no_current_agent(self) -> bool:
         return self.current_agent is None
 
     def can_retry(self) -> bool:
@@ -45,7 +45,7 @@ class AgentChain:
             self.retries = 0
             logger.debug("Advanced to next agent: {}", self.current_agent)
             return True
-        logger.debug("Agent chain exhausted")
+        logger.debug("Agent chain has no further agent")
         return False
 
     def record_retry(self) -> None:

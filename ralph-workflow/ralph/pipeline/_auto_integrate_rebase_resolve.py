@@ -16,6 +16,7 @@ from ralph.pipeline.auto_integrate_recovery import (
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.resolver_cooldown_text import names_resolver_cooldown
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
@@ -308,20 +309,19 @@ def _rebase_run_result(
                 ),
                 action,
             )
-            exhaustion_reason = (
+            halt_reason = (
                 strategy
-                if "resume point:" in strategy
-                or "all resolver agents are spent/unavailable" in strategy
+                if "resume point:" in strategy or names_resolver_cooldown(strategy)
                 else failure_reason
             )
-            return _conflict_run(target, exhaustion_reason, failure_cause)
+            return _conflict_run(target, halt_reason, failure_cause)
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
             return _conflict_run(
                 target,
                 f"{condition}; resumes when {resumes_when}",
                 failure_cause,
             )
-        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED):
+        case RetryLaterOutcome(terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE):
             AttemptLedger(root).charge_ladder_attempt(
                 rebase_resolution_signature(
                     record.pre_feature_sha if record is not None else None,
@@ -338,7 +338,7 @@ def _rebase_run_result(
                     reason=failure_reason,
                     target=target,
                     failure_cause=failure_cause,
-                    terminal_reason=ResolutionTerminationReason.CANDIDATE_EXHAUSTED,
+                    terminal_reason=ResolutionTerminationReason.NO_RUNNABLE_CANDIDATE,
                 ),
             )
         case RetryLaterOutcome() | UnknownOutcome():

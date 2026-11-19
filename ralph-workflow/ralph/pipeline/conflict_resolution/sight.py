@@ -120,7 +120,7 @@ def escalate_on_sight(
         target_session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
         target_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         target_session.unresolved_paths = paths_tuple
-        target_session.exhaustion_reason = message
+        target_session.halt_reason = message
         target_session.operator_action_message = message
     return message
 
