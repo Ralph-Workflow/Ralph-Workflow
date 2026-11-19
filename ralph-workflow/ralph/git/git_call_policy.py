@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
+    "GIT_CALL_FAILURES",
     "GIT_CALL_POLICIES",
     "GitCallClass",
     "GitCallPolicy",
@@ -39,6 +40,15 @@ __all__ = [
 
 
 GitCallClass = Literal["read_only_verify", "mutation", "network"]
+
+GIT_CALL_FAILURES: tuple[type[Exception], ...] = (
+    subprocess.SubprocessError,
+    GitCommandError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    KeyError,
+)
 
 GitKillPolicy = Literal["terminate_then_kill", "terminate_only"]
 

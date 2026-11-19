@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git.exc import GitCommandError
 from loguru import logger
 
 from ralph.config.models import UnifiedConfig
@@ -14,6 +15,10 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
 from ralph.pipeline.integration_decision import EscalationRung
 from ralph.pipeline.integration_owner import RecordFactOutcome
+from ralph.process.manager import (
+    ManagedProcessOutputLimitExceededError,
+    ProcessTerminationError,
+)
 from tests._fake_git_env import LIVE_OWNER, STALE_OWNER, SimulatedGitEnvironment
 
 if TYPE_CHECKING:
@@ -516,3 +521,105 @@ def test_a_settled_tick_never_reports_a_stall(tmp_path: Path) -> None:
     worker.run()
 
     assert worker.stall_state is None
+
+
+def _remote_config() -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": True}}
+    )
+
+
+class _FailingRefreshRemote:
+    def __init__(self, failure: BaseException) -> None:
+        self._failure = failure
+        self.refreshes = 0
+
+    def refresh_target(
+        self, repo_root: Path, target: str, *, remote: str, timeout_seconds: float
+    ) -> str:
+        del repo_root, target, remote, timeout_seconds
+        self.refreshes += 1
+        raise self._failure
+
+
+_RUN_GIT_FAILURES: tuple[tuple[BaseException, str], ...] = (
+    (subprocess.TimeoutExpired(["git", "fetch"], 30.0), catchup.CATCHUP_TIMEOUT),
+    (TimeoutError("fetch deadline passed"), catchup.CATCHUP_TIMEOUT),
+    (ProcessTerminationError(4242, 4242, reason="git fetch was killed"), catchup.CATCHUP_KILLED),
+    (subprocess.CalledProcessError(128, ["git", "fetch"]), catchup.CATCHUP_DEFEDITELY_FAILED),
+    (OSError("git could not start"), catchup.CATCHUP_UNKNOWN),
+    (
+        ManagedProcessOutputLimitExceededError(output_limit_bytes=1, stdout=b"", stderr=b""),
+        catchup.CATCHUP_UNKNOWN,
+    ),
+    (GitCommandError("fetch", 128), catchup.CATCHUP_DEFEDITELY_FAILED),
+)
+
+
+_ESCAPING_FETCH_FAILURES: tuple[tuple[BaseException, str], ...] = (
+    (subprocess.TimeoutExpired(["git", "fetch"], 30.0), catchup.CATCHUP_TIMEOUT),
+    (subprocess.CalledProcessError(128, ["git", "fetch"]), catchup.CATCHUP_DEFEDITELY_FAILED),
+)
+
+
+@pytest.mark.parametrize(("failure", "outcome"), _ESCAPING_FETCH_FAILURES)
+def test_a_failing_remote_fetch_during_publication_never_stops_the_catchup_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_git_repo: Path,
+    failure: BaseException,
+    outcome: str,
+) -> None:
+    warnings = _capture_warnings(monkeypatch)
+    remote = _FailingRefreshRemote(failure)
+    ticks: list[str] = []
+    waits: Iterator[bool] = iter((False, False, True))
+
+    def _tick() -> str:
+        ticks.append(catchup.CATCHUP_UP_TO_DATE)
+        return catchup.CATCHUP_UP_TO_DATE
+
+    worker = catchup.AutoIntegrateCatchupWorker(
+        _remote_config(),
+        tmp_git_repo,
+        remote_client=remote,
+        tick=_tick,
+        wait=lambda _interval: next(waits),
+    )
+
+    worker.run()
+
+    assert len(ticks) == 2, "a publication failure must never end the catch-up run"
+    assert remote.refreshes == 2
+    failures = [message for message in warnings if "publication tick failed" in message]
+    assert len(failures) == 2
+    assert all(f"publication tick failed: {outcome}:" in message for message in failures)
+
+
+@pytest.mark.parametrize(("failure", "outcome"), _RUN_GIT_FAILURES)
+def test_every_git_failure_a_tick_raises_is_recorded_and_never_stops_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: BaseException,
+    outcome: str,
+) -> None:
+    warnings = _capture_warnings(monkeypatch)
+    ticks: list[int] = []
+    waits: Iterator[bool] = iter((False, False, True))
+
+    def _tick() -> str:
+        ticks.append(1)
+        raise failure
+
+    worker = catchup.AutoIntegrateCatchupWorker(
+        _config(),
+        tmp_path,
+        tick=_tick,
+        wait=lambda _interval: next(waits),
+    )
+
+    worker.run()
+
+    assert len(ticks) == 2, "a failing tick must never end the catch-up run"
+    failures = [message for message in warnings if "catch-up tick failed" in message]
+    assert len(failures) == 2
+    assert all(f"tick failed: {outcome}:" in message for message in failures)

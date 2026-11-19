@@ -70,6 +70,7 @@ class _GuardState:
         self.parent_cache: dict[str, _ParentResolution] = {}
         self.recorded_reads: list[tuple[str | None, Path]] = []
         self.recorded_writes: list[tuple[str | None, Path]] = []
+        self.repo_tree_guard_depth: int = 0
 
 
 _STATE = _GuardState()
@@ -551,3 +552,13 @@ def _diff_repo_tree(
     ]
     deleted = [f"REPO TREE DELETED: {path}" for path in sorted(before.keys() - after.keys())]
     return [*created, *changed, *deleted]
+
+
+def _begin_repo_tree_guard() -> dict[Path, tuple[int, int]] | None:
+    _STATE.repo_tree_guard_depth += 1
+    return _scan_repo_tree() if _STATE.repo_tree_guard_depth == 1 else None
+
+
+def _end_repo_tree_guard(before: dict[Path, tuple[int, int]] | None) -> list[str]:
+    _STATE.repo_tree_guard_depth -= 1
+    return [] if before is None else _diff_repo_tree(before, _scan_repo_tree())

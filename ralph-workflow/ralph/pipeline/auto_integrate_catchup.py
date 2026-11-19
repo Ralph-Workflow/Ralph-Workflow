@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import GitError, Repo
 from loguru import logger
 
-from ralph.git.git_call_policy import classify_git_exception, quarantine_reason
+from ralph.git.git_call_policy import GIT_CALL_FAILURES, classify_git_exception, quarantine_reason
 from ralph.git.git_command_queue import (
     WorktreeLeaseHolder,
     end_agent_lease,
@@ -59,7 +59,6 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.integration_actions import default_clock
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_owner import RecordFactOutcome
-from ralph.process.manager import ProcessTerminationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -378,6 +377,13 @@ _FAILURE_REASONS: dict[GitOutcomeKind, str] = {
     GitOutcomeKind.KILLED: CATCHUP_KILLED,
     GitOutcomeKind.UNKNOWN: CATCHUP_UNKNOWN,
 }
+
+
+_TICK_FAILURES: tuple[type[Exception], ...] = (*GIT_CALL_FAILURES, GitError)
+
+
+def _tick_failure_outcome(exc: Exception) -> str:
+    return _FAILURE_REASONS[_classify_git_exception(exc)]
 
 
 def _failure_reason(kind: GitOutcomeKind, observation: str) -> str:
@@ -948,20 +954,22 @@ class AutoIntegrateCatchupWorker:
         while not self._wait(self._interval):
             self._tick_once()
 
+    def _record_tick_failure(self, stage: str, exc: Exception) -> None:
+        outcome = _tick_failure_outcome(exc)
+        logger.warning(
+            "auto_integrate catch-up {} failed: {}: {}: {}",
+            stage,
+            outcome,
+            type(exc).__name__,
+            exc,
+        )
+        self._record_progress(outcome)
+
     def _tick_once(self) -> None:
         try:
             outcome = self._tick()
-        except (subprocess.TimeoutExpired, TimeoutError) as exc:
-            logger.warning("auto_integrate catch-up tick failed: {}: {}", CATCHUP_TIMEOUT, exc)
-            self._record_progress(CATCHUP_TIMEOUT)
-            return
-        except ProcessTerminationError as exc:
-            logger.warning("auto_integrate catch-up tick failed: {}: {}", CATCHUP_KILLED, exc)
-            self._record_progress(CATCHUP_KILLED)
-            return
-        except (OSError, RuntimeError, ValueError, KeyError) as exc:
-            logger.warning("auto_integrate catch-up tick failed: {}: {}", CATCHUP_UNKNOWN, exc)
-            self._record_progress(CATCHUP_UNKNOWN)
+        except _TICK_FAILURES as exc:
+            self._record_tick_failure("tick", exc)
             return
         self._record_progress(outcome)
         if (
@@ -977,7 +985,10 @@ class AutoIntegrateCatchupWorker:
             }
             and not outcome.startswith(("failed:", "ladder:"))
         ):
-            self._publish_after_tick()
+            try:
+                self._publish_after_tick()
+            except _TICK_FAILURES as exc:
+                self._record_tick_failure("publication tick", exc)
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info("auto_integrate catch-up: fast-forwarded the checkout onto the target")
         elif outcome == CATCHUP_REFUSED_AGENT_ACTIVE:
@@ -1009,35 +1020,28 @@ class AutoIntegrateCatchupWorker:
                     _lease_failure(lease_verdict),
                 )
                 return
-            try:
-                from ralph.pipeline.auto_integrate_remote_sync import (
-                    reconcile_remote_publication,
-                )
+            from ralph.pipeline.auto_integrate_remote_sync import (
+                reconcile_remote_publication,
+            )
 
-                target = resolve_integration_target(self._config, self._root)
-                if target is None:
-                    return
-                window = self._publication_window(target)
-                if window is None:
-                    logger.debug(
-                        "auto_integrate catch-up publication deferred: {}",
-                        CATCHUP_DEFERRED_AGENT_PHASE,
-                    )
-                    return
-                with window:
-                    reconcile_remote_publication(
-                        self._config,
-                        self._root,
-                        target,
-                        remote=remote_target_name(self._config),
-                        remote_client=self._remote_client,
-                        rebase_stop_resolver=self._rebase_stop_resolver,
-                    )
-            except (OSError, RuntimeError, ValueError, KeyError) as tick_exc:
-                logger.warning(
-                    "auto_integrate catch-up publication tick failed: {}: {}",
-                    CATCHUP_UNKNOWN,
-                    tick_exc,
+            target = resolve_integration_target(self._config, self._root)
+            if target is None:
+                return
+            window = self._publication_window(target)
+            if window is None:
+                logger.debug(
+                    "auto_integrate catch-up publication deferred: {}",
+                    CATCHUP_DEFERRED_AGENT_PHASE,
+                )
+                return
+            with window:
+                reconcile_remote_publication(
+                    self._config,
+                    self._root,
+                    target,
+                    remote=remote_target_name(self._config),
+                    remote_client=self._remote_client,
+                    rebase_stop_resolver=self._rebase_stop_resolver,
                 )
 
 

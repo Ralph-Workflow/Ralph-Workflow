@@ -1316,7 +1316,7 @@ class RecoveryController:
             phase,
             agent,
             UnavailabilityReason.UNPRODUCTIVE_LIMIT,
-            duration_ms=max(0, status.until_ms - self._now_ms()),
+            duration_ms=outcome.cooldown_ms,
             expiry_ms=status.until_ms,
             unproductive=(outcome.consecutive_unproductive, outcome.total_unproductive),
         )

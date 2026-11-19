@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.git_call_policy import GIT_CALL_FAILURES
 from ralph.git.merge import branch_sha, is_ancestor
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 DEFAULT_REFRESH_REMOTE = "origin"
+
 
 REFRESH_DISABLED = "fetch disabled"
 REFRESH_NO_ORIGIN = "no origin remote"
@@ -68,7 +70,7 @@ def observe_target_sha(repo_root: Path, target: str) -> str | None:
             cwd=repo_root,
             label="git-observe-target-sha",
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as observe_exc:
+    except GIT_CALL_FAILURES as observe_exc:
         logger.debug("auto_integrate: could not observe '{}': {}", target, observe_exc)
         return None
     if result.returncode != 0:
@@ -85,7 +87,7 @@ def refresh_target_from_remote(
 ) -> str:
     try:
         has_remote = _has_remote(repo_root, remote)
-    except (OSError, RuntimeError, ValueError, KeyError) as remote_exc:
+    except GIT_CALL_FAILURES as remote_exc:
         logger.debug("auto_integrate: remote lookup for '{}' failed: {}", remote, remote_exc)
         return REFRESH_UNREACHABLE
     if not has_remote:
@@ -101,7 +103,7 @@ def refresh_target_from_remote(
 
     try:
         return _classify_remote_position(repo_root, target, remote)
-    except (OSError, RuntimeError, ValueError, KeyError) as classify_exc:
+    except GIT_CALL_FAILURES as classify_exc:
         logger.debug(
             "auto_integrate: could not classify '{}' against '{}': {}",
             target,
@@ -169,7 +171,7 @@ def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
 def remote_configured(repo_root: Path, remote: str) -> bool:
     try:
         return _has_remote(repo_root, remote)
-    except (OSError, RuntimeError, ValueError, KeyError) as remote_exc:
+    except GIT_CALL_FAILURES as remote_exc:
         logger.debug("auto_integrate: remote lookup for '{}' failed: {}", remote, remote_exc)
         return False
 
@@ -199,7 +201,7 @@ def _fetch_target(
             label=f"git-fetch-target-{remote}",
             options=GitRunOptions(timeout=timeout_seconds),
         )
-    except (OSError, RuntimeError, ValueError, KeyError) as fetch_exc:
+    except GIT_CALL_FAILURES as fetch_exc:
         logger.debug(
             "auto_integrate: fetch of '{}' from '{}' failed: {}", target, remote, fetch_exc
         )

@@ -83,6 +83,7 @@ class _AttemptOutcome:
     status: _AgentStatus
     consecutive_unproductive: int
     total_unproductive: int
+    cooldown_ms: int = 0
 
     @property
     def cooldown_started(self) -> bool:
@@ -421,6 +422,7 @@ class AgentFailureLedger:
             ),
             consecutive_unproductive=consecutive,
             total_unproductive=total,
+            cooldown_ms=duration_ms,
         )
 
     def _snapshot_locked(self) -> dict[str, object]:

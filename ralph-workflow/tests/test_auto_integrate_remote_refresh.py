@@ -477,6 +477,27 @@ def test_unreachable_remote_degrades_to_local_integration(
     )
 
 
+@pytest.mark.subprocess_e2e
+def test_a_remote_fetch_that_times_out_reports_the_remote_unreachable(tmp_git_repo: Path) -> None:
+    repo = Repo(tmp_git_repo)
+    try:
+        with repo.config_writer() as writer:
+            writer.set_value('remote "origin"', "url", "ext::sh -c sleep% 30")
+            writer.set_value('remote "origin"', "fetch", "+refs/heads/*:refs/remotes/origin/*")
+            writer.set_value("protocol", "allow", "always")
+    finally:
+        repo.close()
+
+    outcome = refresh_target_from_remote(
+        tmp_git_repo,
+        "main",
+        timeout_seconds=0.2,
+        remote="origin",
+    )
+
+    assert outcome == REFRESH_UNREACHABLE
+
+
 @pytest.mark.parametrize("seam", ("remote lookup", "classification"))
 def test_refresh_regression_git_observation_failure_degrades_without_raising(
     monkeypatch: pytest.MonkeyPatch,
