@@ -468,17 +468,17 @@ The failure ledger answers eligibility for every agent, and every other consumer
 3. **Projections**: `agents_now_available`, `earliest_wait_ms`, `preferred_agent_index` and the launch gate are derived from the ledger answer rather than computing eligibility independently.
 4. **Sanctioned writes**: every cooldown is started through `RecoveryController.mark_agent_unavailable(phase, agent, reason=...)` or by the ledger itself when an unproductive limit is reached; both write the one `AgentUnavailabilityTracker` with a finite expiry.
 
-### One observed git snapshot per decision
+### One observed git snapshot per choice
 
-A decision that reads Git reads it once.
+A choice that reads Git reads it once.
 
 1. **The reader**: `ralph.pipeline.operation_snapshot_read.read_integration_snapshot(root, target=..., remote=..., agent_active=...)` returns one `IntegrationSnapshot` carrying the operation state, the HEAD state, the in-progress kind and its ownership, the worktree state, the durable-record state and the target relations.
-2. **The projection**: `ralph.pipeline.operation_snapshot_projection.observation_from_snapshot(snapshot)` is a pure function of that snapshot and derives the `Observation` the decision acts on.
+2. **The projection**: `ralph.pipeline.operation_snapshot_projection.observation_from_snapshot(snapshot)` is a pure function of that snapshot and derives the `Observation` the choice acts on.
 3. **The consequence**: the status a surface reports and the action the pipeline takes are derived from the same observation, so they cannot disagree about the unmerged set or about HEAD. `ralph.pipeline.integration_director.IntegrationDirector.observe` reads one snapshot and projects it.
 
 ### One landed predicate
 
-`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only authority for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function. `ralph.pipeline.landed_verdict.landed_verdict(root, record)` is the projection of that one decision onto the `LandedVerdict` values `landed`, `not_landed` and `unknown`; an unreadable HEAD is `unknown` rather than a negative answer.
+`ralph.pipeline._landed_predicate.operation_landed(root, record)` is the only authority for whether recorded integration work has landed. It returns a `LandedDecision` from HEAD, the recorded operation facts (`integrated_feature_sha`, the pre-feature / pre-target tips, and any pending stop snapshot), and the current target tip. Recovery release, diagnostic handoff, and record-clear paths that ask whether work has landed call that function. `ralph.pipeline.landed_verdict.landed_verdict(root, record)` is the projection of that one choice onto the `LandedVerdict` values `landed`, `not_landed` and `unknown`; an unreadable HEAD is `unknown` rather than a negative answer.
 
 ### Terminal states are terminal
 

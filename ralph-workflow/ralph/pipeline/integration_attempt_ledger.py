@@ -11,6 +11,7 @@ from enum import Enum
 from hashlib import sha256
 from pathlib import Path
 from threading import Event
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 from uuid import uuid4
 
@@ -78,9 +79,11 @@ def _migrate_object_shaped_repeat_counts(
 
 _KNOWN_FUTURE_SCHEMA_MIGRATIONS: Final[
     Mapping[int, Callable[[Mapping[str, object]], Mapping[str, object]]]
-] = {
-    CURRENT_SCHEMA_VERSION + 1: _migrate_object_shaped_repeat_counts,
-}
+] = MappingProxyType(
+    {
+        CURRENT_SCHEMA_VERSION + 1: _migrate_object_shaped_repeat_counts,
+    }
+)
 
 GLOBAL_ACTION_BOUND: Final[int] = 2
 

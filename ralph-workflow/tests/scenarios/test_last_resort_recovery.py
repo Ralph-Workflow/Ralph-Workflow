@@ -549,7 +549,9 @@ def test_real_git_all_agents_unavailable_named_external_wait(tmp_path: Path) -> 
     assert (root / "work.txt").read_text(encoding="utf-8") == "work in progress\n"
 
 
-def test_integration_status_autonomous_strategy_keeps_the_command_and_drops_operator_phrasing() -> None:
+def test_integration_status_autonomous_strategy_keeps_the_command_and_drops_operator_phrasing() -> (
+    None
+):
     status = build_integration_status(
         cause="CONFLICT",
         paths_with_reasons=(("src/x.py", "content conflict"),),

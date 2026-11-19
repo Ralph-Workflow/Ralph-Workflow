@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 import ralph.config.loader as config_loader
+from ralph.pipeline.runner import checkpoint_path_for_root
 from ralph.skills import state_store
 from tests._real_config_guard_support import (
     _BUNDLED_AGENTS_TEMPLATE,
+    _REPO_TREE_SKIPPED_RUNTIME_FILES,
     _STATE,
     _clear_recorded_read_violations,
     _diff_repo_tree,
@@ -926,3 +928,9 @@ def test_repo_tree_guard_reports_a_file_a_test_created_changed_or_deleted() -> N
         f"REPO TREE DELETED: {removed}",
     ]
     assert _diff_repo_tree(before, dict(before)) == []
+
+
+def test_repo_tree_guard_skips_the_live_run_checkpoint_at_the_workspace_root(
+    tmp_path: Path,
+) -> None:
+    assert checkpoint_path_for_root(tmp_path).name in _REPO_TREE_SKIPPED_RUNTIME_FILES
