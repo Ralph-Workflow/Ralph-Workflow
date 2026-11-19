@@ -65,7 +65,6 @@ _EXCLUDED: dict[str, str] = {
     "phases.phase_timing_record": "internal phases type, not public API",
     "policy.validation.artifact_contract": "internal artifact contract validation helper, not public API",
     "pipeline.agent_chain_state": "internal pipeline state, not public API",
-    "pipeline.agent_selection": "internal pipeline re-export helper, not public API",
     "pipeline.auto_integrate_catalog_rationales": "internal catalog rationale registry, not public API",
     "pipeline.auto_integrate_recovery_legacy": "internal recovery legacy helper, not public API",
     "pipeline.auto_integrate_recovery_lock": "internal lock-liveness helper, not public API",
@@ -207,7 +206,7 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     documented = _extract_documented_modules(modules_rst_text)
 
-    all_names: list[str] = _walk_public_modules_and_packages(_RALPH_ROOT)
+    all_names: tuple[str, ...] = _walk_public_modules_and_packages(_RALPH_ROOT)
 
     def is_excluded(name: str) -> bool:
         return name in _EXCLUDED or name.startswith(_EXCLUDED_PREFIXES)

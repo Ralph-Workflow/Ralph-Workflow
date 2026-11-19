@@ -1356,6 +1356,7 @@ def run_test_suites(
     started_at = monotonic()
     deadline = started_at + suite_timeout_seconds
     inherited_env = dict(os.environ)
+    inherited_env.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
     pythonpath = inherited_env.get("PYTHONPATH")
     if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
         inherited_env.pop("PYTHONPATH", None)
@@ -1470,6 +1471,7 @@ def run_test_suites(
 
 def _run_durations_profile(cwd: Path) -> int:
     inherited_env = dict(os.environ)
+    inherited_env.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
     pythonpath = inherited_env.get("PYTHONPATH")
     if pythonpath is None or Path(pythonpath).resolve() != cwd.resolve():
         inherited_env.pop("PYTHONPATH", None)

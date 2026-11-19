@@ -13,12 +13,6 @@ from ralph.pipeline import (
     IntegrationStatus,
     build_integration_status,
 )
-from ralph.pipeline.agent_selection import (
-    agent_availability,
-    format_selection_evidence,
-    select_preferred_agent,
-    selection_reason,
-)
 from ralph.pipeline.conflict_resolution import (
     ResolutionTerminationReason,
     announce_declared_decisions,
@@ -32,6 +26,12 @@ from ralph.pipeline.integration_strategy import (
     StrategyDecision,
     choose_integration_strategy,
 )
+from ralph.recovery.agent_selection import (
+    AgentSelection,
+    agent_availability,
+    format_selection_evidence,
+    select_preferred_agent,
+)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_integration_status_fields_and_properties": (
@@ -40,6 +40,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_waiting_lines_emitted_once_per_change_never_per_tick": (
         "the old emitted waiting line and the emitted counts 1, 1, 2, 3, 4 came from a private seam "
         "that this module may not use, so the public status bar now carries the observation"
+    ),
+    "test_agent_selection_reasons_name_compared_agent": (
+        "the deleted pipeline agent-selection shim was the only import path for the selection "
+        "reason helper; the test now reads the same reason text from the public recovery owner "
+        "rendering and keeps the exact expected strings"
     ),
 }
 
@@ -196,8 +201,8 @@ def test_declared_decisions_announcement_names_cause_per_file() -> None:
 def test_agent_selection_reasons_name_compared_agent() -> None:
     selection = select_preferred_agent(
         (
-            agent_availability("claude", True, 0, False),
-            agent_availability("opencode", True, 0, False),
+            agent_availability("claude", True, 0, None),
+            agent_availability("opencode", True, 0, None),
         )
     )
 
@@ -206,14 +211,15 @@ def test_agent_selection_reasons_name_compared_agent() -> None:
         "opencode: lower_priority (listed after selected agent claude in configured chain order)"
         in evidence
     )
-    assert (
-        selection_reason("lower_priority", "claude")
-        == "lower_priority (listed after selected agent claude in configured chain order)"
+    unselected = format_selection_evidence(
+        "development",
+        AgentSelection(
+            index=None,
+            agent=None,
+            skipped_reasons=(("opencode", "lower_priority"),),
+        ),
     )
-    assert (
-        selection_reason("lower_priority", None)
-        == "lower_priority (listed later in configured chain order)"
-    )
+    assert "opencode: lower_priority (listed later in configured chain order)" in unselected
 
 
 def test_waiting_lines_emitted_once_per_change_never_per_tick() -> None:
