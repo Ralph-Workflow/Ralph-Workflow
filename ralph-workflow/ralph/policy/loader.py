@@ -42,12 +42,16 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
+from ralph.policy.validation import (
+    validate_artifact_types_supported,
+    validate_drain_contracts,
+    validate_policy_completeness,
+)
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.policy.validation._policy_validation_error import PolicyValidationError
     from ralph.workspace.scope import WorkspaceScope
-
 
 
 def _policy_error(message: str, *, source: str | None = None) -> PolicyValidationError:
@@ -651,11 +655,6 @@ def _load_policy_from_paths(
     _bypass_bundle_cache: bool = False,
 ) -> PolicyBundle:
     from ralph.policy._policy_validation import format_validation_error_messages
-    from ralph.policy.validation import (
-        validate_artifact_types_supported,
-        validate_drain_contracts,
-        validate_policy_completeness,
-    )
     from ralph.policy.validation._policy_validation_error import PolicyValidationError
 
     default_policy_dir = default_dir()

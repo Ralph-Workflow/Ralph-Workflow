@@ -98,9 +98,7 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
 
 def _baseline_index_ref(baseline_ref: str) -> str:
     if not baseline_ref.startswith(_BASELINE_REF_PREFIX):
-        raise ProposalPreflightError(
-            f"Baseline ref {baseline_ref!r} is not a Ralph baseline ref"
-        )
+        raise ProposalPreflightError(f"Baseline ref {baseline_ref!r} is not a Ralph baseline ref")
     return _BASELINE_INDEX_REF_PREFIX + baseline_ref.removeprefix(_BASELINE_REF_PREFIX)
 
 

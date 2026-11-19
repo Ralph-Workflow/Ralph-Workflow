@@ -6,6 +6,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.process.child_liveness import classify_child_snapshot
 
 from .agent_execution_state import AgentExecutionState
 
@@ -475,8 +476,6 @@ def _probe_check_quiet(
     probe_prefix: str,
 ) -> tuple[AgentExecutionState | None, bool]:
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
-        from ralph.process.child_liveness import classify_child_snapshot
-
         snap = liveness_probe.child_snapshot(probe_prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:
@@ -495,8 +494,6 @@ def _registry_check_for_exit(
     scope_prefix = label_prefix if label_prefix is not None else ""
     had_scoped_records = registry.has_records(scope_prefix)
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
-        from ralph.process.child_liveness import classify_child_snapshot
-
         reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
@@ -513,8 +510,6 @@ def _probe_check_exit(
 ) -> tuple[AgentExecutionState | None, bool]:
     prefix = label_prefix if label_prefix is not None else ""
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
-        from ralph.process.child_liveness import classify_child_snapshot
-
         snap = liveness_probe.child_snapshot(prefix)
         verdict = classify_child_snapshot(snap)
         if verdict.deferral_allowed:

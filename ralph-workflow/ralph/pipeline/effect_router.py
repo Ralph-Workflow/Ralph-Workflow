@@ -439,11 +439,10 @@ def _is_empty_commit_phase(
     from ralph.phases._agent_internal_paths import is_agent_internal_path
 
     try:
-        fast_path = (
-            has_uncommitted_changes_fn
-            in (has_uncommitted_changes, default_has_uncommitted_changes)
-            and has_staged_changes_fn in (has_staged_changes, default_has_staged_changes)
-        )
+        fast_path = has_uncommitted_changes_fn in (
+            has_uncommitted_changes,
+            default_has_uncommitted_changes,
+        ) and has_staged_changes_fn in (has_staged_changes, default_has_staged_changes)
         changed_paths = list_changed_paths(workspace_root) if fast_path else None
         if changed_paths is not None:
             if not changed_paths:

@@ -2018,9 +2018,7 @@ def execute_pending_rollback(
         message="Checkpoint save failed before rollback in phase={phase}: {err}",
         path=marker_path,
     ):
-        gate_failure = (
-            "Rollback checkpoint save failed: rollback-pending marker was not persisted"
-        )
+        gate_failure = "Rollback checkpoint save failed: rollback-pending marker was not persisted"
     elif _rejected_changes_predate_the_run(workspace_root, state):
         gate_failure = (
             "Rollback cannot remove the rejected changes: they were already in the working "
@@ -2030,9 +2028,7 @@ def execute_pending_rollback(
         )
     else:
         try:
-            already_completed = resume_pending and rollback_completed(
-                workspace_root, rollback_ref
-            )
+            already_completed = resume_pending and rollback_completed(workspace_root, rollback_ref)
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.exception(
                 "Commit review rollback completion check failed for {ref}: {err}",

@@ -1671,10 +1671,7 @@ def _typed_outcome_key_name(node: ast.AST | None) -> str | None:
 
 
 def _typed_outcome_mapping_is_unpenalised(value: ast.AST) -> bool:
-    if (
-        not isinstance(value, ast.Tuple)
-        or len(value.elts) < _TYPED_OUTCOME_CLASSIFICATION_ARITY
-    ):
+    if not isinstance(value, ast.Tuple) or len(value.elts) < _TYPED_OUTCOME_CLASSIFICATION_ARITY:
         return False
     counts = value.elts[1]
     reason = value.elts[2]

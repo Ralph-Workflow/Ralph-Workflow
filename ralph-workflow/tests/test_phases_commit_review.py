@@ -1831,7 +1831,7 @@ def test_agent_rejection_with_verifiable_citations(tmp_git_repo: Path) -> None:
     from ralph.config.bootstrap import auto_seed_default_gitignore
 
     auto_seed_default_gitignore(tmp_git_repo)
-    seal = seal_pending(tmp_git_repo, "run", 1)
+    seal = seal_pending(tmp_git_repo, "phase-test-run", 1)
 
     _write_commit_review_artifact(
         workspace,

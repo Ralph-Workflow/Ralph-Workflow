@@ -57,11 +57,7 @@ def _status_snapshot(root: Path) -> set[str]:
         cwd=root,
         label="status",
     ).stdout
-    return {
-        line
-        for line in status.splitlines()
-        if line and not line[3:].startswith(".agent/")
-    }
+    return {line for line in status.splitlines() if line and not line[3:].startswith(".agent/")}
 
 
 def _index_snapshot(root: Path) -> str:

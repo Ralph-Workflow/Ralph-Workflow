@@ -16,9 +16,7 @@ _RETIRED_REVIEW_PATTERN: Final = re.compile(
     rf"(?i)\b[a-zA-Z0-9_-]*commit[-_]?{'clean' + 'up'}[a-zA-Z0-9_.-]*\b"
 )
 _RETIRED_REVIEW_RULE: Final = f"legacy {_RETIRED_STEM} identifier reappeared"
-_RETIRED_REVIEW_DETAIL: Final = (
-    f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
-)
+_RETIRED_REVIEW_DETAIL: Final = f"'{{token}}' was replaced by 'commit_review'; legacy {_RETIRED_STEM} identifiers must not be used"
 DENIAL_ONLY_PRE_RENAME_SENTINELS: Final[Mapping[tuple[str, str], str]] = MappingProxyType(
     {
         (

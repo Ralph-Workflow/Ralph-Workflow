@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, cast
 
-from git.exc import GitError
+from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
@@ -1101,6 +1101,8 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
     run_id = uuid.uuid4().hex
     try:
         seal = seal_baseline(root, run_id, force=False)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return state
     except (GitError, OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("Failed to seal the run-start baseline: {}", exc)
         raise ProposalSealError(f"Failed to seal the run-start baseline: {exc}") from exc

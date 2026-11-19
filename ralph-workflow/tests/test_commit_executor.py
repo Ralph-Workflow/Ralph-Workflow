@@ -588,9 +588,7 @@ def test_the_proposal_identity_advances_with_every_rejection_attempt() -> None:
     from ralph.pipeline.state import PipelineState
 
     run_id = "attempt-cycle-run"
-    first = commit_review_proposal_identity(
-        PipelineState(phase="development", run_id=run_id)
-    )
+    first = commit_review_proposal_identity(PipelineState(phase="development", run_id=run_id))
     second = commit_review_proposal_identity(
         PipelineState(phase="development", run_id=run_id, commit_review_rejections=1)
     )
