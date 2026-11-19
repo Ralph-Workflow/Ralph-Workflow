@@ -31,7 +31,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
-from ralph.git.proposal_seal import seal_baseline
+from ralph.git.proposal_seal import baseline_is_restorable, seal_baseline
 from ralph.git.proposal_seal_error import ProposalSealError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -1112,6 +1112,35 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
     return state.copy_with(rollback_baseline_ref=seal.ref)
 
 
+def _reseal_unresolvable_baseline(state: PipelineState, root: Path) -> PipelineState:
+    baseline_ref = state.rollback_baseline_ref
+    if not baseline_ref or state.rollback_pending:
+        return state
+    try:
+        if baseline_is_restorable(root, baseline_ref):
+            return state
+    except (
+        InvalidGitRepositoryError,
+        NoSuchPathError,
+        GitError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ):
+        return state
+    logger.warning(
+        "The run-start baseline {} recorded in the checkpoint, or its index ref, does not "
+        "resolve; sealing a fresh baseline from the current worktree and index so a later "
+        "rejected proposal restores to the resume point instead of failing the run.",
+        baseline_ref,
+    )
+    try:
+        return _capture_rollback_baseline(state.copy_with(rollback_baseline_ref=None), root)
+    except ProposalSealError as exc:
+        logger.warning("Could not seal a fresh baseline on resume: {}", exc)
+        return state
+
+
 def _create_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -1186,7 +1215,10 @@ def _resolve_initial_state(
                 resumed,
                 root,
                 policy_bundle.pipeline,
+                on_resume=True,
             )
+        if workspace_root is not None:
+            resumed = _reseal_unresolvable_baseline(resumed, workspace_root)
 
         with suppress(AttributeError, TypeError):
             current_epoch = _resume_epoch(pipeline_deps)

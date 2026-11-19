@@ -127,8 +127,13 @@ the cycle timebox, the run retains the saved ref and routes to
 ### Where the checkpoint lives
 
 ```
-.agent/checkpoint.json
+checkpoint.json
 ```
+
+The run state is saved after every step to `checkpoint.json` in the workspace
+root, and `--resume` loads that file. `.agent/rollback_marker.json` is the
+commit-review rollback marker, not run state. A `.agent/checkpoint.json`
+written by an older build is used only when the root file is missing.
 
 ### What is stored
 

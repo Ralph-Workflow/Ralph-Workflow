@@ -383,6 +383,36 @@ def _require_resolved_ref(repo: Repo, ref: str, label: str) -> str:
         raise ProposalPreflightError(f"{label} ref {ref!r} does not resolve: {exc}") from exc
 
 
+def _restorable_index_ref(repo: Repo, baseline_ref: str | None) -> str:
+    if baseline_ref is None:
+        return "HEAD"
+    index_ref = _baseline_index_ref(baseline_ref)
+    try:
+        _resolve_full_object_name(repo, index_ref)
+    except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
+        logger.warning(
+            "Baseline index ref {index_ref} does not resolve ({err}); the baseline was sealed "
+            "by an older build. Restoring the worktree to {baseline} and the index to HEAD, so "
+            "changes staged before the run are left unstaged.",
+            index_ref=index_ref,
+            err=exc,
+            baseline=baseline_ref,
+        )
+        _require_resolved_ref(repo, "HEAD", "Baseline index fallback")
+        return "HEAD"
+    return index_ref
+
+
+def baseline_is_restorable(repo_root: Path | str, baseline_ref: str) -> bool:
+    with _open_repo(Path(repo_root).resolve()) as repo:
+        try:
+            _resolve_full_object_name(repo, baseline_ref)
+            _resolve_full_object_name(repo, _baseline_index_ref(baseline_ref))
+        except (GitCommandError, OSError, RuntimeError, ValueError):
+            return False
+    return True
+
+
 def _restore_worktree_to_ref(repo: Repo, target_ref: str) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_index_path = Path(tmp_dir) / "restore_index"
@@ -409,9 +439,8 @@ def rollback(
     with _open_repo(root_path) as repo:
         proposal_sha = _require_resolved_ref(repo, ref, "Proposal")
         worktree_ref = baseline_ref if baseline_ref is not None else "HEAD"
-        index_ref = _baseline_index_ref(baseline_ref) if baseline_ref is not None else "HEAD"
         _require_resolved_ref(repo, worktree_ref, "Baseline")
-        _require_resolved_ref(repo, index_ref, "Baseline index")
+        index_ref = _restorable_index_ref(repo, baseline_ref)
         diff_entries = diff_tree(repo_root, ref=ref, base=worktree_ref)
 
         if step_hook is not None:

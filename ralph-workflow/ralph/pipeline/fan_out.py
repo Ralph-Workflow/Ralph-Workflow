@@ -116,9 +116,9 @@ def _recovery_owner(ctx: _FanOutCtx) -> RecoveryController | None:
     return ctx.pipeline_deps.recovery_controller
 
 
-def _save_checkpoint_or_log(state: PipelineState, *, message: str) -> None:
+def _save_checkpoint_or_log(ctx: _FanOutCtx, state: PipelineState, *, message: str) -> None:
     try:
-        ckpt.save(state)
+        ckpt.save(state, ckpt.run_state_path(ctx.workspace_scope.root))
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.exception(message, phase=state.phase, err=exc)
 
@@ -537,6 +537,7 @@ async def _run_verify_phase(
     current, _ = _reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
     _save_checkpoint_or_log(
+        ctx,
         current,
         message="Checkpoint save failed after verification in phase={phase}: {err}",
     )
@@ -609,6 +610,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             current = _cleared_after_successful_wave(current)
             _notify_subscriber(ctx.pipeline_subscriber, current)
             _save_checkpoint_or_log(
+                ctx,
                 current,
                 message="Checkpoint save failed after resumed fan-out in phase={phase}: {err}",
             )
@@ -630,6 +632,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         wave_state = current
         current = _cleared_after_successful_wave(current)
         _save_checkpoint_or_log(
+            ctx,
             current,
             message="Checkpoint save failed after fan-out in phase={phase}: {err}",
         )
@@ -678,6 +681,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         )
         _notify_subscriber(ctx.pipeline_subscriber, recovered)
         _save_checkpoint_or_log(
+            ctx,
             recovered,
             message=(
                 "Checkpoint save failed while recording fan-out recovery in phase={phase}: {err}"

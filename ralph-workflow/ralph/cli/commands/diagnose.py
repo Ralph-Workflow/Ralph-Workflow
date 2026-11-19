@@ -39,6 +39,7 @@ from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.validation import validate_upstream_mcp_servers
+from ralph.pipeline.checkpoint import run_state_path
 from ralph.policy.loader import (
     load_policy,
     load_policy_for_workspace_scope,
@@ -647,7 +648,7 @@ def _check_workspace_files(workspace_scope: WorkspaceScope, *, display: object) 
             "Workspace-owned .agent/ralph-workflow.toml",
             workspace_scope.project_config_path,
         ),
-        (".agent/checkpoint.json", "Checkpoint", workspace_scope.root / ".agent/checkpoint.json"),
+        ("checkpoint.json", "Checkpoint", run_state_path(workspace_scope.root)),
     ]
     if workspace_scope.is_linked_worktree:
         workspace_files.insert(

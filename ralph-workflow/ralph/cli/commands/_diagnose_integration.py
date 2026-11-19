@@ -10,6 +10,7 @@ from ralph.git.merge import observe_unmerged_paths
 from ralph.pipeline._integration_status import IntegrationStatus, build_integration_status
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.checkpoint import load as load_checkpoint
+from ralph.pipeline.checkpoint import run_state_path
 from ralph.pipeline.integration_director import observe as observe_integration
 from ralph.pipeline.integration_observation import (
     InProgressKind,
@@ -37,7 +38,7 @@ def _persisted_integration_status(
     workspace_root: Path,
     view: IntegrationLifecycleView | None = None,
 ) -> IntegrationStatus | None:
-    state = load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
+    state = load_checkpoint(run_state_path(workspace_root))
     if state is None:
         return _status_from_view(view)
     rebase = state.rebase
@@ -111,7 +112,7 @@ def _read_durable_record(workspace_root: Path) -> IntegrationRecord | None:
 
 def _read_checkpoint_state(workspace_root: Path) -> PipelineState | None:
     try:
-        return load_checkpoint(workspace_root / ".agent" / "checkpoint.json")
+        return load_checkpoint(run_state_path(workspace_root))
     except (
         GitOperationError,
         OSError,

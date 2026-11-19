@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from ralph.pro_support.hooks import ProPipelineHooks
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.workspace.protocol import Workspace
+    from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
 
@@ -147,6 +148,7 @@ _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
     "DEVELOPMENT_ANALYSIS_DECISION.md",
     "REVIEW_ANALYSIS_DECISION.md",
     "checkpoint.json",
+    "rollback_marker.json",
     "rebase_checkpoint.json",
     "rebase_checkpoint.json.bak",
     "rebase.lock",
@@ -186,6 +188,8 @@ def _clear_generated_pipeline_state(workspace_root: Path) -> None:
         shutil.rmtree(agent_dir / relative_dir, ignore_errors=True)
     for relative_file in _GENERATED_AGENT_STATE_FILES:
         (agent_dir / relative_file).unlink(missing_ok=True)
+    ckpt.run_state_path(workspace_root).unlink(missing_ok=True)
+    ckpt.rollback_marker_path(workspace_root).unlink(missing_ok=True)
 
 
 def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
@@ -211,6 +215,10 @@ def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None)
             set_policy_schema_context(policy_schema_state(workspace_root))
     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         return
+
+
+def load_resume_state(workspace_scope: WorkspaceScope | None) -> PipelineState | None:
+    return ckpt.load_for_resume(workspace_scope.root if workspace_scope is not None else Path.cwd())
 
 
 def _load_configuration(
@@ -262,7 +270,7 @@ def _load_configuration(
 
     if resume:
         try:
-            initial_state = ckpt.load()
+            initial_state = load_resume_state(workspace_scope)
         except CheckpointPolicyMismatchError as e:
             display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
             return _EXIT_PREFLIGHT
@@ -485,7 +493,7 @@ def _execute_pipeline(
         except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             logger.warning("Interrupt dispatcher failed during CLI catch", exc_info=True)
         if request.initial_state is not None:
-            _save_interrupt_checkpoint(request.initial_state)
+            save_interrupt_checkpoint(_interrupt_checkpoint_root(), request.initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
         _dirty_scheduler.on_workflow_restart()
@@ -505,11 +513,20 @@ def _execute_pipeline(
         return result
 
 
-def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
+def _interrupt_checkpoint_root() -> Path:
     try:
+        return resolve_workspace_scope().root
+    except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+        return Path.cwd()
+
+
+def save_interrupt_checkpoint(root: Path, initial_state: PipelineState) -> None:
+    try:
+        path = ckpt.run_state_path(root)
+        latest = ckpt.load(path) or initial_state
         update_data: ConfigOverrides = {"interrupted_by_user": True}
-        interrupted_state = initial_state.model_copy(update=update_data)
-        ckpt.save(interrupted_state)
+        interrupted_state = latest.model_copy(update=update_data)
+        ckpt.save(interrupted_state, path)
     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError):
         logger.warning("Checkpoint save failed during interrupt", exc_info=True)
 

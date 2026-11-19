@@ -390,6 +390,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/PLANNING_ANALYSIS_DECISION.md",
     ".agent/REVIEW_ANALYSIS_DECISION.md",
     ".agent/checkpoint.json",
+    ".agent/rollback_marker.json",
     ".agent/rebase_checkpoint.json",
     ".agent/rebase_checkpoint.json.bak",
     ".agent/auto_integrate_in_progress.json",

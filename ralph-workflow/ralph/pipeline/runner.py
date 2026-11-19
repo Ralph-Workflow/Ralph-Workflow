@@ -887,11 +887,11 @@ def _reduce_runtime_recovery(
 
 
 def checkpoint_path_for_root(root: Path) -> Path:
-    return root / "checkpoint.json"
+    return ckpt.run_state_path(root)
 
 
 def rollback_checkpoint_path_for_root(root: Path) -> Path:
-    return root / ".agent" / "checkpoint.json"
+    return ckpt.rollback_marker_path(root)
 
 
 def _checkpoint_path(workspace_scope: WorkspaceScope) -> Path:
@@ -2001,6 +2001,7 @@ def execute_pending_rollback(
     pipeline_policy: PipelinePolicy,
     *,
     checkpoint_path: Path | None = None,
+    on_resume: bool = False,
 ) -> PipelineState:
     from ralph.git.proposal_seal import rollback, rollback_completed
 
@@ -2020,6 +2021,18 @@ def execute_pending_rollback(
         path=marker_path,
     ):
         gate_failure = "Rollback checkpoint save failed: rollback-pending marker was not persisted"
+    elif on_resume and _rollback_baseline_is_unrestorable(workspace_root, state):
+        logger.warning(
+            "Commit review rollback skipped on resume for {ref}: the run-start baseline "
+            "{baseline} or its index ref does not resolve (sealed by an older build, pruned, "
+            "or recorded under another run id). The working tree is kept as it is instead of "
+            "being reset, so no uncommitted work is lost; the rejected changes stay in the tree "
+            "for the next iteration. Inspect them with: git diff {ref}",
+            ref=rollback_ref,
+            baseline=state.rollback_baseline_ref,
+        )
+        _write_rejection_hint(state, workspace_root, pipeline_policy)
+        return _cleared_rollback_or_gate_failure(state, pipeline_policy, marker_path)
     elif _rejected_changes_predate_the_run(workspace_root, state):
         gate_failure = (
             "Rollback cannot remove the rejected changes: they were already in the working "
@@ -2054,18 +2067,39 @@ def execute_pending_rollback(
                 gate_failure = f"Rollback preflight failed: {exc}"
         if gate_failure is None:
             _write_rejection_hint(state, workspace_root, pipeline_policy)
-            cleared = state.copy_with(rollback_pending=False, rollback_ref=None)
-            if not _save_checkpoint_or_log(
-                cleared,
-                message="Checkpoint save failed after rollback in phase={phase}: {err}",
-                path=marker_path,
-            ):
-                gate_failure = (
-                    "Rollback checkpoint save failed: cleared rollback marker was not persisted"
-                )
-            else:
-                return cleared
+            return _cleared_rollback_or_gate_failure(state, pipeline_policy, marker_path)
     return rollback_gate_failure_state(state, pipeline_policy, gate_failure or "Rollback failed")
+
+
+def _cleared_rollback_or_gate_failure(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    marker_path: Path,
+) -> PipelineState:
+    cleared = state.copy_with(rollback_pending=False, rollback_ref=None)
+    if _save_checkpoint_or_log(
+        cleared,
+        message="Checkpoint save failed after rollback in phase={phase}: {err}",
+        path=marker_path,
+    ):
+        return cleared
+    return rollback_gate_failure_state(
+        state,
+        pipeline_policy,
+        "Rollback checkpoint save failed: cleared rollback marker was not persisted",
+    )
+
+
+def _rollback_baseline_is_unrestorable(workspace_root: Path, state: PipelineState) -> bool:
+    from ralph.git.proposal_seal import baseline_is_restorable
+
+    baseline_ref = state.rollback_baseline_ref
+    if not isinstance(baseline_ref, str) or not baseline_ref:
+        return False
+    try:
+        return not baseline_is_restorable(workspace_root, baseline_ref)
+    except (OSError, RuntimeError, ValueError, KeyError):
+        return False
 
 
 def _execute_pending_rollback_if_needed(

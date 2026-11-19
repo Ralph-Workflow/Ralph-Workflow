@@ -223,10 +223,15 @@ you change policy. For the reducer and effect implementation, see
 
 ### Checkpoints
 
-The runtime persists its current `PipelineState` as a checkpoint at
-`.agent/checkpoint.json` (`ralph/pipeline/checkpoint.py`). If the run is
-interrupted, the next `ralph` invocation reads the checkpoint and resumes
-from the saved state. `ralph --inspect-checkpoint` prints the checkpoint
+The runtime persists its current `PipelineState` after every step as a
+checkpoint at `checkpoint.json` in the workspace root
+(`ralph/pipeline/checkpoint.py`, `run_state_path`). If the run is
+interrupted, `ralph --resume` reads that file and resumes from the last
+saved step. A commit-review rollback keeps its own marker at
+`.agent/rollback_marker.json`, which is never resumed as run state. A
+`.agent/checkpoint.json` left by an older build is read only when the root
+file is missing; otherwise it is removed with a warning, and a pending
+rollback it records for another run is not applied. `ralph --inspect-checkpoint` prints the checkpoint
 contents as raw JSON.
 
 ### Fan-out

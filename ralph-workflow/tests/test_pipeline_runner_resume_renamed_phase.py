@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_resume_preflight_refuses_retired_phase_before_any_agent_invocation.run_state_path": "the default checkpoint is now the per-step run state checkpoint.json in the workspace root that --resume loads, not .agent/checkpoint.json",
     "test_resume_preflight_refuses_retired_phase_before_any_agent_invocation": "loading retired phase now raises CheckpointRetiredPhaseError instead of returning state",
 }
 
@@ -54,7 +55,7 @@ def test_resume_preflight_refuses_retired_phase_before_any_agent_invocation(
     checkpoint = ckpt.Checkpoint()
     checkpoint.save(stale_state)
 
-    checkpoint_path = agent_dir / "checkpoint.json"
+    checkpoint_path = ckpt.run_state_path(workspace)
     assert checkpoint_path.is_file()
     persisted_payload = json.loads(checkpoint_path.read_text(encoding="utf-8"))
     assert persisted_payload["phase"] == _RETIRED_PHASE

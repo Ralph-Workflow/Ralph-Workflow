@@ -157,7 +157,9 @@ def build_recovery_context(
         registry = AgentRegistry.from_config(config)
 
         if state is None:
-            checkpoint_file = workspace_scope.root / ".agent" / "checkpoint.json"
+            from ralph.pipeline.checkpoint import run_state_path
+
+            checkpoint_file = run_state_path(workspace_scope.root)
             if checkpoint_file.exists():
                 try:
                     from ralph.pipeline.checkpoint import load as load_checkpoint

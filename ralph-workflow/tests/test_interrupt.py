@@ -12,6 +12,7 @@ import pytest
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_run_pipeline_saves_interrupted_resume_checkpoint": "resume now loads the per-step run state through ckpt.load_for_resume(root) and the interrupt handler reads and saves that run-state path explicitly, so the stubs take the root and path arguments",
     "test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt": (
         "isolate workspace to tmp_path so planning-baseline snapshot does not walk the live tree"
     ),
@@ -219,8 +220,11 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     monkeypatch.setattr(
         run_command_module, "load_config", lambda *_args, **_kwargs: _config_with_agent_policy()
     )
-    monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
-    monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
+    monkeypatch.setattr(run_command_module.ckpt, "load_for_resume", lambda _root: resumed_state)
+    monkeypatch.setattr(run_command_module.ckpt, "load", lambda _path: None)
+    monkeypatch.setattr(
+        run_command_module.ckpt, "save", lambda state, _path: saved_states.append(state)
+    )
     monkeypatch.setattr(
         "ralph.project_policy.cli_integration.run_project_policy_readiness",
         lambda **_kwargs: 0,

@@ -14,6 +14,7 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
         "PLANNING_ANALYSIS_DECISION.md",
         "REVIEW_ANALYSIS_DECISION.md",
         "checkpoint.json",
+        "rollback_marker.json",
         "rebase_checkpoint.json",
         "rebase_checkpoint.json.bak",
         "auto_integrate_in_progress.json",
