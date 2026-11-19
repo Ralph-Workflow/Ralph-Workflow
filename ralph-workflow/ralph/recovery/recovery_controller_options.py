@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Protocol
 from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
+from ralph.recovery.agent_unavailability_tracker import (
+    DEFAULT_LEGACY_BACKOFF_MS,
+    DEFAULT_LEGACY_MAX_BACKOFF_MS,
+    UnavailabilityEntry,
+)
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
 from ralph.recovery.legacy_guard_migration import (
     FALSE_COOLDOWN_FEEDBACK_KEY,
@@ -75,6 +79,95 @@ def _restored_unavailability_entries(
             max_backoff_ms=policy.max_backoff_ms,
         )
     return entries
+
+
+_COOLDOWN_EXPIRY_KEY = "unavailable_until_epoch_ms"
+_COOLDOWN_REASON_KEY = "unavailability_reasons"
+_COOLDOWN_ATTEMPTS_KEY = "backoff_attempts"
+
+
+@dataclass(frozen=True)
+class RestoredCooldowns:
+    entries: dict[str, UnavailabilityEntry]
+    backoff_attempts: dict[str, int]
+
+
+def persisted_cooldowns(
+    tracker_snapshot: Mapping[str, Mapping[str, object]],
+    *,
+    now_ms: int,
+) -> dict[str, object] | None:
+    timeouts = tracker_snapshot.get("unavailable_timeouts", {})
+    expiries = tracker_snapshot.get(_COOLDOWN_EXPIRY_KEY, {})
+    reasons = tracker_snapshot.get(_COOLDOWN_REASON_KEY, {})
+    attempts = dict(tracker_snapshot.get(_COOLDOWN_ATTEMPTS_KEY, {}))
+    active = [
+        agent
+        for agent, until_ms in timeouts.items()
+        if isinstance(until_ms, int) and until_ms > now_ms and agent in expiries
+    ]
+    if not active and not attempts:
+        return None
+    return {
+        _COOLDOWN_EXPIRY_KEY: {agent: expiries[agent] for agent in active},
+        _COOLDOWN_REASON_KEY: {agent: reasons.get(agent) for agent in active},
+        _COOLDOWN_ATTEMPTS_KEY: attempts,
+    }
+
+
+def _restored_entry(until_ms: int, raw_reason: object, attempts: int) -> UnavailabilityEntry:
+    reason: UnavailabilityReason | None = None
+    if isinstance(raw_reason, str):
+        try:
+            reason = UnavailabilityReason(raw_reason)
+        except ValueError:
+            reason = None
+    policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.get(reason) if reason is not None else None
+    return UnavailabilityEntry(
+        unavailable_until_ms=until_ms,
+        reason=reason,
+        attempt=max(0, attempts - 1),
+        base_backoff_ms=policy.base_backoff_ms if policy is not None else DEFAULT_LEGACY_BACKOFF_MS,
+        max_backoff_ms=(
+            policy.max_backoff_ms if policy is not None else DEFAULT_LEGACY_MAX_BACKOFF_MS
+        ),
+    )
+
+
+def restored_cooldowns(
+    snapshot: Mapping[str, object] | None,
+    *,
+    clock: Clock,
+) -> RestoredCooldowns:
+    if not snapshot:
+        return RestoredCooldowns(entries={}, backoff_attempts={})
+    attempts = {
+        agent: as_int(value, field=f"{_COOLDOWN_ATTEMPTS_KEY}[{agent}]")
+        for agent, value in as_mapping(
+            snapshot.get(_COOLDOWN_ATTEMPTS_KEY, {}), field=_COOLDOWN_ATTEMPTS_KEY
+        ).items()
+    }
+    reasons = as_mapping(snapshot.get(_COOLDOWN_REASON_KEY, {}), field=_COOLDOWN_REASON_KEY)
+    expiries = {
+        agent: as_int(value, field=f"{_COOLDOWN_EXPIRY_KEY}[{agent}]")
+        for agent, value in as_mapping(
+            snapshot.get(_COOLDOWN_EXPIRY_KEY, {}), field=_COOLDOWN_EXPIRY_KEY
+        ).items()
+    }
+    now_ms = int(clock.monotonic() * 1000)
+    now_epoch_ms = int(clock.epoch() * 1000)
+    remaining = {
+        agent: min(expiry_ms - now_epoch_ms, _UNIVERSAL_COOLDOWN_CAP_MS)
+        for agent, expiry_ms in expiries.items()
+    }
+    return RestoredCooldowns(
+        entries={
+            agent: _restored_entry(now_ms + left_ms, reasons.get(agent), attempts.get(agent, 0))
+            for agent, left_ms in remaining.items()
+            if left_ms > 0
+        },
+        backoff_attempts=attempts,
+    )
 
 
 def _reason_cap_ms(raw_reason: object) -> int:

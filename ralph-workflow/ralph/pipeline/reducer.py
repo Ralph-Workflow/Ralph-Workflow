@@ -569,6 +569,10 @@ def reduce(
         verdict_record = recovery.last_verdict_record
         if verdict_record is not None and verdict_record != routed_state.dead_agent_verdict_record:
             routed_state = routed_state.copy_with(dead_agent_verdict_record=verdict_record)
+        with suppress(OSError, RuntimeError, ValueError, AttributeError):
+            cooldowns = recovery.cooldown_snapshot()
+            if cooldowns != routed_state.agent_cooldowns:
+                routed_state = routed_state.copy_with(agent_cooldowns=cooldowns)
         feedback_snapshot = recovery.false_cooldown_feedback.snapshot()
         if feedback_snapshot != routed_state.false_cooldown_feedback:
             routed_state = routed_state.copy_with(false_cooldown_feedback=feedback_snapshot)

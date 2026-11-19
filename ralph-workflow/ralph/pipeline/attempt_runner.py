@@ -29,7 +29,10 @@ from ralph.recovery.dead_agent_probe import (
     production_dead_agent_probe_runner,
 )
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
-from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.recovery_controller_options import (
+    RecoveryControllerOptions,
+    restored_cooldowns,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping
@@ -137,6 +140,7 @@ def build_entry_point_recovery_controller(
     deps: AttemptRunnerDeps,
     ledger: AgentFailureLedger | None = None,
     ledger_snapshot: Mapping[str, object] | None = None,
+    cooldown_snapshot: Mapping[str, object] | None = None,
     false_cooldown_snapshot: Mapping[str, object] | None = None,
     unavailability_store: UnavailabilityStore | None = None,
     cycle_cap: int | None = None,
@@ -158,8 +162,11 @@ def build_entry_point_recovery_controller(
         AgentEntryPoint.CANARY_PROBE,
     ):
         probe_runner = production_dead_agent_probe_runner(config)
+    cooldowns = restored_cooldowns(cooldown_snapshot, clock=deps.clock)
     options = RecoveryControllerOptions(
         cycle_cap=cycle_cap if cycle_cap is not None else _DEFAULT_CYCLE_CAP,
+        backoff_attempts=cooldowns.backoff_attempts or None,
+        unavailability_entries=cooldowns.entries or None,
         policy_bundle=policy_bundle,
         clock=deps.clock,
         ledger=effective_ledger,

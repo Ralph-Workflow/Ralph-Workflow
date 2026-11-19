@@ -70,7 +70,10 @@ from ralph.recovery.failure_classifier import (
     watchdog_unavailability_reason,
 )
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
-from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.recovery_controller_options import (
+    RecoveryControllerOptions,
+    persisted_cooldowns,
+)
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.timeout_defaults import (
     AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
@@ -1996,6 +1999,9 @@ class RecoveryController:
             "unavailability_reasons": tracker_snapshot.get("unavailability_reasons", {}),
             "false_cooldown_feedback": self._false_cooldown_feedback.snapshot(),
         }
+
+    def cooldown_snapshot(self) -> dict[str, object] | None:
+        return persisted_cooldowns(self._unavailability_tracker.snapshot(), now_ms=self._now_ms())
 
     @classmethod
     def from_snapshot(

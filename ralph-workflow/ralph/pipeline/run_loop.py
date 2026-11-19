@@ -3706,6 +3706,7 @@ def _build_recovery_controller(
             connectivity=None,
         ),
         ledger_snapshot=state.ledger_snapshot,
+        cooldown_snapshot=state.agent_cooldowns,
         false_cooldown_snapshot=state.false_cooldown_feedback,
         cycle_cap=_cycle_cap,
         agent_max_consecutive_unproductive=consecutive_limit,

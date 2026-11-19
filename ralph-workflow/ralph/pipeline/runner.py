@@ -425,6 +425,7 @@ def _main_phase_loop_controller(
         policy_bundle=policy_bundle,
         deps=deps,
         ledger_snapshot=state.ledger_snapshot if state is not None else None,
+        cooldown_snapshot=state.agent_cooldowns if state is not None else None,
         false_cooldown_snapshot=state.false_cooldown_feedback if state is not None else None,
     )
 

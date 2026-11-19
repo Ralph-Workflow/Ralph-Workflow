@@ -308,6 +308,7 @@ class PipelineState(_FrozenPipelineStateModel):
     wait_reason: WaitReason | None = None
     wait_until_monotonic_ms: int | None = None
     ledger_snapshot: dict[str, object] | None = None
+    agent_cooldowns: dict[str, object] | None = None
     dead_agent_verdict_record: dict[str, object] | None = None
     false_cooldown_feedback: dict[str, object] | None = None
 

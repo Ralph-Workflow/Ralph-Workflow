@@ -130,6 +130,17 @@ even when the Pi process exits non-zero. The activity transcript emits a
   its next failure starts at the reason's base delay. When a cooldown
   expires, the agent's next invocation is the probe: success resets its
   history and a repeat failure starts the next, longer cooldown.
+- Cooldowns and backoff history survive a restart. After every reduce the
+  pipeline checkpoint stores each active window as a wall-clock expiry,
+  with its reason and the agent's attempt counter, in
+  `PipelineState.agent_cooldowns`. On `--resume`,
+  `build_entry_point_recovery_controller` rebases each expiry onto the new
+  process's monotonic clock, so the time the engine was down counts toward
+  the window. Windows that expired while the engine was down are dropped,
+  and a restored window is clamped at the universal 5-hour ceiling. The
+  attempt counter is restored as it was, so the next cooldown keeps
+  doubling. A checkpoint written before this field existed resumes with no
+  cooldowns.
 
 ### Unproductive limits (`AgentFailureLedger`)
 

@@ -10,11 +10,12 @@ from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.state import PipelineState
-from ralph.recovery.agent_failure_ledger import Cooldown
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.recovery_controller_options import restored_cooldowns
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.recovery.wait_kind import WaitKind
 from tests.recovery._scenario_harness import _build_policy_bundle
@@ -228,3 +229,102 @@ def test_a_sole_agent_past_its_unproductive_limit_waits_for_its_cooldown_instead
     clock.advance(BEYOND_EVERY_EXPIRY_SECONDS)
 
     assert controller.agent_eligibility(PHASE, AGENT).is_eligible
+
+
+def _resumed_controller(
+    controller: RecoveryController,
+    clock: FakeClock,
+    agents: tuple[str, ...],
+    probe: Callable[[str, str], ProbeOutcome | None] | None,
+    downtime_seconds: float,
+) -> RecoveryController:
+    snapshot = json.loads(json.dumps(controller.cooldown_snapshot()))
+    ledger_snapshot = json.loads(json.dumps(controller.ledger.snapshot()))
+    clock.advance(downtime_seconds)
+    restored = restored_cooldowns(snapshot, clock=clock)
+    resumed = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            policy_bundle=_build_policy_bundle(list(agents)),
+            dead_agent_probe_runner=probe,
+            ledger=AgentFailureLedger.from_snapshot(ledger_snapshot, clock=clock),
+            unavailability_entries=restored.entries or None,
+            backoff_attempts=restored.backoff_attempts or None,
+        )
+    )
+    resumed.register_phase_chain(PHASE, agents)
+    return resumed
+
+
+@SETTINGS
+@given(
+    steps=st.lists(
+        st.one_of(
+            st.tuples(st.just("failure"), FAILURES),
+            st.tuples(st.just("resume"), st.floats(min_value=0.0, max_value=6 * 3600.0)),
+        ),
+        min_size=1,
+        max_size=40,
+    ),
+    sole_agent=st.booleans(),
+    probe_fails=st.booleans(),
+)
+def test_a_resume_between_failures_keeps_every_cooldown_window_and_then_frees_the_agent(
+    steps: list[tuple[str, object]], sole_agent: bool, probe_fails: bool
+) -> None:
+    agents = (AGENT,) if sole_agent else CHAIN
+    clock = FakeClock(start=0.0)
+    probe = (
+        (lambda _phase, _agent: ProbeOutcome.FAILED_REPRODUCING_NO_WORK) if probe_fails else None
+    )
+    controller = _controller(clock, agents, probe)
+
+    for kind, detail in steps:
+        if kind == "resume":
+            downtime = float(str(detail))
+            expected = {
+                agent: status.until_ms
+                for agent, status in controller.chain_eligibility(PHASE, agents)
+                if isinstance(status, Cooldown)
+                and status.until_ms > int((clock.monotonic() + downtime) * 1000)
+            }
+            controller = _resumed_controller(controller, clock, agents, probe, downtime)
+            resumed = {
+                agent: status.until_ms
+                for agent, status in controller.chain_eligibility(PHASE, agents)
+                if isinstance(status, Cooldown)
+            }
+            assert resumed == expected
+        else:
+            failure = detail
+            assert isinstance(failure, tuple)
+            _apply(controller, (str(failure[0]), failure[1]), agents)
+        _assert_excluded_only_by_a_finite_cooldown(controller, clock, agents)
+
+    clock.advance(BEYOND_EVERY_EXPIRY_SECONDS)
+
+    assert controller.agent_eligibility(PHASE, AGENT).is_eligible
+    assert controller.preferred_agent_index(PHASE, agents).agent == AGENT
+
+
+def test_a_resume_keeps_an_unproductive_window_the_attempt_floor_stretched_past_the_reason_cap() -> (
+    None
+):
+    clock = FakeClock(start=0.0)
+    controller = _controller(clock, CHAIN, None)
+    two_hours_ms = 2 * 3600 * 1000
+    for _ in range(3):
+        controller.finalize_attempt(
+            PHASE,
+            AGENT,
+            facts=AttemptFacts(artifact_valid=False, workspace_changed=False),
+            attempt_failed=True,
+            attempt_duration_ms=two_hours_ms,
+        )
+    before = controller.agent_eligibility(PHASE, AGENT)
+    assert isinstance(before, Cooldown)
+    assert before.until_ms == two_hours_ms
+
+    resumed = _resumed_controller(controller, clock, CHAIN, None, 0.0)
+
+    assert resumed.agent_eligibility(PHASE, AGENT) == before
