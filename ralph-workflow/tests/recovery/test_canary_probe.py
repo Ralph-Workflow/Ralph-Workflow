@@ -196,6 +196,20 @@ def _marker_then_block_invoke(calls: list[_Call]) -> _FakeInvoke:
     return _invoke
 
 
+def _gated_invoke(gate: threading.Event, calls: list[_Call]) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        gate.wait(timeout=60)
+        return iter(())
+
+    return _invoke
+
+
 def _attempt_ended_invoke(facts: AttemptFacts, calls: list[_Call]) -> _FakeInvoke:
     def _invoke(
         config: AgentConfig,
@@ -555,6 +569,38 @@ def test_probe_keeps_the_scratch_directory_while_a_timed_out_session_may_own_it(
     assert result.reason == "probe_timeout"
     surviving = list((trusted_parent / ".agent" / "tmp").glob("canary-probe-*"))
     assert len(surviving) == 1
+
+
+def test_probe_removes_the_scratch_directory_once_the_timed_out_session_ends(
+    tmp_path: Path,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    gate = threading.Event()
+    calls: list[_Call] = []
+    try:
+        result = run_canary_probe(
+            _agent_config(),
+            invoke_fn=_gated_invoke(gate, calls),
+            trusted_parent=trusted_parent,
+            timeout_s=0.1,
+        )
+        assert result.outcome == ProbeOutcome.INCONCLUSIVE
+        assert result.reason == "probe_timeout"
+        surviving = list((trusted_parent / ".agent" / "tmp").glob("canary-probe-*"))
+        assert len(surviving) == 1
+        scratch = surviving[0]
+        gate.set()
+        waiter = threading.Event()
+        removed = False
+        for _ in range(20):
+            if not scratch.exists():
+                removed = True
+                break
+            waiter.wait(timeout=0.05)
+        assert removed, "the scratch directory must be removed once the session has ended"
+    finally:
+        gate.set()
 
 
 def test_probe_dispatches_its_attempt_through_the_registered_canary_runner(

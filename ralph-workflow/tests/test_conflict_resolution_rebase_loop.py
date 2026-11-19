@@ -4,7 +4,9 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.git import merge as merge_module
 from ralph.git.git_run_result import GitRunResult
+from ralph.git.merge import ConflictStageEntries
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -14,6 +16,7 @@ from ralph.pipeline.conflict_resolution import (
     deterministic_resolution as deterministic_module,
 )
 from ralph.pipeline.conflict_resolution import rebase_loop as loop_module
+from ralph.pipeline.conflict_resolution import sight as sight_module
 from ralph.pipeline.conflict_resolution import status as status_module
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
@@ -54,6 +57,10 @@ _CONFLICTED = ["src/alpha.py"]
 _BASE_SHA = "ba5e0000000000000000000000000000000000ba"
 _ORIG_HEAD_SHA = "0219000000000000000000000000000000000fea"
 _STOP_CAP = 10
+_NOT_A_GIT_REPOSITORY_STDERR = (
+    "fatal: not a git repository (or any parent up to mount point /)\n"
+    "Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).\n"
+)
 
 
 class _FakeRepo:
@@ -97,6 +104,7 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
     monkeypatch.setattr(deterministic_module, "conflict_stage_entries", lambda _root, _paths: {})
+    _install_unreachable_git_seams(monkeypatch)
 
     def _stage(_root: Path, paths: Sequence[str]) -> bool:
         repo.staged.append(list(paths))
@@ -114,6 +122,23 @@ def _install_seams(
         "current_rebase_identity",
         lambda _root: (_ORIG_HEAD_SHA, _BASE_SHA),
     )
+
+
+def _install_unreachable_git_seams(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _empty_stage_entries(_root: Path, _paths: Sequence[str]) -> ConflictStageEntries:
+        return ConflictStageEntries({})
+
+    def _not_a_git_repository(args: Sequence[str], *, cwd: Path, label: str) -> GitRunResult:
+        return GitRunResult(
+            args=tuple(args),
+            returncode=128,
+            stdout="",
+            stderr=_NOT_A_GIT_REPOSITORY_STDERR,
+        )
+
+    monkeypatch.setattr(merge_module, "conflict_stage_entries", _empty_stage_entries)
+    monkeypatch.setattr(sight_module, "conflict_stage_entries", _empty_stage_entries)
+    monkeypatch.setattr(sight_module, "run_git", _not_a_git_repository)
 
 
 def _install_worktree_seam(

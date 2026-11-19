@@ -120,6 +120,7 @@ class _ProbeInvoke:
     result: AttemptResult | None
     error: BaseException | None
     timed_out: bool
+    session_thread: threading.Thread | None = None
 
 
 ProbeOutcome = _ProbeOutcome
@@ -172,6 +173,7 @@ def _run_canary_probe(
     owns_workspace = workspace_factory is None
     workspace_path: Path | None = None
     timed_out = False
+    session_thread: threading.Thread | None = None
     try:
         preflight = _preflight_failure(timeout_s, budget_exhausted, started)
         if preflight is not None:
@@ -193,11 +195,35 @@ def _run_canary_probe(
         invoke = invoke_fn if invoke_fn is not None else _production_invoke()
         attempt = _invoke_with_timeout(invoke, config, prepared, general, timeout_s)
         timed_out = attempt.timed_out
+        session_thread = attempt.session_thread
         marker_state = _read_marker_state(workspace_path)
         return _attempt_result(attempt, marker_state, started)
     finally:
-        if owns_workspace and workspace_path is not None and (not timed_out):
-            _remove_scratch_workspace(workspace_path)
+        if owns_workspace and workspace_path is not None:
+            if timed_out:
+                _reap_scratch_when_the_session_ends(session_thread, workspace_path)
+            else:
+                _remove_scratch_workspace(workspace_path)
+
+
+def _reap_scratch_when_the_session_ends(
+    session_thread: threading.Thread | None, workspace_path: Path
+) -> None:
+    if session_thread is None:
+        return
+    threading.Thread(
+        target=_remove_scratch_after_the_session_ends,
+        args=(session_thread, workspace_path),
+        name="ralph-canary-probe-reaper",
+        daemon=True,
+    ).start()
+
+
+def _remove_scratch_after_the_session_ends(
+    session_thread: threading.Thread, workspace_path: Path
+) -> None:
+    session_thread.join()
+    _remove_scratch_workspace(workspace_path)
 
 
 def _attempt_result(
@@ -423,11 +449,12 @@ def _invoke_with_timeout(
     thread.start()
     thread.join(timeout_s)
     if thread.is_alive():
-        return _ProbeInvoke(result=None, error=None, timed_out=True)
+        return _ProbeInvoke(result=None, error=None, timed_out=True, session_thread=thread)
     return _ProbeInvoke(
         result=finished[0] if finished else None,
         error=captured[0] if captured else None,
         timed_out=False,
+        session_thread=thread,
     )
 
 

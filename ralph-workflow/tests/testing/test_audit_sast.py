@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.executor.process import ProcessResult
+from ralph.testing import audit_sast
 from ralph.testing.audit_sast import SastFinding, audit_sast_roots, diff_findings, main
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
+
+    from ralph.executor.process import ProcessRunOptions
+    from ralph.process.manager import ProcessManager
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -34,6 +43,18 @@ _COMMENTED_PATTERN = "VALUE = 1\nassert VALUE == 1  # a trailing note\n"
 
 _WAIVER_CONFIG = '[tool.bandit]\nskips = ["B101"]\n'
 
+BanditScanKey = tuple[
+    tuple[str, ...],
+    tuple[tuple[str, bytes], ...],
+    tuple[bool, bytes | None],
+]
+
+BanditScanOutcome = tuple[int, str, str]
+
+_SCAN_PATH_SEPARATOR = "--"
+
+_SCAN_CONFIG_FLAG = "-c"
+
 
 def _write_tree(root: Path, files: dict[str, str]) -> Path:
     for relative, text in files.items():
@@ -41,6 +62,65 @@ def _write_tree(root: Path, files: dict[str, str]) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
     return root
+
+
+def _scan_config_key(argv: tuple[str, ...]) -> tuple[bool, bytes | None]:
+    if _SCAN_CONFIG_FLAG not in argv:
+        return (False, None)
+    config_index = argv.index(_SCAN_CONFIG_FLAG) + 1
+    if config_index >= len(argv):
+        return (True, None)
+    return (True, Path(argv[config_index]).read_bytes())
+
+
+def _bandit_scan_key(
+    argv: tuple[str, ...],
+    scan_root: Path | None,
+) -> BanditScanKey | None:
+    if scan_root is None or _SCAN_PATH_SEPARATOR not in argv:
+        return None
+    separator = argv.index(_SCAN_PATH_SEPARATOR)
+    relative_paths = argv[separator + 1 :]
+    if not relative_paths:
+        return None
+    try:
+        scanned = tuple(
+            (relative, (scan_root / relative).read_bytes()) for relative in relative_paths
+        )
+        config_key = _scan_config_key(argv)
+    except OSError:
+        return None
+    return (relative_paths, scanned, config_key)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _memoize_identical_bandit_scans() -> Iterator[None]:
+    cache: dict[BanditScanKey, BanditScanOutcome] = {}
+    spawn_process = audit_sast.run_process
+
+    def _run_process(
+        command: str,
+        args: Sequence[str] = (),
+        *,
+        options: ProcessRunOptions | None = None,
+        _pm: ProcessManager | None = None,
+    ) -> ProcessResult:
+        argv = (command, *args)
+        scan_root = None if options is None else options.cwd
+        key = _bandit_scan_key(argv, None if scan_root is None else Path(scan_root))
+        if key is None:
+            return spawn_process(command, args, options=options, _pm=_pm)
+        outcome = cache.get(key)
+        if outcome is None:
+            completed = spawn_process(command, args, options=options, _pm=_pm)
+            cache[key] = (completed.returncode, completed.stdout, completed.stderr)
+            return completed
+        returncode, stdout, stderr = outcome
+        return ProcessResult(command=argv, returncode=returncode, stdout=stdout, stderr=stderr)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(audit_sast, "run_process", _run_process)
+        yield
 
 
 def test_gate_passes_on_a_clean_tree(tmp_path: Path) -> None:
