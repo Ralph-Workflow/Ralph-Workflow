@@ -14,7 +14,6 @@ from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
-from ralph.pipeline._publication_gate_run import PublicationGateRun
 from ralph.pipeline.events.publication_gate_failed_event import PublicationGateFailed
 from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.publication_gate_run import PublicationGateRun
