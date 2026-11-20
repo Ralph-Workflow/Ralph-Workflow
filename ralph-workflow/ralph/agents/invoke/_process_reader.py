@@ -448,6 +448,19 @@ def _record_broken_agent_termination(
     _record_watchdog_evidence(recorder, watchdog)
 
 
+def _resolve_attempt_supervisor(
+    supervisor: AttemptSupervisor | None,
+    termination_recorder: _TerminationRecorder | None,
+    handle: ManagedProcess | ManagedPtyProcess,
+    process_teardown: ProcessTeardown | None,
+) -> AttemptSupervisor:
+    if supervisor is not None:
+        return supervisor
+    return AttemptSupervisor.for_recorder(
+        termination_recorder, handle, process_teardown=process_teardown
+    )
+
+
 def check_broken_agent_timer(
     handle: ManagedProcess | ManagedPtyProcess,
     watchdog: IdleWatchdog,
@@ -455,6 +468,7 @@ def check_broken_agent_timer(
     process_teardown: ProcessTeardown | None = None,
     *,
     termination_recorder: _TerminationRecorder | None = None,
+    supervisor: AttemptSupervisor | None = None,
 ) -> None:
     if watchdog._config.profile.value == "activity_only":
         return
@@ -467,11 +481,6 @@ def check_broken_agent_timer(
         process_alive = True
         liveness_observed = False
     watchdog.record_process_liveness(is_alive=process_alive, observed=liveness_observed)
-    supervisor = AttemptSupervisor.for_recorder(
-        termination_recorder, handle, process_teardown=process_teardown
-    )
-    if supervisor.winner is not None:
-        return
     evidence = watchdog.circumstantial_evidence()
     if (
         elapsed_seconds > 0.0
@@ -481,6 +490,11 @@ def check_broken_agent_timer(
         and not evidence.has_session_id_captured
         and watchdog.observed_output_is_structurally_small()
     ):
+        attempt = _resolve_attempt_supervisor(
+            supervisor, termination_recorder, handle, process_teardown
+        )
+        if attempt.winner is not None:
+            return
         returncode = handle.poll()
         _record_broken_agent_termination(termination_recorder, watchdog, returncode)
         error = BrokenAgentExitError(
@@ -502,10 +516,13 @@ def check_broken_agent_timer(
     if not watchdog.observed_output_is_structurally_small():
         return
     has_output = watchdog.has_any_output()
-    outcome = supervisor.act(BrokenAgentTimeoutObserved(has_output))
+    attempt = _resolve_attempt_supervisor(
+        supervisor, termination_recorder, handle, process_teardown
+    )
+    outcome = attempt.act(BrokenAgentTimeoutObserved(has_output))
     if outcome is None:
         return
-    _record_watchdog_evidence(supervisor.recorder, watchdog)
+    _record_watchdog_evidence(attempt.recorder, watchdog)
     error = BrokenAgentExitError(
         agent_name,
         reason="no_llm_activity" if has_output else "no_output",
@@ -513,7 +530,7 @@ def check_broken_agent_timer(
         grace_seconds=grace_seconds,
     )
     if termination_recorder is not None:
-        publish_attempt_facts(error, supervisor.recorder)
+        publish_attempt_facts(error, attempt.recorder)
     raise error
 
 

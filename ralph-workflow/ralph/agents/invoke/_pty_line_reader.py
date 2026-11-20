@@ -1357,6 +1357,7 @@ class PtyLineReader:
             self._agent_name,
             self._process_teardown,
             termination_recorder=self._attempt_supervisor().recorder,
+            supervisor=self._attempt_supervisor(),
         )
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
