@@ -29,11 +29,20 @@ from ralph.pipeline.effects import (
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.prompts.prompt_digest import record_prompt_digest
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
 from tests._pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
 from tests._pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_materialize_agent_prompt_if_needed_resets_resumed_planning_context_when_prompt_changed": (
+        "prompt change detection compares PROMPT.md against the digest recorded at "
+        "materialization rather than the agent-writable PRODUCT_CRITERIA.md copy, and a run "
+        "with no recorded digest never invalidates; the test records the prior prompt's digest"
+    ),
+}
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -1004,6 +1013,7 @@ class TestExecuteAgentEffectA:
             "Resume the interrupted planning pass",
             encoding="utf-8",
         )
+        record_prompt_digest(tmp_path, "Resume the interrupted planning pass")
         (tmp_path / "PROMPT.md").write_text(
             "Replace the plan with a different task",
             encoding="utf-8",

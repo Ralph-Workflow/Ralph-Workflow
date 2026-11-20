@@ -394,6 +394,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/rebase_checkpoint.json",
     ".agent/rebase_checkpoint.json.bak",
     ".agent/auto_integrate_in_progress.json",
+    ".agent/prompt_digest.json",
     ".agent/rebase.lock",
     ".agent/start_commit",
     ".agent/mcp.toml",

@@ -18,6 +18,7 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
         "rebase_checkpoint.json",
         "rebase_checkpoint.json.bak",
         "auto_integrate_in_progress.json",
+        "prompt_digest.json",
         "rebase.lock",
         "start_commit",
         "mcp.toml",

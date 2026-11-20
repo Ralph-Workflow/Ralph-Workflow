@@ -52,6 +52,7 @@ from ralph.policy.validation import (
 )
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.project_policy.policy_mode import PolicyMode
+from ralph.prompts.prompt_digest import PromptCopyReconciliation, reconcile_materialized_prompt
 from ralph.skills._installer import (
     _project_skills_need_install,
     install_project_baseline_skills,
@@ -169,19 +170,6 @@ class RunPipelineRequest(NamedTuple):
     policy_mode: PolicyMode = PolicyMode.NORMAL
 
 
-def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
-    if not prompt_path.exists() or not product_criteria_path.exists():
-        return False
-    try:
-        return prompt_path.read_text(encoding="utf-8") != product_criteria_path.read_text(
-            encoding="utf-8"
-        )
-    except OSError:
-        return False
-
-
 def _clear_generated_pipeline_state(workspace_root: Path) -> None:
     agent_dir = workspace_root / ".agent"
     for relative_dir in _GENERATED_AGENT_STATE_DIRS:
@@ -192,11 +180,13 @@ def _clear_generated_pipeline_state(workspace_root: Path) -> None:
     ckpt.rollback_marker_path(workspace_root).unlink(missing_ok=True)
 
 
-def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
-    if not _prompt_changed_since_last_materialization(workspace_root):
-        return False
-    _clear_generated_pipeline_state(workspace_root)
-    return True
+def _invalidate_pipeline_state_if_prompt_changed(
+    workspace_root: Path,
+) -> PromptCopyReconciliation:
+    outcome = reconcile_materialized_prompt(workspace_root)
+    if outcome is PromptCopyReconciliation.PROMPT_CHANGED:
+        _clear_generated_pipeline_state(workspace_root)
+    return outcome
 
 
 def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None) -> None:
@@ -248,12 +238,20 @@ def _load_configuration(
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
 
-    if workspace_scope is not None and _invalidate_pipeline_state_if_prompt_changed(
-        workspace_scope.root
-    ):
+    prompt_reconciliation = (
+        _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root)
+        if workspace_scope is not None
+        else PromptCopyReconciliation.UNCHANGED
+    )
+    if prompt_reconciliation is PromptCopyReconciliation.PROMPT_CHANGED:
         display.emit_warning(
             "PROMPT.md changed since the last materialized run context; "
             "cleared saved pipeline state and caches."
+        )
+    elif prompt_reconciliation is PromptCopyReconciliation.COPY_RESTORED:
+        display.emit_warning(
+            ".agent/PRODUCT_CRITERIA.md no longer matched the unchanged PROMPT.md; "
+            "restored it from PROMPT.md and kept saved pipeline state."
         )
 
     if workspace_scope is not None:

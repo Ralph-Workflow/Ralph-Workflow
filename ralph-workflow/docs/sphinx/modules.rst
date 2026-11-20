@@ -5020,6 +5020,13 @@ ralph.prompts.master_prompt
    :members:
    :show-inheritance:
 
+ralph.prompts.prompt_digest
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.prompts.prompt_digest
+   :members:
+   :show-inheritance:
+
 ralph.prompts.template_context
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

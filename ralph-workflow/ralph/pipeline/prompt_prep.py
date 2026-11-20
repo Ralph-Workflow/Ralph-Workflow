@@ -25,13 +25,12 @@ from ralph.pipeline.cycle_timing import (
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.handoffs import resolve_phase_drain
-from ralph.pro_support.prompt import resolve_effective_prompt_path
-from ralph.prompts.master_prompt import _prompt_files_differ
 from ralph.prompts.materialize import (
     collect_media_entries_for_phase,
     materialize_prompt_for_phase,
     tool_name_prefix_for_transport,
 )
+from ralph.prompts.prompt_digest import prompt_changed_since_last_materialization
 from ralph.prompts.types import SessionCapabilities
 from ralph.workspace import FsWorkspace
 
@@ -140,36 +139,7 @@ def session_capabilities_for_agent_phase(
     )
 
 
-def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
-    product_criteria_path = workspace_root / ".agent" / "PRODUCT_CRITERIA.md"
-
-    if not product_criteria_path.exists():
-        return False
-
-    def _stat(path: Path) -> tuple[int, int] | None:
-        try:
-            if not path.exists():
-                return None
-            stat = path.stat()
-            return (stat.st_size, stat.st_mtime_ns)
-        except OSError:
-            return None
-
-    def _read(path: Path) -> str:
-        return path.read_text(encoding="utf-8")
-
-    try:
-        changed, _ = _prompt_files_differ(
-            prompt_path,
-            product_criteria_path,
-            stat_fn=_stat,
-            read_source=None,
-            read_current=_read,
-        )
-    except OSError:
-        return False
-    return changed
+_prompt_changed_since_last_materialization = prompt_changed_since_last_materialization
 
 
 def _should_resume_existing_planning_phase_name(

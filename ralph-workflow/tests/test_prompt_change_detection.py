@@ -6,9 +6,18 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.prompt_prep import _prompt_changed_since_last_materialization
 from ralph.prompts import master_prompt
+from ralph.prompts.prompt_digest import record_prompt_digest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_prompt_prep_uses_helper_when_size_differs": (
+        "prompt change detection now compares PROMPT.md against the digest recorded at "
+        "materialization, not against the agent-writable .agent/PRODUCT_CRITERIA.md copy; a "
+        "run with no recorded digest never invalidates, so the test records the old digest"
+    ),
+}
 
 
 def _make_stat_fn(
@@ -275,6 +284,7 @@ def test_prompt_prep_uses_helper_when_size_differs(tmp_path: Path) -> None:
     product_criteria_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text("NEW-CONTENT-X", encoding="utf-8")
     product_criteria_path.write_text("OLD", encoding="utf-8")
+    record_prompt_digest(tmp_path, "OLD")
 
     result = _prompt_changed_since_last_materialization(tmp_path)
     assert result is True

@@ -9,6 +9,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts._mcp_dispatcher_hint import agy_dispatcher_hint_text
+from ralph.prompts.prompt_digest import record_prompt_digest
 from ralph.prompts.template_registry import _packaged_template_cache, packaged_template_root
 
 if TYPE_CHECKING:
@@ -115,6 +116,8 @@ def _sync_product_criteria_file(
                     prompt_text=prompt_text,
                     backend=backend,
                 )
+        if worker_namespace is None and prompt_text is not None:
+            record_prompt_digest(workspace_root, prompt_text, backend=backend)
         return product_criteria_path
     if not backend.exists(product_criteria_path) and default_product_criteria is not None:
         write_text_if_changed(
