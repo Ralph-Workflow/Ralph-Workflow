@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pty
+import select
 from typing import TYPE_CHECKING
 
 import pytest
@@ -32,6 +33,11 @@ _SIGTERM_RETURNCODE = -15
 _POLL_FLIP = 6
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_DescriptorFedPtyHandle.poll.unread_output": (
+        "the fake process now exits only after the PTY master has no unread output, as a "
+        "real agent's exit cannot overtake output it already wrote; the poll-count flip alone "
+        "let a starved read thread lose the line under load"
+    ),
     "private quota-path assertions replaced by public read_lines observables": (
         "the suppressed-observation contract is public reader behavior; the "
         "rewrite feeds the PTY descriptor through read_lines() and asserts "
@@ -39,6 +45,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "terminate issuers instead of private quota methods and _quota_error"
     ),
 }
+
+
+def _master_has_unread_output(master_fd: int) -> bool:
+    readable, _writable, _errored = select.select([master_fd], [], [], 0)
+    return bool(readable)
 
 
 class _NoopProcessTeardown:
@@ -63,7 +74,9 @@ class _DescriptorFedPtyHandle:
 
     def poll(self) -> int | None:
         self._polls += 1
-        return _SIGTERM_RETURNCODE if self._polls >= _POLL_FLIP else None
+        if self._polls < _POLL_FLIP or _master_has_unread_output(self.master_fd):
+            return None
+        return _SIGTERM_RETURNCODE
 
     def terminate(self, grace_period_s: float = 0.5, **kwargs: object) -> None:
         del grace_period_s

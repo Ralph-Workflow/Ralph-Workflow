@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pty
+import select
 from typing import TYPE_CHECKING
 
 import pytest
@@ -432,6 +433,11 @@ class _NoopTeardown:
         del host_pid, issuer, owner_label
 
 
+def _master_has_unread_output(master_fd: int) -> bool:
+    readable, _writable, _errored = select.select([master_fd], [], [], 0)
+    return bool(readable)
+
+
 class _PtyHandle:
     pid: None = None
 
@@ -443,7 +449,9 @@ class _PtyHandle:
 
     def poll(self) -> int | None:
         self._polls += 1
-        return -15 if self._polls >= self._polls_before_death else None
+        if self._polls < self._polls_before_death or _master_has_unread_output(self.master_fd):
+            return None
+        return -15
 
     def terminate(self, grace_period_s: float = 0.5, **kwargs: object) -> None:
         del grace_period_s

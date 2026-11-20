@@ -467,6 +467,11 @@ def check_broken_agent_timer(
         process_alive = True
         liveness_observed = False
     watchdog.record_process_liveness(is_alive=process_alive, observed=liveness_observed)
+    supervisor = AttemptSupervisor.for_recorder(
+        termination_recorder, handle, process_teardown=process_teardown
+    )
+    if supervisor.winner is not None:
+        return
     evidence = watchdog.circumstantial_evidence()
     if (
         elapsed_seconds > 0.0
@@ -497,9 +502,6 @@ def check_broken_agent_timer(
     if not watchdog.observed_output_is_structurally_small():
         return
     has_output = watchdog.has_any_output()
-    supervisor = AttemptSupervisor.for_recorder(
-        termination_recorder, handle, process_teardown=process_teardown
-    )
     outcome = supervisor.act(BrokenAgentTimeoutObserved(has_output))
     if outcome is None:
         return

@@ -1351,7 +1351,13 @@ class PtyLineReader:
             pending_lines, exc = fire_result
             yield from self._capture_pending(pending_lines)
             raise exc
-        check_broken_agent_timer(self._handle, watchdog, self._agent_name)
+        check_broken_agent_timer(
+            self._handle,
+            watchdog,
+            self._agent_name,
+            self._process_teardown,
+            termination_recorder=self._attempt_supervisor().recorder,
+        )
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
     def _strategy_registry_and_prefix(
