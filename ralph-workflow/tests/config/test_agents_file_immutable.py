@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_pipeline_run_leaves_agents_file_byte_identical.commit_message": (
+        "a commit phase no longer routes onward on agent success without committing; the "
+        "stubbed commit agent now submits the commit message a real commit agent must submit, "
+        "so the run reaches its CommitEffect instead of looping or failing on the missing message"
+    ),
     "test_pipeline_run_leaves_agents_file_byte_identical carries a 3 s per-test budget": (
         "the test runs the ordinary pipeline end to end through ralph.pipeline.runner.run, because the regression it guards is a full run rewriting the user-global agents file; that costs 0.65 to 0.92 main-thread CPU seconds and failed the 1 s default under host load, so it declares a 3 s budget; every assertion is unchanged"
     ),
@@ -273,6 +278,14 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoker.invoke(effect.agent_name, effect.phase)
+            if bundle.pipeline.phases[effect.phase].role == "commit":
+                message = repo_dir / ".agent" / "artifacts" / "commit_message.md"
+                message.parent.mkdir(parents=True, exist_ok=True)
+                message.write_text(
+                    "---\ntype: commit\nsubject: chore: record the stubbed run\n---\n\n"
+                    "## Body Summary\n\n- [BS-1] Commit the stubbed run's work.\n",
+                    encoding="utf-8",
+                )
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
             return PipelineEvent.COMMIT_SUCCESS

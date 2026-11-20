@@ -13,3 +13,4 @@ class CommitState(RalphBaseModel):
     message_prepared: bool = False
     diff_prepared: bool = False
     agent_invoked: bool = False
+    message_regenerated: bool = False

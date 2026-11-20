@@ -178,3 +178,28 @@ def test_resume_pending_rebase_refuses_stale_anchor_and_retains_the_record(tmp_p
     assert decision.observed_head == observed_head
     assert decision.observed_head != stale_head
     assert f"rebase_continue_head={stale_head}" in decision.expected
+
+
+def test_a_rebase_aborted_under_the_resolver_is_never_recorded_as_a_pending_continuation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    feature, onto = _seed_conflicting_rebase(root)
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=onto,
+        resolving_rebase=True,
+    )
+    write_record(root, record)
+    assert _git(root, "rebase", "--abort").returncode == 0
+    _resolve_stop(root, "shared.txt", "target\n")
+
+    with pytest.raises(ValueError, match="no rebase is in progress"):
+        prepare_pending_rebase(root, "main")
+
+    retained = read_record(root)
+    assert retained == record
+    assert _value(root, "rev-parse", "HEAD") == feature

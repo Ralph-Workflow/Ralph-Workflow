@@ -374,6 +374,13 @@ def _commit_phase_effect(
             expected_tree_sha=state.approved_tree_sha,
             require_approved_tree=state.commit_approval_required,
         )
+    if state.commit.message_regenerated:
+        return ExitFailureEffect(
+            reason=(
+                f"Commit phase '{state.phase}' regenerated its commit message and still has "
+                "no valid durable message artifact; refusing to route onward without committing"
+            )
+        )
     if state.commit.agent_invoked:
         logger.warning(
             "Commit invocation state has no valid durable message artifact; regenerating it"

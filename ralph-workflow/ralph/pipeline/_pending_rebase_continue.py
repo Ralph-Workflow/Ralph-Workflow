@@ -46,6 +46,11 @@ def prepare_pending_rebase(root: Path, target: str | None = None) -> None:
             pre_target_sha=onto,
             resolving_rebase=True,
         )
+    if not rebase_in_progress_at(root):
+        raise ValueError(
+            "no rebase is in progress; a rebase stopped outside the resolver is not "
+            "recorded as a pending continuation"
+        )
     pending = record.with_transition(
         MARK_PENDING_REBASE_CONTINUE,
         rebase_continue_pending=True,

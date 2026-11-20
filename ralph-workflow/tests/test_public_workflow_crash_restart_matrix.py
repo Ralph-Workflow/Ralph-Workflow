@@ -32,6 +32,15 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_crash_restart_matrix_routes_authoritatively": (
+        "prepare_pending_rebase now refuses to record a pending continuation when no rebase "
+        "is in progress (wt-05 kept a stuck 'verified rebase continuation pending' record "
+        "after its rebase was aborted mid-round); the continuation crash cases simulate a "
+        "paused rebase, so they now say so alongside the existing write_record seam"
+    ),
+}
+
 
 def _policy() -> PipelinePolicy:
     return PipelinePolicy(
@@ -168,6 +177,9 @@ def _inject_continuation_fault(
 
     monkeypatch.setattr(
         "ralph.pipeline._pending_rebase_continue.write_record", _intercepted_continue_write
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline._pending_rebase_continue.rebase_in_progress_at", lambda _root: True
     )
 
     with pytest.raises(SimulatedProcessCrashError):

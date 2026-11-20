@@ -208,7 +208,12 @@ def _record_config_telemetry(config: UnifiedConfig, workspace_root: Path | None)
 
 
 def load_resume_state(workspace_scope: WorkspaceScope | None) -> PipelineState | None:
-    return ckpt.load_for_resume(workspace_scope.root if workspace_scope is not None else Path.cwd())
+    state = ckpt.load_for_resume(
+        workspace_scope.root if workspace_scope is not None else Path.cwd()
+    )
+    if state is None or not state.interrupted_by_user:
+        return state
+    return state.copy_with(interrupted_by_user=False)
 
 
 def _load_configuration(

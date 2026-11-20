@@ -761,11 +761,12 @@ def _handle_agent_success(
     if phase_def is None:
         return _advance_to_failed(state, f"Unknown phase: {state.phase}", policy)
 
-    if phase_def.role == "commit" and not state.commit.agent_invoked:
+    if phase_def.role == "commit":
         updated_commit = CommitState(
             message_prepared=state.commit.message_prepared,
             diff_prepared=state.commit.diff_prepared,
             agent_invoked=True,
+            message_regenerated=state.commit.agent_invoked,
         )
         return state.copy_with(commit=updated_commit), []
 

@@ -11,6 +11,7 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
+from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref,
@@ -32,7 +33,17 @@ from ralph.workspace.scope import WorkspaceScope
 
 pytestmark = pytest.mark.subprocess_e2e
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_terminal_retained_hold_that_never_progresses_ends_instead_of_waiting_forever": (
+        "the hold now starts in development_analysis with two analysis iterations used and "
+        "also checks the saved state after the release: the hold keeps the phase and never "
+        "charges analysis iterations, so a released run resumes its own cycle"
+    ),
+}
+
 _TICKS = 10
+_ANALYSIS = "development_analysis"
+_ANALYSIS_ITERATION = "development_analysis_iteration"
 
 
 def _git(root: Path, *args: str) -> str:
@@ -176,12 +187,12 @@ def test_a_terminal_retained_hold_that_never_progresses_ends_instead_of_waiting_
         display_context=None,
         controller=RecoveryController(),
     )
-    state = PipelineState(phase="planning")
+    state = PipelineState(phase=_ANALYSIS).with_loop_iteration(_ANALYSIS_ITERATION, 2)
     holds = 0
-    held = run_loop.block_unresolved_integration(state, ctx, "planning")
+    held = run_loop.block_unresolved_integration(state, ctx, _ANALYSIS)
     while held is not None and holds <= NO_PROGRESS_RELEASE_REPEATS:
         holds += 1
-        held = run_loop.block_unresolved_integration(held[0], ctx, "planning")
+        held = run_loop.block_unresolved_integration(held[0], ctx, _ANALYSIS)
 
     assert held is None
     assert holds == NO_PROGRESS_RELEASE_REPEATS - 1
@@ -189,3 +200,8 @@ def test_a_terminal_retained_hold_that_never_progresses_ends_instead_of_waiting_
     assert len(waits) == NO_PROGRESS_RELEASE_REPEATS - NO_PROGRESS_REPEATS
     backup = qualified_backup_ref(str(feature), pre_feature)
     assert _git(feature, "for-each-ref", "--format=%(objectname)", backup) == pre_feature
+    resumed = ckpt.load(ckpt.run_state_path(feature))
+    assert resumed is not None
+    assert resumed.phase == _ANALYSIS
+    assert resumed.get_loop_iteration(_ANALYSIS_ITERATION) == 2
+    assert resumed.rebase.recovery_record_retained is False

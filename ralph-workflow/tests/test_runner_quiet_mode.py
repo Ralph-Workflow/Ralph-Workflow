@@ -30,6 +30,14 @@ pytestmark = pytest.mark.timeout_seconds(5)
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_install_runner_stubs.commit_message": (
+        "a commit phase no longer routes onward on agent success without committing; the "
+        "stubbed commit agents now submit the commit message a real commit agent must submit, "
+        "so the run reaches its CommitEffect"
+    ),
+}
+
 
 @pytest.fixture(scope="module")
 def policy_bundle() -> object:
@@ -60,6 +68,14 @@ def _install_runner_stubs(
     def fake_execute_effect(effect: object, _config: object, _workspace_scope: object) -> object:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
+            if effect.phase.endswith("_commit"):
+                message = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+                message.parent.mkdir(parents=True, exist_ok=True)
+                message.write_text(
+                    "---\ntype: commit\nsubject: chore: record the stubbed run\n---\n\n"
+                    "## Body Summary\n\n- [BS-1] Commit the stubbed run's work.\n",
+                    encoding="utf-8",
+                )
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
             return PipelineEvent.COMMIT_SUCCESS
