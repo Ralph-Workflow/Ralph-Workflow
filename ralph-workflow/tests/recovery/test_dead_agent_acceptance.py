@@ -67,14 +67,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_ac10_the_skip_route_cools_down_a_typed_signal_without_any_probe_runner (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac10_the_skip_route_benches_a_typed_signal_without_any_probe_runner with an unchanged body"
     ),
-    "test_ac8_the_production_controller_cools_down_typed_signals_on_first_failure": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_benches_typed_signals_on_first_failure with an unchanged body"
+    "test_ac10_the_production_controller_cools_down_typed_signals_on_first_failure": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_benches_typed_signals_on_first_failure with an unchanged body; the AC label is corrected to AC10, the criterion this test covers"
     ),
-    "test_ac8_the_production_controller_never_cools_down_on_an_unresolvable_probe": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_never_benches_on_an_unresolvable_probe with an unchanged body"
+    "test_ac7_the_production_controller_never_cools_down_on_an_unresolvable_probe": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_the_production_controller_never_benches_on_an_unresolvable_probe with an unchanged body; the AC label is corrected to AC7, the criterion this test covers"
     ),
-    "test_ac8_an_inconclusive_probe_never_starts_a_cooldown": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_an_inconclusive_probe_never_benches with an unchanged body"
+    "test_ac7_an_inconclusive_probe_never_starts_a_cooldown": (
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac8_an_inconclusive_probe_never_benches with an unchanged body; the AC label is corrected to AC7, the criterion this test covers"
     ),
     "test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_dead_agent_cooldown (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_ac7_a_quota_detector_termination_is_an_ordinary_failure_not_a_bench with an unchanged body"
@@ -288,7 +288,7 @@ def test_ac10_the_second_confirmed_failure_escalates_per_the_policy_table() -> N
     assert second == policy.base_backoff_ms * 2
 
 
-def test_ac8_the_production_controller_cools_down_typed_signals_on_first_failure() -> None:
+def test_ac10_the_production_controller_cools_down_typed_signals_on_first_failure() -> None:
     bundle = _build_policy_bundle([AGENT, OTHER])
     controller, _cap = build_recovery_controller(
         _state(agents=(AGENT, OTHER)), bundle, UnifiedConfig.model_validate({})
@@ -303,7 +303,7 @@ def test_ac8_the_production_controller_cools_down_typed_signals_on_first_failure
     assert controller.unavailability_store.is_available(PHASE, AGENT) is False
 
 
-def test_ac8_the_production_controller_never_cools_down_on_an_unresolvable_probe() -> None:
+def test_ac7_the_production_controller_never_cools_down_on_an_unresolvable_probe() -> None:
     bundle = _build_policy_bundle(["no_such_agent_cmd_xyz"])
     state = _state(agents=("no_such_agent_cmd_xyz",))
     controller, _cap = build_recovery_controller(state, bundle, UnifiedConfig.model_validate({}))
@@ -317,7 +317,7 @@ def test_ac8_the_production_controller_never_cools_down_on_an_unresolvable_probe
     assert _reasons(controller).get("no_such_agent_cmd_xyz") != DEAD
 
 
-def test_ac8_an_inconclusive_probe_never_starts_a_cooldown() -> None:
+def test_ac7_an_inconclusive_probe_never_starts_a_cooldown() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             clock=FakeClock(start=0.0),

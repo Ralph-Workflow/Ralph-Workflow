@@ -188,7 +188,7 @@ Verification passes only when all checks complete with **no ERROR/WARNING diagno
 ## Agent recovery ownership audit
 
 The agent-failure single-owner audit enforces the recovery invariant described
-in [Agent cooldown: the single-owner invariant](../../ralph-workflow/docs/agents/cooldown-invariant.md)
+in [Agent cooldown: the sole cooldown system](../../ralph-workflow/docs/agents/cooldown-invariant.md)
 and summarised in
 [Agent Invoke Architecture](architecture.md#shared-recovery-ownership).
 Exactly one `RecoveryController` owns agent cooldowns, failure-budget
