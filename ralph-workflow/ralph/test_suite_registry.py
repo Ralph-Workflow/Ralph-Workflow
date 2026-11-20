@@ -93,6 +93,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_handover_inflight_real_child.py",
     "tests/mcp/test_replacement_shutdown_signals_real_child.py",
     "tests/mcp/test_root_cause_real_child_bridge.py",
+    "tests/mcp/test_broker_fingerprint_baseline.py",
     "tests/mcp/test_s1_independent_counters_contract.py",
     "tests/mcp/test_single_acceptor_instrumented.py",
     "tests/mcp/test_spawn_early_failure_typed.py",

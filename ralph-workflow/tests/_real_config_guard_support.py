@@ -37,6 +37,8 @@ _ROOT_DIR_PREFIX: str = f"{_ROOT_DIR_STR}/"
 
 _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
 
+_CAPABILITY_STATE_FILE_NAME = "ralph-workflow-capabilities.json"
+
 _GUARDED_CONFIG_DIRS_ENV = "RALPH_TEST_GUARDED_CONFIG_DIRS"
 _GUARDED_CONFIG_DIRS_ENV_KEY = _GUARDED_CONFIG_DIRS_ENV.encode()
 
@@ -208,35 +210,58 @@ def _scan_guarded_config_files(
         _STATE.scanning = prev_scanning
 
 
+_ALL_RECORDED_WRITE_PATHS: set[Path] = set()
+
+
+def _recorded_write_paths() -> frozenset[Path]:
+    return frozenset(path for _node, path in _STATE.recorded_writes) | _ALL_RECORDED_WRITE_PATHS
+
+
+def _is_capability_state_file(path: Path) -> bool:
+    guarded_dirs = _guarded_dirs(_env_override_raw()).dirs
+    return path.name == _CAPABILITY_STATE_FILE_NAME and path.parent in guarded_dirs
+
+
+def _is_unattributed_capability_state_change(path: Path) -> bool:
+    return _is_capability_state_file(path) and path not in _recorded_write_paths()
+
+
 def _diff_config_snapshots(
     before: dict[Path, _ConfigPathSnapshot],
     after: dict[Path, _ConfigPathSnapshot],
 ) -> list[str]:
-    violations: list[str] = []
+    changes: list[tuple[Path, str]] = []
     created = set(after) - set(before)
     for p in sorted(created):
-        violations.append(f"CREATED: {p}")
+        changes.append((p, f"CREATED: {p}"))
 
     deleted = set(before) - set(after)
     for p in sorted(deleted):
-        violations.append(f"DELETED: {p}")
+        changes.append((p, f"DELETED: {p}"))
 
     common = set(before) & set(after)
     for p in sorted(common):
         b = before[p]
         a = after[p]
         if b.mode != a.mode:
-            violations.append(f"MODIFIED (mode changed): {p} (mode {oct(b.mode)} -> {oct(a.mode)})")
+            changes.append(
+                (p, f"MODIFIED (mode changed): {p} (mode {oct(b.mode)} -> {oct(a.mode)})")
+            )
         elif not b.is_dir and not a.is_dir:
             if b.sha256 != a.sha256:
-                violations.append(
-                    f"MODIFIED (content hash changed): {p} (sha256 {b.sha256} -> {a.sha256})"
+                changes.append(
+                    (
+                        p,
+                        f"MODIFIED (content hash changed): {p} (sha256 {b.sha256} -> {a.sha256})",
+                    )
                 )
             elif b.mtime_ns != a.mtime_ns:
-                violations.append(
-                    f"MODIFIED (mtime changed): {p} (mtime {b.mtime_ns} -> {a.mtime_ns})"
+                changes.append(
+                    (p, f"MODIFIED (mtime changed): {p} (mtime {b.mtime_ns} -> {a.mtime_ns})")
                 )
-    return violations
+    return [
+        message for path, message in changes if not _is_unattributed_capability_state_change(path)
+    ]
 
 
 def _parse_raw_path_string(arg0: object) -> str | None:
@@ -431,13 +456,22 @@ def _install_config_guard_audit_hook() -> None:
                 )
                 if is_write:
                     _STATE.recorded_writes.append((_STATE.current_test_node, p))
+                    _ALL_RECORDED_WRITE_PATHS.add(p)
                 else:
                     _STATE.recorded_reads.append((_STATE.current_test_node, p))
-        elif event in ("os.remove", "os.unlink", "os.mkdir", "os.rmdir", "os.rename"):
+        elif event in (
+            "os.remove",
+            "os.unlink",
+            "os.mkdir",
+            "os.rmdir",
+            "os.rename",
+            "os.replace",
+        ):
             p = _extract_guarded_path(event, args)
             if p is not None:
                 _STATE.recorded_writes.append((_STATE.current_test_node, p))
-            if event == "os.rename" and len(args) > 1:
+                _ALL_RECORDED_WRITE_PATHS.add(p)
+            if event in ("os.rename", "os.replace") and len(args) > 1:
                 p2 = _extract_guarded_path(event, (args[1],))
                 if p2 is not None:
                     _STATE.recorded_writes.append((_STATE.current_test_node, p2))

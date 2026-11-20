@@ -662,6 +662,7 @@ class ProcessLineReader:
         "_quota_error",
         "_raw_overflow",
         "_reader_done",
+        "_reader_finished",
         "_relay_activity_sink_register",
         "_relay_health_error",
         "_remove_relay_sink",
@@ -734,6 +735,7 @@ class ProcessLineReader:
         self._last_activity_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
+        self._reader_finished = threading.Event()
         self._cpu_baselines: dict[int, tuple[float, float]] = {}
         self._log_growth_state: dict[str, tuple[int, float]] = {}
         self._raw_overflow = get_or_create_raw_overflow_log(
@@ -1035,6 +1037,7 @@ class ProcessLineReader:
             with self._lines_lock:
                 self._reader_done[0] = True
             self._lines_event.set()
+            self._reader_finished.set()
             return
 
         self._announce_pre_output_progress()
@@ -1075,6 +1078,7 @@ class ProcessLineReader:
             with self._lines_lock:
                 self._reader_done[0] = True
             self._lines_event.set()
+            self._reader_finished.set()
 
     def _announce_pre_output_progress(self) -> None:
         if self._pre_output_listener is not None:
@@ -1376,6 +1380,9 @@ class ProcessLineReader:
         )
         return self._run_drain_window(watchdog, drain_deadline)
 
+    def _reader_finished_within_poll_interval(self) -> bool:
+        return self._reader_finished.wait(timeout=self._policy.descendant_wait_poll_seconds)
+
     def _finish_parent_exit_with_open_stream(self, watchdog: IdleWatchdog) -> bool:
         returncode = observed_returncode(self._handle)
         if returncode is None:
@@ -1399,6 +1406,8 @@ class ProcessLineReader:
 
         verdict = post_exit.wait_descendant_quiesce(classify_stream_state)
         if verdict != PostExitVerdict.FIRE_DESCENDANT_HANG:
+            return False
+        if self._reader_finished_within_poll_interval():
             return False
         self._attempt_supervisor().act(PostExitHangObserved(verdict))
         return True
