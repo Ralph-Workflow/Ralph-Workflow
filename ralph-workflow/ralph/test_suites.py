@@ -369,7 +369,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_exec_jobs_finish_regressions.py": 32,
     "tests/test_exec_jobs_lifecycle.py": 12,
     "tests/test_exec_liveness_scenarios.py": 16,
-    "tests/test_exec_smoke_subprocess_e2e.py": 57,
+    "tests/test_exec_smoke_subprocess_e2e.py": 143,
     "tests/test_executor_process.py": 12,
     "tests/test_explore_bench_rss_isolation.py": 19,
     "tests/test_explore_cold_start_lifecycle.py": 20,

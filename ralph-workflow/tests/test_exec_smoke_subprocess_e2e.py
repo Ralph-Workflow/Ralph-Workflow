@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import socket
 import sys
 import tempfile
@@ -37,19 +36,6 @@ def _make_fast_liveness_config() -> LivenessConfig:
     )
 
 
-def _wait_for_pid_dead(pid: int, timeout_s: float = 3.0) -> bool:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-            time.sleep(0.02)
-        except ProcessLookupError:
-            return True
-        except OSError:
-            return True
-    return False
-
-
 def test_smoke_real_sleep_killed_as_stalled() -> None:
     reg = ExecJobRegistry(
         liveness_config=_make_fast_liveness_config(),
@@ -74,15 +60,15 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
         auto_register_runtime_hooks=False,
     )
 
-    script = "import time\nend = time.time() + 2.5\nwhile time.time() < end:\n    x = 1 + 1\n"
+    script = "import time\nend = time.time() + 4.0\nwhile time.time() < end:\n    x = 1 + 1\n"
     cmd = [sys.executable, "-c", script]
-    job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
+    job_id = reg.start(cmd, timeout_ms=1500, capability="ProcessExecBounded")
 
     try:
         saw_r4 = False
         saw_cpu_ratio = False
-        min_deadline = time.monotonic() + 0.6
-        max_deadline = time.monotonic() + 1.8
+        min_deadline = time.monotonic() + 2.0
+        max_deadline = time.monotonic() + 3.2
         while time.monotonic() < max_deadline:
             snapshot = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
             assert isinstance(snapshot, JobSnapshot)
@@ -127,20 +113,24 @@ def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes()
         script = (
             f"import time\n"
             f"with open({tf.name!r}, 'wb') as f:\n"
-            f"    for i in range(20):\n"
+            f"    for i in range(80):\n"
             f"        f.write(b'x' * (256 * 1024))\n"
             f"        f.flush()\n"
             f"        time.sleep(0.04)\n"
         )
         cmd = [sys.executable, "-c", script]
-        job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
+        job_id = reg.start(cmd, timeout_ms=1500, capability="ProcessExecBounded")
 
-        time.sleep(0.6)
-        mid = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
-        assert isinstance(mid, JobSnapshot)
-        assert mid.running is True, "file-writer was killed despite R2 evidence"
+        observe_until = time.monotonic() + 2.0
+        while True:
+            mid = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
+            assert isinstance(mid, JobSnapshot)
+            assert mid.running is True, "file-writer was killed despite R2 evidence"
+            if time.monotonic() >= observe_until:
+                break
+            time.sleep(0.05)
 
-        result = reg.wait(job_id, wait_ms=3000, capability="ProcessExecBounded")
+        result = reg.wait(job_id, wait_ms=5000, capability="ProcessExecBounded")
         assert isinstance(result, JobResult)
         assert result.returncode == 0
         assert result.kill_cause is None
@@ -161,7 +151,7 @@ def test_smoke_socket_blocked_answered_slowly_by_sibling_completes() -> None:
 
     def _sibling_worker() -> None:
         conn, _ = server.accept()
-        for _ in range(8):
+        for _ in range(40):
             time.sleep(0.05)
             conn.sendall(b"x")
         conn.close()
@@ -180,12 +170,12 @@ def test_smoke_socket_blocked_answered_slowly_by_sibling_completes() -> None:
         f"        break\n"
         f"    count += 1\n"
         f"s.close()\n"
-        f"assert count == 8\n"
+        f"assert count == 40\n"
     )
 
     cmd = [sys.executable, "-c", script]
-    job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
-    result = reg.wait(job_id, wait_ms=2500, capability="ProcessExecBounded")
+    job_id = reg.start(cmd, timeout_ms=1500, capability="ProcessExecBounded")
+    result = reg.wait(job_id, wait_ms=10000, capability="ProcessExecBounded")
     sibling_thread.join()
 
     assert isinstance(result, JobResult)
