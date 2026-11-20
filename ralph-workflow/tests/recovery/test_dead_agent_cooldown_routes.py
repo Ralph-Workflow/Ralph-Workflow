@@ -18,7 +18,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
-from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_verdict import decide_dead_agent_verdict
@@ -71,6 +71,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_a_runtime_issued_quota_termination_cools_without_a_dead_agent_cooldown_or_charge": "a provider quota kill of a live session now cools the agent so the next selection falls over instead of re-invoking the rate-limited agent; the ledger-untouched and no-bench checks are kept",
     "test_ac14_the_dead_agent_cooldown_writes_no_non_expiring_entry": "operator rule: an agent is either on cooldown or not; the Spent type and spent_agents key are gone, so the test asserts the bench is a dead_agent_no_progress cooldown that expires and leaves the agent selectable",
+    "test_the_injected_verdict_runner_receives_the_probe_reason_and_elapsed_ms": "the injected dead_agent_verdict_runner seam must receive the probe reason and the elapsed time so the persisted verdict record keeps the probe evidence instead of dropping it; the test records the seam kwargs and asserts the persisted record carries the same reason",
 }
 
 
@@ -95,10 +96,19 @@ def _probe_controller(clock: FakeClock, probe_outcome: ProbeOutcome) -> Recovery
         attribution: AttributionVerdict | None,
         probe_outcome: ProbeOutcome | None,
         typed_signal: TypedSignal | None,
+        probe_reason: str = "",
+        probe_elapsed_ms: int | None = None,
     ) -> PersistedVerdict | None:
         if facts is None or attribution is None:
             return None
-        return decide_dead_agent_verdict(facts, attribution, probe_outcome, typed_signal)
+        return decide_dead_agent_verdict(
+            facts,
+            attribution,
+            probe_outcome,
+            typed_signal,
+            probe_reason=probe_reason,
+            probe_elapsed_ms=probe_elapsed_ms,
+        )
 
     return RecoveryController(
         options=RecoveryControllerOptions(
@@ -391,3 +401,61 @@ def test_the_dead_agent_cooldown_warning_carries_the_verdict_evidence(
     assert "termination=" in log
     assert "return_code_discrepancy=" in log
     assert str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS) in log
+
+
+def test_the_injected_verdict_runner_receives_the_probe_reason_and_elapsed_ms() -> None:
+    clock = FakeClock(start=0.0)
+    recorded: dict[str, object] = {}
+
+    def probe_runner(phase: str, agent: str) -> ProbeResult:
+        del phase
+        del agent
+        return ProbeResult(
+            outcome=ProbeOutcome.INCONCLUSIVE,
+            detail="idle timeout",
+            reason="probe_terminated_by_runtime:supervisor_idle:rc=9",
+            elapsed_ms=456,
+        )
+
+    def verdict_runner(
+        *,
+        facts: AttemptFacts | None,
+        attribution: AttributionVerdict | None,
+        probe_outcome: ProbeOutcome | None,
+        typed_signal: TypedSignal | None,
+        probe_reason: str = "",
+        probe_elapsed_ms: int | None = None,
+    ) -> PersistedVerdict | None:
+        recorded["probe_reason"] = probe_reason
+        recorded["probe_elapsed_ms"] = probe_elapsed_ms
+        if facts is None or attribution is None:
+            return None
+        return decide_dead_agent_verdict(
+            facts,
+            attribution,
+            probe_outcome,
+            typed_signal,
+            probe_reason=probe_reason,
+            probe_elapsed_ms=probe_elapsed_ms,
+        )
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            dead_agent_probe_runner=probe_runner,
+            dead_agent_verdict_runner=verdict_runner,
+        )
+    )
+
+    controller.handle(
+        _state(),
+        BrokenAgentExitError(AGENT, reason="no_output"),
+        FailureContext(phase=PHASE, agent=AGENT, facts=_facts()),
+    )
+
+    assert recorded["probe_reason"] == "probe_terminated_by_runtime:supervisor_idle:rc=9"
+    assert recorded["probe_elapsed_ms"] == 456
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["probe_reason"] == "probe_terminated_by_runtime:supervisor_idle:rc=9"
+    assert record["probe_elapsed_ms"] == 456

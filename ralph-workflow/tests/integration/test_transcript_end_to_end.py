@@ -11,7 +11,7 @@ import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.activity_model import ActivityEventKind
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.pipeline import effect_router
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -27,12 +27,30 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+    from ralph.pipeline.factory import PipelineDeps
+
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
 
 def _config() -> UnifiedConfig:
     return UnifiedConfig()
+
+
+def _skip_start_commit(_workspace_root: Path) -> None:
+    return None
+
+
+def _skip_mcp_validation(_workspace_root: Path) -> int:
+    return 0
+
+
+def _run_pipeline_deps(display_context: DisplayContext) -> PipelineDeps:
+    return make_test_pipeline_deps(
+        display_context,
+        write_start_commit_fn=_skip_start_commit,
+        validate_custom_mcp_servers_fn=_skip_mcp_validation,
+    )
 
 
 def _install_runner_stubs(
@@ -179,7 +197,7 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
         budget_caps={"iteration": 1},
     )
 
-    pipeline_deps = make_test_pipeline_deps(
+    pipeline_deps = _run_pipeline_deps(
         make_display_context(console=captured_console, force_width=300)
     )
     exit_code = runner_module.run(_config(), initial_state=state, pipeline_deps=pipeline_deps)
@@ -251,7 +269,7 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
     )
 
     quiet_config = UnifiedConfig()
-    pipeline_deps = make_test_pipeline_deps(
+    pipeline_deps = _run_pipeline_deps(
         make_display_context(console=captured_console, force_width=300)
     )
     exit_code = runner_module.run(

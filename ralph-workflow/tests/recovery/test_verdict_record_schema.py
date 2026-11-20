@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.agent_chain_state import AgentChainState
+from ralph.pipeline.checkpoint import load as load_checkpoint
+from ralph.pipeline.events import AgentFailureEvent
+from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import (
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    RecoveryPolicy,
+)
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attribution import Attribution, AttributionVerdict, RuntimeCause
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
@@ -53,6 +64,19 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_migrating_a_v2_verdict_record_leaves_it_unchanged": (
         "the record the ladder now receives is written at schema version 3, so the test "
         "pins the current marker beside the unchanged round trip"
+    ),
+    "test_a_v2_verdict_record_loaded_from_a_checkpoint_migrates_to_the_current_schema": (
+        "new coverage: the migration ladder was only pinned through a direct call to the "
+        "migration helper, so the checkpoint load route was unproven; the state validator "
+        "runs the ladder on every load, so a version-2 record loaded from a checkpoint must "
+        "reach schema version 3 with an empty probe reason and no elapsed milliseconds while "
+        "every other field survives the load unchanged"
+    ),
+    "test_the_reducer_persists_the_probe_reason_and_elapsed_ms_into_the_pipeline_state": (
+        "new coverage: the probe reason and the elapsed milliseconds were only pinned on the "
+        "controller's own verdict record, so the reducer route into the pipeline state was "
+        "unproven; the reducer copies the controller's record into the state, so the persisted "
+        "state record must carry the same probe evidence and schema version"
     ),
 }
 
@@ -110,6 +134,39 @@ def _newer_than_current_record() -> dict[str, object]:
         "typed_signal": None,
         "return_code_discrepancy": True,
     }
+
+
+def _v2_verdict_record() -> dict[str, object]:
+    record = dict(verdict_record("planning", "opencode", _persisted_verdict()))
+    record["schema_version"] = 2
+    record.pop("probe_reason")
+    record.pop("probe_elapsed_ms")
+    return record
+
+
+def _pipeline_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "complete": PhaseDefinition(
+                drain="planning",
+                role="terminal",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="planning",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
+    )
 
 
 def test_verdict_record_schema_v2_carries_termination_log_and_discrepancy() -> None:
@@ -322,3 +379,74 @@ def test_the_state_decoder_keeps_a_newer_than_current_verdict_record_intact() ->
     termination = record["termination"]
     assert isinstance(termination, dict)
     assert termination["log"] == [{"issuer": "post_exit_watchdog", "source": "descendant_hang"}]
+
+
+def test_a_v2_verdict_record_loaded_from_a_checkpoint_migrates_to_the_current_schema(
+    tmp_path: Path,
+) -> None:
+    v2 = _v2_verdict_record()
+    checkpoint_path = tmp_path / "checkpoint.json"
+    checkpoint_path.write_text(
+        json.dumps({"phase": "planning", "dead_agent_verdict_record": v2}),
+        encoding="utf-8",
+    )
+
+    state = load_checkpoint(checkpoint_path)
+
+    assert state is not None
+    record = state.dead_agent_verdict_record
+    assert record is not None
+    assert record["schema_version"] == 3
+    assert record["probe_reason"] == ""
+    assert record["probe_elapsed_ms"] is None
+    assert set(record) == set(v2) | {"probe_reason", "probe_elapsed_ms"}
+    for key, value in v2.items():
+        if key == "schema_version":
+            continue
+        assert record[key] == value
+    validated = PipelineState.model_validate_json(checkpoint_path.read_text(encoding="utf-8"))
+    assert validated.dead_agent_verdict_record == record
+
+
+def test_the_reducer_persists_the_probe_reason_and_elapsed_ms_into_the_pipeline_state() -> None:
+    clock = FakeClock()
+    probe_result = ProbeResult(
+        outcome=ProbeOutcome.INCONCLUSIVE,
+        reason="probe_terminated_by_runtime:supervisor_idle:rc=9",
+        elapsed_ms=456,
+        detail="idle timeout",
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            dead_agent_probe_runner=lambda phase, agent: probe_result,
+        )
+    )
+    facts = AttemptFacts(
+        exit_status="0",
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=0,
+            reported_returncode=0,
+        ),
+    )
+    state = PipelineState(
+        phase="planning",
+        phase_chains={
+            "planning": AgentChainState(
+                agents=["opencode", "peer"],
+                current_index=0,
+                retries=0,
+            )
+        },
+    )
+    event = AgentFailureEvent(phase="planning", agent="opencode", facts=facts)
+
+    reduced, _effects = reduce(state, event, _pipeline_policy(), recovery=controller)
+
+    record = reduced.dead_agent_verdict_record
+    assert record is not None
+    assert record["schema_version"] == 3
+    assert record["probe_reason"] == "probe_terminated_by_runtime:supervisor_idle:rc=9"
+    assert record["probe_elapsed_ms"] == 456
+    assert record == controller.last_verdict_record

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 import time
-from contextlib import suppress
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -75,6 +74,8 @@ PROBE_REASON_BUDGET_EXHAUSTED: Final[str] = "budget_exhausted"
 PROBE_REASON_NO_PRETRUSTED_WORKSPACE: Final[str] = "no_pretrusted_workspace"
 PROBE_REASON_TRANSPORT_NOT_PROBE_SAFE: Final[str] = "transport_not_probe_safe"
 PROBE_INNER_BUDGET_RATIO: Final[float] = 0.9
+_SCRATCH_REMOVAL_ATTEMPTS: Final[int] = 3
+_SCRATCH_REMOVAL_BACKOFF_S: Final[float] = 0.05
 
 if PROBE_COULD_NOT_RUN_DETAIL not in CANONICAL_DETAIL_VALUES:
     raise RuntimeError(
@@ -395,10 +396,18 @@ def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
 def _remove_scratch_workspace(workspace_path: Path) -> None:
     workspace = FsWorkspace(workspace_path)
     root = workspace.root
-    if not root.is_dir():
+    for attempt in range(_SCRATCH_REMOVAL_ATTEMPTS):
+        if not root.is_dir():
+            return
+        try:
+            workspace.delete(str(root), recursive=True)
+        except OSError:
+            if attempt == _SCRATCH_REMOVAL_ATTEMPTS - 1:
+                return
+            backoff = threading.Event()
+            backoff.wait(timeout=_SCRATCH_REMOVAL_BACKOFF_S)
+            continue
         return
-    with suppress(OSError):
-        workspace.delete(str(root), recursive=True)
 
 
 def _is_within(candidate: Path, parent: Path) -> bool:

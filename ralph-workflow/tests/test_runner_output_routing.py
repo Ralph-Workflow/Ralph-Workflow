@@ -9,7 +9,7 @@ import pytest
 from rich.console import Console
 
 from ralph.config.models import AgentConfig
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import UnifiedConfig
+    from ralph.pipeline.factory import PipelineDeps
 
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -34,6 +35,22 @@ pytestmark = pytest.mark.timeout_seconds(5)
 def _load_default_policy_bundle() -> object:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
+
+
+def _skip_start_commit(_workspace_root: Path) -> None:
+    return None
+
+
+def _skip_mcp_validation(_workspace_root: Path) -> int:
+    return 0
+
+
+def _run_pipeline_deps(display_context: DisplayContext) -> PipelineDeps:
+    return make_test_pipeline_deps(
+        display_context,
+        write_start_commit_fn=_skip_start_commit,
+        validate_custom_mcp_servers_fn=_skip_mcp_validation,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -202,7 +219,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         _config(),
         initial_state=state,
         display=display,
-        pipeline_deps=make_test_pipeline_deps(display._ctx),
+        pipeline_deps=_run_pipeline_deps(display._ctx),
     )
 
     output = rendered.getvalue()
@@ -306,7 +323,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         _config(),
         initial_state=state,
         display=display,
-        pipeline_deps=make_test_pipeline_deps(display._ctx),
+        pipeline_deps=_run_pipeline_deps(display._ctx),
     )
 
     output = rendered.getvalue()
@@ -380,7 +397,7 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         initial_state=state,
         display=display,
         dashboard_subscriber=_Subscriber(),
-        pipeline_deps=make_test_pipeline_deps(display._ctx),
+        pipeline_deps=_run_pipeline_deps(display._ctx),
     )
 
     assert result == 0

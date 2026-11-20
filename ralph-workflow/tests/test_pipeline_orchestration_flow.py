@@ -234,6 +234,8 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
         "_apply_connectivity_check",
         lambda current_state, _monitor: current_state,
     )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     _install_runner_display_context(monkeypatch)
 
     result = runner_module.run(config, initial_state=state)

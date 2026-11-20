@@ -1308,6 +1308,8 @@ class RecoveryController:
                 attribution=attribution,
                 probe_outcome=probe_outcome,
                 typed_signal=typed_signal,
+                probe_reason=probe_reason,
+                probe_elapsed_ms=probe_elapsed_ms,
             )
         if effective_facts is None:
             return None

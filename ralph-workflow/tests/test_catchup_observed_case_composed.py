@@ -342,6 +342,8 @@ def _interrupt_in_stall_state(
 
     monkeypatch.setattr(runner_module, "save_checkpoint_or_log", _skip_checkpoint)
     monkeypatch.setattr(run_loop, "_cleanup_pipeline", _skip_cleanup)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
 
     clock = iter((0.0, _STALL_SECONDS))
 

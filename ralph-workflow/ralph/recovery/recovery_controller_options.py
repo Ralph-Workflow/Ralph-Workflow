@@ -45,6 +45,8 @@ class _DeadAgentVerdictRunner(Protocol):
         attribution: AttributionVerdict | None,
         probe_outcome: ProbeOutcome | None,
         typed_signal: TypedSignal | None,
+        probe_reason: str = "",
+        probe_elapsed_ms: int | None = None,
     ) -> PersistedVerdict | None: ...
 
 

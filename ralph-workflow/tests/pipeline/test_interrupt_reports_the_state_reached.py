@@ -17,6 +17,11 @@ _CONSUMED = 4321.0
 pytestmark = pytest.mark.timeout_seconds(15)
 
 
+def _stub_startup_subprocesses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
+
+
 def test_an_interrupt_checkpoints_the_phase_the_run_reached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -41,6 +46,7 @@ def test_an_interrupt_checkpoints_the_phase_the_run_reached(
         "save_checkpoint_or_log",
         lambda state, **_kwargs: saved.append(state),
     )
+    _stub_startup_subprocesses(monkeypatch)
 
     exit_code = runner_module.run(
         MagicMock(),
@@ -78,6 +84,7 @@ def test_a_crash_reports_where_the_run_was_and_that_it_failed(
         "emit_run_time_report_safely",
         lambda _root, **kwargs: reported.append(kwargs),
     )
+    _stub_startup_subprocesses(monkeypatch)
 
     with pytest.raises(RuntimeError):
         runner_module.run(

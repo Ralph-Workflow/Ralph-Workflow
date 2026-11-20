@@ -31,12 +31,18 @@ from ralph.recovery.canary_probe import (
     run_canary_probe,
 )
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
+from ralph.workspace.fs import FsWorkspace
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_dead_agent_probe_surfaces_the_probe_reason_for_the_post_mortem": (
         "build_dead_agent_probe_runner widened to return the richer ProbeResult carrier "
         "carrying .outcome and .reason; the assertion asserts result.outcome is ProbeOutcome.INCONCLUSIVE "
         "and result.reason matches the expected probe reason"
+    ),
+    "test_probe_removes_the_scratch_directory_when_the_first_delete_fails_transiently": (
+        "the scratch removal now retries a transiently failed delete a bounded number of times, "
+        "so the new test asserts the scratch directory is gone after a first delete call that "
+        "raises OSError, instead of the removal giving up on the first failure"
     ),
 }
 
@@ -659,6 +665,36 @@ def test_probe_removes_scratch_directory_when_process_record_is_terminal_even_if
     finally:
         gate.set()
         logger.remove(sink_id)
+
+
+def test_probe_removes_the_scratch_directory_when_the_first_delete_fails_transiently(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    probe_area = trusted_parent / ".agent" / "tmp"
+    original_delete = FsWorkspace.delete
+    failures: list[Path] = []
+
+    def _delete_failing_once(self: FsWorkspace, path: str, *, recursive: bool = False) -> None:
+        target = Path(path).resolve()
+        if not failures and target.parent == probe_area.resolve():
+            failures.append(target)
+            raise OSError("transient scratch removal failure")
+        original_delete(self, path, recursive=recursive)
+
+    monkeypatch.setattr(FsWorkspace, "delete", _delete_failing_once)
+    calls: list[_Call] = []
+    result = run_canary_probe(
+        _agent_config(),
+        invoke_fn=_make_invoke("write_marker", calls),
+        trusted_parent=trusted_parent,
+    )
+    assert result.outcome == ProbeOutcome.PASSED
+    assert len(calls) == 1
+    assert len(failures) == 1
+    assert list(probe_area.glob("canary-probe-*")) == []
 
 
 def test_probe_dispatches_its_attempt_through_the_registered_canary_runner(
