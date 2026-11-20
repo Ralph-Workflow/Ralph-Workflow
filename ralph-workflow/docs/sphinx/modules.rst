@@ -1051,6 +1051,13 @@ ralph.pipeline.events.post_fanout_verification_event
    :members:
    :show-inheritance:
 
+ralph.pipeline.events.publication_gate_failed_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.publication_gate_failed_event
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.events.worker_completed_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1701,6 +1708,20 @@ ralph.pipeline.prompt_prep
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.prompt_prep
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.publication_block
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.publication_block
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.publication_gate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.publication_gate
    :members:
    :show-inheritance:
 

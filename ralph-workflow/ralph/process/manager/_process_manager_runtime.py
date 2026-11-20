@@ -28,6 +28,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "git-branch-exists": frozenset({1}),
     "git-branch-sha": frozenset({1}),
     "git-common-dir": frozenset({128}),
+    "publication-gate-tree": frozenset({128}),
     "git-is-ancestor": frozenset({1}),
     "git-merge-progress:git-dir": frozenset({128}),
     "git-observe-target-sha": frozenset({1}),

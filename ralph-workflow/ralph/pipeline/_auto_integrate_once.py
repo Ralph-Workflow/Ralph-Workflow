@@ -28,6 +28,7 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
+from ralph.pipeline.publication_gate import publication_gate_refusal
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -227,20 +228,24 @@ def _integrate_once_owned(
         nonlocal reclamation
         reclamation = result
 
-    raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
-        root,
-        target,
-        feature_sha,
-        reclaim_target_worktree=reclaim_target_worktree,
-        on_reclaimed=remember_reclamation,
+    gate_refusal = publication_gate_refusal(root, feature_sha)
+    raw_ff_outcome: StopResolutionOutcome = (
+        gate_refusal[0]
+        if gate_refusal is not None
+        else _ai._fast_forward_target(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=remember_reclamation,
+        )
     )
     ff_status = _parse_ff_status(raw_ff_outcome)
     ok, skip_reason = ff_status.ok, ff_status.skip_reason
 
     _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
-    if ok:
+    if ok or gate_refusal is not None:
         _ai._delete_rebase_backup_ref(root, backup_ref)
-    if ok:
         _ai._clear_record(root)
 
     record = _ai._record_rebase_outcome(
@@ -268,7 +273,13 @@ def _integrate_once_owned(
             skip_reason,
         )
         record = with_skip_reason(
-            record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
+            record.model_copy(
+                update={
+                    "last_reason": skip_reason,
+                    "fast_forwarded": False,
+                    "publication_block": gate_refusal[1] if gate_refusal is not None else None,
+                }
+            ),
             rebase_result.skip_reason,
         )
         return record, is_retryable_fast_forward_failure(raw_ff_outcome)

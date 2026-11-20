@@ -18,6 +18,7 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
     delete_rebase_backup_refs as _delete_rebase_backup_refs,
 )
 from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
+from ralph.pipeline.publication_gate import publication_gate_refusal
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -33,6 +34,18 @@ def _land_and_reconcile(
     refresh: str | None,
     config: UnifiedConfig | None = None,
 ) -> RebaseState:
+    gate_refusal = publication_gate_refusal(workspace_root, feature_sha)
+    if gate_refusal is not None:
+        refusal, block = gate_refusal
+        return record_refresh(
+            _record_skip(
+                reason=f"recovery: {refusal.external_condition}; record retained for retry",
+                target=record.target,
+                retention_reason=StartupRetentionReason.TRANSIENT_FAST_FORWARD_FAILURE,
+                record_retained=True,
+            ),
+            refresh,
+        ).model_copy(update={"publication_block": block})
     ff_failed = False
     skip_reason = ""
     try:

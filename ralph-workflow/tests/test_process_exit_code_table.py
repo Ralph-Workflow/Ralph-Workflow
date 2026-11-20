@@ -80,6 +80,10 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.publication_gate": (
+        "the reviewed process-label inventory now includes the publication gate's command "
+        "label and its tree probe, so the pinned digest of emitted labels changes"
+    ),
     "_git_probe_answer_codes skips modules that never name run_git before parsing": (
         "the scan only records run_git calls, and a module whose source does not contain run_git cannot hold one, so skipping it before ast.parse yields the same answer-code table while cutting about 3 s of collection"
     ),
@@ -103,10 +107,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "1cdac078d9d6eebe691c2a5f47b6c92663ac254fdb33828b0dffc6902cd834ca"
+    "cc8514c1c80b7321c32e36fba4bc8e0a860cecc859b6f49ff6cc5094bba507ab"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds recovery:feature-tip-exists (cat-file -e of a recorded "
+    "The reviewed inventory adds publication-gate-tree (rev-parse of the tree being "
+    "published; rc=128 is git's answer for an unreadable commit) and publication-gate "
+    "(the project's verify command; a nonzero exit is a red gate and stays loud), and "
+    "recovery:feature-tip-exists (cat-file -e of a recorded "
     "feature tip; rc=1 is an expected answer when the tip is gone) alongside the prior "
     "replacements for git-rebase:diff, operation-snapshot:index-tree, "
     "auto-integrate:update-feature-ref, git-completion-in-place, git-append-only-attributes, "

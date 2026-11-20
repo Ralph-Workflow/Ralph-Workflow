@@ -69,6 +69,7 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
     PostFanoutVerificationEvent,
+    PublicationGateFailed,
     WorkerCompletedEvent,
     WorkerFailedEvent,
     WorkerStartedEvent,
@@ -492,6 +493,8 @@ def _reduce_typed_pipeline_event(
         return residual
     if isinstance(event, PostFanoutVerificationEvent):
         return _reduce_post_fanout_verification(state, event, pipeline_policy)
+    if isinstance(event, PublicationGateFailed):
+        return _reduce_publication_gate_failure(state, event, pipeline_policy, routing_timing)
     if isinstance(event, PhaseFailureEvent):
         return _reduce_phase_failure(state, event, pipeline_policy, recovery, routing_timing)
     if isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
@@ -1173,6 +1176,29 @@ def _handle_execution_result(
         routed_state, "success", policy, "execution result", routing_timing=routing_timing
     )
     return new_state, effects
+
+
+def _reduce_publication_gate_failure(
+    state: PipelineState,
+    event: PublicationGateFailed,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]]:
+    from ralph.pipeline.publication_gate import publication_gate_loop_phase
+
+    blocked = state.copy_with(
+        last_error=event.detail,
+        last_agent_session_id=None,
+        agent_retry_intent=cleared_agent_retry_intent(),
+    )
+    if policy is None:
+        return blocked, []
+    loop_phase = publication_gate_loop_phase(policy, event.phase)
+    if loop_phase is None:
+        return blocked, []
+    return _handle_analysis_loopback(
+        blocked.copy_with(phase=loop_phase), policy, routing_timing=routing_timing
+    )
 
 
 def _handle_analysis_loopback(

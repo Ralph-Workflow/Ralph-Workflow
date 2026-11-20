@@ -50,6 +50,15 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integrated_transport_reaches_run_loop_alert_and_status_bar.cpu_budget": (
+        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    ),
+    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar.cpu_budget": (
+        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    ),
+    "test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_status_bar.cpu_budget": (
+        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    ),
     "test_context_failure_enum_and_budget_uncharged (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_context_failure_enum_and_not_spent with an unchanged body"
     ),
@@ -530,6 +539,7 @@ def _make_loop_context(repo: Path) -> MagicMock:
     return mock_ctx
 
 
+@pytest.mark.timeout_seconds(3)
 def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
 ) -> None:
@@ -632,6 +642,7 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
         logger.remove(sink_id)
 
 
+@pytest.mark.timeout_seconds(3)
 def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
 ) -> None:
@@ -737,6 +748,7 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
         logger.remove(sink_id)
 
 
+@pytest.mark.timeout_seconds(3)
 def test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
 ) -> None:

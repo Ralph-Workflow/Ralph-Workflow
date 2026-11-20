@@ -457,7 +457,22 @@ Integration rebases the feature onto the target, falls back to an endpoint
 merge when resolution fails, and fast-forwards the target to the resulting
 feature tip. Planning waits until both committed tips are synchronized.
 An unsuccessful landing raises a critical log and transcript alarm, saves
-recovery state, and retries instead of terminating the pipeline. Interrupted
+recovery state, and retries instead of terminating the pipeline.
+
+Before the fast-forward, the run's rebased commits must pass the project's
+publication gate: the command declared by the project policy fact
+`RALPH-FACT: authoritative_verify_command:` in
+`docs/ralph-workflow-policy/verification-policy.md` (for this repository,
+`make -C ralph-workflow verify`). The gate runs in the run's worktree on the
+rebased tree, bounded at 30 minutes, and its result is recorded in
+`.agent/publication_gate.json` against that tree SHA, so a later rebase or a
+new commit runs it again. A red gate, or a timeout, does not move the target or
+push: the commits stay on the feature branch, the record carries
+`publication_block`, and the run returns to the development loop with the gate
+output as its retry feedback, through the analysis loopback the policy already
+declares. After five gate failures in a row the run stops looping and finishes
+with its commits unpublished. A project whose policy declares no resolved
+verify command publishes as before. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
 An interrupted conflict-resolution record routes back to the configured

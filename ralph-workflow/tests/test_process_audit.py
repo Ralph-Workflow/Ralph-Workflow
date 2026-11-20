@@ -16,7 +16,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_no_direct_subprocess_calls_in_tests": (
         "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
         "for the repo-structure boundary-rule audit, so it joins the allowlist "
-        "without a subprocess_e2e marker"
+        "without a subprocess_e2e marker; test_audit_integration_agent_path.py "
+        "carries a subprocess.Popen planted-violation source string for the "
+        "integration agent-path audit and never spawns a process, so it joins too"
     ),
 }
 
@@ -113,6 +115,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_secret_scan.py",
     "test_audit_sast.py",
     "test_repo_structure_boundary_rules.py",
+    "test_audit_integration_agent_path.py",
     "test_process_audit.py",
     "test_process_cross_platform.py",
     "test_process_manager.py",

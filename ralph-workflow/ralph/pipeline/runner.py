@@ -193,6 +193,7 @@ from ralph.pipeline.prompt_prep import (
     publish_cycle_deadline_env,
     withdraw_cycle_deadline_env,
 )
+from ralph.pipeline.publication_gate import publication_gate_feedback
 from ralph.pipeline.rebase_state import (
     HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
     RebaseState,
@@ -1138,6 +1139,25 @@ def _integration_conflict_failure(state: PipelineState, outcome: RebaseState) ->
         recoverable=True,
         failure_category=FailureCategory.INTEGRATION,
     )
+
+
+def _event_after_integration(
+    state: PipelineState,
+    event: Event | CommitReviewEvent,
+    outcome: RebaseState | None,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+) -> Event | CommitReviewEvent:
+    if not isinstance(outcome, RebaseState):
+        return event
+    if outcome.integration_unresolved and not outcome.recovery_record_retained:
+        return _integration_conflict_failure(state, outcome)
+    if outcome.publication_block is not None:
+        return (
+            publication_gate_feedback(workspace_scope.root, policy_bundle.pipeline, state.phase)
+            or event
+        )
+    return event
 
 
 def _maybe_auto_integrate(
@@ -2329,12 +2349,9 @@ def _run_pipeline_step(
             display_context=display_context,
             recovery_controller=recovery_controller,
         )
-        if (
-            isinstance(_auto_integrate_outcome, RebaseState)
-            and _auto_integrate_outcome.integration_unresolved
-            and not _auto_integrate_outcome.recovery_record_retained
-        ):
-            event = _integration_conflict_failure(state, _auto_integrate_outcome)
+        event = _event_after_integration(
+            state, event, _auto_integrate_outcome, workspace_scope, policy_bundle
+        )
         _phase_outcome = _coarse_outcome_for_event(event)
         _reduce_routing_timing, _reduce_now, _reduce_delta, _ = _sample_cycle_timing(
             state, policy_bundle.pipeline, pipeline_deps, _cycle_sample_box
