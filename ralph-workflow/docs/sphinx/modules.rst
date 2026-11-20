@@ -1802,6 +1802,13 @@ ralph.pipeline.watchdog_fire_record
    :members:
    :show-inheritance:
 
+ralph.pipeline.stalled_retained_hold
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.stalled_retained_hold
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state
 ~~~~~~~~~~~~~~~~~~~~
 

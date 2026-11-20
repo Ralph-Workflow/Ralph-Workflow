@@ -56,13 +56,14 @@ def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, 
 
 
 def _check_worktree_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    if not record.owning_worktree or not record.owning_worktree.strip():
+    owning_worktree = str(root) if record.owning_worktree is None else record.owning_worktree
+    if not owning_worktree.strip():
         return False, "record.owning_worktree is missing or empty"
     try:
-        if Path(record.owning_worktree).resolve() != root.resolve():
-            return False, f"owning_worktree {record.owning_worktree} does not match {root}"
+        if Path(owning_worktree).resolve() != root.resolve():
+            return False, f"owning_worktree {owning_worktree} does not match {root}"
     except (OSError, RuntimeError, ValueError, KeyError):
-        return False, f"owning_worktree {record.owning_worktree} is invalid"
+        return False, f"owning_worktree {owning_worktree} is invalid"
     return True, "worktree matches"
 
 

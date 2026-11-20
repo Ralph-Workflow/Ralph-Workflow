@@ -6,6 +6,7 @@ from typing import Final
 NO_PROGRESS_REPEATS: Final[int] = 3
 NO_PROGRESS_BASE_WAIT_SECONDS: Final[float] = 30.0
 NO_PROGRESS_MAX_WAIT_SECONDS: Final[float] = 600.0
+NO_PROGRESS_RELEASE_REPEATS: Final[int] = 6
 
 
 @dataclass
@@ -35,6 +36,7 @@ class NoProgressHoldBackoff:
 __all__ = [
     "NO_PROGRESS_BASE_WAIT_SECONDS",
     "NO_PROGRESS_MAX_WAIT_SECONDS",
+    "NO_PROGRESS_RELEASE_REPEATS",
     "NO_PROGRESS_REPEATS",
     "NoProgressHoldBackoff",
 ]

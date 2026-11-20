@@ -19,6 +19,14 @@ from ralph.pipeline.operation_evidence import (
 from tests._resolver_controller import make_resolver_controller
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_ownership_proof_requires_nonempty_matching_worktree": (
+        "a record with no owning_worktree belongs to the worktree that holds it, so its "
+        "ownership proof checks that worktree instead of failing forever; wt-02 retained a "
+        "landed record because 'record.owning_worktree is missing or empty' could never clear"
+    ),
+}
+
 
 @pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_pending_identity_unavailable_routes_inspection_instead_of_source_repair(
@@ -270,9 +278,12 @@ def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> 
     assert reason == "ownership verified"
 
     no_wt = record.model_copy(update={"owning_worktree": None})
+    no_wt = no_wt.model_copy(
+        update={"diagnostic_ownership": f"{identity_fingerprint(no_wt)}:{time.time()}"}
+    )
     ok, reason = diagnostic._check_ownership_proof(root, no_wt)
-    assert ok is False
-    assert "missing or empty" in reason
+    assert ok is True
+    assert reason == "ownership verified"
 
     empty_wt = record.model_copy(update={"owning_worktree": ""})
     ok, reason = diagnostic._check_ownership_proof(root, empty_wt)

@@ -50,6 +50,7 @@ from ralph.pipeline._recovery_fast_forward_landing import (
 )
 from ralph.pipeline._retry_later_outcome import RetryLaterOutcome
 from ralph.pipeline._terminal_emitter import critical
+from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
     refresh_outcome_is_healthy,
@@ -66,6 +67,7 @@ from ralph.pipeline.auto_integrate_record import (
     record_path,
     write_record,
 )
+from ralph.pipeline.auto_integrate_recovery_terminal import delete_rebase_backup_refs
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
@@ -93,6 +95,8 @@ __all__ = [
     "_refresh_before_verdict",
     "compute_continuation_retry_gate_key",
     "continue_retained_resolution",
+    "git_operation_is_settled",
+    "recorded_landing_is_contained_in_target",
     "recover_pending_merge",
 ]
 
@@ -314,7 +318,7 @@ def _withheld_landing(
         record.reintegrate_pending
         and _recorded_work_is_verifiably_landed(workspace_root, record)
         and _target_tip_contains_recorded_work(workspace_root, record)
-    ):
+    ) or recorded_landing_is_contained_in_target(workspace_root, record):
         return _release_verifiably_landed_record(workspace_root, record, config)
     else:
         reason = "recovery: feature tip changed or unreadable; landing withheld"
@@ -548,12 +552,30 @@ def _target_tip_contains_recorded_work(root: Path, record: IntegrationRecord) ->
     return ancestry_state(root, work_sha, target_tip) is True
 
 
-def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -> bool:
+def git_operation_is_settled(root: Path) -> bool:
     kind = read_in_progress_kind(root)
     if not kind.is_known_good or kind.value is not InProgressKind.NONE:
         return False
     unmerged = observe_unmerged_paths(root)
-    if not unmerged.query_ok or unmerged.paths:
+    return unmerged.query_ok and not unmerged.paths
+
+
+def recorded_landing_is_contained_in_target(root: Path, record: IntegrationRecord) -> bool:
+    landed_sha = record.integrated_feature_sha
+    if not record.is_integrated or not landed_sha or not git_operation_is_settled(root):
+        return False
+    target_tip = _get_branch_sha(root, record.target)
+    head = _read_head_sha_or_none(root)
+    if target_tip is None or head is None:
+        return False
+    return (
+        ancestry_state(root, landed_sha, target_tip) is True
+        and ancestry_state(root, landed_sha, head) is True
+    )
+
+
+def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -> bool:
+    if not git_operation_is_settled(root):
         return False
     from ralph.pipeline._landed_predicate import operation_landed
 
@@ -591,6 +613,9 @@ def _release_verifiably_landed_record(
             root,
             record.with_transition(MARK_REINTEGRATE_PENDING, reintegrate_pending=False),
         )
+    delete_rebase_backup_refs(
+        root, qualified_backup_ref(record.owning_worktree or str(root), record.pre_feature_sha)
+    )
     _clear_record(root)
     from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
 

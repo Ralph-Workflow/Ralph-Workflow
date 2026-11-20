@@ -93,7 +93,7 @@ from ralph.pipeline.integration_resolution import (
     retained_integration_reason,
 )
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
-from ralph.pipeline.no_progress_hold import NoProgressHoldBackoff
+from ralph.pipeline.no_progress_hold import NO_PROGRESS_RELEASE_REPEATS, NoProgressHoldBackoff
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -106,6 +106,7 @@ from ralph.pipeline.rebase_state import (
 )
 from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
+from ralph.pipeline.stalled_retained_hold import end_stalled_retained_hold
 from ralph.pipeline.state_init import with_configured_phase_chains
 from ralph.process.manager import get_process_manager
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -2888,7 +2889,7 @@ def _back_off_unchanged_retained_hold(
     backoff: NoProgressHoldBackoff,
     remaining: str,
     last_reason: str | None,
-) -> None:
+) -> bool:
     from ralph.git.merge import branch_sha
 
     root = Path(ctx.workspace_scope.root)
@@ -2896,8 +2897,11 @@ def _back_off_unchanged_retained_hold(
     feature = (record.integrated_feature_sha or record.pre_feature_sha) if record else ""
     target_tip = (branch_sha(root, record.target) or "") if record else ""
     wait_seconds = backoff.observe((remaining, last_reason or "", feature, target_tip))
+    if backoff.repeats >= NO_PROGRESS_RELEASE_REPEATS and _end_stalled_hold(root, backoff.repeats):
+        backoff.reset()
+        return True
     if wait_seconds <= 0:
-        return
+        return False
     logger.warning(
         "retained integration made no progress for {} checks in a row ({}); waiting {:.0f}s "
         "before the next check",
@@ -2906,6 +2910,15 @@ def _back_off_unchanged_retained_hold(
         wait_seconds,
     )
     ctx.sleep(wait_seconds)
+    return False
+
+
+def _end_stalled_hold(root: Path, checks: int) -> bool:
+    try:
+        return end_stalled_retained_hold(root, checks=checks)
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        logger.warning("could not end the stalled retained integration hold: {}", exc)
+        return False
 
 
 def _handle_retained_integration(
@@ -2939,8 +2952,12 @@ def _handle_retained_integration(
         rebase=state.rebase.set_operation_display_state(OperationDisplayState.EVIDENCE_DIAGNOSIS)
     )
     _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
-    if isinstance(backoff, NoProgressHoldBackoff):
-        _back_off_unchanged_retained_hold(ctx, backoff, remaining, state.rebase.last_reason)
+    if isinstance(backoff, NoProgressHoldBackoff) and _back_off_unchanged_retained_hold(
+        ctx, backoff, remaining, state.rebase.last_reason
+    ):
+        state = state.copy_with(rebase=state.rebase.clear_recovery_record_retained())
+        _save_recovered_rebase_checkpoint(state, ctx)
+        return state, None
     return state, (state, prev_phase, 0)
 
 
@@ -4481,3 +4498,4 @@ def _start_pro_heartbeat_if_active(
 
 resolve_initial_state = _resolve_initial_state
 build_status_bar_model = _build_status_bar_model
+block_unresolved_integration = _block_unresolved_integration
