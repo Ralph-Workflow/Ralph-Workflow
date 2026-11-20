@@ -13,6 +13,7 @@ from ralph.git.merge import branch_sha
 from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.publication_gate import PublicationBlock, last_publication_gate_result
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
@@ -212,3 +213,59 @@ def test_planning_proceeds_past_a_gate_blocked_tree_instead_of_waiting(
 
     assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
     assert branch_sha(tmp_git_repo, target) == before
+
+
+@pytest.mark.timeout_seconds(90)
+def test_a_retained_record_for_a_gate_refused_tree_is_released_instead_of_looping(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    fact, runs = _counting_red_gate(tmp_path)
+    target, feature = _feature_with_gate(tmp_git_repo, tmp_path, fact)
+    before = branch_sha(tmp_git_repo, target)
+    config = UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_target": target}}
+    )
+    assert _integrate(feature, target).publication_block is PublicationBlock.GATE_FAILED
+    feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
+    write_record(
+        feature,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature_tip,
+            pre_target_sha=before,
+            integrated_feature_sha=feature_tip,
+        ),
+    )
+    retained_logs: list[str] = []
+    sink = logger.add(
+        lambda message: retained_logs.append(str(message)), level="INFO", format="{message}"
+    )
+    try:
+        outcomes = [
+            integrate_before_planning(config, WorkspaceScope(feature), RebaseState())
+            for _tick in range(10)
+        ]
+    finally:
+        logger.remove(sink)
+
+    assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
+    assert read_record(feature) is None
+    assert branch_sha(tmp_git_repo, target) == before
+    assert all(outcome is not None for outcome in outcomes)
+    assert not any(outcome.recovery_record_retained for outcome in outcomes if outcome)
+    assert all(
+        outcome.publication_block is PublicationBlock.GATE_FAILED for outcome in outcomes if outcome
+    )
+    assert not [line for line in retained_logs if "starts no new diagnostic round" in line]
+    assert not [line for line in retained_logs if "rebase_conflict_resolution" in line]
+    ctx = SimpleNamespace(
+        config=config,
+        workspace_scope=WorkspaceScope(feature),
+        policy_bundle=cached_default_policy_bundle(),
+        active_display=None,
+    )
+    _state, held = run_loop.ensure_planning_in_sync(
+        PipelineState(phase="planning", rebase=outcomes[-1] or RebaseState()), ctx, "planning"
+    )
+    assert held is None
