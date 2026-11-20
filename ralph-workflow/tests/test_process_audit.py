@@ -11,7 +11,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "their respective CLI audits as black-box regressions, so they join the allowlist; "
         "test_commit_detached_head_recovery.py joins for its _fast_spawn_git transport that "
         "still executes the same git argv via subprocess.run while dropping ManagedProcess "
-        "bookkeeping"
+        "bookkeeping; test_audit_integration_agent_path.py carries subprocess.Popen( fixture strings only"
     ),
     "test_no_direct_subprocess_calls_in_tests": (
         "test_repo_structure_boundary_rules.py carries os.killpg fixture strings "
@@ -135,6 +135,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_mcp_timeout.py",
     "test_audit_filesystem_polling_invocation.py",
     "test_audit_resource_lifecycle.py",
+    "test_audit_integration_agent_path.py",
     "e72_descendant_helper.py",
     "test_audit_parallelization_dormant.py",
     "test_smoke_multimodal_end_to_end.py",
