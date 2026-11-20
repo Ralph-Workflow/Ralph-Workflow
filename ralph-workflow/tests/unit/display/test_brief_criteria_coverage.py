@@ -11,6 +11,13 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_collect_claims skips files that cannot hold a criteria marker before parsing": (
+        "the claim scan parsed every test file with ast.parse at import time, about 7 s of collection on the make verify critical-path shard; a file whose source does not contain the word criteria cannot carry a pytest.mark.criteria decorator, so skipping it before parsing finds exactly the same claims and bad markers"
+    ),
+}
+
+
 ALL_IDS: tuple[str, ...] = (
     "A-1",
     "A-2",
@@ -115,6 +122,8 @@ def _collect_claims() -> dict[str, list[tuple[str, str]]]:
         try:
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
+            continue
+        if "criteria" not in source:
             continue
         try:
             tree = ast.parse(source, filename=str(path))

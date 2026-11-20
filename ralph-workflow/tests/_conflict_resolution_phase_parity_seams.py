@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.git import merge as merge_module
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.policy.loader import load_policy
@@ -16,6 +17,13 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.policy.models import PolicyBundle
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_install_seams also fakes the late-imported git merge observations": (
+        "the round observer imports unmerged_paths and conflict_stage_entries from ralph.git.merge at call time, so the seam spawned real git against a non-repository tmp_path on every round and pushed tests past the 1 s per-test CPU budget under host load; the fakes return exactly what git returns there (the query-failed sentinel and no stage entries), so every assertion sees the same values"
+    ),
+}
 
 
 class _CooldownClock(FakeClock):
@@ -45,6 +53,11 @@ def _install_seams(
     surviving_per_round: Sequence[Sequence[str]] | None = None,
 ) -> None:
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda root: list(unmerged))
+    monkeypatch.setattr(
+        merge_module, "unmerged_paths", lambda _root: [merge_module.UNMERGED_PATH_QUERY_FAILED]
+    )
+    monkeypatch.setattr(merge_module, "conflict_stage_entries", lambda _root, _paths: {})
+    monkeypatch.setattr(driver_module, "conflict_stage_entries", lambda _root, _paths: {})
     monkeypatch.setattr(
         driver_module,
         "classify_unmerged_conflicts",

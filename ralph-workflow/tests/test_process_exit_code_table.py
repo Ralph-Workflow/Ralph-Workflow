@@ -80,6 +80,9 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_git_probe_answer_codes skips modules that never name run_git before parsing": (
+        "the scan only records run_git calls, and a module whose source does not contain run_git cannot hold one, so skipping it before ast.parse yields the same answer-code table while cutting about 3 s of collection"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision": (
         "the reviewed inventory gains recovery:feature-tip-exists, a cat-file -e probe whose "
         "rc=1 means the recorded feature tip is absent and is therefore an expected answer; "
@@ -296,7 +299,7 @@ def _git_probe_answer_codes() -> dict[str, frozenset[int]]:
         if "__pycache__" in path.parts:
             continue
         source = path.read_text(encoding="utf-8")
-        if "label=" not in source:
+        if "label=" not in source or "run_git" not in source:
             continue
         try:
             tree = ast.parse(source, filename=str(path))

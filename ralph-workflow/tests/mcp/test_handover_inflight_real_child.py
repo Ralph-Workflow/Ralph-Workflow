@@ -39,6 +39,13 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
 
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "child servers publish their port file atomically": (
+        "the children now write the port to a .tmp file and rename it into place, so the parent can no longer read an empty file between creation and write; every assertion is unchanged"
+    ),
+}
+
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 assert _markdown_specs is not None
@@ -104,7 +111,8 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
                 "    return SimpleNamespace(healthy=True, latency_ms=300.0, reason=None)",
                 "",
                 "httpd.health_probe_fn = slow_probe",
-                f"Path({str(port_file)!r}).write_text(str(srv.bound_address[1]), encoding='utf-8')",
+                f"Path({str(port_file)!r} + '.tmp').write_text(str(srv.bound_address[1]), encoding='utf-8')",
+                f"Path({str(port_file)!r} + '.tmp').replace({str(port_file)!r})",
                 "ready = threading.Event()",
                 "srv.run(ready_event=ready)",
             ]
@@ -217,7 +225,9 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                 "        return",
                 "",
                 "server = HTTPServer(('127.0.0.1', 0), _SlowHandler)",
-                "port_file_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path = port_file_path.with_name(port_file_path.name + '.tmp')",
+                "port_tmp_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path.replace(port_file_path)",
                 "server.serve_forever()",
             ]
         ),
@@ -611,7 +621,9 @@ def _write_streaming_child_script(
                 "        return",
                 "",
                 "server = HTTPServer(('127.0.0.1', 0), _StreamingHandler)",
-                "port_file_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path = port_file_path.with_name(port_file_path.name + '.tmp')",
+                "port_tmp_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path.replace(port_file_path)",
                 "server.serve_forever()",
             ]
         ),
@@ -642,7 +654,9 @@ def _write_ok_child_script(tmp_path: Path, port_file: Path, script_name: str) ->
                 "        return",
                 "",
                 "server = HTTPServer(('127.0.0.1', 0), _OKHandler)",
-                "port_file_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path = port_file_path.with_name(port_file_path.name + '.tmp')",
+                "port_tmp_path.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "port_tmp_path.replace(port_file_path)",
                 "server.serve_forever()",
             ]
         ),

@@ -13,6 +13,12 @@ from tests._test_test_suites_helpers import (
     _StubSpawner,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_real_git_lane_shards_are_capped_by_the_host_cores expects the eight-shard lane": (
+        "the required real-git lane now runs as eight shards (_REQUIRED_E2E_SHARD_COUNT = 8); the cases still prove the lane is capped by the host cores (1, 4 and 6 cores) and by the shard count on larger hosts (8, 12 and 40 cores give 8)"
+    ),
+}
+
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 if TYPE_CHECKING:
@@ -50,7 +56,7 @@ def _dedicated_lane_shard_count(
 
 @pytest.mark.parametrize(
     ("cpu_count", "expected_shards"),
-    ((None, 1), (1, 1), (4, 4), (8, 6), (12, 6), (40, 6)),
+    ((None, 1), (1, 1), (4, 4), (6, 6), (8, 8), (12, 8), (40, 8)),
 )
 def test_real_git_lane_shards_are_capped_by_the_host_cores(
     tmp_path: Path,

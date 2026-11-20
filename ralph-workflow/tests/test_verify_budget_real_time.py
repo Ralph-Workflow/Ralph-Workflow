@@ -2,13 +2,28 @@ from __future__ import annotations
 
 import os
 import subprocess
-import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph import test_suites as test_suites_module
+from ralph.executor.process import ProcessResult
+from ralph.verify import run_verify
 from tests._test_test_suites_helpers import _FakeShardProcess, _StubSpawner
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_make_test_completes_within_budget judges the run with the make verify budget verdict": (
+        "the oracle still runs one real make test and still fails when it is over budget, but "
+        "it now runs it through ralph.verify.run_verify with every other step stubbed, so the "
+        "verdict uses the gate's own wall budget net of the host-contention credit and its CPU "
+        "budget instead of a hardcoded 60 s raw wall clock that failed whenever other "
+        "pipelines loaded the host"
+    ),
+}
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -16,7 +31,6 @@ pytestmark = [
     pytest.mark.timeout_seconds(125),
 ]
 
-_BUDGET_SECONDS = 60.0
 _PLUGIN_AUTOLOAD_ENV = "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
 
 
@@ -61,31 +75,41 @@ def test_shard_child_env_keeps_plugin_autoload_enabled(
     assert _PLUGIN_AUTOLOAD_ENV not in env
 
 
-def test_make_test_completes_within_budget() -> None:
-    ralph_workflow_dir = Path(__file__).resolve().parent.parent
-    start = time.monotonic()
-
-    result = subprocess.run(
-        ["make", "test"],
-        cwd=str(ralph_workflow_dir),
+def _run_only_make_test(
+    command: str,
+    args: Sequence[str] = (),
+    *,
+    cwd: str | Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: float | None = None,
+    capture_output: bool = True,
+) -> ProcessResult:
+    del timeout, capture_output
+    invocation = (command, *args)
+    if invocation != ("make", "test"):
+        return ProcessResult(command=invocation, returncode=0, stdout="", stderr="")
+    completed = subprocess.run(
+        list(invocation),
+        cwd=cwd,
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
-        env=_make_test_child_env(),
+        env={**_make_test_child_env(), **(env or {})},
+    )
+    return ProcessResult(
+        command=invocation,
+        returncode=completed.returncode,
+        stdout=completed.stdout[-2000:],
+        stderr=completed.stderr[-2000:],
     )
 
-    elapsed = time.monotonic() - start
 
-    detail_lines = [
-        f"make test exit code: {result.returncode}",
-        f"Elapsed: {elapsed:.2f}s (budget: {_BUDGET_SECONDS:.1f}s)",
-    ]
-    if result.stdout:
-        detail_lines.append(f"--- STDOUT ---\n{result.stdout[-2000:]}")
-    if result.stderr:
-        detail_lines.append(f"--- STDERR ---\n{result.stderr[-2000:]}")
-    failure_detail = "\n".join(detail_lines)
+def test_make_test_completes_within_budget(capsys: pytest.CaptureFixture[str]) -> None:
+    ralph_workflow_dir = Path(__file__).resolve().parent.parent
 
-    assert result.returncode == 0, failure_detail
-    assert elapsed <= _BUDGET_SECONDS, failure_detail
+    exit_code = run_verify(cwd=ralph_workflow_dir, runner=_run_only_make_test)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, f"--- STDOUT ---\n{captured.out}\n--- STDERR ---\n{captured.err}"
+    assert "Combined test budget: wall " in captured.out

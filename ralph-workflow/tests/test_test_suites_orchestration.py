@@ -18,6 +18,12 @@ from tests._test_test_suites_helpers import (
     _StubSpawner,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_real_child_startup_and_catalog_fail_closed_files_are_selected expects eight required-lane shards": (
+        "the required real-git lane now runs as eight shards (_REQUIRED_E2E_SHARD_COUNT = 8) to take it off the make verify critical path; the test still asserts the exact shard count and that the three fail-closed files are selected"
+    ),
+}
+
 EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES = BASE_REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
 if TYPE_CHECKING:
@@ -404,7 +410,7 @@ def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None
         auto_integrate_e2e_only=False,
         subprocess_e2e_only=False,
     )
-    assert shard_count == 6
+    assert shard_count == 8
     for path in target_files:
         assert path in required_files
 

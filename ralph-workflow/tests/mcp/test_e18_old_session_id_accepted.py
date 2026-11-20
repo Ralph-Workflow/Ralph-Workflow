@@ -38,6 +38,13 @@ from ralph.process.manager import ProcessTerminationIssuer, SpawnOptions, get_pr
 if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
 
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "child server publishes its port file atomically": (
+        "the child now writes the port to a .tmp file and renames it into place, so the parent can no longer read an empty file between creation and write; every assertion is unchanged"
+    ),
+}
+
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
@@ -238,7 +245,8 @@ def test_real_child_accepts_old_session_id_across_rotation(tmp_path: Path) -> No
                 "",
                 "srv = _FallbackStandaloneServer('127.0.0.1', 0, _CandidateServer())",
                 "httpd = srv.prepare_httpd()",
-                f"Path({str(port_file)!r}).write_text(str(srv.bound_address[1]), encoding='utf-8')",
+                f"Path({str(port_file)!r} + '.tmp').write_text(str(srv.bound_address[1]), encoding='utf-8')",
+                f"Path({str(port_file)!r} + '.tmp').replace({str(port_file)!r})",
                 "ready = threading.Event()",
                 "srv.run(ready_event=ready)",
             ]

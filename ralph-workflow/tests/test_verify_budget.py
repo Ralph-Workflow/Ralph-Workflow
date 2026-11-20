@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "run_verify CPU oracles plant suite CPU above the raised 1400 core-s budget": (
+        "the planted over-budget runs moved from 800 core-s to 1500 core-s so they still exceed _TOTAL_TEST_CPU_BUDGET_SECONDS after it was raised from 700 to 1400; both oracles still assert the run fails with suite CPU exceeded"
+    ),
+}
+
 _CORES = 12
 
 
@@ -147,7 +154,7 @@ def test_run_verify_fails_when_the_suite_exceeds_its_cpu_budget(
     exit_code, _host = _run_verify(
         monkeypatch,
         tmp_path,
-        {"test": (20.0, 700.0, 0.0), "test-verification-smoke": (10.0, 100.0, 0.0)},
+        {"test": (20.0, 1400.0, 0.0), "test-verification-smoke": (10.0, 100.0, 0.0)},
     )
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
@@ -381,7 +388,7 @@ def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
     monkeypatch.setattr(time, "monotonic", host.monotonic)
     monkeypatch.setattr(verify_module, "sample_suite_resources", host.sample)
     monkeypatch.setattr(verify_module.os, "cpu_count", lambda: _CORES)
-    orphaned = iter((500.0, 0.0))
+    orphaned = iter((1200.0, 0.0))
 
     class _Tracker:
         orphaned_cpu_seconds = 0.0
@@ -395,5 +402,5 @@ def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=host, orphan_tracker=_Tracker)
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
-    assert "suite CPU 800.0 / 700.0 core-s" in captured.out
+    assert "suite CPU 1500.0 / 1400.0 core-s" in captured.out
     assert "suite CPU exceeded" in captured.err

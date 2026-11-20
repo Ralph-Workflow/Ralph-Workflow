@@ -23,6 +23,11 @@ POLICY_WHITE_BOX_EXCEPTION = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_required_e2e_lane_shard_count_is_pinned_to_eight": (
+        "the required real-git lane was the make verify critical path at six shards "
+        "(about 62 s each against about 48 s for the general shards); it now runs as "
+        "eight shards and the pin asserts the new exact count"
+    ),
     "test_default_routing_allowlist_is_exact_and_immutable": (
         "f2ee58d5b added tests/test_private_agent_home_rust_toolchain.py to the conftest "
         "default-gate Antigravity paths; the pinned set now names that file too"
@@ -133,8 +138,8 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_lane_shard_count_is_pinned_to_six() -> None:
-    assert test_suites_module._REQUIRED_E2E_SHARD_COUNT == 6
+def test_required_e2e_lane_shard_count_is_pinned_to_eight() -> None:
+    assert test_suites_module._REQUIRED_E2E_SHARD_COUNT == 8
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

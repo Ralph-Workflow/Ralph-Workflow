@@ -12,6 +12,12 @@ import pytest
 from ralph import verify as verify_module
 from ralph.executor.process import ProcessResult
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "cpu_budget receipt field expects the raised 1400 core-s budget": (
+        "the receipt still records the CPU budget printed by run_verify, which is now 1400 core-s"
+    ),
+}
+
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "record_verify_run.py"
 
 
@@ -103,7 +109,7 @@ def test_the_combined_budget_line_is_recorded_with_its_cpu_figures(
         "cores": 4.0,
         "utilisation": pytest.approx(0.98),
         "cpu": pytest.approx(470.0),
-        "cpu_budget": pytest.approx(700.0),
+        "cpu_budget": pytest.approx(1400.0),
     }
     assert _budget_step(receipt)["status"] == "warning"
 
