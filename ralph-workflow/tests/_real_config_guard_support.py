@@ -514,6 +514,8 @@ _REPO_TREE_SKIPPED_RUNTIME_DIRS: frozenset[str] = frozenset({".agent", "tmp"})
 
 _REPO_TREE_SKIPPED_RUNTIME_FILES: frozenset[str] = frozenset({"checkpoint.json"})
 
+_GENERATED_DOCS_BUILD_DIR: Path = Path("docs") / "sphinx" / "_build"
+
 
 def _repo_tree_entry(path: str) -> tuple[int, int] | None:
     try:
@@ -532,6 +534,7 @@ def _scan_repo_tree() -> dict[str, tuple[int, int]]:
             for name in dirnames
             if name not in _REPO_TREE_SKIPPED_DIRS
             and not (directory == repo_dir and name in _REPO_TREE_SKIPPED_RUNTIME_DIRS)
+            and Path(directory, name) != _REPO_DIR / _GENERATED_DOCS_BUILD_DIR
         ]
         for name in filenames:
             path = f"{directory}/{name}"

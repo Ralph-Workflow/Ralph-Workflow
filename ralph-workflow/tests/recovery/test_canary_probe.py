@@ -41,7 +41,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Generator, Iterator, Mapping
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import UnifiedConfig
@@ -224,7 +224,7 @@ def _attempt_ended_invoke(facts: AttemptFacts, calls: list[_Call]) -> _FakeInvok
         prompt_file: str,
         *,
         options: InvokeOptions | None = None,
-    ) -> Iterator[str]:
+    ) -> Generator[str, None, AttemptEnded]:
         calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
         yield ""
         return AttemptEnded(facts=facts)
