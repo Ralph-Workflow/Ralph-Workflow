@@ -20,12 +20,20 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "verify module docstring": "the verification marker expression is now read from the module source because module docstrings are banned",
     "RALPH_TEST_CHANGE_REASONS verify step count and call index assertions": "the expected verify calls and their timeouts now derive from ralph.verify._VERIFY_STEPS and ralph.verify._BUDGET_TRACKED_STEPS instead of a frozen step count and call indices, so the assertions keep proving that every registered step runs exactly once with its declared timeout while a newly registered step no longer rewrites the expected call list",
+    "non-test step timeout uniformity assertion": (
+        "the dead code audit is the one non-test step that carries its own "
+        "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS cap because one vulture scan over ralph/ and "
+        "tests/ takes about 35 s; the assertion now pins that it is the only non-test "
+        "step deviating from the shared _VERIFY_STEP_TIMEOUT_SECONDS cap"
+    ),
 }
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import pytest
 
+
+_DEAD_CODE_AUDIT_STEP_LABEL = "dead code audit (vulture)"
 
 _ARTIFACT_SUBMISSION_AUDIT_ARGS = (
     "run",
@@ -123,11 +131,12 @@ def test_main_runs_all_verify_steps_when_successful(
         timeout if timeout is not None else verify_module._VERIFY_STEP_TIMEOUT_SECONDS
         for _label, _command, _args, timeout in verify_module._VERIFY_STEPS
     ]
-    assert all(
-        call[3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert [
+        index
         for index, call in enumerate(runner.calls)
         if index not in verify_module._BUDGET_TRACKED_STEPS
-    )
+        and call[3] != verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    ] == [_step_index(_DEAD_CODE_AUDIT_STEP_LABEL)]
     assert {
         verify_module._VERIFY_STEPS[index][0] for index in verify_module._BUDGET_TRACKED_STEPS
     } == set(verify_module._KNOWN_TEST_STEP_LABELS)

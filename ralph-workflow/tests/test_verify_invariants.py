@@ -19,6 +19,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "cpu_budget_must_be_1400 cases track the raised CPU budget pin": (
         "the operator raised _TOTAL_TEST_CPU_BUDGET_SECONDS from 700 to 1400 core-s; the anchor, the expected must be 1400.0 message and the planted drift value (2000.0) follow it, and both cases still prove an altered constant fails import with RuntimeError, also under python -O"
     ),
+    "dead code audit timeout cases track the dedicated dead code cap": (
+        "the dead code audit step carries its own _DEAD_CODE_AUDIT_TIMEOUT_SECONDS cap, so the "
+        "planted drifts prove the cap stays positive, stays above the shared per-step cap and "
+        "stays equal to the ralph/verify_steps.py declaration; each case still proves a drifted "
+        "constant fails import with RuntimeError, also under python -O"
+    ),
 }
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
@@ -57,6 +63,7 @@ def _invariant_cases() -> list[_CaseSpec]:
     cpu_budget_anchor = "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1800.0"
     hang_cap_anchor = "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 225.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
+    dead_code_timeout_anchor = "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 180.0"
     resource_label_anchor = '"resource lifecycle audit (audit_resource_lifecycle)"'
     resource_label_gone = '"resource lifecycle audit (REMOVED)"'
     polling_label_anchor = (
@@ -225,6 +232,42 @@ def _invariant_cases() -> list[_CaseSpec]:
         {
             "name": "verify_step_timeout_survives_minus_o",
             "patches": [(step_timeout_anchor, "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 0.0")],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "dead_code_timeout_must_be_positive",
+            "patches": [
+                (dead_code_timeout_anchor, "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 0.0")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "dead_code_timeout_must_exceed_the_shared_step_timeout",
+            "patches": [
+                (dead_code_timeout_anchor, "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 30.0")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be greater than"],
+        },
+        {
+            "name": "dead_code_timeout_must_match_the_registry",
+            "patches": [
+                (dead_code_timeout_anchor, "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 181.0")
+            ],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must match"],
+        },
+        {
+            "name": "dead_code_timeout_survives_minus_o",
+            "patches": [
+                (dead_code_timeout_anchor, "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 0.0")
+            ],
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be positive"],

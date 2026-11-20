@@ -8,6 +8,22 @@ import ralph.verify
 import ralph.verify_steps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "dead code audit step timeout assertions": (
+        "the dead code audit step carries its own _DEAD_CODE_AUDIT_TIMEOUT_SECONDS cap "
+        "because one vulture scan over ralph/ and tests/ takes about 37 s, which exceeds the "
+        "shared 30 s per-step cap and failed the gate; every other non-test step keeps the "
+        "shared cap"
+    ),
+    "_EXPECTED_DEAD_CODE_STEP_TIMEOUT_SECONDS pins the dedicated dead code audit cap": (
+        "the dedicated dead code audit cap is 180 s, sized from the measured 37 s scan so a "
+        "loaded shared host does not kill the step; the pin still asserts the exact constant "
+        "and that it exceeds the shared per-step cap"
+    ),
+    "registry timeout constants match the policy pins assertions": (
+        "the dead code audit cap is declared in both ralph/verify_steps.py and ralph/verify.py "
+        "and the import-time invariant rejects a drift between them; the test still asserts "
+        "that both declarations agree"
+    ),
     "_EXPECTED_CPU_BUDGET_SECONDS pins the raised 1800 core-s budget": (
         "the operator raised the suite CPU budget from 1400 to 1800 core-s; the pin still asserts the exact constant"
     ),
@@ -23,6 +39,7 @@ _EXPECTED_BUDGET_SECONDS = 75.0
 _EXPECTED_CPU_BUDGET_SECONDS = 1800.0
 _EXPECTED_HANG_CAP_SECONDS = 225.0
 _EXPECTED_STEP_TIMEOUT_SECONDS = 30.0
+_EXPECTED_DEAD_CODE_STEP_TIMEOUT_SECONDS = 180.0
 _EXPECTED_TEST_STEP_LABELS = frozenset({"make test", "make test-verification-smoke"})
 
 _DEAD_CODE_LABEL = "dead code audit (vulture)"
@@ -57,7 +74,8 @@ def _makefile_target_body(name: str) -> list[str]:
 def test_dead_code_audit_is_registered_in_the_default_gate() -> None:
     steps = ralph.verify_steps._VERIFY_STEPS
     matches = [step for step in steps if step[0] == _DEAD_CODE_LABEL]
-    step_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
+    step_timeout = ralph.verify_steps._DEAD_CODE_AUDIT_TIMEOUT_SECONDS
+    shared_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
 
     assert len(matches) == 1
     label, command, args, timeout = matches[0]
@@ -67,6 +85,15 @@ def test_dead_code_audit_is_registered_in_the_default_gate() -> None:
         ("run", "--with", "vulture", "python", "-m", "vulture", "--config", "pyproject.toml"),
     )
     assert timeout == step_timeout
+    assert step_timeout > shared_timeout
+
+
+def test_dead_code_audit_timeout_stays_pinned() -> None:
+    dead_code_timeout = ralph.verify_steps._DEAD_CODE_AUDIT_TIMEOUT_SECONDS
+    shared_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
+
+    assert dead_code_timeout == _EXPECTED_DEAD_CODE_STEP_TIMEOUT_SECONDS
+    assert dead_code_timeout > shared_timeout
 
 
 def test_dead_code_gate_and_makefile_target_run_the_same_command() -> None:
@@ -138,11 +165,14 @@ def test_budget_constants_stay_pinned() -> None:
 def test_registry_timeout_constants_match_the_policy_pins() -> None:
     registry_step_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
     registry_hang_cap = ralph.verify_steps._TOTAL_TEST_HANG_CAP_SECONDS
+    registry_dead_code_timeout = ralph.verify_steps._DEAD_CODE_AUDIT_TIMEOUT_SECONDS
     pinned_step_timeout = ralph.verify._VERIFY_STEP_TIMEOUT_SECONDS
     pinned_hang_cap = ralph.verify._TOTAL_TEST_HANG_CAP_SECONDS
+    pinned_dead_code_timeout = ralph.verify._DEAD_CODE_AUDIT_TIMEOUT_SECONDS
 
     assert registry_step_timeout == pinned_step_timeout
     assert registry_hang_cap == pinned_hang_cap
+    assert registry_dead_code_timeout == pinned_dead_code_timeout
 
 
 def test_labels_and_tracked_steps_stay_in_sync() -> None:

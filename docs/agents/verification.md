@@ -70,6 +70,8 @@ Wall clock on a shared host also measures every other process, so `ralph/verify.
 
 The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 225.0`, and each pytest invocation only at `DEFAULT_SUITE_TIMEOUT_SECONDS = 225.0`: those are hang detection, not speed budgets.
 
+The dead code audit step carries its own `ralph/verify_steps.py:_DEAD_CODE_AUDIT_TIMEOUT_SECONDS = 180.0` cap because one vulture scan over the package and its tests takes longer than the shared per-step cap. It is not budget-tracked, so it is never charged to the combined test budget.
+
 `ralph/verify.py` enforces these import-time invariants (using `if`/`raise RuntimeError`, NOT `assert`, so they survive `python -O`):
 
 | Invariant | Error message | Purpose |
@@ -82,6 +84,10 @@ The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECOND
 | Every budget-tracked step has a positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |
 | `_VERIFY_STEP_TIMEOUT_SECONDS > 0` | `must be positive` | Per-step timeout can't be zero or negative |
 | `_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0` | `must be at least 5.0` | Per-step timeout must be non-trivial (>= 5s) |
+| `_DEAD_CODE_AUDIT_TIMEOUT_SECONDS > 0` | `must be positive` | Dead-code audit cap can't be zero or negative |
+| `_DEAD_CODE_AUDIT_TIMEOUT_SECONDS > _VERIFY_STEP_TIMEOUT_SECONDS` | `must be greater than` | Dead-code audit cap must exceed the shared per-step cap |
+| `_DEAD_CODE_AUDIT_TIMEOUT_SECONDS` matches `ralph/verify_steps.py` | `must match` | The two declarations of the dead-code cap cannot drift |
+| The dead code audit step is present once and not budget-tracked | `must be present` / `must NOT be` | The dead-code audit cannot be dropped or charged to the test budget |
 | `_KNOWN_TEST_STEP_LABELS` non-empty | `must not be empty` | Can't empty label set to hide test steps |
 | `_BUDGET_TRACKED_STEPS` non-empty | `must not be empty` | Can't empty tracked set to disable budget |
 | `'make test'` present in `_KNOWN_TEST_STEP_LABELS` | `must contain 'make test'` | Primary test step label always present |

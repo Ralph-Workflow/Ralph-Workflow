@@ -58,6 +58,8 @@ _BUDGET_EPSILON: Final = 1e-9
 
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 
+_DEAD_CODE_AUDIT_TIMEOUT_SECONDS: Final = 180.0
+
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 2})
 
 
@@ -97,6 +99,14 @@ if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
         f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
     )
 
+if not _DEAD_CODE_AUDIT_TIMEOUT_SECONDS > 0:
+    raise RuntimeError("_DEAD_CODE_AUDIT_TIMEOUT_SECONDS must be positive")
+if not _DEAD_CODE_AUDIT_TIMEOUT_SECONDS > _VERIFY_STEP_TIMEOUT_SECONDS:
+    raise RuntimeError(
+        "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS must be greater than "
+        f"_VERIFY_STEP_TIMEOUT_SECONDS (got {_DEAD_CODE_AUDIT_TIMEOUT_SECONDS})"
+    )
+
 _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
     {
         "make test",
@@ -105,6 +115,7 @@ _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset(
 )
 
 _MCP_TIMEOUT_STEP_LABEL: Final = "mcp timeout audit (audit_mcp_timeout)"
+_DEAD_CODE_AUDIT_STEP_LABEL: Final = "dead code audit (vulture)"
 _RESOURCE_LIFECYCLE_STEP_LABEL: Final = "resource lifecycle audit (audit_resource_lifecycle)"
 _FILESYSTEM_POLLING_INVOCATION_STEP_LABEL: Final = (
     "filesystem polling/invocation ownership audit (audit_filesystem_polling_invocation)"
@@ -158,6 +169,19 @@ if not any(_MCP_TIMEOUT_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):
         "A verify step running 'audit_mcp_timeout' must be present in _VERIFY_STEPS "
         "(the bounded-subprocess contract cannot be silently dropped)"
     )
+
+_DEAD_CODE_AUDIT_STEP_INDICES: list[int] = [
+    index
+    for index, (label, *_rest) in enumerate(_VERIFY_STEPS)
+    if label == _DEAD_CODE_AUDIT_STEP_LABEL
+]
+if len(_DEAD_CODE_AUDIT_STEP_INDICES) != 1:
+    raise RuntimeError(
+        "The dead code audit step must be present exactly once in _VERIFY_STEPS "
+        f"(got {len(_DEAD_CODE_AUDIT_STEP_INDICES)})"
+    )
+if _DEAD_CODE_AUDIT_STEP_INDICES[0] in _BUDGET_TRACKED_STEPS:
+    raise RuntimeError("The dead code audit step must NOT be budget-tracked: it runs no test suite")
 
 if not any(_RESOURCE_LIFECYCLE_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):
     raise RuntimeError(
@@ -225,6 +249,12 @@ if _TOTAL_TEST_HANG_CAP_SECONDS != _verify_steps._TOTAL_TEST_HANG_CAP_SECONDS:
         "_TOTAL_TEST_HANG_CAP_SECONDS must match "
         "ralph.verify_steps._TOTAL_TEST_HANG_CAP_SECONDS "
         f"(got {_TOTAL_TEST_HANG_CAP_SECONDS})"
+    )
+if _DEAD_CODE_AUDIT_TIMEOUT_SECONDS != _verify_steps._DEAD_CODE_AUDIT_TIMEOUT_SECONDS:
+    raise RuntimeError(
+        "_DEAD_CODE_AUDIT_TIMEOUT_SECONDS must match "
+        "ralph.verify_steps._DEAD_CODE_AUDIT_TIMEOUT_SECONDS "
+        f"(got {_DEAD_CODE_AUDIT_TIMEOUT_SECONDS})"
     )
 
 
