@@ -22,6 +22,7 @@ __all__ = [
     "ENGINE_ROOT_RELATIVE_CACHE_PATHS",
     "LOG_SUFFIXES",
     "SOURCE_EXTENSIONS",
+    "THROWAWAY_TREE_DIRS",
     "WORKER_ENGINE_CACHE_DIRS",
     "WORKER_MANIFEST_BASENAME",
     "WorkspaceChangeClassifier",
@@ -52,6 +53,8 @@ CACHE_PARENT_DIRS: frozenset[str] = frozenset(
         ".agent/logs",
     }
 )
+
+THROWAWAY_TREE_DIRS: frozenset[str] = frozenset({"tmp", "ralph-pytest-shards"})
 
 WORKER_ENGINE_CACHE_DIRS: frozenset[str] = frozenset({"tmp", "logs", "handoffs"})
 WORKER_MANIFEST_BASENAME: str = "worker-manifest.json"
@@ -171,10 +174,15 @@ class WorkspaceChangeClassifier:
         posix = PurePosixPath(src_path.replace("\\", "/"))
         parts = posix.parts
         basename = posix.name
-
         rules: tuple[tuple[bool, WorkspaceChangeKind], ...] = (
             (
                 _matches_parent_walk(parts, CACHE_PARENT_DIRS),
+                WorkspaceChangeKind.CACHE,
+            ),
+            (
+                _matches_parent_walk(
+                    _workspace_relative_parts(posix, workspace_root), THROWAWAY_TREE_DIRS
+                ),
                 WorkspaceChangeKind.CACHE,
             ),
             (
@@ -271,6 +279,17 @@ def _is_agent_top_level_path(path_parts: tuple[str, ...]) -> bool:
 
 
 _PARENT_DIR_LOOKUP_DEPTH: int = 2
+
+
+def _workspace_relative_parts(
+    posix: PurePosixPath, workspace_root: PurePosixPath | None
+) -> tuple[str, ...]:
+    if workspace_root is None:
+        return ()
+    try:
+        return posix.relative_to(workspace_root).parts
+    except ValueError:
+        return ()
 
 
 def _matches_parent_walk(

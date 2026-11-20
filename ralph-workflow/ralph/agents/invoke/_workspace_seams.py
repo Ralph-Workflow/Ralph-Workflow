@@ -42,10 +42,19 @@ class WorkspaceWatchSeams:
     sidecar_factory: SharedAwarenessSidecarFactory | None = None
     sidecar_remover: SharedAwarenessSidecarRemover | None = None
     stop_observer_budget_seconds: float | None = None
+    observer_restart_sleep: Callable[[float], None] | None = None
+    supervise_in_background: bool = True
 
 
 class _SharedWorkspaceWatch:
-    __slots__ = ("__weakref__", "cross_process_owner_id", "handler", "monitors", "observer")
+    __slots__ = (
+        "__weakref__",
+        "cross_process_owner_id",
+        "handler",
+        "monitors",
+        "observer",
+        "restarts",
+    )
 
     def __init__(
         self,
@@ -58,6 +67,7 @@ class _SharedWorkspaceWatch:
         self.handler = handler
         self.monitors: weakref.WeakSet[WorkspaceMonitor] = weakref.WeakSet()
         self.cross_process_owner_id = cross_process_owner_id
+        self.restarts = 0
 
 
 def shared_workspace_key(workspace: Path) -> str:

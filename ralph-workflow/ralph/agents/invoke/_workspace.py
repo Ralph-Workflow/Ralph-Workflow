@@ -29,8 +29,12 @@ from ralph.agents.invoke._workspace_seams import (
     shared_workspace_key,
 )
 from ralph.agents.invoke.watchdog_observer import (
+    MAX_OBSERVER_RESTARTS,
+    OBSERVER_HEALTH_INTERVAL_SECONDS,
     _WatchObserverProtocol,
     create_watchdog_observer,
+    observer_has_dead_thread,
+    observer_restart_delay_seconds,
 )
 from ralph.agents.watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
@@ -93,6 +97,8 @@ class WorkspaceMonitor:
         "_workspace",
     )
     _shared_watches: ClassVar[dict[str, _SharedWorkspaceWatch]] = {}
+    _observer_supervisor: ClassVar[threading.Thread | None] = None
+    _supervisor_pacing: ClassVar[threading.Event] = threading.Event()
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
 
     @classmethod
@@ -211,6 +217,8 @@ class WorkspaceMonitor:
             if not scheduled or not self._start_observer_within_budget(observer):
                 return
             self._register_new_shared_watch(key, observer, handler)
+            if self._seams.supervise_in_background:
+                WorkspaceMonitor._ensure_observer_supervisor()
         logger.debug("Started workspace monitoring: {}", self._workspace)
 
     def _attach_existing_watch(self, key: str) -> bool:
@@ -604,6 +612,103 @@ class WorkspaceMonitor:
                 "observer is registered."
             ),
         }
+
+    @classmethod
+    def _ensure_observer_supervisor(cls) -> None:
+        if cls._observer_supervisor is not None and cls._observer_supervisor.is_alive():
+            return
+        supervisor = threading.Thread(
+            target=cls._supervise_observers,
+            name="ralph-workspace-watch-supervisor",
+            daemon=True,
+        )
+        cls._observer_supervisor = supervisor
+        supervisor.start()
+
+    @classmethod
+    def _supervise_observers(cls) -> None:
+        while True:
+            cls._supervisor_pacing.wait(OBSERVER_HEALTH_INTERVAL_SECONDS)
+            with cls._shared_lock:
+                if not cls._shared_watches:
+                    cls._observer_supervisor = None
+                    return
+            cls.supervise_observers_once()
+
+    @classmethod
+    def supervise_observers_once(cls) -> int:
+        with cls._shared_lock:
+            crashed = [
+                (key, shared)
+                for key, shared in cls._shared_watches.items()
+                if shared.restarts <= MAX_OBSERVER_RESTARTS
+                and observer_has_dead_thread(shared.observer)
+            ]
+        for key, shared in crashed:
+            cls._restart_crashed_watch(key, shared)
+        return len(crashed)
+
+    @classmethod
+    def _restart_crashed_watch(cls, key: str, shared: _SharedWorkspaceWatch) -> None:
+        monitors = tuple(shared.monitors)
+        if not monitors:
+            return
+        owner = next(
+            (
+                monitor
+                for monitor in monitors
+                if monitor._cross_process_owner_id is not None
+                and monitor._cross_process_owner_id == shared.cross_process_owner_id
+            ),
+            monitors[0],
+        )
+        if shared.restarts >= MAX_OBSERVER_RESTARTS:
+            logger.warning(
+                "Workspace watcher for {} died again after {} restarts; falling back to live "
+                "reads for the rest of the run",
+                owner._workspace,
+                shared.restarts,
+            )
+            shared.restarts += 1
+            for monitor in monitors:
+                monitor._activate_live_fallback("watch_observer_died")
+            return
+        restarts = shared.restarts + 1
+        delay = observer_restart_delay_seconds(shared.restarts)
+        if owner._seams.observer_restart_sleep is not None:
+            owner._seams.observer_restart_sleep(delay)
+        else:
+            cls._supervisor_pacing.wait(delay)
+        with cls._shared_lock:
+            if cls._shared_watches.get(key) is not shared:
+                return
+            cls._shared_watches.pop(key, None)
+        with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
+            shared.observer.stop()
+        owner._release_cross_process_watch_lock()
+        for monitor in monitors:
+            monitor._started = False
+            monitor._shared_key = None
+            monitor._observer = None
+            monitor._handler = None
+        owner.start()
+        with cls._shared_lock:
+            replacement = cls._shared_watches.get(key)
+        if replacement is None:
+            logger.warning("Workspace watcher restart failed for {}", owner._workspace)
+            for monitor in monitors:
+                monitor._activate_live_fallback("watch_observer_restart_failed")
+            return
+        replacement.restarts = restarts
+        for monitor in monitors:
+            if monitor is not owner:
+                monitor.start()
+        logger.warning(
+            "Workspace watcher thread for {} died; restarted the observer ({}/{})",
+            owner._workspace,
+            restarts,
+            MAX_OBSERVER_RESTARTS,
+        )
 
     @classmethod
     def _record_event_for_key(cls, key: str, src_path: str) -> None:

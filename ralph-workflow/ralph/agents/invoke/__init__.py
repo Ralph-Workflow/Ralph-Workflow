@@ -115,6 +115,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
     _normalize_workspace_change_weights,
 )
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.spec import AgentSpec
@@ -832,6 +833,7 @@ __all__ = [
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",
+    "WorkspaceWatchSeams",
     "attempt_facts_for_failure",
     "bounded_output_lines",
     "build_command",
