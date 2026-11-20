@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from functools import cache
 from importlib.util import find_spec
 from pathlib import Path
@@ -27,9 +28,9 @@ def _module_paths(root: Path) -> tuple[Path, ...]:
 
 
 @cache
-def _sources(root: Path) -> tuple[tuple[str, str], ...]:
+def _sources(root: Path) -> tuple[tuple[str, bytes], ...]:
     return tuple(
-        (path.relative_to(_RALPH_ROOT.parent).as_posix(), path.read_text(encoding="utf-8"))
+        (path.relative_to(_RALPH_ROOT.parent).as_posix(), path.read_bytes())
         for path in _module_paths(root)
     )
 
@@ -46,8 +47,14 @@ def _defined_name(node: ast.AST) -> str | None:
 
 def _defining_modules(symbol: str) -> tuple[str, ...]:
     defining: list[str] = []
-    for relative, source in _sources(_RALPH_ROOT):
-        if symbol not in source:
+    escaped = re.escape(symbol)
+    definition_shape = re.compile(rf"\b(?:class|def)\s+{escaped}\b|\b{escaped}\s*[:=]")
+    needle = symbol.encode("utf-8")
+    for relative, data in _sources(_RALPH_ROOT):
+        if needle not in data:
+            continue
+        source = data.decode("utf-8")
+        if not definition_shape.search(source):
             continue
         tree = ast.parse(source, filename=relative)
         defining.extend(relative for node in ast.walk(tree) if _defined_name(node) == symbol)
@@ -56,9 +63,11 @@ def _defining_modules(symbol: str) -> tuple[str, ...]:
 
 def _pipeline_agent_selection_reexports() -> tuple[str, ...]:
     reexports: list[str] = []
-    for relative, source in _sources(_PIPELINE_ROOT):
-        if _AGENT_SELECTION_SOURCE not in source:
+    needle = _AGENT_SELECTION_SOURCE.encode("utf-8")
+    for relative, data in _sources(_PIPELINE_ROOT):
+        if needle not in data:
             continue
+        source = data.decode("utf-8")
         tree = ast.parse(source, filename=relative)
         for node in tree.body:
             if not isinstance(node, ast.ImportFrom):

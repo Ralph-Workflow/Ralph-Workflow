@@ -1041,7 +1041,7 @@ def test_ac13_the_verdict_record_carries_the_full_evidence_set(
 
     record = observation.verdict_record
     assert isinstance(record, dict)
-    assert record["schema_version"] == 2
+    assert record["schema_version"] == 3
     for key in ("facts", "attribution", "probe_outcome", "termination"):
         assert key in record
     termination = record["termination"]

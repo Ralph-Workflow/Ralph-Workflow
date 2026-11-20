@@ -37,6 +37,12 @@ def test_audit_flags_legacy_review_identifiers() -> None:
             "ralph/pipeline/planted_nested_concat.py",
             'phase = "development_" + "commit_" + "cleanup"\n',
         ),
+        ("ralph/pipeline/planted_split_commit.py", 'phase = "com" + "mit_cleanup"\n'),
+        ("ralph/pipeline/planted_split_cleanup.py", 'phase = "commit_clea" + "nup"\n'),
+        (
+            "ralph/pipeline/planted_split_both.py",
+            'phase = "com" + "mit_clea" + "nup"\n',
+        ),
     ]
     for rel, source in planted_snippets:
         violations = audit_modules({rel: source}, ignore_transitional=True)

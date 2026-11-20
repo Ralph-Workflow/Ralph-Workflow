@@ -5,19 +5,25 @@ import json
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attribution import Attribution, AttributionVerdict, RuntimeCause
+from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.dead_agent_verdict import (
     DeadAgentVerdict,
     PersistedVerdict,
+    decide_dead_agent_verdict,
     migrate_verdict_record,
     verdict_record,
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged": (
-        "new coverage: the migration ladder returns a record written by a newer schema unchanged, with its termination log intact"
+        "new coverage: the migration ladder returns a record written by a newer schema "
+        "unchanged, with its termination log intact; the current schema version is 3, so "
+        "the newer record carries the version marker 4 and the assertion pins that marker"
     ),
     "test_a_verdict_record_marked_as_v1_is_migrated_to_the_current_schema": (
-        "new coverage: the v1 rung of the ladder is entered by an explicit version marker as well as by the absence of one"
+        "new coverage: the v1 rung of the ladder is entered by an explicit version marker "
+        "as well as by the absence of one; the ladder grew a second rung, so the migrated "
+        "marker is the current schema version 3 instead of version 2"
     ),
     "test_the_state_decoder_keeps_a_newer_than_current_verdict_record_intact": (
         "new coverage: the checkpoint decoder runs the migration ladder on every load, so a newer record must survive the load with its termination log intact"
@@ -25,31 +31,53 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_verdict_record_with_a_newer_numeric_schema_version_is_returned_unchanged": (
         "new coverage: the schema version marker is compared numerically, so a record "
         "whose marker is a newer JSON number is returned unchanged with its termination "
-        "log intact"
+        "log intact; the current schema version is 3, so the newer numeric marker is 4.0 "
+        "and the assertion pins that the marker is not the current version"
+    ),
+    "test_verdict_record_schema_v2_carries_termination_log_and_discrepancy": (
+        "the persisted verdict record moved from schema_version 2 to schema_version 3 when "
+        "the canary probe reason and its elapsed milliseconds joined the record, so the "
+        "expected key set gains probe_reason and probe_elapsed_ms and the version marker is 3"
+    ),
+    "test_v1_verdict_record_migrates_to_schema_v2": (
+        "the migration ladder grew a second rung, so a version-1 record now walks through "
+        "version 2 to the current schema version 3 instead of stopping at version 2"
+    ),
+    "test_migrating_a_v2_verdict_record_leaves_it_unchanged": (
+        "the record the ladder now receives is written at schema version 3, so the test "
+        "pins the current marker beside the unchanged round trip"
     ),
 }
 
 
-def _persisted_verdict() -> PersistedVerdict:
+def _attempt_facts() -> AttemptFacts:
     termination = TerminationRecord.create(
         TerminationIssuer.POST_EXIT_WATCHDOG,
         observed_returncode=-15,
         reported_returncode=0,
         source="descendant_hang",
     )
-    facts = AttemptFacts(exit_status="intentional_termination", termination=termination)
+    return AttemptFacts(exit_status="intentional_termination", termination=termination)
+
+
+def _runtime_attribution() -> AttributionVerdict:
+    return AttributionVerdict(
+        attribution=Attribution.RUNTIME,
+        runtime_cause=RuntimeCause.KILL_POST_EXIT_WATCHDOG,
+        cleared=True,
+        counts_toward_agent_state=False,
+        reason="runtime_issued_termination",
+    )
+
+
+def _persisted_verdict() -> PersistedVerdict:
+    facts = _attempt_facts()
     return PersistedVerdict(
         verdict=DeadAgentVerdict.NOT_AGENT_FAULT,
         facts=facts,
-        attribution=AttributionVerdict(
-            attribution=Attribution.RUNTIME,
-            runtime_cause=RuntimeCause.KILL_POST_EXIT_WATCHDOG,
-            cleared=True,
-            counts_toward_agent_state=False,
-            reason="runtime_issued_termination",
-        ),
+        attribution=_runtime_attribution(),
         probe_outcome=None,
-        termination=termination,
+        termination=facts.termination,
         typed_signal=None,
         return_code_discrepancy=True,
     )
@@ -57,7 +85,7 @@ def _persisted_verdict() -> PersistedVerdict:
 
 def _newer_than_current_record() -> dict[str, object]:
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "phase": "planning",
         "agent": "opencode",
         "verdict": "agent_dead",
@@ -88,11 +116,15 @@ def test_verdict_record_schema_v2_carries_termination_log_and_discrepancy() -> N
         "facts",
         "attribution",
         "probe_outcome",
+        "probe_reason",
+        "probe_elapsed_ms",
         "termination",
         "typed_signal",
         "return_code_discrepancy",
     }
-    assert record["schema_version"] == 2
+    assert record["schema_version"] == 3
+    assert record["probe_reason"] == ""
+    assert record["probe_elapsed_ms"] is None
     assert record["return_code_discrepancy"] is True
     assert record["termination"] == {
         "issuer": "post_exit_watchdog",
@@ -120,7 +152,9 @@ def test_v1_verdict_record_migrates_to_schema_v2() -> None:
 
     migrated = migrate_verdict_record(v1)
 
-    assert migrated["schema_version"] == 2
+    assert migrated["schema_version"] == 3
+    assert migrated["probe_reason"] == ""
+    assert migrated["probe_elapsed_ms"] is None
     assert migrated["termination"] == {
         **v1["termination"],
         "log": [{"issuer": "operator", "source": "v1"}],
@@ -144,7 +178,7 @@ def test_a_verdict_record_marked_as_v1_is_migrated_to_the_current_schema() -> No
 
     migrated = migrate_verdict_record(v1)
 
-    assert migrated["schema_version"] == 2
+    assert migrated["schema_version"] == 3
     assert migrated["termination"] == {
         **v1["termination"],
         "log": [{"issuer": "operator", "source": "v1"}],
@@ -154,7 +188,63 @@ def test_a_verdict_record_marked_as_v1_is_migrated_to_the_current_schema() -> No
 def test_migrating_a_v2_verdict_record_leaves_it_unchanged() -> None:
     v2 = verdict_record("planning", "opencode", _persisted_verdict())
 
+    assert v2["schema_version"] == 3
     assert migrate_verdict_record(v2) == v2
+
+
+def test_a_v2_verdict_record_migrates_to_the_current_schema_with_the_probe_evidence() -> None:
+    v2 = {
+        "schema_version": 2,
+        "phase": "planning",
+        "agent": "opencode",
+        "verdict": "not_agent_fault",
+        "facts": {"exit_status": "intentional_termination"},
+        "attribution": {"attribution": "runtime"},
+        "probe_outcome": None,
+        "termination": {
+            "issuer": "operator",
+            "observed_returncode": -15,
+            "reported_returncode": 143,
+            "liveness_observed": True,
+            "return_code_discrepancy": True,
+            "log": [{"issuer": "operator", "source": "v1"}],
+        },
+        "typed_signal": None,
+        "return_code_discrepancy": True,
+    }
+
+    migrated = migrate_verdict_record(v2)
+
+    assert migrated["schema_version"] == 3
+    assert migrated["probe_reason"] == ""
+    assert migrated["probe_elapsed_ms"] is None
+    assert set(migrated) == set(v2) | {"probe_reason", "probe_elapsed_ms"}
+    for key, value in v2.items():
+        if key == "schema_version":
+            continue
+        assert migrated[key] == value
+
+
+def test_a_v3_verdict_record_survives_the_migration_ladder_unchanged() -> None:
+    record = verdict_record("planning", "opencode", _persisted_verdict())
+
+    assert record["schema_version"] == 3
+    assert migrate_verdict_record(record) == record
+
+
+def test_the_verdict_record_persists_the_probe_reason_and_its_elapsed_ms() -> None:
+    verdict = decide_dead_agent_verdict(
+        _attempt_facts(),
+        _runtime_attribution(),
+        ProbeOutcome.INCONCLUSIVE,
+        probe_reason="probe_timeout",
+        probe_elapsed_ms=1234,
+    )
+
+    record = verdict_record("planning", "opencode", verdict)
+
+    assert record["probe_reason"] == "probe_timeout"
+    assert record["probe_elapsed_ms"] == 1234
 
 
 def test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged() -> None:
@@ -163,7 +253,7 @@ def test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged() 
     migrated = migrate_verdict_record(newer)
 
     assert migrated == newer
-    assert migrated["schema_version"] == 3
+    assert migrated["schema_version"] == 4
     termination = migrated["termination"]
     assert isinstance(termination, dict)
     assert termination["log"] == [{"issuer": "post_exit_watchdog", "source": "descendant_hang"}]
@@ -171,11 +261,11 @@ def test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged() 
 
 def test_a_verdict_record_with_a_newer_numeric_schema_version_is_returned_unchanged() -> None:
     newer = _newer_than_current_record()
-    newer["schema_version"] = 3.0
+    newer["schema_version"] = 4.0
 
     migrated = migrate_verdict_record(newer)
 
-    assert migrated["schema_version"] != 2
+    assert migrated["schema_version"] != 3
     assert migrated["termination"] == newer["termination"]
     termination = migrated["termination"]
     assert isinstance(termination, dict)

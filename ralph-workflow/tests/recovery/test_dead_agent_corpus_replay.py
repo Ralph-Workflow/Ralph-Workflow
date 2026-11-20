@@ -45,8 +45,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_every_corpus_case_expected_attribution_matches_attribute_attempt": (
         "operator rule: an agent is either on cooldown or not; the check passes the peer signal from the fixture so peer-identical failures are attributed to peers_fail_identically"
     ),
-    "test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination": (
-        "operator rule: an agent is either on cooldown or not; the check passes the peer signal from the fixture when building the verdict record"
+    "test_every_corpus_case_produces_a_schema_v3_verdict_record_with_its_termination": (
+        "operator rule: an agent is either on cooldown or not; the check passes the peer signal from the fixture when building the verdict record; renamed from test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination because the shipped verdict record carries schema_version 3 with the probe reason persisted"
     ),
     "test_ac8_corpus_cases_are_attributed_to_their_intended_rules": (
         "operator rule: an agent is either on cooldown or not; the check asserts that the AC8 corpus cases pin their intended attribution rules (satisfied_outcome and peers_fail_identically) rather than mid_run_activity"
@@ -322,7 +322,7 @@ def test_the_replay_sample_covers_every_negative_under_every_applicable_probe_ou
     assert replayed_counts == {case.id: len(_outcomes_for(case)) for case in negatives}
 
 
-def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_termination(
+def test_every_corpus_case_produces_a_schema_v3_verdict_record_with_its_termination(
     corpus: tuple[CorpusCase, ...],
 ) -> None:
     for case in corpus:
@@ -337,7 +337,7 @@ def test_every_corpus_case_produces_a_schema_v2_verdict_record_with_its_terminat
             )
             record = verdict_record(PHASE, case.id, verdict)
 
-            assert record["schema_version"] == 2
+            assert record["schema_version"] == 3
             assert record["verdict"] == verdict.verdict.value
             assert record["probe_outcome"] == (outcome.value if outcome is not None else None)
             assert (record["termination"] is None) is (case.facts.termination is None)

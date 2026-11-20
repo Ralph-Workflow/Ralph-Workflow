@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_quota_like_words_without_a_typed_signal_never_skip_to_a_cooldown_or_terminate": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate with an unchanged body"
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate, and the body now passes an explicit attempt_finalizer so the renamed test states the finalizer the deleted fallback used to supply"
     ),
     "test_explicit_finalizer_charges_the_ledger_once_for_the_failed_attempt": (
         "the removed production fallback finalizer is replaced by an explicit finalizer that charges the shared controller, and the charge is now asserted through the public ledger snapshot instead of the eligibility status; renamed from test_fallback_finalizer_charges_the_ledger_once_for_the_failed_attempt"

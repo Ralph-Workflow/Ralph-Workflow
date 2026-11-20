@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -26,6 +27,14 @@ if TYPE_CHECKING:
 DENIAL_ONLY_PRE_RENAME_SENTINELS = _no_legacy_sentinels.DENIAL_ONLY_PRE_RENAME_SENTINELS
 
 _BOOL_STR_TUPLE_ARITY: Final = 2
+
+_STRING_SEGMENT_PATTERN: Final = re.compile(
+    r"\"\"\"[\s\S]*?\"\"\"|'''[\s\S]*?'''|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'"
+)
+
+_ESCAPED_CODEPOINT_PATTERN: Final = re.compile(
+    r"\\(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|N\{[^}]*\}|[0-7]{1,3})"
+)
 
 _PACKAGE_PROJECT_DIR_NAME: Final = "ralph-workflow"
 _PACKAGE_DIR_NAME: Final = "ralph"
@@ -676,6 +685,35 @@ def _folded_retired_review_violations(rel: str, tree: ast.AST) -> list[Violation
     return violations
 
 
+def _string_segment_contents(source: str) -> list[str]:
+    contents: list[str] = []
+    segments: list[str] = _STRING_SEGMENT_PATTERN.findall(source)
+    for segment in segments:
+        if (segment.startswith('"""') and segment.endswith('"""')) or (
+            segment.startswith("'''") and segment.endswith("'''")
+        ):
+            contents.append(segment[3:-3])
+        else:
+            contents.append(segment[1:-1])
+    return contents
+
+
+def _folded_literal_candidate(source: str) -> bool:
+    segments = _string_segment_contents(source)
+    if not segments:
+        return False
+    if any(_ESCAPED_CODEPOINT_PATTERN.search(segment) for segment in segments):
+        return True
+    return _RETIRED_REVIEW_PATTERN.search("".join(segments)) is not None
+
+
+def _retired_review_candidate(source: str) -> bool:
+    lowered = source.lower()
+    if "commit" in lowered and "clean" in lowered:
+        return True
+    return _folded_literal_candidate(source)
+
+
 def _retired_review_violations(
     rel: str,
     source: str,
@@ -695,11 +733,15 @@ def _retired_review_violations(
             )
         )
     lowered = source.lower()
-    if "commit" not in lowered or "clean" not in lowered:
+    literal_candidate = "commit" in lowered and "clean" in lowered
+    if not literal_candidate and not _folded_literal_candidate(source):
         return violations
 
     if tree is not None:
         violations.extend(_folded_retired_review_violations(rel, tree))
+
+    if not literal_candidate:
+        return violations
 
     reported_lines = {violation.line for violation in violations}
     for lineno, line in enumerate(source.splitlines(), start=1):
@@ -874,8 +916,7 @@ def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Vi
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        lowered = source.lower()
-        if "commit" in lowered and "clean" in lowered:
+        if _retired_review_candidate(source):
             tree = None
             if path.suffix == ".py":
                 try:
@@ -883,7 +924,6 @@ def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Vi
                 except SyntaxError:
                     tree = None
             repo_wide_violations.extend(_retired_review_violations(rel, source, tree))
-
     violations.extend(repo_wide_violations)
     return violations
 

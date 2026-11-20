@@ -35,9 +35,11 @@ __all__ = (
     "verdict_starts_cooldown",
 )
 
-_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
+_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 3
 
 _LEGACY_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 1
+
+_V2_VERDICT_RECORD_SCHEMA_VERSION: Final[int] = 2
 
 _REQUIRED_DEAD_AGENT_VERDICT_VALUES: Final[tuple[str, ...]] = (
     "agent_dead",
@@ -69,6 +71,8 @@ class _PersistedVerdict:
     termination: TerminationRecord | None
     typed_signal: TypedSignal | None
     return_code_discrepancy: bool
+    probe_reason: str = ""
+    probe_elapsed_ms: int | None = None
 
 
 DeadAgentVerdict = _DeadAgentVerdict
@@ -103,6 +107,9 @@ def decide_dead_agent_verdict(
     attribution: AttributionVerdict,
     probe_outcome: ProbeOutcome | None,
     typed_signal: TypedSignal | None = None,
+    *,
+    probe_reason: str = "",
+    probe_elapsed_ms: int | None = None,
 ) -> PersistedVerdict:
     effective_typed_signal = typed_signal if typed_signal is not None else facts.typed_signal
     return PersistedVerdict(
@@ -113,6 +120,8 @@ def decide_dead_agent_verdict(
         termination=facts.termination,
         typed_signal=effective_typed_signal,
         return_code_discrepancy=has_return_code_discrepancy(facts.termination),
+        probe_reason=probe_reason,
+        probe_elapsed_ms=probe_elapsed_ms,
     )
 
 
@@ -199,6 +208,8 @@ def verdict_record(phase: str, agent: str, verdict: PersistedVerdict) -> dict[st
         "facts": _facts_record(verdict.facts),
         "attribution": _attribution_record(verdict.attribution),
         "probe_outcome": str(verdict.probe_outcome) if verdict.probe_outcome is not None else None,
+        "probe_reason": verdict.probe_reason,
+        "probe_elapsed_ms": verdict.probe_elapsed_ms,
         "termination": _termination_record(verdict.termination),
         "typed_signal": _typed_signal_record(verdict.typed_signal),
         "return_code_discrepancy": verdict.return_code_discrepancy,
@@ -221,13 +232,25 @@ def _migrate_v1_record_to_v2(record: dict[str, object]) -> dict[str, object]:
     return migrated
 
 
+def _migrate_v2_record_to_v3(record: dict[str, object]) -> dict[str, object]:
+    migrated = dict(record)
+    migrated.setdefault("probe_reason", "")
+    migrated.setdefault("probe_elapsed_ms", None)
+    return migrated
+
+
 _VERDICT_RECORD_MIGRATION_STEPS: Final[
     tuple[tuple[int, int, Callable[[dict[str, object]], dict[str, object]]], ...]
 ] = (
     (
         _LEGACY_VERDICT_RECORD_SCHEMA_VERSION,
-        _VERDICT_RECORD_SCHEMA_VERSION,
+        _V2_VERDICT_RECORD_SCHEMA_VERSION,
         _migrate_v1_record_to_v2,
+    ),
+    (
+        _V2_VERDICT_RECORD_SCHEMA_VERSION,
+        _VERDICT_RECORD_SCHEMA_VERSION,
+        _migrate_v2_record_to_v3,
     ),
 )
 
@@ -247,10 +270,12 @@ def migrate_verdict_record(record: dict[str, object]) -> dict[str, object]:
     version = _record_schema_version(record)
     if version >= _VERDICT_RECORD_SCHEMA_VERSION:
         return dict(record)
-    migrated = record
+    migrated = dict(record)
+    current_version = version
     for source_version, target_version, step in _VERDICT_RECORD_MIGRATION_STEPS:
-        if source_version < version:
+        if source_version != current_version:
             continue
         migrated = step(migrated)
         migrated["schema_version"] = target_version
+        current_version = target_version
     return migrated
