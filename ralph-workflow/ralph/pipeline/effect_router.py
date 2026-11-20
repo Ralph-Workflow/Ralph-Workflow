@@ -533,3 +533,6 @@ def _agents_for_phase(
 
 
 agents_for_phase = _agents_for_phase
+
+
+is_empty_commit_phase = _is_empty_commit_phase

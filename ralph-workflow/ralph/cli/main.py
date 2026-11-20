@@ -49,6 +49,7 @@ from ralph.display.terminal_restore import (
     snapshot_terminal_modes,
     terminal_restore_sequence,
 )
+from ralph.git.hardening import drop_inherited_git_dir_env
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import load_policy_for_config_dir, load_policy_for_workspace_scope
@@ -902,6 +903,11 @@ def main(
         logger.debug(
             "Stripped inherited malloc-debug environment variables: {}",
             ", ".join(removed_malloc_debug_vars),
+        )
+    if dropped_git_dir_vars := drop_inherited_git_dir_env(os.environ):
+        logger.debug(
+            "Ignoring inherited repository-selection variables: {}",
+            ", ".join(dropped_git_dir_vars),
         )
     ensure_cli_terminal_restore()
 

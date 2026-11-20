@@ -1187,6 +1187,54 @@ def _create_initial_state(
     )
 
 
+def _completion_entry_phase(pipeline_policy: PipelinePolicy) -> str | None:
+    commit_phase = next(
+        (
+            name
+            for name, phase_def in pipeline_policy.phases.items()
+            if phase_def.role == "commit"
+            and phase_def.transitions.on_success == pipeline_policy.terminal_phase
+        ),
+        None,
+    )
+    if commit_phase is None:
+        return None
+    return next(
+        (
+            name
+            for name, phase_def in pipeline_policy.phases.items()
+            if phase_def.role == "commit_review"
+            and phase_def.transitions.on_success == commit_phase
+        ),
+        commit_phase,
+    )
+
+
+def _reopen_completed_run_with_leftover_work(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    workspace_root: Path,
+) -> PipelineState:
+    from ralph.pipeline import progress
+    from ralph.pipeline.effect_router import is_empty_commit_phase
+
+    if state.phase != pipeline_policy.terminal_phase:
+        return state
+    entry_phase = _completion_entry_phase(pipeline_policy)
+    if entry_phase is None or is_empty_commit_phase(workspace_root) is not False:
+        logger.info(
+            "Resumed a completed run with no uncommitted work; finishing with the final landing"
+        )
+        return state
+    logger.warning(
+        "Resumed a completed run whose worktree still holds uncommitted work; "
+        "returning to '{}' to commit it before the run lands",
+        entry_phase,
+    )
+    reopened = state.copy_with(approved_tree_sha=None, commit_approval_required=False)
+    return progress.advance_phase(reopened, entry_phase, policy=pipeline_policy)
+
+
 def _resolve_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -1224,6 +1272,9 @@ def _resolve_initial_state(
             )
         if workspace_root is not None:
             resumed = _reseal_unresolvable_baseline(resumed, workspace_root)
+            resumed = _reopen_completed_run_with_leftover_work(
+                resumed, policy_bundle.pipeline, workspace_root
+            )
 
         with suppress(AttributeError, TypeError):
             current_epoch = _resume_epoch(pipeline_deps)

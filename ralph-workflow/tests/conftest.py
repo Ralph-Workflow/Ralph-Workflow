@@ -55,6 +55,7 @@ __all__ = [
     "_set_current_test_node",
 ]
 
+from ralph.git.hardening import drop_inherited_git_dir_env
 from ralph.mcp.explore import recovery as _explore_recovery
 from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
 from ralph.pipeline._runner_session import set_last_captured_session_id
@@ -355,6 +356,7 @@ def _is_xdist_session(config: pytest.Config) -> bool:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    drop_inherited_git_dir_env(os.environ)
     nested_session = _is_nested_session(config)
     _OUTER_SESSION_CONFIG_HOLDER[0] = config
     if nested_session or not _is_xdist_session(config):

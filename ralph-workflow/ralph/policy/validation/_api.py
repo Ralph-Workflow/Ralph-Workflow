@@ -336,6 +336,14 @@ def validate_recovery_config(bundle: PolicyBundle) -> None:
             )
 
 
+def _is_terminal_checkpoint(state: PipelineState, bundle: PolicyBundle) -> bool:
+    try:
+        terminal_phases = {bundle.pipeline.terminal_phase, *bundle.pipeline.terminal_states()}
+    except AttributeError:
+        return False
+    return state.phase in terminal_phases
+
+
 def validate_checkpoint_against_policy(
     state: PipelineState,
     bundle: PolicyBundle,
@@ -356,7 +364,11 @@ def validate_checkpoint_against_policy(
     entry_phase: str = state.policy_entry_phase
     if entry_phase not in (_UNSET_PHASE, ""):
         validate_phase_exists_in_policy(entry_phase, bundle.pipeline)
-    if state.current_drain is not None and state.current_drain not in bundle.agents.agent_drains:
+    if (
+        state.current_drain is not None
+        and state.current_drain not in bundle.agents.agent_drains
+        and not _is_terminal_checkpoint(state, bundle)
+    ):
         raise PolicyValidationError(
             f"Checkpoint references drain '{state.current_drain}' which is not bound "
             f"in agents.toml. Available drains: {sorted(bundle.agents.agent_drains.keys())}"

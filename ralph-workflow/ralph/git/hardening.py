@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, MutableMapping
 
 PINNED_CONFIG_ARGS: tuple[str, ...] = (
     "-c",
@@ -49,6 +49,13 @@ def scrub_git_env(env: dict[str, str] | None) -> dict[str, str]:
     if not env:
         return {}
     return {k: v for k, v in env.items() if k not in GIT_DIR_ENV_KEYS}
+
+
+def drop_inherited_git_dir_env(environ: MutableMapping[str, str]) -> tuple[str, ...]:
+    dropped = tuple(sorted(key for key in GIT_DIR_ENV_KEYS if key in environ))
+    for key in dropped:
+        del environ[key]
+    return dropped
 
 
 def pinned_argv(args: Iterable[str]) -> tuple[str, ...]:
@@ -97,6 +104,7 @@ __all__ = [
     "PINNED_CONFIG_ARGS",
     "UNMERGED_PORCELAIN_XY",
     "PorcelainEntry",
+    "drop_inherited_git_dir_env",
     "parse_porcelain_z",
     "pinned_argv",
     "scrub_git_env",
