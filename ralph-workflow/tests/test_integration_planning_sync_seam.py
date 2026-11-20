@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.pipeline import integration_director, integration_owner_seam
+from ralph.config.general_config import GeneralConfig
+from ralph.config.models import UnifiedConfig
+from ralph.pipeline import integration_director, integration_owner_seam, run_loop
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_owner_seam import (
     PlanningSyncVerdict,
@@ -395,6 +398,31 @@ def test_execute_planning_ladder_rung_forwards_the_observation_operation_kind(
     assert seen == [InProgressKind.MERGE]
     assert outcome is not None
     assert outcome.outcome == "failed"
+
+
+def test_the_owner_ladder_route_forwards_the_configured_last_resort_wait(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def _fake_run_ladder_rung(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
+        del rung
+        calls.append(kwargs)
+        return LadderStepResult(CleanupLadderRung.QUARANTINE, "succeeded", "succeeded:test")
+
+    monkeypatch.setattr(integration_owner_seam, "run_ladder_rung", _fake_run_ladder_rung)
+    ctx = MagicMock()
+    ctx.config = UnifiedConfig(general=GeneralConfig(auto_integrate_last_resort_wait_seconds=12.5))
+
+    run_loop.execute_owner_ladder_rung(
+        ctx,
+        tmp_path,
+        _verdict_with_rung(CleanupLadderRung.QUARANTINE),
+        None,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["last_resort_wait_seconds"] == 12.5
 
 
 def test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset(

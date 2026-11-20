@@ -19,6 +19,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.integration_ladder import LAST_RESORT_WAIT_SECONDS
 
 if TYPE_CHECKING:
     from ralph.pipeline._integration_ladder_seams import (
@@ -49,6 +50,7 @@ def _settle_spent_budget(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> tuple[IntegrationRecord, bool]:
     if record.merge_commit_repair_attempts < DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
         return record, False
@@ -82,6 +84,7 @@ def _settle_spent_budget(
             fs=fs,
             env=env,
             clock=clock,
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
     except (OSError, RuntimeError, ValueError):
         terminal_emitter.critical(

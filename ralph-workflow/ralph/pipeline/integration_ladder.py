@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.config.general_config import LAST_RESORT_WAIT_SECONDS
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed, write_text_if_changed
+from ralph.pipeline._auto_integrate_config import configured_last_resort_wait_seconds
 from ralph.pipeline._integration_ladder_evidence import (
     _LADDER_ACTION_VALUES,
     _RUNG_ACTION_VALUE,
@@ -66,6 +68,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "LADDER_ATTEMPT_BUDGET",
+    "LAST_RESORT_DEFECT_LOG_FILENAME",
     "LAST_RESORT_DISABLED_NO_SIGNATURE",
     "LAST_RESORT_PRECONDITIONS",
     "LAST_RESORT_REFUSED_NO_PRESERVED_COPY",
@@ -89,6 +92,7 @@ __all__ = [
     "RepointResult",
     "RungPostCondition",
     "adapt_environment_and_retry",
+    "configured_last_resort_wait_seconds",
     "decide_ladder_transition",
     "ensure_preserved_copy",
     "evaluate_last_resort_preconditions",
@@ -109,8 +113,6 @@ __all__ = [
 
 
 LADDER_ATTEMPT_BUDGET: Final[int] = 16
-
-LAST_RESORT_WAIT_SECONDS: Final[float] = 600.0
 
 
 _LastResortAgentPool = LastResortAgentPool
@@ -144,6 +146,10 @@ SALVAGE_KINDS: Final[tuple[str, ...]] = (
     "rebase_first_retry",
     "fresh_worktree_rebuild",
 )
+
+LAST_RESORT_DEFECT_LOG_FILENAME: Final[str] = "last-resort-defects.jsonl"
+
+_FAILED_STRATEGY_PREFIXES: Final[tuple[str, ...]] = ("failed:", "impossible:")
 
 _RESET_CAPABLE_RUNGS: Final[frozenset[CleanupLadderRung]] = frozenset(
     {
@@ -860,6 +866,77 @@ def _complete_preservation_bundle(
     return preservation, None
 
 
+def _last_resort_tried_strategies(state: AttemptLedgerState) -> tuple[tuple[str, str], ...]:
+    evidence = state.ladder_evidence
+    tried: list[tuple[str, str]] = []
+    for rung in CLEANUP_LADDER_ORDER[:-1]:
+        key = f"rung:{_RUNG_ACTION_VALUE[rung]}"
+        value = evidence.get(key)
+        if value is not None:
+            tried.append((key, value))
+    for kind in SALVAGE_KINDS:
+        key = f"salvage:{kind}"
+        value = evidence.get(key)
+        if value is not None:
+            tried.append((key, value))
+    return tuple(tried)
+
+
+def _write_last_resort_defect(
+    state_dir: Path,
+    *,
+    outcome: str,
+    reason: str,
+    decided_signature: str,
+    fresh_signature: str,
+    wait_seconds: float,
+    tried: tuple[tuple[str, str], ...],
+) -> Path:
+    payload: dict[str, object] = {
+        "epoch_ms": int(time.time() * 1000),
+        "outcome": outcome,
+        "reason": reason,
+        "decided_signature": decided_signature,
+        "blocking_signature": fresh_signature,
+        "wait_seconds": wait_seconds,
+        "failed_strategies": [
+            f"{key}={value}" for key, value in tried if value.startswith(_FAILED_STRATEGY_PREFIXES)
+        ],
+        "tried_strategies": [f"{key}={value}" for key, value in tried],
+    }
+    path = state_dir / LAST_RESORT_DEFECT_LOG_FILENAME
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        existing = DEFAULT_FILE_BACKEND.read_text(path, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        existing = ""
+    if existing and not existing.endswith("\n"):
+        existing = f"{existing}\n"
+    line = json.dumps(payload, sort_keys=True)
+    try:
+        atomic_write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            path,
+            f"{existing}{line}\n",
+            encoding="utf-8",
+            tmp_path=path.with_name(f"{path.name}.staging"),
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.warning(
+            "integration ladder rung 6 (last resort): used; the defect record at {} could "
+            "not be written ({}); the recovery itself stands",
+            path,
+            exc,
+        )
+        return path
+    logger.warning(
+        "integration ladder rung 6 (last resort): used; defect recorded at {} against {}",
+        path,
+        payload["failed_strategies"],
+    )
+    return path
+
+
 def last_resort_recovery(
     root: Path,
     *,
@@ -905,6 +982,7 @@ def last_resort_recovery(
     preconditions = evaluate_last_resort_preconditions(
         state, decided_signature=decided_signature, fresh_signature=fresh_signature, budget=budget
     )
+    tried = _last_resort_tried_strategies(state)
     for name, evidence_value in preconditions.items():
         _record_evidence(ledger, f"precondition:{name}", evidence_value)
     unmet = next((name for name, value in preconditions.items() if value.startswith("unmet")), None)
@@ -955,6 +1033,15 @@ def last_resort_recovery(
     ):
         value = f"failed:reset-hard:{tip}"
         _record_evidence(ledger, key, value)
+        _write_last_resort_defect(
+            state_dir,
+            outcome="failed",
+            reason=value,
+            decided_signature=decided_signature,
+            fresh_signature=fresh_signature,
+            wait_seconds=wait_seconds,
+            tried=tried,
+        )
         return LadderStepResult(rung, "failed", value, evidence=preconditions)
     carried, carry_failures = carry_preserved_commits(root, preservation)
     reapply_preserved_progress(root, preservation)
@@ -973,6 +1060,15 @@ def last_resort_recovery(
     removed_locks = git.remove_stale_locks(root)
     value = f"succeeded:reset-hard-to={tip}:locks-removed={len(removed_locks)}"
     _record_evidence(ledger, key, value)
+    _write_last_resort_defect(
+        state_dir,
+        outcome="succeeded",
+        reason=value,
+        decided_signature=decided_signature,
+        fresh_signature=fresh_signature,
+        wait_seconds=wait_seconds,
+        tried=tried,
+    )
     logger.warning(
         "integration ladder rung 6 (last resort): reset --hard to {}; blocking "
         "untracked paths cleaned; preserved refs and sidecars untouched",

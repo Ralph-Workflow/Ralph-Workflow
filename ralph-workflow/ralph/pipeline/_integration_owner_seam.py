@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_record_facts import apply_record_facts
-from ralph.pipeline.integration_ladder import LadderStepResult, run_ladder_rung
+from ralph.pipeline.integration_ladder import (
+    LAST_RESORT_WAIT_SECONDS,
+    LadderStepResult,
+    run_ladder_rung,
+)
 from ralph.pipeline.integration_observation import (
     DirtShape,
     TargetVsFeature,
@@ -156,6 +160,7 @@ def execute_planning_ladder_rung(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
     state_dir: Path | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> LadderStepResult | None:
     if verdict.ladder_rung is None:
         return None
@@ -171,4 +176,5 @@ def execute_planning_ladder_rung(
         target="main" if target is None else target,
         in_progress_kind=verdict.observation.in_progress_kind,
         expected_target_sha=expected_target_sha,
+        last_resort_wait_seconds=last_resort_wait_seconds,
     )

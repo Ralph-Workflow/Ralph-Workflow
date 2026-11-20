@@ -36,6 +36,7 @@ from ralph.git.proposal_seal_error import ProposalSealError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
+from ralph.pipeline._auto_integrate_config import configured_last_resort_wait_seconds
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
@@ -2460,6 +2461,7 @@ def _execute_owner_ladder_rung(
             ledger=AttemptLedger(root),
             target=target,
             expected_target_sha=expected_sha,
+            last_resort_wait_seconds=configured_last_resort_wait_seconds(ctx.config),
         )
     except (OSError, RuntimeError, ValueError, KeyError) as rung_exc:
         logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)

@@ -11,7 +11,7 @@ from ralph.config.models import GeneralConfig
 RALPH_TEST_CHANGE_REASONS = {
     "test_general_section_starts_with_auto_integration_banner": "under policy schema v6 comments and banners in bundled TOML templates are prohibited",
     "test_general_section_contains_required_prose_tokens": "under policy schema v6 comments in bundled TOML templates are prohibited",
-    "test_templates_list_exactly_six_live_auto_integrate_keys_in_order": "under policy schema v6 commented keys in bundled TOML templates are prohibited; live auto-integrate keys are defined in GeneralConfig",
+    "test_templates_list_exactly_seven_live_auto_integrate_keys_in_order": "under policy schema v6 commented keys in bundled TOML templates are prohibited; live auto-integrate keys are defined in GeneralConfig",
     "test_no_duplicate_auto_integrate_key_in_a_template": "under policy schema v6 commented keys in bundled TOML templates are prohibited; live auto-integrate keys are defined in GeneralConfig",
     "test_each_template_documents_model_defaults_in_comment_lines": "under policy schema v6 commented keys in bundled TOML templates are prohibited; default values are defined in GeneralConfig",
     "test_banner_appears_at_top_of_general_block_not_middle": "under policy schema v6 banners and comments in bundled TOML templates are prohibited",
@@ -35,6 +35,7 @@ _AUTO_INTEGRATE_KEYS = (
     "auto_integrate_remote",
     "auto_integrate_remote_interval_seconds",
     "auto_integrate_reclaim_target_worktree",
+    "auto_integrate_last_resort_wait_seconds",
 )
 
 _RETIRED_AUTO_INTEGRATE_KEYS = (
@@ -155,7 +156,7 @@ def test_general_section_contains_required_prose_tokens() -> None:
             assert not missing, f"{path}: prose missing tokens: {missing!r}"
 
 
-def test_templates_list_exactly_six_live_auto_integrate_keys_in_order() -> None:
+def test_templates_list_exactly_seven_live_auto_integrate_keys_in_order() -> None:
     for key in _AUTO_INTEGRATE_KEYS:
         assert key in GeneralConfig.model_fields
 
@@ -185,6 +186,7 @@ def test_each_template_documents_model_defaults_in_comment_lines() -> None:
         "auto_integrate_remote": "origin",
         "auto_integrate_remote_interval_seconds": 0.0,
         "auto_integrate_reclaim_target_worktree": True,
+        "auto_integrate_last_resort_wait_seconds": 600.0,
     }
     for key, expected_val in defaults.items():
         assert key in GeneralConfig.model_fields

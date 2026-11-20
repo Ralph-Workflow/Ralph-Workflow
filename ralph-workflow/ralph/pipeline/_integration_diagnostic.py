@@ -78,6 +78,10 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.integration_ladder import (
+    LAST_RESORT_WAIT_SECONDS,
+    configured_last_resort_wait_seconds,
+)
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.operation_evidence import (
     OperationEvidenceCollector,
@@ -223,6 +227,7 @@ def _handle_diagnostic_generic_failure(
     fs: FileQuarantine | None,
     env: EnvironmentProbe | None,
     clock: Clock | None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> None:
     terminal_emitter.critical("Integration diagnostic retained ownership after failure: {}", exc)
     current = read_record(root) or record
@@ -241,6 +246,7 @@ def _handle_diagnostic_generic_failure(
                 clock=clock,
                 target=target.target,
                 feature_tip=_feature_tip_for(target),
+                last_resort_wait_seconds=last_resort_wait_seconds,
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -290,6 +296,7 @@ def diagnose_retained_integration(
             fs=fs,
             env=env,
             clock=clock,
+            last_resort_wait_seconds=configured_last_resort_wait_seconds(ctx.config),
         )
         if budget_spent:
             return False
@@ -365,6 +372,7 @@ def diagnose_retained_integration(
                 fs=fs,
                 env=env,
                 clock=clock,
+                last_resort_wait_seconds=configured_last_resort_wait_seconds(ctx.config),
             )
             retained = read_record(ctx.workspace_scope.root)
             return bool(
@@ -386,6 +394,7 @@ def diagnose_retained_integration(
                 fs=fs,
                 env=env,
                 clock=clock,
+                last_resort_wait_seconds=configured_last_resort_wait_seconds(ctx.config),
             )
         return False
 
@@ -413,6 +422,7 @@ def _pre_pass_failure(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
     terminal_for_now: bool = False,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> bool:
     from ralph.pipeline.auto_integrate_recovery_terminal import (
         record_resolution_attempt_key,
@@ -451,6 +461,7 @@ def _pre_pass_failure(
                 clock=clock,
                 target=record.target,
                 feature_tip=_feature_tip_for(target_record),
+                last_resort_wait_seconds=last_resort_wait_seconds,
             )
             announced = step.outcome == "terminal"
         except (OSError, RuntimeError, ValueError, KeyError):
@@ -482,6 +493,7 @@ def _pre_pass_failure(
                 clock=clock,
                 target=record.target,
                 feature_tip=_feature_tip_for(target_record),
+                last_resort_wait_seconds=last_resort_wait_seconds,
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -507,6 +519,7 @@ def _run_completion_pre_pass(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> bool | None:
     if isinstance(next_action, RecordFactOutcome):
         try:
@@ -522,6 +535,7 @@ def _run_completion_pre_pass(
                 clock=clock,
                 target=record.target,
                 feature_tip=_feature_tip_for(record),
+                last_resort_wait_seconds=last_resort_wait_seconds,
             )
         except (OSError, RuntimeError, ValueError, KeyError):
             terminal_emitter.critical(
@@ -555,6 +569,7 @@ def _run_completion_pre_pass(
                 fs=fs,
                 env=env,
                 clock=clock,
+                last_resort_wait_seconds=last_resort_wait_seconds,
             )
 
     if _completion_proof_applies(record):
@@ -577,6 +592,7 @@ def _run_completion_pre_pass(
             env=env,
             clock=clock,
             promotion_note=promotion_note,
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
 
     return None
@@ -612,6 +628,7 @@ def _complete_or_intervene(
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
     promotion_note: str = "",
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> bool:
     proof_ok, proof_reason = _check_operation_completion_proof(
         inspection_root, record, collector=collector
@@ -632,6 +649,7 @@ def _complete_or_intervene(
             env=env,
             clock=clock,
             terminal_for_now=True,
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
     try:
         apply_record_transition(
@@ -667,6 +685,7 @@ def _settle_exhausted_cap(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> bool:
     proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
     if proof_ok or not diagnostic_needed(inspection_root, record):
@@ -699,6 +718,7 @@ def _settle_exhausted_cap(
             clock=clock,
             target=record.target,
             feature_tip=_feature_tip_for(target_record),
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
     except (OSError, RuntimeError, ValueError, KeyError):
         terminal_emitter.critical(
@@ -725,6 +745,7 @@ def handoff_integration_diagnostic(
     fs: FileQuarantine | None = None,
     env: EnvironmentProbe | None = None,
     clock: Clock | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> bool:
     inspection_root = _operation_root_for(record, root)
     terminal = ladder_terminal_state(root, record, ledger=ledger, git=git)
@@ -751,6 +772,7 @@ def handoff_integration_diagnostic(
             fs=fs,
             env=env,
             clock=clock,
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
     if pre_pass_result is not None:
         return pre_pass_result
@@ -768,6 +790,7 @@ def handoff_integration_diagnostic(
             fs=fs,
             env=env,
             clock=clock,
+            last_resort_wait_seconds=last_resort_wait_seconds,
         )
     if not agents:
         target_record = _bump_attempt(
@@ -788,6 +811,7 @@ def handoff_integration_diagnostic(
                     clock=clock,
                     target=record.target,
                     feature_tip=_feature_tip_for(target_record),
+                    last_resort_wait_seconds=last_resort_wait_seconds,
                 )
             except (OSError, RuntimeError, ValueError, KeyError):
                 terminal_emitter.critical(

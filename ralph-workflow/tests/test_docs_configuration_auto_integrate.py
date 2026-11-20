@@ -11,6 +11,7 @@ _LIVE_KEYS = (
     "auto_integrate_remote",
     "auto_integrate_remote_interval_seconds",
     "auto_integrate_reclaim_target_worktree",
+    "auto_integrate_last_resort_wait_seconds",
 )
 _RETIRED_KEYS = (
     "auto_integrate_fetch_enabled",
@@ -30,7 +31,7 @@ def _general_rows(content: str) -> list[str]:
     return [line for line in content.splitlines() if line.startswith("| `auto_integrate_")]
 
 
-def test_configuration_md_documents_exactly_the_six_live_auto_integrate_keys_in_order() -> None:
+def test_configuration_md_documents_exactly_the_seven_live_auto_integrate_keys_in_order() -> None:
     rows = _general_rows(_CONTENT)
     assert [row.split("`")[1] for row in rows] == list(_LIVE_KEYS)
 
@@ -44,6 +45,7 @@ def test_configuration_md_documents_defaults_and_opt_out_contract() -> None:
     assert '`"origin"`' in rows[3]
     assert "`0.0`" in rows[4]
     assert "`true`" in rows[5]
+    assert "`600.0`" in rows[6]
     section = (
         content.partition("## Auto-integration")[2]
         .partition("## Agent chains and drains")[0]

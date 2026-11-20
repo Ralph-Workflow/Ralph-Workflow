@@ -20,6 +20,7 @@ auto_integrate_remote_enabled = true
 auto_integrate_remote = "origin"
 auto_integrate_remote_interval_seconds = 0.0
 auto_integrate_reclaim_target_worktree = true
+auto_integrate_last_resort_wait_seconds = 600.0
 retention_max_age_days = 7.0
 agent_idle_activity_evidence_ttl_seconds = 30.0
 agent_workspace_change_weights = { source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }

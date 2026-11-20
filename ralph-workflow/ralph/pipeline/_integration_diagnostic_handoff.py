@@ -466,6 +466,7 @@ def escalate_record_fact_outcome(
     feature_tip: str | None = None,
     decided_signature: str | None = None,
     fresh_signature: str | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> LadderStepResult:
     ladder = ledger if ledger is not None else AttemptLedger(root)
     plumbing = git if git is not None else default_git_plumbing()
@@ -513,6 +514,7 @@ def escalate_record_fact_outcome(
         decided_signature=decided,
         fresh_signature=fresh,
         terminal_when_disabled=True,
+        last_resort_wait_seconds=last_resort_wait_seconds,
     )
     observed_head = plumbing.head_sha(root)
     target_tip = plumbing.target_sha(root, effective_target)
@@ -615,6 +617,7 @@ def escalate_diagnostic_budget_to_ladder(
     target: str | None = None,
     branch: str = "feature",
     feature_tip: str | None = None,
+    last_resort_wait_seconds: float = LAST_RESORT_WAIT_SECONDS,
 ) -> LadderStepResult:
     return escalate_record_fact_outcome(
         root,
@@ -630,6 +633,7 @@ def escalate_diagnostic_budget_to_ladder(
         target=target,
         branch=branch,
         feature_tip=feature_tip,
+        last_resort_wait_seconds=last_resort_wait_seconds,
     )
 
 

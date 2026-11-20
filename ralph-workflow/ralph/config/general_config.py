@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Self
+from typing import Final, Self
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -42,6 +42,10 @@ from ralph.timeout_defaults import (
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
+
+LAST_RESORT_WAIT_SECONDS: Final[float] = 600.0
+
+LAST_RESORT_WAIT_SECONDS_MAX: Final[float] = 86400.0
 
 
 class GeneralConfig(RalphBaseModel):
@@ -135,6 +139,18 @@ class GeneralConfig(RalphBaseModel):
         description=(
             "Snapshot and reset a dirty target-owning worktree before advancing it. "
             "Set false to retain refuse-and-retry behavior."
+        ),
+    )
+    auto_integrate_last_resort_wait_seconds: float = Field(
+        default=LAST_RESORT_WAIT_SECONDS,
+        ge=0.0,
+        le=LAST_RESORT_WAIT_SECONDS_MAX,
+        description=(
+            "Seconds the cleanup ladder waits before the last-resort restart is allowed. "
+            "The wait starts when every agent in both pools is on cooldown, is measured "
+            "from durable timestamps so a process restart neither resets nor skips it, "
+            "and is a floor rather than a target. Zero removes the floor; values above "
+            f"{LAST_RESORT_WAIT_SECONDS_MAX:g} seconds are rejected."
         ),
     )
     agent_idle_timeout_seconds: float = Field(
@@ -641,4 +657,9 @@ class GeneralConfig(RalphBaseModel):
                 raise ValueError(msg)
 
 
-__all__ = ["GeneralConfig", "GeneralWorkflowFlags"]
+__all__ = [
+    "LAST_RESORT_WAIT_SECONDS",
+    "LAST_RESORT_WAIT_SECONDS_MAX",
+    "GeneralConfig",
+    "GeneralWorkflowFlags",
+]

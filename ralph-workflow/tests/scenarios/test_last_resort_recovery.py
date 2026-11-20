@@ -4,9 +4,12 @@ import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.config.general_config import GeneralConfig
+from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline import build_integration_status
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
@@ -15,7 +18,7 @@ from ralph.pipeline.integration_attempt_ledger import (
     LAST_RESORT_WAIT_KEY,
     AttemptLedger,
 )
-from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_decision import AttemptState, CleanupLadderRung, NextAction
 from ralph.pipeline.integration_diagnostic import (
     COMPLETION_IN_PLACE_HANDOFF_KEY,
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
@@ -27,6 +30,7 @@ from ralph.pipeline.integration_diagnostic import (
     check_target_worktree_context,
     completion_in_place_handoff_record,
     create_planning_handoff_record,
+    diagnose_retained_integration,
     ensure_last_resort_preservation,
     escalate_record_fact_outcome,
     is_disabled_signature_step,
@@ -36,20 +40,25 @@ from ralph.pipeline.integration_diagnostic import (
     observe_workspace_change,
     read_planning_handoff_record,
 )
+from ralph.pipeline.integration_director import observe
 from ralph.pipeline.integration_ladder import (
+    LAST_RESORT_DEFECT_LOG_FILENAME,
     LAST_RESORT_DISABLED_NO_SIGNATURE,
     LAST_RESORT_PRECONDITIONS,
     LAST_RESORT_TERMINAL_NO_SIGNATURE,
     LAST_RESORT_WAIT_SECONDS,
     LadderStepResult,
+    configured_last_resort_wait_seconds,
     default_file_quarantine,
     default_git_plumbing,
     last_resort_recovery,
+    run_ladder_rung,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.controller import RecoveryController
+from ralph.workspace.scope import WorkspaceScope
 from tests._integration_ladder_fakes import (
     _SIG,
     _ledger,
@@ -111,6 +120,43 @@ def _seed_all_preconditions(ledger: AttemptLedger) -> None:
     _seed_terminal_rungs(ledger)
     _seed_salvage(ledger)
     _seed_budget(ledger)
+
+
+def _config_with_last_resort_wait(seconds: float) -> UnifiedConfig:
+    return UnifiedConfig(general=GeneralConfig(auto_integrate_last_resort_wait_seconds=seconds))
+
+
+def _defect_entries(state_dir: Path) -> list[dict[str, object]]:
+    path = state_dir / LAST_RESORT_DEFECT_LOG_FILENAME
+    if not path.is_file():
+        return []
+    entries: list[dict[str, object]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        parsed: object = json.loads(line)
+        assert isinstance(parsed, dict)
+        entries.append({str(key): value for key, value in parsed.items()})
+    return entries
+
+
+def _last_resort_repo(tmp_path: Path) -> tuple[Path, Path, AttemptLedger, str]:
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_git(["init", "-b", "main"], cwd=root, label="test-init")
+    run_git(["config", "user.name", "Ralph Test"], cwd=root, label="test-cfg")
+    run_git(["config", "user.email", "ralph@example.com"], cwd=root, label="test-cfg")
+    (root / ".gitignore").write_text(".agent/\n", encoding="utf-8")
+    (root / "work.txt").write_text("initial commit\n", encoding="utf-8")
+    run_git(["add", ".gitignore", "work.txt"], cwd=root, label="test-add")
+    run_git(["commit", "-m", "initial commit"], cwd=root, label="test-commit")
+    initial_sha = run_git(["rev-parse", "HEAD"], cwd=root, label="test-sha").stdout.strip()
+    (root / "work.txt").write_text("work in progress\n", encoding="utf-8")
+    state_dir = root / ".agent"
+    state_dir.mkdir(parents=True)
+    ledger = AttemptLedger(root)
+    _seed_all_preconditions(ledger)
+    return root, state_dir, ledger, initial_sha
 
 
 def test_public_functions_pinned(tmp_path: Path) -> None:
@@ -547,6 +593,219 @@ def test_real_git_all_agents_unavailable_named_external_wait(tmp_path: Path) -> 
     assert "waiting:all-agents-unavailable:until=" in step.reason
     assert "next=agent_alpha" in step.reason
     assert (root / "work.txt").read_text(encoding="utf-8") == "work in progress\n"
+
+
+def test_operator_configured_last_resort_wait_is_read_from_the_config() -> None:
+    assert LAST_RESORT_WAIT_SECONDS == 600.0
+    assert configured_last_resort_wait_seconds(UnifiedConfig()) == LAST_RESORT_WAIT_SECONDS
+    assert configured_last_resort_wait_seconds(_config_with_last_resort_wait(12.5)) == 12.5
+
+
+def test_operator_configured_last_resort_wait_shortens_the_authorization_window(
+    tmp_path: Path,
+) -> None:
+    clock = ScenarioClock(1000.0)
+    agent_ledger = AgentFailureLedger(
+        clock=clock, consecutive_limit=1, base_cooldown_seconds=1200.0
+    )
+    pools = (LastResortAgentPool("resolver", ("agent_alpha",)),)
+    ledger = _ledger(tmp_path)
+    _seed_all_preconditions(ledger)
+    agent_ledger.record(AttemptFact("resolver", "agent_alpha", artifact_valid=False))
+    configured = configured_last_resort_wait_seconds(_config_with_last_resort_wait(12.5))
+
+    ready, checks, proof = check_all_last_resort_conditions(
+        ledger,
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        eligibility=agent_ledger,
+        pools=pools,
+        wait_seconds=configured,
+        epoch_now=clock.epoch,
+    )
+    assert ready is False
+    assert proof is not None
+    assert proof.authorized is False
+    assert all(value.startswith("met") for value in checks.values())
+
+    clock.advance(13.0)
+
+    default_ready, _default_checks, default_proof = check_all_last_resort_conditions(
+        ledger,
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        eligibility=agent_ledger,
+        pools=pools,
+        wait_seconds=LAST_RESORT_WAIT_SECONDS,
+        epoch_now=clock.epoch,
+    )
+    assert default_ready is False
+    assert default_proof is not None
+    assert default_proof.authorized is False
+
+    ready, _checks, proof = check_all_last_resort_conditions(
+        ledger,
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        eligibility=agent_ledger,
+        pools=pools,
+        wait_seconds=configured,
+        epoch_now=clock.epoch,
+    )
+    assert ready is True
+    assert proof is not None
+    assert proof.authorized is True
+
+
+def test_last_resort_use_writes_one_durable_defect_record_per_use(tmp_path: Path) -> None:
+    root, state_dir, ledger, initial_sha = _last_resort_repo(tmp_path)
+    clock = ScenarioClock(5000.0)
+
+    step = last_resort_recovery(
+        root,
+        git=default_git_plumbing(),
+        fs=default_file_quarantine(),
+        ledger=ledger,
+        state_dir=state_dir,
+        clock=clock,
+        feature_tip=initial_sha,
+        target="main",
+        branch="main",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        epoch_now=clock.epoch,
+    )
+
+    assert step.outcome == "succeeded"
+    entries = _defect_entries(state_dir)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["outcome"] == "succeeded"
+    assert entry["blocking_signature"] == _SIG
+    failed = entry["failed_strategies"]
+    assert isinstance(failed, list)
+    assert "rung:save_and_restore=failed:restore-refused" in failed
+    assert "rung:preserve_via_temp_index=failed:no-durable-copy" in failed
+    assert "rung:quarantine_and_restore=impossible:rename-failed:src/locked.py" in failed
+    assert "rung:rebuild_in_fresh_worktree=failed:land" in failed
+    assert "salvage:resolver_agent=failed:no-progress" in failed
+    assert "salvage:rebase_first_retry=failed:same-signature" in failed
+    assert "salvage:fresh_worktree_rebuild=failed:land" in failed
+    tried = entry["tried_strategies"]
+    assert isinstance(tried, list)
+    assert "rung:adapt_environment_and_retry=waiting:n=6:failure=read_only_fs:delay=60.0" in tried
+
+    second = last_resort_recovery(
+        root,
+        git=default_git_plumbing(),
+        fs=default_file_quarantine(),
+        ledger=ledger,
+        state_dir=state_dir,
+        clock=clock,
+        feature_tip=initial_sha,
+        target="main",
+        branch="main",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        epoch_now=clock.epoch,
+    )
+
+    assert second.outcome == "succeeded"
+    assert len(_defect_entries(state_dir)) == 2
+
+
+def test_operator_configured_last_resort_wait_reaches_the_ladder_rung(tmp_path: Path) -> None:
+    root, state_dir, ledger, _initial_sha = _last_resort_repo(tmp_path)
+    clock = ScenarioClock(5000.0)
+    configured = configured_last_resort_wait_seconds(_config_with_last_resort_wait(12.5))
+
+    step = run_ladder_rung(
+        CleanupLadderRung.LAST_RESORT,
+        root=root,
+        ledger=ledger,
+        git=default_git_plumbing(),
+        fs=default_file_quarantine(),
+        clock=clock,
+        state_dir=state_dir,
+        target="main",
+        branch="main",
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        last_resort_wait_seconds=configured,
+    )
+
+    assert step.outcome == "succeeded"
+    entries = _defect_entries(state_dir)
+    assert len(entries) == 1
+    assert entries[0]["wait_seconds"] == 12.5
+
+
+def test_operator_configured_last_resort_wait_reaches_the_escalation_entry(tmp_path: Path) -> None:
+    root, state_dir, ledger, _initial_sha = _last_resort_repo(tmp_path)
+    configured = configured_last_resort_wait_seconds(_config_with_last_resort_wait(12.5))
+    rec = _record(
+        target="main",
+        pre_target_sha=None,
+        integrated_feature_sha=None,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+    )
+    write_record(root, rec)
+
+    escalate_record_fact_outcome(
+        root,
+        rec,
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+        reason=DIAGNOSTIC_BUDGET_SPENT_REASON,
+        ledger=ledger,
+        git=default_git_plumbing(),
+        state_dir=state_dir,
+        target="main",
+        branch="main",
+        feature_tip=None,
+        decided_signature=_SIG,
+        fresh_signature=_SIG,
+        last_resort_wait_seconds=configured,
+    )
+
+    entries = _defect_entries(state_dir)
+    assert len(entries) == 1
+    assert entries[0]["wait_seconds"] == 12.5
+    failed = entries[0]["failed_strategies"]
+    assert isinstance(failed, list)
+    assert "rung:save_and_restore=failed:restore-refused" in failed
+
+
+def test_operator_configured_last_resort_wait_reaches_the_budget_spent_escalation(
+    tmp_path: Path,
+) -> None:
+    root, state_dir, ledger, _initial_sha = _last_resort_repo(tmp_path)
+    rec = _record(
+        target="main",
+        pre_target_sha=None,
+        integrated_feature_sha=None,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+        repair_cap_reason=DIAGNOSTIC_BUDGET_SPENT_REASON,
+    )
+    write_record(root, rec)
+    ledger.charge(
+        AttemptState().signature(observe(root)),
+        NextAction.SAVE_AND_RESTORE.value,
+        is_unknown=False,
+    )
+    ctx = MagicMock()
+    ctx.workspace_scope = WorkspaceScope(root)
+    ctx.config = _config_with_last_resort_wait(12.5)
+    ctx.pipeline_deps = MagicMock()
+    ctx.registry = {}
+    ctx.active_display = MagicMock()
+    ctx.display_context = None
+
+    diagnose_retained_integration(ctx, "diagnostic budget spent")
+
+    entries = _defect_entries(state_dir)
+    assert len(entries) == 1
+    assert entries[0]["wait_seconds"] == 12.5
+    assert entries[0]["outcome"] == "succeeded"
 
 
 def test_integration_status_autonomous_strategy_keeps_the_command_and_drops_operator_phrasing() -> (

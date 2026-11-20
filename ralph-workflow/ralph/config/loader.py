@@ -286,6 +286,7 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
         "auto_integrate_remote",
         "auto_integrate_remote_interval_seconds",
         "auto_integrate_reclaim_target_worktree",
+        "auto_integrate_last_resort_wait_seconds",
     )
     for field in simple_fields:
         if field in data:

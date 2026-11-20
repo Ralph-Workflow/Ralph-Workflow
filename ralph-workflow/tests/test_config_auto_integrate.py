@@ -5,11 +5,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from ralph.config.general_config import GeneralConfig
+from ralph.config.general_config import (
+    LAST_RESORT_WAIT_SECONDS,
+    LAST_RESORT_WAIT_SECONDS_MAX,
+    GeneralConfig,
+)
 from ralph.config.loader import load_config, load_local_only
 
 
-def test_auto_integrate_config_exposes_exactly_six_live_fields() -> None:
+def test_auto_integrate_config_exposes_exactly_seven_live_fields() -> None:
     fields = {name for name in GeneralConfig.model_fields if name.startswith("auto_integrate_")}
     assert fields == {
         "auto_integrate_enabled",
@@ -18,6 +22,7 @@ def test_auto_integrate_config_exposes_exactly_six_live_fields() -> None:
         "auto_integrate_remote",
         "auto_integrate_remote_interval_seconds",
         "auto_integrate_reclaim_target_worktree",
+        "auto_integrate_last_resort_wait_seconds",
     }
 
 
@@ -29,6 +34,8 @@ def test_auto_integrate_defaults_refresh_every_seam_and_reclaim_target_owner() -
     assert config.auto_integrate_remote == "origin"
     assert config.auto_integrate_remote_interval_seconds == 0.0
     assert config.auto_integrate_reclaim_target_worktree is True
+    assert config.auto_integrate_last_resort_wait_seconds == 600.0
+    assert config.auto_integrate_last_resort_wait_seconds == LAST_RESORT_WAIT_SECONDS
 
 
 @pytest.mark.parametrize("field", ["auto_integrate_target", "auto_integrate_remote"])
@@ -44,6 +51,33 @@ def test_auto_integrate_interval_rejects_negative_values(value: float) -> None:
         GeneralConfig(auto_integrate_remote_interval_seconds=value)
 
 
+@pytest.mark.parametrize("value", [-0.1, -1.0])
+def test_auto_integrate_last_resort_wait_rejects_negative_values(value: float) -> None:
+    with pytest.raises(ValidationError):
+        GeneralConfig(auto_integrate_last_resort_wait_seconds=value)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan"), 86400.1, 1e9])
+def test_auto_integrate_last_resort_wait_rejects_unbounded_values(value: float) -> None:
+    with pytest.raises(ValidationError):
+        GeneralConfig(auto_integrate_last_resort_wait_seconds=value)
+
+
+def test_auto_integrate_last_resort_wait_accepts_the_documented_bounds() -> None:
+    assert (
+        GeneralConfig(
+            auto_integrate_last_resort_wait_seconds=0.0
+        ).auto_integrate_last_resort_wait_seconds
+        == 0.0
+    )
+    assert (
+        GeneralConfig(
+            auto_integrate_last_resort_wait_seconds=LAST_RESORT_WAIT_SECONDS_MAX
+        ).auto_integrate_last_resort_wait_seconds
+        == LAST_RESORT_WAIT_SECONDS_MAX
+    )
+
+
 def test_live_auto_integrate_keys_load_from_project_toml(tmp_path: Path) -> None:
     path = tmp_path / "ralph-workflow.toml"
     path.write_text(
@@ -53,7 +87,8 @@ def test_live_auto_integrate_keys_load_from_project_toml(tmp_path: Path) -> None
         "auto_integrate_remote_enabled = true\n"
         'auto_integrate_remote = "upstream"\n'
         "auto_integrate_remote_interval_seconds = 12.5\n"
-        "auto_integrate_reclaim_target_worktree = false\n",
+        "auto_integrate_reclaim_target_worktree = false\n"
+        "auto_integrate_last_resort_wait_seconds = 12.5\n",
         encoding="utf-8",
     )
 
@@ -65,6 +100,7 @@ def test_live_auto_integrate_keys_load_from_project_toml(tmp_path: Path) -> None
     assert config.auto_integrate_remote == "upstream"
     assert config.auto_integrate_remote_interval_seconds == 12.5
     assert config.auto_integrate_reclaim_target_worktree is False
+    assert config.auto_integrate_last_resort_wait_seconds == 12.5
 
 
 def test_live_auto_integrate_local_values_override_global(
@@ -79,7 +115,8 @@ def test_live_auto_integrate_local_values_override_global(
         "auto_integrate_remote_enabled = true\n"
         'auto_integrate_remote = "upstream"\n'
         "auto_integrate_remote_interval_seconds = 5.0\n"
-        "auto_integrate_reclaim_target_worktree = false\n",
+        "auto_integrate_reclaim_target_worktree = false\n"
+        "auto_integrate_last_resort_wait_seconds = 5.0\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
@@ -91,7 +128,8 @@ def test_live_auto_integrate_local_values_override_global(
         "auto_integrate_remote_enabled = true\n"
         'auto_integrate_remote = "origin"\n'
         "auto_integrate_remote_interval_seconds = 0.0\n"
-        "auto_integrate_reclaim_target_worktree = true\n",
+        "auto_integrate_reclaim_target_worktree = true\n"
+        "auto_integrate_last_resort_wait_seconds = 600.0\n",
         encoding="utf-8",
     )
 

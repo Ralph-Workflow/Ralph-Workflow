@@ -228,6 +228,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a local-only outcome while integration continues. |
 | `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. The periodic catch-up ticker fetches at most once per this interval (`0.0` keeps its 300 s default), and still applies an already-fetched remote tip on every tick; see the remote sync contract in [Remote Sync](../agents/remote-sync.md). |
 | `auto_integrate_reclaim_target_worktree` | `true` | Snapshot and reset only the worktree owning the target branch when its dirty state blocks an advance. Set `false` to retain refuse-and-retry behavior. |
+| `auto_integrate_last_resort_wait_seconds` | `600.0` | Seconds the cleanup ladder waits before the last-resort restart is allowed. The wait starts when every agent in both pools is on cooldown, is measured from durable timestamps so a process restart neither resets nor skips it, and ends as soon as an agent becomes eligible. It is a floor, not a target. Accepted range `0.0`–`86400.0`; `0.0` removes the floor. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
