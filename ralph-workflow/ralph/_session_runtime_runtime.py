@@ -168,6 +168,7 @@ class ManagedAgentSessionRuntime:
                 config=config,
                 policy_bundle=None,
                 deps=attempt_deps,
+                probe_trusted_parent=workspace_root,
             )
             return cls(
                 config=config,

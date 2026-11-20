@@ -812,7 +812,11 @@ def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
         logger.warning("startup git-lock sweep failed: {}", sweep_exc)
 
 
-def _preamble_recovery_controller(config: UnifiedConfig | None = None) -> RecoveryController:
+def _preamble_recovery_controller(
+    config: UnifiedConfig | None = None,
+    *,
+    probe_trusted_parent: Path | None = None,
+) -> RecoveryController:
     return build_entry_point_recovery_controller(
         AgentEntryPoint.MAIN_PHASE_LOOP,
         config=config,
@@ -824,6 +828,7 @@ def _preamble_recovery_controller(config: UnifiedConfig | None = None) -> Recove
             workspace_probe=DefaultWorkspaceChangeProbe(),
             connectivity=None,
         ),
+        probe_trusted_parent=probe_trusted_parent,
     )
 
 
@@ -853,7 +858,9 @@ def run_auto_integrate_recovery_preamble(
                 recovery_controller = ctrl
 
         if recovery_controller is None:
-            recovery_controller = _preamble_recovery_controller(config)
+            recovery_controller = _preamble_recovery_controller(
+                config, probe_trusted_parent=workspace_scope.root
+            )
 
         recovered = recover_incomplete_integration(
             workspace_scope,
@@ -1327,6 +1334,7 @@ def _resolve_recovery_controller(
         tuple[RecoveryController, int],
     ]
     | None,
+    probe_trusted_parent: Path | None = None,
 ) -> RecoveryController:
     if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
         controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
@@ -1347,10 +1355,21 @@ def _resolve_recovery_controller(
         return controller
     if clock is not None:
         controller, _ = builder(
-            state, policy_bundle, config, clock=clock, pipeline_deps=pipeline_deps
+            state,
+            policy_bundle,
+            config,
+            clock=clock,
+            pipeline_deps=pipeline_deps,
+            probe_trusted_parent=probe_trusted_parent,
         )
     else:
-        controller, _ = builder(state, policy_bundle, config, pipeline_deps=pipeline_deps)
+        controller, _ = builder(
+            state,
+            policy_bundle,
+            config,
+            pipeline_deps=pipeline_deps,
+            probe_trusted_parent=probe_trusted_parent,
+        )
     return controller
 
 
@@ -1434,6 +1453,7 @@ def _resolve_run_collaborators(
         pipeline_deps,
         pro_hooks,
         recovery_controller_factory,
+        probe_trusted_parent=workspace_scope.root,
     )
     return _RunCollaborators(
         policy_bundle=policy_bundle,
@@ -3900,9 +3920,10 @@ def _effect_executor_seam_injected() -> bool:
 def _seamed_loop_probe_runner(
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps | None,
+    trusted_parent: Path | None = None,
 ) -> Callable[[str, str], ProbeResult | None] | None:
     injected = pipeline_deps.invoke_agent if pipeline_deps is not None else None
-    probe_runner = seamed_dead_agent_probe_runner(config, injected)
+    probe_runner = seamed_dead_agent_probe_runner(config, injected, trusted_parent=trusted_parent)
     if probe_runner is None and _effect_executor_seam_injected():
         return fail_open_dead_agent_probe_runner()
     return probe_runner
@@ -3915,6 +3936,7 @@ def _build_recovery_controller(
     clock: Clock | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    probe_trusted_parent: Path | None = None,
 ) -> tuple[RecoveryController, int]:
     _cycle_cap: int = 200
     _raw_cycle_cap: object = read_attr(state, "recovery_cycle_cap", 200)
@@ -3952,7 +3974,7 @@ def _build_recovery_controller(
         deps=AttemptRunnerDeps(
             clock=effective_clock,
             invoke=PRODUCTION_INVOKE,
-            probe_runner=_seamed_loop_probe_runner(config, pipeline_deps),
+            probe_runner=_seamed_loop_probe_runner(config, pipeline_deps, probe_trusted_parent),
             workspace_probe=effective_probe,
             connectivity=None,
         ),
@@ -3962,6 +3984,7 @@ def _build_recovery_controller(
         cycle_cap=_cycle_cap,
         agent_max_consecutive_unproductive=consecutive_limit,
         agent_max_total_unproductive=total_limit,
+        probe_trusted_parent=probe_trusted_parent,
     )
     return controller, _cycle_cap
 
@@ -3975,9 +3998,15 @@ def build_recovery_controller(
     config: UnifiedConfig,
     clock: Clock | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
+    probe_trusted_parent: Path | None = None,
 ) -> tuple[RecoveryController, int]:
     return _build_recovery_controller(
-        state, policy_bundle, config, clock=clock, workspace_probe=workspace_probe
+        state,
+        policy_bundle,
+        config,
+        clock=clock,
+        workspace_probe=workspace_probe,
+        probe_trusted_parent=probe_trusted_parent,
     )
 
 

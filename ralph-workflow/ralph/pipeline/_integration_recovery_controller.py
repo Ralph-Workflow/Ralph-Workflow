@@ -51,6 +51,7 @@ def standalone_integration_controller(
             connectivity=None,
         ),
         ledger=ledger,
+        probe_trusted_parent=root,
     )
 
 

@@ -112,6 +112,8 @@ def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
 def seamed_dead_agent_probe_runner(
     config: UnifiedConfig | None,
     injected_invoke: InvokeAgentFn | None,
+    *,
+    trusted_parent: Path | None = None,
 ) -> Callable[[str, str], ProbeResult | None] | None:
     if config is None or injected_invoke is None:
         return None
@@ -124,6 +126,7 @@ def seamed_dead_agent_probe_runner(
             agent_config,
             invoke_fn=_as_raw_agent_invoke(injected_invoke),
             general_config=config.general,
+            trusted_parent=trusted_parent,
         )
 
     return build_dead_agent_probe_runner(resolve_agent, probe)
@@ -150,6 +153,7 @@ def build_entry_point_recovery_controller(
     cycle_cap: int | None = None,
     agent_max_consecutive_unproductive: int | None = None,
     agent_max_total_unproductive: int | None = None,
+    probe_trusted_parent: Path | None = None,
 ) -> RecoveryController:
     effective_ledger = (
         ledger
@@ -165,7 +169,9 @@ def build_entry_point_recovery_controller(
         AgentEntryPoint.SMOKE,
         AgentEntryPoint.CANARY_PROBE,
     ):
-        probe_runner = production_dead_agent_probe_runner(config)
+        probe_runner = production_dead_agent_probe_runner(
+            config, trusted_parent=probe_trusted_parent
+        )
     cooldowns = restored_cooldowns(cooldown_snapshot, clock=deps.clock)
     options = RecoveryControllerOptions(
         cycle_cap=cycle_cap if cycle_cap is not None else _DEFAULT_CYCLE_CAP,

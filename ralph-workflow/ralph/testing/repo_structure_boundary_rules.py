@@ -142,13 +142,13 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/_session_runtime_runtime.py",
         "_session_invoke",
-        296,
+        297,
         "session runtime dispatch through the deps owned by the registered session runtime route",
     ),
     (
         "ralph/pipeline/attempt_runner.py",
         "run_agent_attempt",
-        262,
+        268,
         "canonical attempt dispatch inside the registered attempt runner",
     ),
     (

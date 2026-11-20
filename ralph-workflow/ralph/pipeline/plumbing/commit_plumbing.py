@@ -140,6 +140,7 @@ __all__ = [
     "CommitAgentResult",
     "attempt_controller",
     "collect_commit_agent_output",
+    "commit_probe_runner",
     "invoke_commit_agent_attempt",
     "run_commit_plumbing",
 ]
@@ -298,11 +299,13 @@ def _attempt_deps(
 
 def _lazy_commit_probe_runner(
     config: UnifiedConfig,
+    *,
+    repo_root: Path | None = None,
 ) -> typing.Callable[[str, str], ProbeResult | None]:
     def probe_runner(phase: str, agent: str) -> ProbeResult | None:
         from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
-        run = production_dead_agent_probe_runner(config)
+        run = production_dead_agent_probe_runner(config, trusted_parent=repo_root)
         if run is None:
             return None
         return run(phase, agent)
@@ -310,10 +313,15 @@ def _lazy_commit_probe_runner(
     return probe_runner
 
 
+commit_probe_runner = _lazy_commit_probe_runner
+
+
 def _attempt_controller(
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps,
     deps: AttemptRunnerDeps,
+    *,
+    repo_root: Path | None = None,
 ) -> RecoveryController:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
@@ -328,6 +336,7 @@ def _attempt_controller(
         deps=deps,
         ledger_snapshot=(ledger.snapshot() if isinstance(ledger, AgentFailureLedger) else None),
         unavailability_store=(store if isinstance(store, UnavailabilityStore) else None),
+        probe_trusted_parent=repo_root,
     )
 
 
@@ -510,12 +519,13 @@ def run_commit_plumbing(
     recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
     recovery_deps = dataclasses.replace(
         recovery_deps,
-        probe_runner=_lazy_commit_probe_runner(recovery_config),
+        probe_runner=_lazy_commit_probe_runner(recovery_config, repo_root=repo_root),
     )
     recovery_controller = _attempt_controller(
         recovery_config,
         effective_pipeline_deps,
         recovery_deps,
+        repo_root=repo_root,
     )
     recovery_controller.register_phase_chain("commit", chain_config.agents)
     with with_bridge_lifetime(
@@ -695,13 +705,16 @@ def _resolve_commit_recovery_controller(
         recovery_deps = _attempt_deps(effective_pipeline_deps, execute_agent_effect)
         recovery_deps = dataclasses.replace(
             recovery_deps,
-            probe_runner=_lazy_commit_probe_runner(effective_general_config),
+            probe_runner=_lazy_commit_probe_runner(
+                effective_general_config, repo_root=attempt_context.repo_root
+            ),
         )
     if recovery_controller is None:
         recovery_controller = _attempt_controller(
             effective_general_config,
             effective_pipeline_deps,
             recovery_deps,
+            repo_root=attempt_context.repo_root,
         )
     return effective_general_config, effective_pipeline_deps, recovery_deps, recovery_controller
 
@@ -1171,7 +1184,12 @@ def invoke_commit_agent_attempt(
         attempt = registered_runners()[AgentEntryPoint.COMMIT_GENERATION](
             invocation=agent,
             config=effective_config,
-            controller=_attempt_controller(effective_config, pipeline_deps, attempt_deps),
+            controller=_attempt_controller(
+                effective_config,
+                pipeline_deps,
+                attempt_deps,
+                repo_root=attempt_context.repo_root,
+            ),
             deps=attempt_deps,
             phase="commit",
             agent_name=agent.cmd,

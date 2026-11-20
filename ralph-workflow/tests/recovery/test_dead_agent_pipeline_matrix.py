@@ -14,6 +14,7 @@ from ralph.pipeline.agent_entry_point import (
 from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.canary_probe_judge import CanaryMarkerState
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.dead_agent_probe import PROBE_REASON_RUNNER_CRASHED
 from ralph.recovery.unavailability_reason import (
@@ -112,8 +113,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_ac4_quota_words_in_a_prompt_or_tool_output_never_start_a_cooldown": (
         "operator rule: an agent is either on cooldown or not; renamed from "
         "test_ac4_prompt_side_quota_words_never_start_a_cooldown and extended to the "
-        "tool-output variant, so both AC4 variants state the contract per entry point - "
-        "no cooldown, the agent stays available, no exclusion reason and no quota signal"
+        "tool-output variant and to the canary probe entry point, so both AC4 variants "
+        "state the contract per entry point - no cooldown, the agent stays available, no "
+        "exclusion reason and no quota signal; on the probe route the arm also states the "
+        "probe-mode contract - no nested probe and no ledger charge"
     ),
     "test_ac6_workspace_writes_then_a_failure_does_not_cool_down": (
         "operator rule: an agent is either on cooldown or not; the second AC6 half - the "
@@ -133,7 +136,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "inconclusive probe that could not run, carrying the probe_runner_crashed "
         "reason, instead of an absent probe outcome"
     ),
-    "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
+    "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent; the arm now runs over every registered entry point, and on the canary probe route it states the probe-mode contract - no nested probe, no probe outcome and no ledger charge",
     "test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac17_pending_subagents_recorded_as_unattributed_end": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac14_unattributed_live_session_end_parity": (
@@ -187,6 +190,14 @@ def _scenario_ids(scenarios: tuple[MatrixScenario, ...]) -> list[str]:
 
 def _scenario(name: str) -> MatrixScenario:
     return next(scenario for scenario in SCENARIOS if scenario.name == name)
+
+
+def _entry_point_parameters(test_function: object) -> tuple[AgentEntryPoint, ...]:
+    marks: list[pytest.Mark] = getattr(test_function, "pytestmark", [])
+    for mark in marks:
+        if mark.name == "parametrize" and mark.args[0] == "entry_point":
+            return tuple(mark.args[1])
+    raise AssertionError(f"the check does not parametrize over the entry points: {test_function}")
 
 
 def _assert_every_exclusion_expires(controller: RecoveryController, clock: FakeClock) -> None:
@@ -420,6 +431,21 @@ def test_completeness_the_ac17_scenario_and_the_incident_7_fixtures_are_register
     corpus_ids = {scenario.corpus_id for scenario in ALL_SCENARIOS if scenario.corpus_id}
     for scenario_id in incident_7:
         assert scenario_id in corpus_ids, f"{scenario_id} is not a registered corpus scenario"
+
+
+def test_completeness_the_ac4_and_ac16_exit_zero_arms_cover_every_entry_point() -> None:
+    assert (
+        _entry_point_parameters(
+            test_ac4_quota_words_in_a_prompt_or_tool_output_never_start_a_cooldown
+        )
+        == ENTRY_POINTS
+    )
+    assert (
+        _entry_point_parameters(
+            test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown
+        )
+        == ENTRY_POINTS
+    )
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS, ids=[ep.value for ep in ENTRY_POINTS])
@@ -700,8 +726,8 @@ def test_ac3_runtime_attribution_label_and_selectability(
 
 @pytest.mark.parametrize(
     "entry_point",
-    NON_PROBE_ENTRY_POINTS,
-    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
 )
 @pytest.mark.parametrize(
     "scenario_name",
@@ -730,6 +756,9 @@ def test_ac4_quota_words_in_a_prompt_or_tool_output_never_start_a_cooldown(
     assert isinstance(record, dict)
     typed_record = as_mapping(record)
     assert typed_record.get("typed_signal") is None
+    if entry_point is AgentEntryPoint.CANARY_PROBE:
+        assert observation.probe_calls == ()
+        assert observation.ledger_entries == {}
 
 
 @pytest.mark.parametrize(
@@ -800,8 +829,8 @@ def test_ac7_probe_cannot_run_keeps_unknown_and_selectable(
 
 @pytest.mark.parametrize(
     "entry_point",
-    NON_PROBE_ENTRY_POINTS,
-    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+    ENTRY_POINTS,
+    ids=[ep.value for ep in ENTRY_POINTS],
 )
 def test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown(
     entry_point: AgentEntryPoint,
@@ -818,7 +847,45 @@ def test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown(
     assert controller.preferred_agent_index(PHASE, AGENTS).agent == AGENT_A
     record = observation.verdict_record
     if isinstance(record, dict):
-        assert as_mapping(record).get("probe_outcome") == "inconclusive"
+        if entry_point is AgentEntryPoint.CANARY_PROBE:
+            assert as_mapping(record).get("probe_outcome") is None
+            assert observation.probe_calls == ()
+            assert observation.ledger_entries == {}
+        else:
+            assert as_mapping(record).get("probe_outcome") == "inconclusive"
+
+
+@pytest.mark.parametrize(
+    "entry_point",
+    NON_PROBE_ENTRY_POINTS,
+    ids=[ep.value for ep in NON_PROBE_ENTRY_POINTS],
+)
+def test_ac16_mismatched_marker_probe_fails_and_starts_a_cooldown(
+    entry_point: AgentEntryPoint,
+) -> None:
+    observation, controller, _clock = run_matrix_scenario(
+        entry_point,
+        _scenario("ac16_mismatched_marker_never_passes"),
+    )
+
+    record = observation.verdict_record
+    assert isinstance(record, dict)
+    typed_record = as_mapping(record)
+    assert typed_record.get("probe_outcome") == "failed_reproducing_no_work", (
+        "a marker file whose content is wrong is never positive proof of the canary "
+        f"task; observed verdict record: {typed_record!r}"
+    )
+    assert typed_record.get("probe_reason") == CanaryMarkerState.MISMATCHED.value, (
+        "the persisted verdict must name the mismatched marker as the reason the "
+        f"probe failed; observed verdict record: {typed_record!r}"
+    )
+    assert observation.outcome_kind == "agent_dead"
+    assert observation.availability is False
+    assert observation.wait_ms > 0
+    assert observation.probe_calls == (AGENT_A,)
+    store = controller.unavailability_store
+    assert store.is_available(PHASE, AGENT_A) is False
+    assert store.snapshot().get("unavailability_reasons", {}).get(AGENT_A) == DEAD
 
 
 def test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract() -> None:

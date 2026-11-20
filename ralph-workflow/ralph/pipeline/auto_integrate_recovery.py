@@ -172,7 +172,9 @@ def build_recovery_context(
 
                 state = PipelineState.from_policy(policy_bundle.pipeline)
 
-        controller, _ = build_recovery_controller(state, policy_bundle, config)
+        controller, _ = build_recovery_controller(
+            state, policy_bundle, config, probe_trusted_parent=workspace_scope.root
+        )
         strategy_history = (
             state.rebase.conflict_strategies_tried
             if (

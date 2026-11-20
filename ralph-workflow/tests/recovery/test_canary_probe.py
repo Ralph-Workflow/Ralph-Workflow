@@ -11,6 +11,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.invoke import AttemptEnded, BuildCommandOptions, build_command
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.agent_config import AgentConfig
 from ralph.git.errors import GitOperationError
 from ralph.git.operations import find_repo_root
@@ -21,6 +22,7 @@ from ralph.pipeline.agent_entry_point import (
 )
 from ralph.process.manager import ProcessStatus
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import (
     CANARY_MARKER_CONTENT,
     CANARY_MARKER_FILENAME,
@@ -28,10 +30,12 @@ from ralph.recovery.canary_probe import (
     CANARY_PROMPT_FILENAME,
     DEFAULT_PROBE_TIMEOUT_S,
     PROBE_INCONCLUSIVE_VERDICT,
+    PROBE_REASON_BUDGET_EXHAUSTED,
     ProbeOutcome,
     ProbeResult,
     run_canary_probe,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 from ralph.workspace.fs import FsWorkspace
 
@@ -46,6 +50,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "so the new test asserts the scratch directory is gone after a first delete call that "
         "raises OSError, instead of the removal giving up on the first failure"
     ),
+    "test_probe_reports_the_expected_outcome": (
+        "the budget_exhausted case left the parametrized table because run_canary_probe no "
+        "longer takes a budget_exhausted callback; the per-run probe budget is enforced by "
+        "the max_probes route of build_dead_agent_probe_runner, and the same observable "
+        "behaviour is asserted by test_probe_budget_exhaustion_is_inconclusive_and_leaves_"
+        "the_agent_selectable"
+    ),
 }
 
 if TYPE_CHECKING:
@@ -55,7 +66,6 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps
-    from ralph.recovery.controller import RecoveryController
 
 
 class _FakeInvoke(Protocol):
@@ -83,52 +93,36 @@ class _Case:
     expected_detail: str
     expected_reason: str
     timeout_s: float = DEFAULT_PROBE_TIMEOUT_S
-    budget_exhausted: bool = False
 
+
+_PASSED = ProbeOutcome.PASSED
+_INCONCLUSIVE = ProbeOutcome.INCONCLUSIVE
 
 _CASES: tuple[_Case, ...] = (
+    _Case("marker_written", "write_marker", _PASSED, "marker_written", ""),
+    _Case("marker_missing", "no_marker", _INCONCLUSIVE, "probe_could_not_run", ""),
     _Case(
-        name="marker_written",
-        behaviour="write_marker",
-        expected=ProbeOutcome.PASSED,
-        expected_detail="marker_written",
-        expected_reason="",
+        "infrastructure_error", "raise", _INCONCLUSIVE, "probe_could_not_run", "invocation_error"
     ),
-    _Case(
-        name="marker_missing_without_evidence",
-        behaviour="no_marker",
-        expected=ProbeOutcome.INCONCLUSIVE,
-        expected_detail="probe_could_not_run",
-        expected_reason="",
-    ),
-    _Case(
-        name="infrastructure_error",
-        behaviour="raise",
-        expected=ProbeOutcome.INCONCLUSIVE,
-        expected_detail="probe_could_not_run",
-        expected_reason="invocation_error",
-    ),
-    _Case(
-        name="timeout",
-        behaviour="block",
-        expected=ProbeOutcome.INCONCLUSIVE,
-        expected_detail="probe_could_not_run",
-        expected_reason="probe_timeout",
-        timeout_s=0.1,
-    ),
-    _Case(
-        name="budget_exhausted",
-        behaviour="write_marker",
-        expected=ProbeOutcome.INCONCLUSIVE,
-        expected_detail="probe_could_not_run",
-        expected_reason="budget_exhausted",
-        budget_exhausted=True,
-    ),
+    _Case("timeout", "block", _INCONCLUSIVE, "probe_could_not_run", "probe_timeout", 0.1),
 )
 
 
 def _agent_config() -> AgentConfig:
     return AgentConfig(cmd="fake-agent", model="fake-model")
+
+
+def _failed_facts() -> AttemptFacts:
+    return AttemptFacts(
+        artifact_valid=False,
+        workspace_changed=False,
+        exit_status="exit_1",
+        termination=TerminationRecord.create(
+            TerminationIssuer.AGENT_EXIT,
+            observed_returncode=1,
+            reported_returncode=1,
+        ),
+    )
 
 
 def _make_invoke(behaviour: str, calls: list[_Call]) -> _FakeInvoke:
@@ -144,69 +138,20 @@ def _make_invoke(behaviour: str, calls: list[_Call]) -> _FakeInvoke:
             return iter(())
         if behaviour == "raise":
             raise RuntimeError("infrastructure failure")
+        assert options is not None
+        workspace_path = options.workspace_path
+        assert workspace_path is not None
+        marker = workspace_path / CANARY_MARKER_FILENAME
         if behaviour == "write_marker":
-            assert options is not None
-            workspace_path = options.workspace_path
-            assert workspace_path is not None
-            (workspace_path / CANARY_MARKER_FILENAME).write_text(
-                CANARY_MARKER_CONTENT, encoding="utf-8"
-            )
-        return iter(())
-
-    return _invoke
-
-
-def _unreadable_marker_invoke(calls: list[_Call]) -> _FakeInvoke:
-    def _invoke(
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None:
-        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
-        assert options is not None
-        workspace_path = options.workspace_path
-        assert workspace_path is not None
-        (workspace_path / CANARY_MARKER_FILENAME).mkdir()
-        return iter(())
-
-    return _invoke
-
-
-def _marker_then_raise_invoke(calls: list[_Call]) -> _FakeInvoke:
-    def _invoke(
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None:
-        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
-        assert options is not None
-        workspace_path = options.workspace_path
-        assert workspace_path is not None
-        (workspace_path / CANARY_MARKER_FILENAME).write_text(
-            CANARY_MARKER_CONTENT, encoding="utf-8"
-        )
-        raise RuntimeError("the cli exited after writing the marker")
-
-    return _invoke
-
-
-def _marker_then_block_invoke(calls: list[_Call]) -> _FakeInvoke:
-    def _invoke(
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterator[str] | None:
-        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
-        assert options is not None
-        workspace_path = options.workspace_path
-        assert workspace_path is not None
-        (workspace_path / CANARY_MARKER_FILENAME).write_text(
-            CANARY_MARKER_CONTENT, encoding="utf-8"
-        )
-        threading.Event().wait(1.0)
+            marker.write_text(CANARY_MARKER_CONTENT, encoding="utf-8")
+        elif behaviour == "unreadable_marker":
+            marker.mkdir()
+        elif behaviour == "marker_then_raise":
+            marker.write_text(CANARY_MARKER_CONTENT, encoding="utf-8")
+            raise RuntimeError("the cli exited after writing the marker")
+        elif behaviour == "marker_then_block":
+            marker.write_text(CANARY_MARKER_CONTENT, encoding="utf-8")
+            threading.Event().wait(1.0)
         return iter(())
 
     return _invoke
@@ -290,20 +235,71 @@ def test_probe_reports_the_expected_outcome(case: _Case, tmp_path: Path) -> None
         invoke_fn=_make_invoke(case.behaviour, calls),
         workspace_factory=lambda: scratch,
         timeout_s=case.timeout_s,
-        budget_exhausted=(lambda: True) if case.budget_exhausted else None,
     )
     assert isinstance(result, ProbeResult)
     assert result.outcome == case.expected
     assert result.detail == case.expected_detail
     assert result.reason == case.expected_reason
-    if case.budget_exhausted:
-        assert calls == []
-        assert result.marker_written is None
-        assert result.error is None
-    elif result.outcome == ProbeOutcome.INCONCLUSIVE:
+    if result.outcome == ProbeOutcome.INCONCLUSIVE:
         assert result.marker_written is None
     else:
         assert result.marker_written is (result.outcome == ProbeOutcome.PASSED)
+
+
+def test_probe_budget_exhaustion_is_inconclusive_and_leaves_the_agent_selectable(
+    tmp_path: Path,
+) -> None:
+    calls: list[_Call] = []
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    def probe(config: AgentConfig) -> ProbeResult:
+        return run_canary_probe(
+            config,
+            invoke_fn=_make_invoke("write_marker", calls),
+            workspace_factory=lambda: scratch,
+        )
+
+    runner = build_dead_agent_probe_runner(
+        lambda name: _agent_config(),
+        probe,
+        max_probes=1,
+    )
+
+    spent = runner("development", "fake-agent")
+    assert spent is not None
+    assert spent.outcome is ProbeOutcome.PASSED
+    assert len(calls) == 1
+
+    exhausted = runner("development", "fake-agent")
+    assert exhausted is not None
+    assert exhausted.outcome is ProbeOutcome.INCONCLUSIVE
+    assert exhausted.detail == "probe_could_not_run"
+    assert exhausted.reason == PROBE_REASON_BUDGET_EXHAUSTED
+    assert exhausted.marker_written is None
+    assert exhausted.error is None
+    assert len(calls) == 1, "the budget-exhausted probe must not invoke the agent"
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=FakeClock(start=0.0),
+            dead_agent_probe_runner=runner,
+        )
+    )
+    outcome = controller.finalize_attempt(
+        "development",
+        "fake-agent",
+        facts=_failed_facts(),
+        attempt_failed=True,
+    )
+    assert outcome.kind is AttemptOutcomeKind.UNKNOWN
+    assert outcome.starts_cooldown is False
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["probe_reason"] == PROBE_REASON_BUDGET_EXHAUSTED
+    assert record["probe_outcome"] == "inconclusive"
+    assert controller.unavailability_store.is_available("development", "fake-agent") is True
+    assert len(calls) == 1, "the budget-exhausted verdict must not invoke the agent"
 
 
 def test_probe_uses_a_scratch_workspace_and_leaves_the_phase_workspace_untouched(
@@ -343,7 +339,7 @@ def test_unreadable_marker_with_agent_activity_is_inconclusive(tmp_path: Path) -
     scratch.mkdir()
     result = run_canary_probe(
         _agent_config(),
-        invoke_fn=_unreadable_marker_invoke(calls),
+        invoke_fn=_make_invoke("unreadable_marker", calls),
         workspace_factory=lambda: scratch,
     )
     assert result.outcome == ProbeOutcome.INCONCLUSIVE
@@ -503,7 +499,7 @@ def test_probe_passes_when_the_marker_was_written_before_the_invocation_failed(
     scratch.mkdir()
     result = run_canary_probe(
         _agent_config(),
-        invoke_fn=_marker_then_raise_invoke(calls),
+        invoke_fn=_make_invoke("marker_then_raise", calls),
         workspace_factory=lambda: scratch,
     )
     assert result.outcome == ProbeOutcome.PASSED
@@ -520,7 +516,7 @@ def test_probe_passes_when_the_marker_was_written_before_the_session_timed_out(
     scratch.mkdir()
     result = run_canary_probe(
         _agent_config(),
-        invoke_fn=_marker_then_block_invoke(calls),
+        invoke_fn=_make_invoke("marker_then_block", calls),
         workspace_factory=lambda: scratch,
         timeout_s=0.1,
     )

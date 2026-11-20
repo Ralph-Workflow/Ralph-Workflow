@@ -19,7 +19,8 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
 from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
-from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+from ralph.recovery.canary_probe_judge import CanaryMarkerState, judge_probe
 from ralph.recovery.connectivity_state import ConnectivityState
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -156,6 +157,8 @@ class MatrixScenario:
     expected_reason: str | None = None
     no_ledger_charge: bool = False
     corpus_id: str | None = None
+    probe_marker_state: CanaryMarkerState | None = None
+    probe_facts: AttemptFacts | None = None
 
 
 SCENARIOS = (
@@ -583,6 +586,17 @@ SCENARIOS = (
         precool=((AGENT_B, UnavailabilityReason.OUT_OF_CREDITS),),
         expected_kind="agent_dead",
     ),
+    MatrixScenario(
+        "ac16_mismatched_marker_never_passes",
+        ("AC16",),
+        (MatrixScenario.Script(facts=termination_facts()),),
+        ProbeOutcome.FAILED_REPRODUCING_NO_WORK,
+        probe_marker_state=CanaryMarkerState.MISMATCHED,
+        probe_facts=termination_facts(
+            observed=0, reported=0, event_kinds=("tool_result",), tool_calls=("write_file",)
+        ),
+        expected_kind="agent_dead",
+    ),
 )
 
 
@@ -623,6 +637,20 @@ def matrix_entry_points() -> tuple[AgentEntryPoint, ...]:
     return tuple(AgentEntryPoint)
 
 
+def _probe_result_for(scenario: MatrixScenario) -> ProbeResult | ProbeOutcome | None:
+    if scenario.probe_marker_state is None:
+        return scenario.probe_outcome
+    verdict = judge_probe(scenario.probe_marker_state, scenario.probe_facts or AttemptFacts())
+    if scenario.probe_outcome is not None and verdict.outcome.value != scenario.probe_outcome.value:
+        raise AssertionError(f"{scenario.name}: judge mapped the marker to {verdict.outcome.value}")
+    return ProbeResult(
+        outcome=ProbeOutcome(verdict.outcome.value),
+        detail=verdict.detail,
+        marker_written=verdict.marker_written,
+        reason=verdict.reason or verdict.detail,
+    )
+
+
 def _registered_route(entry_point: AgentEntryPoint) -> Callable[..., AttemptResult]:
     runners = registered_runners()
     if entry_point not in runners:
@@ -648,11 +676,11 @@ def run_matrix_scenario(
     probe_calls: list[str] = []
     scripts = list(scenario.attempts)
 
-    def probe_runner(_phase: str, agent: str) -> ProbeOutcome | None:
+    def probe_runner(_phase: str, agent: str) -> ProbeResult | ProbeOutcome | None:
         probe_calls.append(agent)
         if scenario.probe_raises:
             raise RuntimeError("probe infrastructure unavailable")
-        return scenario.probe_outcome
+        return _probe_result_for(scenario)
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
         if not isinstance(target, InvokeAgentEffect):
@@ -723,9 +751,9 @@ def run_matrix_scenario_with_selection(
     probe_calls: list[str] = []
     scripts = list(scenario.attempts)
 
-    def probe_runner(_phase: str, agent: str) -> ProbeOutcome | None:
+    def probe_runner(_phase: str, agent: str) -> ProbeResult | ProbeOutcome | None:
         probe_calls.append(agent)
-        return scenario.probe_outcome
+        return _probe_result_for(scenario)
 
     def invoke(target: object, *_args: object, **kwargs: object) -> object:
         if not isinstance(target, InvokeAgentEffect):
@@ -794,11 +822,11 @@ def run_via_finalize_attempt(
     clock = FakeClock(start=0.0)
     probe_calls: list[str] = []
 
-    def probe_runner(_phase: str, agent: str) -> ProbeOutcome | None:
+    def probe_runner(_phase: str, agent: str) -> ProbeResult | ProbeOutcome | None:
         probe_calls.append(agent)
         if scenario.probe_raises:
             raise RuntimeError("probe infrastructure unavailable")
-        return scenario.probe_outcome
+        return _probe_result_for(scenario)
 
     def unreachable_invoke(target: object, *_args: object, **_kwargs: object) -> object:
         raise AssertionError(f"reducer-style finalize must not invoke agents: {target!r}")
@@ -850,7 +878,7 @@ def _script_exception(script: MatrixScenario.Script) -> AgentInvocationError:
 def _deps(
     clock: FakeClock,
     invoke: AttemptInvoke,
-    probe_runner: Callable[[str, str], ProbeOutcome | None],
+    probe_runner: Callable[[str, str], ProbeResult | ProbeOutcome | None],
     scenario: MatrixScenario,
 ) -> AttemptRunnerDeps:
     connectivity = (lambda: scenario.connectivity) if scenario.connectivity is not None else None

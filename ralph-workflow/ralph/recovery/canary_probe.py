@@ -156,7 +156,6 @@ def run_canary_probe(
     timeout_s: float = DEFAULT_PROBE_TIMEOUT_S,
     general_config: GeneralConfig | None = None,
     extra_env: dict[str, str] | None = None,
-    budget_exhausted: Callable[[], bool] | None = None,
     phase_workspace: Path | None = None,
     trusted_parent: Path | None = None,
 ) -> ProbeResult:
@@ -169,7 +168,6 @@ def run_canary_probe(
             timeout_s=timeout_s,
             general_config=general_config,
             extra_env=extra_env,
-            budget_exhausted=budget_exhausted,
             phase_workspace=phase_workspace,
             trusted_parent=trusted_parent,
             started=started,
@@ -186,7 +184,6 @@ def _run_canary_probe(
     timeout_s: float,
     general_config: GeneralConfig | None,
     extra_env: dict[str, str] | None,
-    budget_exhausted: Callable[[], bool] | None,
     phase_workspace: Path | None,
     trusted_parent: Path | None,
     started: float,
@@ -198,7 +195,7 @@ def _run_canary_probe(
     attempt: _ProbeInvoke | None = None
     spawned = _SpawnedProcess()
     try:
-        preflight = _preflight_failure(timeout_s, budget_exhausted, started)
+        preflight = _preflight_failure(timeout_s, started)
         if preflight is not None:
             return preflight
         workspace = _scratch_workspace(
@@ -330,19 +327,9 @@ def _error_chain_contains(
     return False
 
 
-def _preflight_failure(
-    timeout_s: float, budget_exhausted: Callable[[], bool] | None, started: float
-) -> _ProbeResult | None:
+def _preflight_failure(timeout_s: float, started: float) -> _ProbeResult | None:
     if timeout_s <= 0:
         return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error="invalid_timeout")
-    if budget_exhausted is None:
-        return None
-    try:
-        out_of_budget = bool(budget_exhausted())
-    except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
-        return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
-    if out_of_budget:
-        return _inconclusive_result(PROBE_REASON_BUDGET_EXHAUSTED, started)
     return None
 
 

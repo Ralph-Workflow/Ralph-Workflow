@@ -9,6 +9,7 @@ from pathlib import Path
 
 MARKER_FILENAME = "ralph_canary_marker.txt"
 MARKER_CONTENT = "RALPH_CANARY_OK"
+MISMATCHED_MARKER_CONTENT = "RALPH_CANARY_WRONG"
 TRUSTED_ROOT_ENV = "STUB_TRUSTED_ROOT"
 BLOCK_ENV = "STUB_BLOCK"
 EXIT_DELAY_ENV = "STUB_EXIT_DELAY_SECONDS"
@@ -16,6 +17,8 @@ ARGV_RECORD_ENV = "STUB_ARGV_RECORD"
 DIALOG_TEXT_ENV = "STUB_DIALOG_TEXT"
 STDOUT_RECORD_ENV = "STUB_STDOUT_RECORD"
 STDIN_RECORD_ENV = "STUB_STDIN_RECORD"
+MARKER_MODE_ENV = "STUB_MARKER_MODE"
+MARKER_RECORD_ENV = "STUB_MARKER_RECORD"
 
 DIALOG_TAIL = "╭─ Vault handshake ─╮"
 
@@ -35,6 +38,26 @@ def _record_argv() -> None:
     if not record_path:
         return
     Path(record_path).write_text(json.dumps(sys.argv), encoding="utf-8")
+
+
+def _mismatched_marker_mode() -> bool:
+    return os.environ.get(MARKER_MODE_ENV) == "mismatch"
+
+
+def _marker_content() -> str:
+    if _mismatched_marker_mode():
+        return MISMATCHED_MARKER_CONTENT
+    return MARKER_CONTENT
+
+
+def _record_marker(marker_path: Path, content: str, returncode: int) -> None:
+    record_path = os.environ.get(MARKER_RECORD_ENV)
+    if not record_path:
+        return
+    Path(record_path).write_text(
+        json.dumps({"path": str(marker_path), "content": content, "returncode": returncode}),
+        encoding="utf-8",
+    )
 
 
 def _emit(line: str) -> None:
@@ -89,7 +112,12 @@ def main() -> int:
     trusted_root = os.environ.get(TRUSTED_ROOT_ENV)
     cwd = Path.cwd()
     if trusted_root and _within(cwd, Path(trusted_root)):
-        (cwd / MARKER_FILENAME).write_text(MARKER_CONTENT, encoding="utf-8")
+        content = _marker_content()
+        marker_path = cwd / MARKER_FILENAME
+        marker_path.write_text(content, encoding="utf-8")
+        _record_marker(marker_path, content, 0)
+        if _mismatched_marker_mode():
+            _emit("claude tool: Write\n")
         _emit("fake-trust-dialog-cli: trusted cwd, marker written\n")
         return 0
     _emit(f"{_dialog_tail()}\n")

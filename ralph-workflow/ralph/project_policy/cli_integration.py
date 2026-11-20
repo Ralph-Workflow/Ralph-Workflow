@@ -298,6 +298,7 @@ def _make_production_invoke_agent(
         config=load_result.config,
         policy_bundle=load_result.policy_bundle,
         deps=attempt_deps,
+        probe_trusted_parent=workspace_scope.root,
     )
 
     def invoke_agent(*, phase: str, prompt_path: str) -> bool:

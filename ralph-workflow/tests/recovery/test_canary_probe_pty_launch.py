@@ -25,6 +25,7 @@ from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import (
+    CANARY_MARKER_CONTENT,
     CANARY_MARKER_FILENAME,
     PROBE_COULD_NOT_RUN_DETAIL,
     PROBE_INCONCLUSIVE_VERDICT,
@@ -37,6 +38,11 @@ from ralph.recovery.canary_probe import (
     ProbeOutcome,
     ProbeResult,
     run_canary_probe,
+)
+from ralph.recovery.canary_probe_judge import (
+    CanaryMarkerState,
+    ProbeJudgeOutcome,
+    judge_probe,
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
@@ -192,6 +198,74 @@ def test_trusted_parent_cwd_writes_marker_and_passes(
     assert probe_area.exists()
     assert list(probe_area.glob("canary-probe-*")) == []
     assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
+
+
+def _probe_attempt_facts_from_run(
+    stdout_record: Path,
+    recorded: dict[str, object],
+) -> AttemptFacts:
+    captured_stdout = stdout_record.read_text(encoding="utf-8")
+    assert "claude tool:" in captured_stdout, (
+        "the probe run must show the agent using a tool to write the marker file; "
+        f"observed stdout: {captured_stdout!r}"
+    )
+    returncode = recorded["returncode"]
+    assert isinstance(returncode, int)
+    return AttemptFacts(
+        event_kinds=(AgentActivityKind.TOOL_USE.value,),
+        termination=TerminationRecord.create(
+            TerminationIssuer.AGENT_EXIT,
+            observed_returncode=returncode,
+            reported_returncode=returncode,
+            liveness_observed=False,
+        ),
+    )
+
+
+@pytest.mark.timeout_seconds(8)
+def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    marker_record = tmp_path / "stub-marker.json"
+    stdout_record = tmp_path / "stub-stdout.txt"
+    result = run_canary_probe(
+        stub_agent_config,
+        timeout_s=3,
+        trusted_parent=trusted_root,
+        extra_env=_probe_env(
+            trusted_root,
+            STUB_MARKER_MODE="mismatch",
+            STUB_MARKER_RECORD=str(marker_record),
+            STUB_STDOUT_RECORD=str(stdout_record),
+        ),
+    )
+
+    recorded = json.loads(marker_record.read_text(encoding="utf-8"))
+    assert Path(recorded["path"]).name == CANARY_MARKER_FILENAME
+    assert recorded["content"] != CANARY_MARKER_CONTENT, (
+        "the mismatch mode must write a marker file whose content is not the canary "
+        f"content; observed content: {recorded['content']!r}"
+    )
+
+    assert result.outcome is not ProbeOutcome.PASSED, (
+        "a marker file whose content is wrong is never positive proof of the canary "
+        f"task, whatever exit code the CLI returned; observed outcome: {result.outcome!r}"
+    )
+    assert result.marker_written is not True, (
+        "a mismatched marker must never be recorded as a written canary marker; "
+        f"observed marker_written: {result.marker_written!r}"
+    )
+
+    verdict = judge_probe(
+        CanaryMarkerState.MISMATCHED,
+        _probe_attempt_facts_from_run(stdout_record, recorded),
+    )
+    assert verdict.outcome is ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK
+    assert verdict.detail == CanaryMarkerState.MISMATCHED.value
+    assert verdict.marker_written is False
 
 
 @pytest.mark.timeout_seconds(8)

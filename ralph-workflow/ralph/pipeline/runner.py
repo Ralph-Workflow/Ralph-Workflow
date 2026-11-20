@@ -415,6 +415,7 @@ def _main_phase_loop_controller(
     deps: AttemptRunnerDeps,
     state: PipelineState | None,
     pipeline_deps: PipelineDeps | None,
+    probe_trusted_parent: Path | None = None,
 ) -> RecoveryController:
     if isinstance(pipeline_deps, PipelineDeps):
         existing = pipeline_deps.recovery_controller
@@ -428,16 +429,20 @@ def _main_phase_loop_controller(
         ledger_snapshot=state.ledger_snapshot if state is not None else None,
         cooldown_snapshot=state.agent_cooldowns if state is not None else None,
         false_cooldown_snapshot=state.false_cooldown_feedback if state is not None else None,
+        probe_trusted_parent=probe_trusted_parent,
     )
 
 
 def _deps_seamed_probe_runner(
     pipeline_deps: PipelineDeps | None,
     config: UnifiedConfig,
+    trusted_parent: Path | None = None,
 ) -> Callable[[str, str], ProbeResult | None] | None:
     if pipeline_deps is None:
         return None
-    return seamed_dead_agent_probe_runner(config, pipeline_deps.invoke_agent)
+    return seamed_dead_agent_probe_runner(
+        config, pipeline_deps.invoke_agent, trusted_parent=trusted_parent
+    )
 
 
 def _run_main_phase_loop_attempt(
@@ -506,7 +511,7 @@ def _execute_effect(
             deps = AttemptRunnerDeps(
                 clock=SystemClock(),
                 invoke=_keyword_effect_invoker(execute_agent_effect),
-                probe_runner=_deps_seamed_probe_runner(pipeline_deps, config),
+                probe_runner=_deps_seamed_probe_runner(pipeline_deps, config, workspace_scope.root),
                 workspace_probe=DefaultWorkspaceChangeProbe(),
                 connectivity=None,
             )
@@ -519,6 +524,7 @@ def _execute_effect(
                     deps=deps,
                     state=state,
                     pipeline_deps=pipeline_deps,
+                    probe_trusted_parent=workspace_scope.root,
                 ),
                 deps=deps,
                 state=state,

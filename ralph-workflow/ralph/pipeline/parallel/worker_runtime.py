@@ -324,6 +324,7 @@ def _parallel_worker_controller(
     deps: AttemptRunnerDeps,
     state: PipelineState | None,
     pipeline_deps: PipelineDeps | None,
+    probe_trusted_parent: Path | None = None,
 ) -> RecoveryController:
     if isinstance(pipeline_deps, PipelineDeps):
         existing = pipeline_deps.recovery_controller
@@ -337,6 +338,7 @@ def _parallel_worker_controller(
         ledger_snapshot=state.ledger_snapshot if state is not None else None,
         cooldown_snapshot=state.agent_cooldowns if state is not None else None,
         false_cooldown_snapshot=state.false_cooldown_feedback if state is not None else None,
+        probe_trusted_parent=probe_trusted_parent,
     )
 
 
@@ -485,6 +487,7 @@ def run_parallel_worker_from_manifest(
             deps=attempt_deps,
             state=state,
             pipeline_deps=effective_pipeline_deps,
+            probe_trusted_parent=workspace_root,
         ),
         deps=attempt_deps,
         state=state,
