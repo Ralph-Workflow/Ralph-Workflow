@@ -135,7 +135,6 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_mcp_timeout.py",
     "test_audit_filesystem_polling_invocation.py",
     "test_audit_resource_lifecycle.py",
-    "test_audit_integration_agent_path.py",
     "e72_descendant_helper.py",
     "test_audit_parallelization_dormant.py",
     "test_smoke_multimodal_end_to_end.py",
