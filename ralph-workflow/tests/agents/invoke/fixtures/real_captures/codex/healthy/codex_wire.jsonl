@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a1f8a3-46a9-7823-9823-4a15a0902fcf"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `auto/cheap` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"The user wants a single word reply: OK."}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"OK"}}
+{"type":"turn.completed","usage":{"input_tokens":18994,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":14,"reasoning_output_tokens":11}}

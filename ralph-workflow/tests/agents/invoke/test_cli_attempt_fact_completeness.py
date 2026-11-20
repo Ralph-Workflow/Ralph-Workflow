@@ -50,6 +50,8 @@ if TYPE_CHECKING:
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DISPLAY_FIXTURES = _REPO_ROOT / "tests" / "display" / "_fixtures"
 _INVOKE_FIXTURES = _REPO_ROOT / "tests" / "agents" / "invoke" / "fixtures"
+_REAL_CAPTURE_ROOT = _INVOKE_FIXTURES / "real_captures"
+_PROVENANCE_NAME = "provenance.md"
 _OPENCODE_STORE_FIXTURE = _DISPLAY_FIXTURES / "opencode_subagent_child_store.json"
 _CLAUDE_INTERACTIVE_CAPTURE = (
     _REPO_ROOT
@@ -233,6 +235,61 @@ _RECORDED_SHAPE_GAPS: tuple[tuple[str, str, str], ...] = tuple(
     for shape in _SHAPES
     if (_CAPTURES[parser_key] is None or shape.name != "healthy")
     and (parser_key, shape.name) not in _SHAPE_CAPTURES
+)
+
+
+def _real_capture_file(directory: Path) -> Path | None:
+    candidates = sorted(
+        path for path in directory.iterdir() if path.is_file() and path.name != _PROVENANCE_NAME
+    )
+    for pattern in ("*.jsonl", "*.json", "*.log", "*.txt"):
+        for path in candidates:
+            if path.match(pattern) and path.stat().st_size > 0:
+                return path
+    return None
+
+
+def _discover_real_shape_captures() -> dict[tuple[str, str], Path]:
+    discovered: dict[tuple[str, str], Path] = {}
+    if not _REAL_CAPTURE_ROOT.is_dir():
+        return discovered
+    registry_keys = set(_REGISTRY_KEYS)
+    shape_names = {shape.name for shape in _SHAPES}
+    for cli_dir in sorted(_REAL_CAPTURE_ROOT.iterdir()):
+        if not cli_dir.is_dir() or cli_dir.name not in registry_keys:
+            continue
+        for shape_dir in sorted(cli_dir.iterdir()):
+            if not shape_dir.is_dir() or shape_dir.name not in shape_names:
+                continue
+            if not (shape_dir / _PROVENANCE_NAME).is_file():
+                continue
+            capture = _real_capture_file(shape_dir)
+            if capture is None:
+                continue
+            discovered[(cli_dir.name, shape_dir.name)] = capture
+    return discovered
+
+
+_REAL_SHAPE_CAPTURES: dict[tuple[str, str], Path] = _discover_real_shape_captures()
+
+_EXPECTED_REAL_CAPTURE_CELLS: tuple[tuple[str, str], ...] = (
+    ("agy", "descendant-hang"),
+    ("agy", "healthy"),
+    ("agy", "killed"),
+    ("claude", "descendant-hang"),
+    ("claude", "healthy"),
+    ("claude", "killed"),
+    ("codex", "descendant-hang"),
+    ("codex", "healthy"),
+    ("codex", "killed"),
+    ("kimi", "descendant-hang"),
+    ("kimi", "healthy"),
+    ("kimi", "killed"),
+    ("opencode", "descendant-hang"),
+    ("opencode", "healthy"),
+    ("opencode", "killed"),
+    ("pi", "healthy"),
+    ("pi", "killed"),
 )
 
 _GAP_ROWS: tuple[tuple[str, str, str], ...] = (
@@ -445,12 +502,11 @@ class _ExitedHandle(ManagedProcess):
         return False
 
 
-@cache
-def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, AttemptOutcomeKind]:
-    capture = _SHAPE_CAPTURES.get((parser_key, shape_name)) or _CAPTURES[parser_key]
-    if capture is None:
-        msg = f"{parser_key}: no recorded capture; record a gap row instead"
-        raise AssertionError(msg)
+def _replay_capture(
+    parser_key: str,
+    shape_name: str,
+    capture: Path,
+) -> tuple[AttemptFacts, AttemptOutcomeKind, TerminationIssuer | None]:
     shape = next(item for item in _SHAPES if item.name == shape_name)
     lines = capture.read_text(encoding="utf-8").splitlines(keepends=True)
     workspace = Path(tempfile.mkdtemp(prefix=f"ralph-u3-{parser_key}-"))
@@ -501,7 +557,11 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         ValueError,
     ) as exc:
         reader_failure = exc
-    handle.observe_exit()
+    if reader_failure is None:
+        try:
+            handle.observe_exit()
+        except AssertionError as exc:
+            reader_failure = exc
     if shape.supervisor_timing == "after-reader":
         supervisor.act(SilenceObserved(WatchdogFireReason.STALLED_AFTER_TOOL_RESULT))
     elif shape.supervisor_timing == "after-parent-exit":
@@ -536,8 +596,19 @@ def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, Attem
         attempt_failed=shape.attempt_failed,
         typed_signal=typed_signal,
     )
-    assert outcome.issuer is shape.expected_issuer
-    return facts, outcome.kind
+    return facts, outcome.kind, outcome.issuer
+
+
+@cache
+def _replay_shape(parser_key: str, shape_name: str) -> tuple[AttemptFacts, AttemptOutcomeKind]:
+    capture = _SHAPE_CAPTURES.get((parser_key, shape_name)) or _CAPTURES[parser_key]
+    if capture is None:
+        msg = f"{parser_key}: no recorded capture; record a gap row instead"
+        raise AssertionError(msg)
+    shape = next(item for item in _SHAPES if item.name == shape_name)
+    facts, outcome_kind, issuer = _replay_capture(parser_key, shape_name, capture)
+    assert issuer is shape.expected_issuer
+    return facts, outcome_kind
 
 
 def _facts_for(parser_key: str) -> AttemptFacts:
@@ -619,6 +690,95 @@ def test_capture_shape_axis_preserves_facts_and_decides_outcome(parser_key: str)
             assert (parser_key, shape.name) in shape_gap_keys
 
 
+_REAL_CAPTURE_CELLS: tuple[tuple[str, str], ...] = tuple(sorted(_REAL_SHAPE_CAPTURES))
+
+
+@pytest.mark.parametrize(
+    "cell",
+    _REAL_CAPTURE_CELLS,
+    ids=[f"{_param_id(parser_key)}-{shape_name}" for parser_key, shape_name in _REAL_CAPTURE_CELLS],
+)
+def test_real_capture_replays_the_same_shape_facts_and_outcome(cell: tuple[str, str]) -> None:
+    parser_key, shape_name = cell
+    capture = _REAL_SHAPE_CAPTURES[cell]
+    shape = next(item for item in _SHAPES if item.name == shape_name)
+    facts, outcome_kind, issuer = _replay_capture(
+        parser_key,
+        shape_name,
+        capture,
+    )
+    scripted_facts, scripted_kind = _replay_shape(parser_key, shape_name)
+    assert outcome_kind is shape.expected_kind
+    assert outcome_kind is scripted_kind, (
+        f"{cell}: the real capture decides {outcome_kind} where the scripted twin decides"
+        f" {scripted_kind}"
+    )
+    assert issuer is shape.expected_issuer, (
+        f"{cell}: the real capture attributes the end to {issuer} where the scripted twin"
+        f" attributes it to {shape.expected_issuer}"
+    )
+    assert facts.liveness_observed is shape.expected_liveness, (
+        f"{cell}: the real capture observes liveness {facts.liveness_observed} where the"
+        f" scripted twin observes {shape.expected_liveness}"
+    )
+    assert facts.event_kinds, f"{cell}: real capture replayed no event kinds"
+    assert facts.termination is not None, f"{cell}: real capture replayed no termination record"
+    extra_fields = _populated_fields(facts) - _populated_fields(scripted_facts)
+    assert not extra_fields, (
+        f"{cell}: the real capture surfaced fact fields the scripted twin lacks:"
+        f" {sorted(extra_fields)}"
+    )
+
+
+def test_real_capture_directories_carry_provenance_and_registered_cells_exist() -> None:
+    assert _REAL_CAPTURE_ROOT.is_dir(), (
+        f"the real recorded capture tree is missing: {_REAL_CAPTURE_ROOT}"
+    )
+    registry_keys = set(_REGISTRY_KEYS)
+    shape_names = {shape.name for shape in _SHAPES}
+    for cli_dir in sorted(_REAL_CAPTURE_ROOT.iterdir()):
+        if not cli_dir.is_dir():
+            continue
+        assert cli_dir.name in registry_keys, (
+            f"real capture directory {cli_dir.name} is not a registered parser key"
+        )
+        for shape_dir in sorted(cli_dir.iterdir()):
+            if not shape_dir.is_dir():
+                continue
+            assert shape_dir.name in shape_names, (
+                f"real capture directory {shape_dir} has no matching shape"
+            )
+            recorded = [path for path in sorted(shape_dir.iterdir()) if path.is_file()]
+            assert recorded, f"real capture cell {shape_dir} holds no files"
+            provenance = shape_dir / _PROVENANCE_NAME
+            assert provenance.is_file(), (
+                f"real capture cell {shape_dir} holds {recorded} without a provenance doc"
+            )
+            captures = [path for path in recorded if path.name != _PROVENANCE_NAME]
+            assert captures, (
+                f"real capture cell {shape_dir} holds a provenance doc and no capture file"
+            )
+            for candidate in captures:
+                assert candidate.stat().st_size > 0, f"real capture file {candidate} is empty"
+            capture = _real_capture_file(shape_dir)
+            assert capture is not None, (
+                f"real capture cell {shape_dir} holds no capture file the reader can replay:"
+                f" {captures}"
+            )
+    for cell, capture in _REAL_SHAPE_CAPTURES.items():
+        assert capture.is_file(), f"registered real capture is missing: {capture}"
+        assert capture.stat().st_size > 0, f"registered real capture is empty: {capture}"
+        assert cell[0] in registry_keys, (
+            f"registered real capture {capture} names an unregistered parser key"
+        )
+        assert cell[1] in shape_names, f"registered real capture {capture} names an unknown shape"
+        assert (capture.parent / _PROVENANCE_NAME).is_file(), (
+            f"registered real capture {capture} has no provenance doc"
+        )
+    missing = [cell for cell in _EXPECTED_REAL_CAPTURE_CELLS if cell not in _REAL_SHAPE_CAPTURES]
+    assert not missing, f"the declared recorded-session matrix has no real capture for: {missing}"
+
+
 def test_recorded_shape_gap_rows_cover_only_missing_captures() -> None:
     expected = {
         (parser_key, shape.name)
@@ -659,6 +819,35 @@ def test_gap_tables_equal_replayed_gaps() -> None:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "RALPH_TEST_CHANGE_REASONS real recorded capture tier": (
+        "a real-capture tier is added on top of the scripted tier: real CLI session "
+        "captures recorded under tests/agents/invoke/fixtures/real_captures/ are "
+        "discovered at import time, replayed through the same reader, supervisor and "
+        "end_attempt seam, and asserted against the same shape outcome and fact "
+        "expectations as the scripted twin; each real cell must decide the same "
+        "outcome kind, attribute the end to the same issuer, observe the same "
+        "liveness and surface no fact field its scripted twin lacks, and the agy "
+        "cells carry the file's own _param_id spelling so the recorded agy sessions "
+        "are replayed by the default lane instead of being deselected as live-agy "
+        "smoke; the scripted tier, _RECORDED_SHAPE_GAPS and the gap-correspondence "
+        "tests are unchanged, and the new guard fails when a real capture cell "
+        "holds a capture without a provenance doc or a provenance doc without a "
+        "capture, or when a registered cell points at a missing or empty capture; "
+        "the tier also carries a floor: the recorded-capture tree must exist, "
+        "every cell of the declared recorded-session matrix in "
+        "_EXPECTED_REAL_CAPTURE_CELLS must have a discovered real capture so the "
+        "tier cannot evaporate silently, every file inside a real capture cell "
+        "must be non-empty, and a reader abort raised while replaying a capture is "
+        "reported as a fact difference instead of an opaque fake-handle assertion; "
+        "the shapes that need a live provider error - nonzero-exit, "
+        "stderr-quota-line and auth-error - stay scripted for every CLI because a "
+        "genuine quota or auth failure needs live credentials that must not be "
+        "burned, the descendant-hang shape is recorded only for the CLIs whose "
+        "session could be induced to leave a live descendant behind, and cursor "
+        "stays scripted because cursor-agent is installed on this host but "
+        "unauthenticated, so those cells keep their justification here instead of "
+        "in a second document"
+    ),
     "RALPH_TEST_CHANGE_REASONS recorded shape gap reason redefinition": (
         "for the shape axis, a recorded session is redefined to include scripted captures "
         "recorded through the production subprocess/reader entry point (precedent: "
