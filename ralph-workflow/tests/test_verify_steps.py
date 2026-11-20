@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import tomllib
+from pathlib import Path
 
 import ralph.verify
 import ralph.verify_steps
@@ -22,6 +24,81 @@ _EXPECTED_CPU_BUDGET_SECONDS = 1800.0
 _EXPECTED_HANG_CAP_SECONDS = 225.0
 _EXPECTED_STEP_TIMEOUT_SECONDS = 30.0
 _EXPECTED_TEST_STEP_LABELS = frozenset({"make test", "make test-verification-smoke"})
+
+_DEAD_CODE_LABEL = "dead code audit (vulture)"
+_DEAD_CODE_COMMAND = "uv run --with vulture python -m vulture --config pyproject.toml"
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+_MAKEFILE_PATH = _PACKAGE_ROOT / "Makefile"
+_PYPROJECT_PATH = _PACKAGE_ROOT / "pyproject.toml"
+
+
+def _makefile_lines() -> list[str]:
+    return _MAKEFILE_PATH.read_text(encoding="utf-8").splitlines()
+
+
+def _makefile_target_body(name: str) -> list[str]:
+    body: list[str] = []
+    in_target = False
+
+    for line in _makefile_lines():
+        if not in_target:
+            if line.startswith(f"{name}:"):
+                in_target = True
+            continue
+        if not line.startswith("\t"):
+            break
+        body.append(line.strip())
+
+    assert body, f"target {name!r} not found"
+
+    return body
+
+
+def test_dead_code_audit_is_registered_in_the_default_gate() -> None:
+    steps = ralph.verify_steps._VERIFY_STEPS
+    matches = [step for step in steps if step[0] == _DEAD_CODE_LABEL]
+    step_timeout = ralph.verify_steps._VERIFY_STEP_TIMEOUT_SECONDS
+
+    assert len(matches) == 1
+    label, command, args, timeout = matches[0]
+    assert label == _DEAD_CODE_LABEL
+    assert (command, args) == (
+        "uv",
+        ("run", "--with", "vulture", "python", "-m", "vulture", "--config", "pyproject.toml"),
+    )
+    assert timeout == step_timeout
+
+
+def test_dead_code_gate_and_makefile_target_run_the_same_command() -> None:
+    steps = ralph.verify_steps._VERIFY_STEPS
+    matches = [step for step in steps if step[0] == _DEAD_CODE_LABEL]
+    _label, command, args, _timeout = matches[0]
+    recipe = " ".join(_makefile_target_body("dead-code"))
+    phony_line = next(line for line in _makefile_lines() if line.startswith(".PHONY:"))
+
+    assert " ".join((command, *args)) == recipe
+    assert recipe == _DEAD_CODE_COMMAND
+    assert "dead-code" in phony_line.split()
+
+
+def test_dead_code_target_scans_the_paths_declared_by_the_vulture_config() -> None:
+    config = tomllib.loads(_PYPROJECT_PATH.read_text(encoding="utf-8"))
+    vulture_paths = config["tool"]["vulture"]["paths"]
+    recipe = " ".join(_makefile_target_body("dead-code"))
+
+    assert "--config pyproject.toml" in recipe
+    assert vulture_paths
+    for path in vulture_paths:
+        assert (_PACKAGE_ROOT / path).is_dir()
+
+
+def test_dead_code_gate_keeps_the_budget_tracked_steps_intact() -> None:
+    steps = ralph.verify_steps._VERIFY_STEPS
+    tracked = ralph.verify._BUDGET_TRACKED_STEPS
+
+    assert steps[2][0] == "make test"
+    assert steps[len(steps) - 2][0] == "make test-verification-smoke"
+    assert _DEAD_CODE_LABEL not in {steps[index][0] for index in tracked}
 
 
 def test_verify_reexports_the_step_registry() -> None:

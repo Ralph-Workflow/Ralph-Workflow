@@ -7,11 +7,11 @@ cd ralph-workflow
 make verify
 ```
 
-The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make verify` with `-W --keep-going` so any Sphinx warning fails the gate; it runs before the Python verify step and stays outside the immutable 75-second combined test budget.
+`make verify` runs three Make prerequisites before the Python verify step (`ralph-workflow/Makefile:194`): `formula-check`, which fails closed with a policy citation when Ruby is absent; `verify-drift`, the fail-closed drift gate; and `docs`, the Sphinx HTML build with `-W --keep-going` so any Sphinx warning fails the gate. All three prerequisites run outside the immutable 75-second combined test budget.
 
 ## Verify steps and gates
 
-`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **54 steps**. The gates that protect the supply chain and the test surface are:
+`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it is the only place the step inventory is recorded, so adding a step there updates the authoritative topology without a duplicated count anywhere else. The gates that protect the supply chain and the test surface are:
 
 | Gate | Verify step label | Enforcing command |
 |---|---|---|
@@ -60,7 +60,7 @@ Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx o
 
 ## Total test budget
 
-The combined total test budget is **pinned**: 75 seconds of wall clock net of host contention, and 1800 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:501-538`). The critical path is the slowest shard.
+The combined total test budget is **pinned**: 75 seconds of wall clock net of host contention, and 1800 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The ordinary selection and the registered required-E2E files are partitioned separately by the same LPT partitioner (`ralph/test_suites.py:555-592`), and the resulting shards run concurrently. The critical path is the slowest shard.
 
 Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps once they have all passed (`ralph/verify_budget.py` documents the rule):
 
@@ -228,7 +228,7 @@ Enforcing command:
 uv run python -m ralph.testing.audit_terminal_escape_containment
 ```
 
-This audit is one of the 54 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 75-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
+This audit is one of the entries in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) and is not the registry's last entry. It is not budget-tracked (exempt from the 75-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
 
 ## Terminal state restoration contract
 

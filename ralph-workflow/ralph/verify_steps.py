@@ -317,6 +317,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "dead code audit (vulture)",
+        "uv",
+        ("run", "--with", "vulture", "python", "-m", "vulture", "--config", "pyproject.toml"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "make test-verification-smoke",
         "make",
         ("test-verification-smoke",),

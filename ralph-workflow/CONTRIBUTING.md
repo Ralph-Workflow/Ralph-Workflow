@@ -17,10 +17,13 @@ ralph --generate-commit
 `git clone` fetches the repository and `cd Ralph-Workflow/ralph-workflow`
 enters the Python package. `make dev` creates or refreshes the
 self-contained dev snapshot and its `rdev` launcher. Make your change
-in the package, then `make verify` runs the docs/drift check, ruff,
-mypy, the combined tests, and every declared audit; the required
-real-git E2E runs inside `make test` under the immutable 75-second
-budget. `ralph --generate-commit` produces the commit message.
+in the package, then `make verify` runs the `formula-check`, `verify-drift`,
+and `docs` prerequisites and then the ordered verify-step registry
+`ralph/verify_steps.py::_VERIFY_STEPS` — ruff, `ruff format --check`, mypy,
+the combined tests, the aggregate smoke suite, the social-proof gate, and
+every declared audit; the required real-git E2E runs inside `make test`
+under the immutable 75-second budget. `ralph --generate-commit` produces the
+commit message.
 
 A few practical notes for a first patch:
 

@@ -25,6 +25,7 @@ from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
+from tests._retained_resolution_handoff_helpers import install_fast_git_spawn
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
@@ -60,10 +61,22 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "tests/pipeline/test_continuation_retry_gate_blackbox.py use for the same cost "
         "class"
     ),
+    "_fast_git_spawn": (
+        "the module's git calls now run through the public route_run_git fast-spawn "
+        "seam already used by the retained-resolution handoff tests; the commands, "
+        "arguments, environment scrubbing, timeout and exit-code handling are "
+        "unchanged, so every assertion still observes the same recovery outcomes "
+        "while the process-manager fork overhead leaves the module"
+    ),
 }
 
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+
+@pytest.fixture(autouse=True)
+def _fast_git_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_fast_git_spawn(monkeypatch)
 
 
 class _LogLevelDouble(Protocol):

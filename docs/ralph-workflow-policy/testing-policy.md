@@ -245,8 +245,9 @@ RALPH-COMMAND: make -C ralph-workflow test
 
 The expected successful result is a deterministic default test profile.
 Its wall-clock time contributes to the project's 75-second combined budget
-with the two smoke test steps under `make verify`; `Makefile`'s 60-second
-per-suite limit is secondary to that immutable combined budget. On failure,
+with the single budget-tracked smoke step (`make test-verification-smoke`)
+under `make verify`; `Makefile`'s 60-second per-suite limit is secondary to
+that immutable combined budget. On failure,
 report the failing test names and the failure category (assertion
 failure, collection error, timeout, environmental). Never ignore or
 skip a failure to obtain green.

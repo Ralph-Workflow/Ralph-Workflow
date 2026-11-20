@@ -55,7 +55,7 @@ help:
 	@echo "  dist-pypi      Build and publish to PyPI via hatch"
 	@echo "  dist-all       Build both binary and PyPI distributions"
 	@echo "  formula-check  Validate Homebrew formula syntax"
-	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
+	@echo "  dead-code      Run the Vulture dead-code audit (wired into 'make verify'; fails when vulture reports a finding)"
 	@echo "  docs           Build Sphinx HTML documentation (gated by 'make verify' via Make prerequisite)"
 	@echo "  docs-linkcheck Check all hyperlinks in docs (opt-in; not in verify, run on demand)"
 	@echo "  route-linkcheck Check links in non-Sphinx route pages (opt-in, not in verify)"

@@ -18,9 +18,15 @@ The two policies most contributors reach for first:
 <!-- ralph-workflow-policy:migrated -> docs/ralph-workflow-policy/verification-policy.md -->
 
 The canonical gate is `make verify` run from the `ralph-workflow/`
-directory. It runs the docs build, ruff, mypy --strict, the
-75-second-capped pytest suite, and the audit scripts; the subprocess
-E2E suite lives in a separate opt-in target (`make test-subprocess-e2e`).
+directory. It runs three Make prerequisites — `formula-check` (the
+Homebrew-formula gate, which fails closed when Ruby is absent),
+`verify-drift` (the fail-closed drift gate), and `docs` (the Sphinx
+HTML build, which fails on any warning) — and then the ordered verify-step
+registry `ralph-workflow/ralph/verify_steps.py::_VERIFY_STEPS`: ruff,
+`ruff format --check`, mypy --strict, the pytest suite and the aggregate
+smoke suite under the immutable 75-second combined budget, the
+social-proof gate, and every declared audit script; the subprocess E2E
+suite lives in a separate opt-in target (`make test-subprocess-e2e`).
 
 Pull requests should be small, focused, and include tests for any
 behavior change.
