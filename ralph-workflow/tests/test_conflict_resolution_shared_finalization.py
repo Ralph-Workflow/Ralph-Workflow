@@ -40,7 +40,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_retained_continuation_and_ordinary_phase_share_one_controller_ledger": (
         "retained continuation must observe the same RecoveryController ledger cooldown "
         "as the ordinary phase, including when the controller is reconstructed process-locally "
-        "from the ambient effect dependencies"
+        "from the ambient effect dependencies; it declares a 3 s per-test budget because "
+        "its call alone takes 1.1-1.3 s when run by itself, so the 1 s default failed the "
+        "publication gate on main under host load"
     ),
 }
 
@@ -339,6 +341,7 @@ def test_controller_has_no_secondary_conflict_classifier() -> None:
     assert not hasattr(RecoveryController, "_typed_conflict_attempt_reason")
 
 
+@pytest.mark.timeout_seconds(3)
 def test_retained_continuation_and_ordinary_phase_share_one_controller_ledger(
     tmp_path: Path,
 ) -> None:
