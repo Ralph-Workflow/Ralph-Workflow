@@ -80,7 +80,7 @@ def _forward_effect(
     display_context: DisplayContext | None,
     *positional: object,
     attempt_finalizer: AttemptFinalizer | None,
-    **kwargs: object,
+    extra: dict[str, object],
 ) -> object:
     return runner(
         target,
@@ -90,7 +90,7 @@ def _forward_effect(
         *positional,
         display_context=display_context,
         attempt_finalizer=attempt_finalizer,
-        **kwargs,
+        **extra,
     )
 
 
@@ -136,7 +136,7 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             display_context,
             *positional,
             attempt_finalizer=attempt_finalizer,
-            **kwargs,
+            extra=kwargs,
         )
 
     return _invoke

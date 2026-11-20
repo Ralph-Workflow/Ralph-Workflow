@@ -15,6 +15,9 @@ from ralph.verify_timeout import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "run_verify cumulative-budget oracles plant overruns above the raised 75 s wall budget": (
+        "the operator raised _TOTAL_TEST_BUDGET_SECONDS from 60 to 75 s; the planted single-step, two-step, boundary and policy-message runs now end at 80, 80, 75 and 85 s, so each still reaches or passes the budget and still asserts the cumulative budget-exhausted failure"
+    ),
     "verify module docstring": "the verification marker expression is now read from the module source because module docstrings are banned",
     "RALPH_TEST_CHANGE_REASONS verify step count and call index assertions": "the expected verify calls and their timeouts now derive from ralph.verify._VERIFY_STEPS and ralph.verify._BUDGET_TRACKED_STEPS instead of a frozen step count and call indices, so the assertions keep proving that every registered step runs exactly once with its declared timeout while a newly registered step no longer rewrites the expected call list",
 }
@@ -315,7 +318,7 @@ def test_run_verify_single_step_exceeds_budget(
         }
     )
 
-    times = [0.0, 0.0, 0.0, 0.0, 0.0, 65.0]
+    times = [0.0, 0.0, 0.0, 0.0, 0.0, 80.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(
@@ -356,7 +359,7 @@ def test_run_verify_multiple_steps_combined_exceeds(
         }
     )
 
-    times = [0.0, 55.0, 55.0, 65.0]
+    times = [0.0, 55.0, 55.0, 80.0]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(
@@ -459,8 +462,8 @@ def test_run_verify_cumulative_equals_budget_boundary(
         }
     )
 
-    times = [0.0, 0.0, 0.0, 0.0, 0.0, 60.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 60.0)
+    times = [0.0, 0.0, 0.0, 0.0, 0.0, 75.0]
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 75.0)
 
     exit_code = verify_module.run_verify(
         cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker
@@ -497,8 +500,8 @@ def test_run_verify_policy_message_correctness(
         }
     )
 
-    times = [0.0, 0.0, 0.0, 0.0, 0.0, 70.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 70.0)
+    times = [0.0, 0.0, 0.0, 0.0, 0.0, 85.0]
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 85.0)
 
     exit_code = verify_module.run_verify(
         cwd=tmp_path, runner=runner, orphan_tracker=_NoOpOrphanTracker

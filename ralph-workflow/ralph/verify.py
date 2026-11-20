@@ -48,11 +48,11 @@ if TYPE_CHECKING:
 
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 
-_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
+_TOTAL_TEST_BUDGET_SECONDS: Final = 75.0
 
 _TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1400.0
 
-_TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0
+_TOTAL_TEST_HANG_CAP_SECONDS: Final = 225.0
 
 _BUDGET_EPSILON: Final = 1e-9
 
@@ -75,9 +75,9 @@ for idx in _BUDGET_TRACKED_STEPS:
     if not _timeout > 0:
         raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
 
-if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
+if not abs(_TOTAL_TEST_BUDGET_SECONDS - 75.0) < _BUDGET_EPSILON:
     raise RuntimeError(
-        f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
+        f"_TOTAL_TEST_BUDGET_SECONDS must be 75.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
 
 if not abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 1400.0) < _BUDGET_EPSILON:

@@ -397,15 +397,15 @@ Ralph Workflow treats verification as a **non-bypassable gate** that runs after 
 
 ### What `make verify` proves
 
-`make verify` is the canonical verification command. It runs four kinds of checks: **Lint** (`ruff check ralph/ tests/`), **Typecheck** (`mypy ralph/`), **Test** (`pytest` under the immutable 60-second combined budget), and **Audit** (the `ralph.testing.audit_*` scripts that detect circumvention of the policy and quality gates).
+`make verify` is the canonical verification command. It runs four kinds of checks: **Lint** (`ruff check ralph/ tests/`), **Typecheck** (`mypy ralph/`), **Test** (`pytest` under the immutable 75-second combined budget), and **Audit** (the `ralph.testing.audit_*` scripts that detect circumvention of the policy and quality gates).
 
 A clean `make verify` proves the Python code is lint-clean, type-clean, the unit and integration tests pass within the budget, and no audit invariant has been silently weakened.
 
 A green `make verify` is a **necessary** precondition for declaring work done, but it is not sufficient: the runtime also verifies the run artifact against the phase's declared contract (see [Artifact lifecycle](#artifact-lifecycle)).
 
-### The 60-second combined test budget
+### The 75-second combined test budget
 
-The test budget is **60 seconds, combined, ABSOLUTE and IMMUTABLE**. It keeps
+The test budget is **75 seconds, combined, ABSOLUTE and IMMUTABLE**. It keeps
 feedback fast enough to trust, so a timeout means the test design needs repair,
 not a larger allowance. The same rule applies regardless of how tests are
 arranged or invoked.

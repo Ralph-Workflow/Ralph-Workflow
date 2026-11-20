@@ -19,14 +19,14 @@ The two policies most contributors reach for first:
 
 The canonical gate is `make verify` run from the `ralph-workflow/`
 directory. It runs the docs build, ruff, mypy --strict, the
-60-second-capped pytest suite, and the audit scripts; the subprocess
+75-second-capped pytest suite, and the audit scripts; the subprocess
 E2E suite lives in a separate opt-in target (`make test-subprocess-e2e`).
 
 Pull requests should be small, focused, and include tests for any
 behavior change.
 
 The full canonical verification policy — the gate list, the
-non-circumvention rules, the immutable 60-second combined test budget,
+non-circumvention rules, the immutable 75-second combined test budget,
 and the bypass-detection contract — lives at
 [`docs/ralph-workflow-policy/verification-policy.md`](docs/ralph-workflow-policy/verification-policy.md).
 

@@ -93,7 +93,7 @@ artifact is submitted.
   sets. Lives in `tests/test_visual_smoke.py` (and the focused
   capture/verdict/evidence suites). Carries the `smoke` marker; runs
   under `make verify` via the budget-tracked `make
-  test-visual-smoke` target. The 60 s combined budget
+  test-visual-smoke` target. The 75 s combined budget
   (`_TOTAL_TEST_BUDGET_SECONDS`) is immutable; the tier is
   redesigned when it does not fit.
 - **Judgement tier** — real renderer, real vision model, on demand.

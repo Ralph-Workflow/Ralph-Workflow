@@ -289,7 +289,7 @@ uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q
 ```
 
 Both tests are pure-Python (no `time.sleep`, no real subprocess, no
-network), so they pass deterministically under the 60 s combined test
+network), so they pass deterministically under the 75 s combined test
 budget enforced by `make verify`. The wire-format spec test loads the
 committed fixture at `tests/agents/parsers/fixtures/pi_dev_documented_events.json`
 (NOT the transient `tmp/pi-dev-docs/inventory.md`), so a clean-checkout

@@ -82,7 +82,7 @@ RALPH-COMMAND: make -C ralph-workflow verify
 
 The expected successful result is exit 0 from the authoritative
 verification gate. The verify gate exercises ruff, mypy --strict,
-`make test` (60 s combined budget), every mandatory audit in
+`make test` (75 s combined budget), every mandatory audit in
 `ralph.verify._VERIFY_STEPS`, and the social-proof gate; a green run is
 the minimum evidence of compliance with this policy.
 

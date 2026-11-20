@@ -19,7 +19,7 @@ enters the Python package. `make dev` creates or refreshes the
 self-contained dev snapshot and its `rdev` launcher. Make your change
 in the package, then `make verify` runs the docs/drift check, ruff,
 mypy, the combined tests, and every declared audit; the required
-real-git E2E runs inside `make test` under the immutable 60-second
+real-git E2E runs inside `make test` under the immutable 75-second
 budget. `ralph --generate-commit` produces the commit message.
 
 A few practical notes for a first patch:
@@ -239,7 +239,7 @@ together; freeze leaves the existing files unchanged.
 ## Required verification
 
 The canonical verification command is `make verify`; its full
-description, the layered gate it runs, the immutable 60-second
+description, the layered gate it runs, the immutable 75-second
 combined test budget, and the non-circumvention rules all live on the
 root [`../CONTRIBUTING.md`](../CONTRIBUTING.md) under **Required
 verification**. This page does not duplicate the description; it

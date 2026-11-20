@@ -63,7 +63,7 @@ The maintained Python package enforces strict type checking:
   prefer a typed helper, guard, adapter, or `cast(...)`.
 - **Verification.** `cd ralph-workflow && make verify` runs three
   stages: `make lint` (ruff), `make typecheck` (mypy --strict), and
-  `make test` (one 60-second-capped parallel pytest invocation with
+  `make test` (one 75-second-capped parallel pytest invocation with
   the combined budget enforced by
   `ralph.verify._TOTAL_TEST_BUDGET_SECONDS`).
 

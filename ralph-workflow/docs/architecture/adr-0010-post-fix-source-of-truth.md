@@ -139,7 +139,7 @@ closed vocabulary `_DIAGNOSIS_ACTION_VERBS` plus the typed `is_diagnosis` flag:
 | (4) Audit-and-pin runner / run_loop / recovery | `tests/test_runner_decision_delegation.py`, `test_run_loop_*` | `uv run pytest tests/test_runner_decision_delegation.py tests/test_run_loop_*.py tests/test_auto_integrate_recovery.py tests/test_recovery_release_uses_record_store.py -q` |
 | (5) Public-boundary matrix              | `tests/test_public_workflow_entry_point_matrix.py:test_entry_point_matrix_six_seams_agree` | `uv run pytest tests/test_public_workflow_entry_point_matrix.py -q`                          |
 | (6) Kill-at-cap restart fixture          | `tests/test_authority_audit_scenario_3_4_9_restart_retry.py:test_kill_at_cap_does_not_replenish_after_restart` | `uv run pytest tests/test_authority_audit_scenario_3_4_9_restart_retry.py -q`                |
-| (7) Full gate                            | none                                                                 | `cd ralph-workflow && make verify` (combined 60s budget, see `docs/agents/verification.md`)  |
+| (7) Full gate                            | none                                                                 | `cd ralph-workflow && make verify` (combined 75s budget, see `docs/agents/verification.md`)  |
 
 ## References
 

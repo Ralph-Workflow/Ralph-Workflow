@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "TEST BUDGET heading and moved invariant rows name the raised 75 s wall budget": (
+        "AGENTS.md and docs/agents/verification.md now state 75 s; the test still requires the heading, the moved rows and their absence from AGENTS.md"
+    ),
     "TEST BUDGET heading and moved invariant rows name the raised 1400 core-s budget": (
         "the AGENTS.md heading and docs/agents/verification.md invariant table now state 1400 CPU core-seconds; the test still requires the heading, the moved rows and their absence from AGENTS.md"
     ),
@@ -18,7 +21,7 @@ _PROJECT_AGENTS_MD_MAX_LINES = 200
 _REQUIRED_ABSOLUTE_HEADINGS: tuple[str, ...] = (
     "### ═══ NO UNRELATED-FAILURE EXEMPTION — YOU FIND IT, YOU FIX IT ═══",
     "### ═══ FABRICATION GUARD (ABSOLUTE — 3 levels, zero bypass) ═══",
-    "### ═══ TEST BUDGET — 60s wall clock net of host contention, 1400 CPU core-seconds, PINNED ═══",
+    "### ═══ TEST BUDGET — 75s wall clock net of host contention, 1400 CPU core-seconds, PINNED ═══",
     "### ═══ TRUNK-BASED DEVELOPMENT ONLY — EVERYTHING GOES TO MAIN ═══",
     "## Absolutely Zero Dead code",
     "## Commit rule",
@@ -42,8 +45,8 @@ _MOVED_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "`_TOTAL_TEST_BUDGET_SECONDS > 0`",
             "`must be positive`",
-            "`abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9`",
-            "`must be 60.0`",
+            "`abs(_TOTAL_TEST_BUDGET_SECONDS - 75.0) < 1e-9`",
+            "`must be 75.0`",
             "`abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 1400.0) < 1e-9`",
             "`must be 1400.0`",
             "`_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS`",
@@ -101,7 +104,7 @@ _MOVED_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 _DETAIL_MUST_BE_GONE_FROM_AGENTS_MD: tuple[str, ...] = (
-    "must be 60.0",
+    "must be 75.0",
     "must be 1400.0",
     "must be 3 x _TOTAL_TEST_BUDGET_SECONDS",
     "indices must be valid",

@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "run_verify wall oracles plant runs around the raised 75 s budget": (
+        "the contention and idle-host overrun runs now take 86 s (above the raised 75 s budget) instead of 66 s, with the contention credit giving 53 s, and the hang-cap runs use the 225 s cap (226 s to exhaust it, 195 s left for the smoke step); every oracle still asserts the same pass, warning or failure"
+    ),
     "run_verify CPU oracles plant suite CPU above the raised 1400 core-s budget": (
         "the planted over-budget runs moved from 800 core-s to 1500 core-s so they still exceed _TOTAL_TEST_CPU_BUDGET_SECONDS after it was raised from 700 to 1400; both oracles still assert the run fails with suite CPU exceeded"
     ),
@@ -126,12 +129,12 @@ def test_run_verify_warns_but_passes_when_contention_explains_the_overrun(
     exit_code, _host = _run_verify(
         monkeypatch,
         tmp_path,
-        {"test": (40.0, 400.0, 160.0), "test-verification-smoke": (26.0, 50.0, 104.0)},
+        {"test": (50.0, 400.0, 240.0), "test-verification-smoke": (36.0, 50.0, 156.0)},
     )
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "WARNING" in captured.err
-    assert "contention-adjusted 44.00s" in captured.out
+    assert "contention-adjusted 53.00s" in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
 
@@ -141,7 +144,7 @@ def test_run_verify_fails_an_overrun_the_host_cannot_explain(
     exit_code, _host = _run_verify(
         monkeypatch,
         tmp_path,
-        {"test": (40.0, 400.0, 0.0), "test-verification-smoke": (26.0, 50.0, 0.0)},
+        {"test": (50.0, 400.0, 0.0), "test-verification-smoke": (36.0, 50.0, 0.0)},
     )
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
@@ -170,7 +173,7 @@ def test_run_verify_gives_tracked_steps_only_the_remaining_hang_cap(
         {"test": (30.0, 300.0, 0.0), "test-verification-smoke": (10.0, 50.0, 0.0)},
     )
     assert exit_code == 0
-    assert host.timeouts == {"test": 180.0, "test-verification-smoke": 150.0}
+    assert host.timeouts == {"test": 225.0, "test-verification-smoke": 195.0}
 
 
 def test_run_verify_stops_once_the_hang_cap_is_spent(
@@ -179,7 +182,7 @@ def test_run_verify_stops_once_the_hang_cap_is_spent(
     exit_code, host = _run_verify(
         monkeypatch,
         tmp_path,
-        {"test": (181.0, 300.0, 0.0), "test-verification-smoke": (10.0, 50.0, 0.0)},
+        {"test": (226.0, 300.0, 0.0), "test-verification-smoke": (10.0, 50.0, 0.0)},
     )
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE

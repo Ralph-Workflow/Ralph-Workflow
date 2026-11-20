@@ -12,6 +12,11 @@ from ralph import verify as verify_module
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS default pinned at 270": (
+        "the real-time oracle's make test now runs under the 225 s combined hang cap "
+        "(three times the raised 75 s wall budget) instead of a 120 s subprocess timeout, "
+        "so the oracle's outer cap rises from 150 to 270 s; the test still pins the exact default"
+    ),
     "test_test_verify_budget_target_runs_only_real_time_test body pin updated": (
         "the same target body is still pinned exactly, still running only "
         "tests/test_verify_budget_real_time.py under ralph.verify_timeout; the "
@@ -310,10 +315,10 @@ def test_test_verify_budget_target_runs_only_real_time_test() -> None:
     )
 
     makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
-    assert "VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS ?= 150" in makefile_text, (
+    assert "VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS ?= 270" in makefile_text, (
         "Expected a dedicated VERIFY_BUDGET_SUITE_TIMEOUT_SECONDS default "
-        "of 150s for the real-time budget oracle. The oracle runs "
-        "'make test' with a 120s subprocess timeout, so the 60s "
+        "of 270s for the real-time budget oracle. The oracle runs "
+        "'make test' under the 225s combined hang cap, so the 60s "
         "PYTEST_SUITE_TIMEOUT_SECONDS default would SIGKILL the oracle "
         "before it can observe the budget."
     )

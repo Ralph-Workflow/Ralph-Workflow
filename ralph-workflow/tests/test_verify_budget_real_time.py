@@ -16,6 +16,13 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "the oracle's make test honours the hang cap run_verify hands it": (
+        "the real make test now runs under the timeout run_verify gives the make test step "
+        "(the 225 s hang cap, three times the raised 75 s wall budget) instead of a fixed "
+        "120 s that a loaded host could exceed before the budget verdict; the module budget "
+        "rises from 125 to 240 s so its wall hang cap stays above that timeout, and the "
+        "verdict assertions are unchanged"
+    ),
     "test_make_test_completes_within_budget judges the run with the make verify budget verdict": (
         "the oracle still runs one real make test and still fails when it is over budget, but "
         "it now runs it through ralph.verify.run_verify with every other step stubbed, so the "
@@ -28,7 +35,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.verify_budget_real_time,
-    pytest.mark.timeout_seconds(125),
+    pytest.mark.timeout_seconds(240),
 ]
 
 _PLUGIN_AUTOLOAD_ENV = "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
@@ -84,7 +91,7 @@ def _run_only_make_test(
     timeout: float | None = None,
     capture_output: bool = True,
 ) -> ProcessResult:
-    del timeout, capture_output
+    del capture_output
     invocation = (command, *args)
     if invocation != ("make", "test"):
         return ProcessResult(command=invocation, returncode=0, stdout="", stderr="")
@@ -93,7 +100,7 @@ def _run_only_make_test(
         cwd=cwd,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=timeout,
         check=False,
         env={**_make_test_child_env(), **(env or {})},
     )

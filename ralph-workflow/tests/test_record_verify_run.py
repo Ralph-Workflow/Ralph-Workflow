@@ -13,6 +13,9 @@ from ralph import verify as verify_module
 from ralph.executor.process import ProcessResult
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "budget receipt tests use the raised 75 s wall budget": (
+        "the failing run now takes 90 s so it still exceeds the raised 75 s budget, and the recorded wall_budget is 75 s; the receipts still assert the same fail and warning statuses"
+    ),
     "cpu_budget receipt field expects the raised 1400 core-s budget": (
         "the receipt still records the CPU budget printed by run_verify, which is now 1400 core-s"
     ),
@@ -81,15 +84,15 @@ def _budget_step(receipt: dict[str, object]) -> dict[str, object]:
 def test_a_budget_the_run_failed_is_recorded_as_failed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code, output = _verify_output(monkeypatch, capsys, cores=12, wall=70.0, suite_cpu=300.0)
+    code, output = _verify_output(monkeypatch, capsys, cores=12, wall=90.0, suite_cpu=300.0)
     receipt = _receipt(code, output)
 
     assert receipt["make_exit_code"] == code != 0
-    assert receipt["combined_wall_seconds"] == pytest.approx(70.0)
+    assert receipt["combined_wall_seconds"] == pytest.approx(90.0)
     assert _budget_step(receipt) == {
         "label": "combined test budget",
         "status": "fail",
-        "elapsed_seconds": pytest.approx(70.0),
+        "elapsed_seconds": pytest.approx(90.0),
     }
 
 
@@ -103,7 +106,7 @@ def test_the_combined_budget_line_is_recorded_with_its_cpu_figures(
     assert receipt["budget"] == {
         "status": "warning",
         "wall": pytest.approx(120.0),
-        "wall_budget": pytest.approx(60.0),
+        "wall_budget": pytest.approx(75.0),
         "adjusted": pytest.approx(120.0),
         "foreign_cores": pytest.approx(0.0),
         "cores": 4.0,

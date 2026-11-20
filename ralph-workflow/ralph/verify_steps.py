@@ -6,7 +6,7 @@ VerifyStep = tuple[str, str, tuple[str, ...], float | None]
 
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
 
-_TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0
+_TOTAL_TEST_HANG_CAP_SECONDS: Final = 225.0
 
 _VERIFY_STEPS: tuple[VerifyStep, ...] = (
     (

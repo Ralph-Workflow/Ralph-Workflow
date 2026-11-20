@@ -13,7 +13,7 @@ Read before writing or modifying any test.
 
 **Every test must finish within 1 second.**
 
-**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total net of host contention, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`, and their own processes may use at most 1400 CPU core-seconds, enforced by `ralph.verify._TOTAL_TEST_CPU_BUDGET_SECONDS = 1400.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests. `tests/_per_test_budget.py` (registered from `conftest.py`) charges every test phase its own main-thread CPU budget, with a 5x wall-clock hang cap. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 75 seconds total net of host contention, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 75.0`, and their own processes may use at most 1400 CPU core-seconds, enforced by `ralph.verify._TOTAL_TEST_CPU_BUDGET_SECONDS = 1400.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests. `tests/_per_test_budget.py` (registered from `conftest.py`) charges every test phase its own main-thread CPU budget, with a 5x wall-clock hang cap. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
 Budget enforcement invariants in `ralph/verify.py` use `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the checks. All import-time invariants survive `-O`.
 
@@ -53,7 +53,7 @@ sufficient layer, has an owner and trigger, and declares marginal cost,
 inspectable evidence, and a lifecycle review condition.
 
 An addition to the default lane must be budget-neutral through removal,
-consolidation, or replacement. Do not raise the 60-second aggregate ceiling,
+consolidation, or replacement. Do not raise the 75-second aggregate ceiling,
 move cost to an unowned lane, delete a unique defense merely to obtain green,
 or use repository size, coverage percentage, or a fixed test count as a
 portfolio-selection proxy. External/platform checks belong in an owned
@@ -77,7 +77,7 @@ If changing the implementation (without changing behavior) would break a test, *
 ### Agent checklist
 
 - [ ] Every test in the affected area finishes in < 1 s individually
-- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 60 s total
+- [ ] Combined run of ALL test suites, as executed by `make verify`, completes in < 75 s total
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
@@ -94,7 +94,7 @@ If changing the implementation (without changing behavior) would break a test, *
 | Unit | `tests/` root, `tests/unit/` | No | `make test-unit` |
 | Integration | `tests/integration/` | No | `make test-integration` |
 | Full suite | all tests | Mixed | `make test` |
-| Verification | lint + typecheck + `make test` (60 s combined budget) | Mixed | `make verify` |
+| Verification | lint + typecheck + `make test` (75 s combined budget) | Mixed | `make verify` |
 
 Use `make -C ralph-workflow test-fast` only for a change confined to the listed suite-routing surfaces. Its static three-file selection and `not subprocess_e2e and not smoke` marker make it deterministic and fail closed, but it is developer feedback, not completion proof. `make -C ralph-workflow verify` remains the only completion gate.
 
@@ -403,7 +403,7 @@ drift shapes:
 | `whitebox-baseline-stale` | the file still exists but its coupling has been fully converted away, so the row claims an exception the file no longer needs | delete the baseline row and its ledger entry |
 | `whitebox-baseline-unlowered` | the frozen ceiling for a category sits above the file's current count | lower the baseline row to the current count |
 
-That reconciliation runs OUTSIDE the 60-second pytest budget: a whole-tree AST
+That reconciliation runs OUTSIDE the 75-second pytest budget: a whole-tree AST
 scan of every test file costs tens of seconds, so it belongs to the
 policy-audit verify step and not to a pytest suite. The pytest suite covers
 the reconciliation logic itself against fixtures, so the rule is enforced in

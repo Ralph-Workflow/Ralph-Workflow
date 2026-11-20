@@ -53,7 +53,7 @@ when a final measurement exceeds ``target × (1 + tolerance)``.
 
 | Metric class              | Tolerance | Reason                                      |
 |---------------------------|-----------|------------------------------------------------|
-| Wall / CPU time (seconds) | 25%       | In-process variance; covers 60s budget        |
+| Wall / CPU time (seconds) | 25%       | In-process variance; covers 75s budget        |
 | No-op refresh             | 50%       | Skipped-no-changes path; wider variance OK    |
 | Memory / index size (bytes) | 50%     | RSS / disk vary across host memory pressure   |
 | Recovery time (seconds)   | 25%       | Bounded backoff; failure must be loud         |

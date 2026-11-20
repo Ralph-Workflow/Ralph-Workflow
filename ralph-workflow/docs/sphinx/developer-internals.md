@@ -586,8 +586,8 @@ terminates tracked processes, and exits with code 130. The CLI paths in
 
 ### Verification-gate mechanics
 
-The 60-second combined test budget is enforced by
-`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 60.0`. `run_verify()` tracks
+The 75-second combined test budget is enforced by
+`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 75.0`. `run_verify()` tracks
 elapsed time with `time.monotonic()` across `_BUDGET_TRACKED_STEPS`; the
 `_KNOWN_TEST_STEP_LABELS` set keeps every declared test step covered by that
 budget. Import-time `RuntimeError` guards pin the budget and its tracking

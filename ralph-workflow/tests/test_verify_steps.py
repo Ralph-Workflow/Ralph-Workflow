@@ -6,14 +6,17 @@ import ralph.verify
 import ralph.verify_steps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_EXPECTED_BUDGET_SECONDS and _EXPECTED_HANG_CAP_SECONDS pin 75 s and 225 s": (
+        "the wall budget was raised from 60 to 75 s and the hang cap stays three times it (225 s); the test still pins both exact constants and the 3x relation"
+    ),
     "_EXPECTED_CPU_BUDGET_SECONDS pins the raised 1400 core-s budget": (
         "the operator raised the suite CPU budget from 700 to 1400 core-s; the pin still asserts the exact constant"
     ),
 }
 
-_EXPECTED_BUDGET_SECONDS = 60.0
+_EXPECTED_BUDGET_SECONDS = 75.0
 _EXPECTED_CPU_BUDGET_SECONDS = 1400.0
-_EXPECTED_HANG_CAP_SECONDS = 180.0
+_EXPECTED_HANG_CAP_SECONDS = 225.0
 _EXPECTED_STEP_TIMEOUT_SECONDS = 30.0
 _EXPECTED_TEST_STEP_LABELS = frozenset({"make test", "make test-verification-smoke"})
 

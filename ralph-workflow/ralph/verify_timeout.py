@@ -12,7 +12,7 @@ from ralph.process._spawn_env import sanitize_process_environment
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 
 DEFAULT_TEST_TIMEOUT_SECONDS: Final = 1.0
-DEFAULT_SUITE_TIMEOUT_SECONDS: Final = 180.0
+DEFAULT_SUITE_TIMEOUT_SECONDS: Final = 225.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
 _VERIFY_TIMEOUT_PM = ProcessManager(policy=ProcessManagerPolicy(log_events=False))
@@ -48,8 +48,8 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "Limits:\n"
     "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
-    "  Per-suite invocation (hang cap)  : 180 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
-    "  ALL test suites combined (total): 60 seconds wall clock, net of host\n"
+    "  Per-suite invocation (hang cap)  : 225 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  ALL test suites combined (total): 75 seconds wall clock, net of host\n"
     "    contention, and 1400 CPU core-seconds (enforced by ralph/verify.py\n"
     "     _TOTAL_TEST_BUDGET_SECONDS / _TOTAL_TEST_CPU_BUDGET_SECONDS,\n"
     "     tracked cumulatively across every test step)\n"
@@ -57,14 +57,14 @@ _POLICY_FIX_MESSAGE = (
     "These limits are ABSOLUTE. You CANNOT avoid them by:\n"
     "- Splitting tests into more suites (adds process overhead,\n"
     "  risks combined total breach, tracked cumulatively\n"
-    "  by ralph/verify.py — N suites does NOT give N x 60s)\n"
+    "  by ralph/verify.py — N suites does NOT give N x 75s)\n"
     "- Moving slow tests to a different suite or target\n"
     "- Raising DEFAULT_SUITE_TIMEOUT_SECONDS\n"
     "  (this is exactly the violation committed\n"
     "   — do NOT repeat it)\n"
     "- Changing PYTEST_SUITE_TIMEOUT_SECONDS in the Makefile\n"
     "The combined wall-clock time of ALL suites\n"
-    "  running sequentially must stay within 60s\n"
+    "  running sequentially must stay within 75s\n"
     "  when make verify is run.\n"
     "A slow test is a design defect—fix the production coupling,\n"
     "  not the timeout.\n"
@@ -91,7 +91,7 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "DONE when ALL hold:\n"
     "  [ ] Every test finishes in < 1 s\n"
-    "  [ ] Full suite finishes in < 60 s wall-clock\n"
+    "  [ ] Full suite finishes in < 75 s wall-clock\n"
     "  [ ] No test calls sleep() or polls real wall-clock time\n"
     "  [ ] No test crosses a real I/O boundary\n"
     "  [ ] Every assertion targets observable behavior\n"

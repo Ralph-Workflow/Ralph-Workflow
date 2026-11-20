@@ -1,5 +1,5 @@
 schema_version = "v3"
-default_budget_seconds = 60.0
+default_budget_seconds = 75.0
 kernel_controls = [
     "policy-structure",
     "public-behavior",

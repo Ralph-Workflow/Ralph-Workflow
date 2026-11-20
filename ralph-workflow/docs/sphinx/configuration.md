@@ -170,7 +170,7 @@ Instead of halting at the first broken file (fail-fast), `ralph --check-config` 
 
 ## Environment variables
 
-Ralph Workflow honours a small set of environment variables. These are inputs to the engine, not extensions of the 60-second combined test budget.
+Ralph Workflow honours a small set of environment variables. These are inputs to the engine, not extensions of the 75-second combined test budget.
 
 ### Pro integration contract
 
@@ -199,7 +199,7 @@ The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (se
 | `RALPH_PYTEST_TEST_TIMEOUT_SECONDS` | Per-test timeout passed by the `ralph.verify_timeout` wrapper. |
 | `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite invocation timeout passed by the `ralph.verify_timeout` wrapper. |
 
-These timeout variables are set by the test harness; they do **not** extend the 60-second combined budget enforced by `make verify`. See [Verification Model](concepts.md#verification-model) for the non-circumvention rule.
+These timeout variables are set by the test harness; they do **not** extend the 75-second combined budget enforced by `make verify`. See [Verification Model](concepts.md#verification-model) for the non-circumvention rule.
 
 ## Common settings in `ralph-workflow.toml`
 
@@ -837,7 +837,7 @@ first-party typed helpers and adapters instead) and the strict flags
 ### Verification
 
 Run `cd ralph-workflow && make verify` for the canonical gate. The gate
-runs the docs build, ruff, mypy --strict, the 60-second-capped
+runs the docs build, ruff, mypy --strict, the 75-second-capped
 pytest suite, and the audit scripts. See
 [docs/agents/verification.md](https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md)
 for the full ordered step list, the combined test budget, and the
