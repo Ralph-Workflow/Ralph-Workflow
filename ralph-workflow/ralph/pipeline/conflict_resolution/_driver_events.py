@@ -15,15 +15,13 @@ from ralph.pipeline.resolution_outcome import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
     from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline._integration_status import IntegrationStatus
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
-
-    MonotonicClock = Callable[[], float]
 
 
 class _SessionStatusBuilder(Protocol):
@@ -61,29 +59,6 @@ def announce_declared_decisions(
         display,
         "conflict(s) git could not write markers into, so the resolution cannot be "
         f"read off the file and must be declared: {details}",
-    )
-
-
-def emit_expired_operator_cap(
-    display: ParallelDisplay | None,
-    session: ResolutionSession,
-    conflicted: tuple[str, ...],
-    clock: MonotonicClock,
-) -> None:
-    from ralph.git.resolution_failure_cause import ResolutionFailureCause
-    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-        ResolutionTerminationReason,
-    )
-
-    session.terminal_reason = ResolutionTerminationReason.OPERATOR_CAP_REACHED
-    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-    session.last_activity_kind = None
-    session.last_activity_at = None
-    session.last_duration_seconds = max(0.0, clock() - (session.started_at or clock()))
-    emit_attempt_outcome(
-        display,
-        NextStrategyOutcome(strategy=session.terminal_reason.value),
-        session=session,
     )
 
 
@@ -250,7 +225,6 @@ def render_round_prompt(
 __all__ = [
     "announce_declared_decisions",
     "emit_attempt_outcome",
-    "emit_expired_operator_cap",
     "emit_success",
     "render_round_prompt",
     "reset_driver_events_state",

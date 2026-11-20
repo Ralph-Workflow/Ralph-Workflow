@@ -1725,6 +1725,13 @@ ralph.pipeline.publication_gate
    :members:
    :show-inheritance:
 
+ralph.pipeline.publication_gate_run
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.publication_gate_run
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.factory
 ~~~~~~~~~~~~~~~~~~~~~~
 

@@ -16,6 +16,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.pipeline.events.publication_gate_failed_event import PublicationGateFailed
 from ralph.pipeline.publication_block import PublicationBlock
+from ralph.pipeline.publication_gate_run import PublicationGateRun
 from ralph.pipeline.resolution_outcome import WaitingOutcome
 from ralph.project_policy.markers import CANONICAL_DIR, FACT_MARKER
 
@@ -32,13 +33,6 @@ _OUTPUT_TAIL_CHARS: Final[int] = 6000
 _TIMEOUT_EXIT_CODE: Final[int] = 124
 _TREE_LOOKUP_TIMEOUT_SECONDS: Final[float] = 30.0
 _BACKTICK_COMMAND = re.compile(r"`([^`]+)`")
-
-
-@dataclass(frozen=True)
-class PublicationGateRun:
-    exit_code: int
-    output: str
-    timed_out: bool = False
 
 
 @dataclass(frozen=True)

@@ -18,6 +18,7 @@ from ralph.pipeline.conflict_resolution import (
     RebaseStop,
     run_rebase_conflict_resolution_pipeline,
 )
+from ralph.pipeline.conflict_resolution.resolver_health import record_resolver_failure
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseState
@@ -41,6 +42,19 @@ from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     resolution_policy_bundle,
 )
 from tests.scenarios.test_integration_scenario_matrix import _make_config
+
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(20),
+]
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.policy.models import PolicyBundle
+
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_structural_parity_resolver_and_ordinary_phase_same_fake_agent": (
@@ -67,32 +81,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "only, so a resolver failure cools the agent in every phase, and the test asserts the "
         "shared cooldown and that its remaining wait is finite and within the one hour cap"
     ),
-    "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": (
-        "The replayed commit scopes failure-ledger eligibility to the requesting phase, "
-        "so a development-phase failure must not suppress the resolver chain"
-    ),
-    "_assert_structural_parity": (
-        "ruff format wraps the chained selection-token comparison in parentheses; the "
-        "compared values and the expected token tuple are unchanged"
-    ),
-}
-
-pytestmark = [
-    pytest.mark.subprocess_e2e,
-    pytest.mark.required_auto_integrate_e2e,
-    pytest.mark.timeout_seconds(20),
-]
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-    from ralph.policy.models import PolicyBundle
-
-
-RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_parity_ordinary_phase_cooldown_applies_to_the_resolver_until_it_expires": "operator rule: an agent is either on cooldown or not; replaces test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch because the one cooldown tracker holds one state per agent, so a development cooldown also skips the agent for conflict resolution until it expires",
     "test_parity_ordinary_phase_cooldown_does_not_block_resolver_launch": "operator rule: an agent is either on cooldown or not; renamed to test_parity_ordinary_phase_cooldown_applies_to_the_resolver_until_it_expires because a cooldown is one per-agent state across phases",
+    "test_parity_resolver_cooldown_applies_to_the_ordinary_phase_until_it_expires": "operator rule: an agent is either on cooldown or not; the reverse direction of the shared cooldown, a resolver-recorded cooldown is one agent-keyed record, so the ordinary phase skips that agent and falls over to the eligible one until the cooldown expires",
+    "test_parity_resolver_falls_over_then_waits_for_the_earlier_cooldown": "operator rule: an agent is either on cooldown or not; the first resolver failure falls over to the next candidate at once, and when both candidates fail the run waits for the earlier cooldown with exactly one waiting status naming the next eligible agent and its expiry",
     "_assert_structural_parity": "ruff format reflow of selection-token equality assertion; contract unchanged",
 }
 
@@ -624,6 +616,7 @@ def _run_parity_ordinary_side(
     agent: _ParityFakeAgent,
     *,
     before_after: _BeforeAfterNoOps,
+    controller: RecoveryController | None = None,
 ) -> _ParitySideResult:
     from ralph.agents.registry import AgentRegistry
     from ralph.config.enums import Verbosity
@@ -644,7 +637,7 @@ def _run_parity_ordinary_side(
     (agent_dir / "PLAN.md").write_text(
         "# A plan with enough words to pass validation\n", encoding="utf-8"
     )
-    controller = _parity_controller(bundle, FakeClock(start=0.0))
+    controller = controller or _parity_controller(bundle, FakeClock(start=0.0))
     agent_config = UnifiedConfig(agents={name: AgentConfig(cmd=name) for name in _PARITY_AGENTS})
     display_ctx = make_display_context()
     display = ParallelDisplay(workspace_root=root, display_context=display_ctx, is_quiet=True)
@@ -805,3 +798,131 @@ def test_structural_parity_failure_modes_resolver_and_ordinary_same_fake_agent(
     _assert_structural_parity(resolver, ordinary)
     expected = type(failure_exception_for_mode(mode, "first")).__name__
     assert resolver.agent.results == [expected, expected]
+
+
+@pytest.mark.required_auto_integrate_e2e
+def test_parity_resolver_cooldown_applies_to_the_ordinary_phase_until_it_expires(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+
+    before_after = _install_before_after_noops(monkeypatch)
+    bundle = resolution_policy_bundle(_PARITY_AGENTS)
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock, ledger=ledger, policy_bundle=bundle)
+    )
+
+    record_resolver_failure(
+        controller,
+        _PARITY_AGENTS[0],
+        AgentInvocationError(_PARITY_AGENTS[0], 7, "resolver exited with status 7"),
+    )
+
+    resolution_status = ledger.status(PHASE_RESOLUTION, _PARITY_AGENTS[0])
+    development_status = ledger.status("development", _PARITY_AGENTS[0])
+    assert isinstance(resolution_status, Cooldown)
+    assert development_status == resolution_status, (
+        "the resolver cooldown is one agent-keyed record, so the ordinary phase must read "
+        f"the same cooldown, got {development_status} vs {resolution_status}"
+    )
+
+    ordinary = _run_parity_ordinary_side(
+        tmp_path / "ordinary-repo",
+        bundle,
+        _ParityFakeAgent(),
+        before_after=before_after,
+        controller=controller,
+    )
+
+    assert ordinary.agent.launches == [_PARITY_AGENTS[1]], (
+        "the ordinary phase must honour the resolver cooldown and fall over to the only "
+        f"eligible agent, got {ordinary.agent.launches}"
+    )
+    selections = [
+        line.content for line in ordinary.status_lines if "Selected agent" in line.content
+    ]
+    assert len(selections) == 1, f"one selection expected, got {selections}"
+    assert f"{_PARITY_AGENTS[0]}: cooldown" in selections[0], (
+        "the ordinary phase must report the resolver cooldown as the skip reason, "
+        f"got {selections[0]}"
+    )
+
+    wait_ms = ledger.earliest_wait_ms("development", [_PARITY_AGENTS[0]])
+    assert wait_ms > 0, "the shared cooldown must still have a finite wait"
+    clock.advance(wait_ms / 1000.0)
+    assert controller.agent_eligibility("development", _PARITY_AGENTS[0]).is_eligible, (
+        "the shared cooldown must expire and free the agent in every phase"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_parity_resolver_falls_over_then_waits_for_the_earlier_cooldown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+
+    before_after = _install_before_after_noops(monkeypatch)
+    bundle = resolution_policy_bundle(_PARITY_AGENTS)
+    resolver = _run_parity_resolver_side(
+        tmp_path / "resolver-repo",
+        bundle,
+        _ParityFakeAgent(AgentMode.NON_ZERO_EXIT),
+        before_after=before_after,
+    )
+    controller = resolver.controller
+
+    assert resolver.agent.launches == list(_PARITY_AGENTS), (
+        f"the first failure must fall over to the second candidate, got {resolver.agent.launches}"
+    )
+    assert controller.clock.monotonic() == 0.0, (
+        "the fall-over must run the second candidate at once instead of waiting out the "
+        "first candidate's cooldown"
+    )
+    selections = [
+        line.content for line in resolver.status_lines if "Selected agent" in line.content
+    ]
+    assert len(selections) == 2, f"two selections expected, got {selections}"
+    assert f"{_PARITY_AGENTS[0]}: cooldown" in selections[1], (
+        "the second candidate must be selected while the first is still cooling down, "
+        f"got {selections[1]}"
+    )
+
+    waiting = [
+        line.content
+        for line in resolver.status_lines
+        if line.content.startswith("all agents unavailable")
+    ]
+    assert len(waiting) == 1, f"exactly one waiting status expected, got {waiting}"
+
+    statuses = {
+        agent: controller.agent_eligibility(PHASE_RESOLUTION, agent) for agent in _PARITY_AGENTS
+    }
+    assert all(isinstance(status, Cooldown) for status in statuses.values()), (
+        f"both candidates must be cooling down, got {statuses}"
+    )
+    now_ms = int(controller.clock.monotonic() * 1000)
+    remaining = {
+        agent: status.until_ms - now_ms
+        for agent, status in statuses.items()
+        if isinstance(status, Cooldown)
+    }
+    next_eligible = min(remaining, key=lambda agent: remaining[agent])
+    assert remaining[next_eligible] == min(remaining.values())
+    assert f"wait_ms={remaining[next_eligible]}" in waiting[0], (
+        f"the waiting status must name the wait until the earlier cooldown, got {waiting[0]}"
+    )
+    unavailable = [
+        line.content for line in resolver.status_lines if "No selectable agent" in line.content
+    ]
+    assert len(unavailable) == 1, f"one unavailable selection expected, got {unavailable}"
+    assert f"{next_eligible}: cooldown ({remaining[next_eligible]}ms remaining" in unavailable[0], (
+        f"the status must name {next_eligible} as the next eligible agent, got {unavailable[0]}"
+    )
+    assert len(resolver.agent.launches) == len(_PARITY_AGENTS), (
+        "no candidate may be launched between the fall-over and the wait, "
+        f"got {resolver.agent.launches}"
+    )

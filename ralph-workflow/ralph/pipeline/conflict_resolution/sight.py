@@ -7,8 +7,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-    from ralph.pipeline.conflict_resolution.session import ResolutionSession
-
 from ralph.git.errors import GitOperationError
 from ralph.git.merge import (
     ConflictStageEntries,
@@ -33,7 +31,6 @@ __all__ = [
     "classify_stage_map",
     "classify_unmerged_conflicts",
     "declared_decision_paths",
-    "escalate_on_sight",
     "gitlink_escalation_message",
     "mechanical_paths",
     "out_of_reach_escalation_message",
@@ -90,39 +87,6 @@ def out_of_reach_escalation_message(
     if command:
         return f"{joined_reasons}; resume point: {command}"
     return joined_reasons
-
-
-def escalate_on_sight(
-    paths: Sequence[str],
-    *,
-    session: ResolutionSession | None = None,
-    reasons: Mapping[str, str] | None = None,
-) -> str:
-    paths_tuple = tuple(paths)
-    message = out_of_reach_escalation_message(paths_tuple, reasons)
-    target_session = session
-    if target_session is None:
-        try:
-            from ralph.pipeline.conflict_resolution.rebase_loop import (
-                active_rebase_resolution_session,
-            )
-
-            target_session = active_rebase_resolution_session()
-        except ImportError:
-            target_session = None
-
-    if target_session is not None:
-        from ralph.git.resolution_failure_cause import ResolutionFailureCause
-        from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-            ResolutionTerminationReason,
-        )
-
-        target_session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
-        target_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        target_session.unresolved_paths = paths_tuple
-        target_session.halt_reason = message
-        target_session.operator_action_message = message
-    return message
 
 
 class ConflictSight(StrEnum):

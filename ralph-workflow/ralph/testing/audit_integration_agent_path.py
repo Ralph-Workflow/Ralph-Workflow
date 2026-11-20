@@ -42,6 +42,8 @@ GUARDED_INTEGRATION_PATH_PREFIXES: Final[tuple[str, ...]] = (
     "ralph/pipeline/auto_integrate",
     "ralph/pipeline/_auto_integrate",
     "ralph/pipeline/_integration",
+    "ralph/pipeline/integration",
+    "ralph/pipeline/_pending_merge_repair",
 )
 
 SHARED_INVOCATION_PATH_MODULES: Final[tuple[str, ...]] = (
@@ -57,6 +59,8 @@ GUARDED_INTEGRATION_MODULE_PREFIXES: Final[tuple[str, ...]] = (
     "auto_integrate",
     "_auto_integrate",
     "_integration",
+    "integration",
+    "_pending_merge_repair",
 )
 
 SKIP_DIRECTORIES: Final[frozenset[str]] = frozenset({"__pycache__"})
@@ -91,9 +95,11 @@ RETRY_DELAY_EXEMPT_PATHS: Final[frozenset[str]] = frozenset(
 FORBIDDEN_COOLDOWN_WRITE_CALLS: Final[frozenset[str]] = frozenset(
     {
         "_mark_agent_unavailable",
+        "mark_agent_unavailable",
         "mark_candidate_unavailable",
         "mark_unavailable",
         "record_attempt_fact",
+        "record_confirmed_unavailability",
         "reset_backoff",
     }
 )

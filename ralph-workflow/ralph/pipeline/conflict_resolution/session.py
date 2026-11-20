@@ -381,16 +381,6 @@ def _record_session_failure_result(
         outcome=outcome,
         attempt_outcomes=((1, outcome),),
     )
-    if isinstance(exc, AgentInactivityTimeoutError):
-        from ralph.agents.watchdog_fire_reason import WatchdogFireReason
-        from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-        if exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
-            controller.mark_agent_unavailable(
-                PHASE_RESOLUTION,
-                agent_name,
-                reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-            )
 
 
 def _conflict_config_with_inactivity(

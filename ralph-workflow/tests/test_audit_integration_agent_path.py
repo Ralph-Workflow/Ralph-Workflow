@@ -9,6 +9,7 @@ from ralph.testing.audit_integration_agent_path import (
     AGENT_RETRY_DELAY_RULE,
     AGENT_SELECTION_RULE,
     COOLDOWN_WRITE_RULE,
+    GUARDED_INTEGRATION_PATH_PREFIXES,
     SHARED_PATH_BRANCH_RULE,
     audit_source,
     audit_tree,
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GUARDED_FIXTURE_PATH = "ralph/pipeline/conflict_resolution/_scratch_fixture.py"
 INTEGRATION_FIXTURE_PATH = "ralph/pipeline/_integration_scratch_fixture.py"
+INTEGRATION_PACKAGE_FIXTURE_PATH = "ralph/pipeline/integration_ladder.py"
+PENDING_MERGE_REPAIR_FIXTURE_PATH = "ralph/pipeline/_pending_merge_repair.py"
 SHARED_PATH_FIXTURE_PATH = "ralph/pipeline/attempt_runner.py"
 
 
@@ -101,6 +104,51 @@ def finalize(controller, agent, facts):
     controller.finalize_attempt("resolution", agent, facts=facts)
 """
     assert audit_source(GUARDED_FIXTURE_PATH, source) == []
+
+
+def test_rule_c_public_cooldown_write_is_reported() -> None:
+    source = """
+def clear_resolver(controller, agent):
+    controller.mark_agent_unavailable("resolution", agent)
+"""
+    violations = audit_source(GUARDED_FIXTURE_PATH, source)
+    assert _rules(violations) == [COOLDOWN_WRITE_RULE]
+    assert violations[0].line == 3
+
+
+def test_rule_c_confirmed_unavailability_write_is_reported() -> None:
+    source = """
+def clear_resolver(controller, agent):
+    controller.record_confirmed_unavailability("resolution", agent, reason)
+"""
+    violations = audit_source(GUARDED_FIXTURE_PATH, source)
+    assert _rules(violations) == [COOLDOWN_WRITE_RULE]
+
+
+def test_rule_c_integration_package_is_guarded_against_cooldown_writes() -> None:
+    source = """
+def clear_resolver(controller, agent):
+    controller.mark_agent_unavailable("resolution", agent)
+"""
+    violations = audit_source(INTEGRATION_PACKAGE_FIXTURE_PATH, source)
+    assert _rules(violations) == [COOLDOWN_WRITE_RULE]
+
+
+def test_rule_c_pending_merge_repair_module_is_guarded_against_cooldown_writes() -> None:
+    source = """
+def clear_resolver(controller, agent):
+    controller.mark_agent_unavailable("resolution", agent)
+"""
+    violations = audit_source(PENDING_MERGE_REPAIR_FIXTURE_PATH, source)
+    assert _rules(violations) == [COOLDOWN_WRITE_RULE]
+
+
+def test_guarded_integration_path_prefixes_cover_the_pending_merge_repair_module() -> None:
+    assert "ralph/pipeline/_pending_merge_repair" in GUARDED_INTEGRATION_PATH_PREFIXES
+
+
+def test_guarded_integration_path_prefixes_cover_the_integration_package() -> None:
+    assert "ralph/pipeline/integration" in GUARDED_INTEGRATION_PATH_PREFIXES
 
 
 def test_rule_d_agent_process_launch_is_reported() -> None:
