@@ -14,6 +14,9 @@ if TYPE_CHECKING:
         PlanningSyncVerdict,
         decide_seam_action,
     )
+    from ralph.pipeline._integration_recovery_controller import (
+        standalone_integration_controller,
+    )
     from ralph.pipeline._integration_status import (
         IntegrationStatus,
         build_integration_status,
@@ -76,6 +79,7 @@ __all__ = [
     "recover_target_resolution",
     "reduce",
     "resolve_conflicted_rebase",
+    "standalone_integration_controller",
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
@@ -153,6 +157,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "resolve_conflicted_rebase": (
         "ralph.pipeline._auto_integrate_rebase_resolve",
         "resolve_conflicted_rebase",
+    ),
+    "standalone_integration_controller": (
+        "ralph.pipeline._integration_recovery_controller",
+        "standalone_integration_controller",
     ),
 }
 

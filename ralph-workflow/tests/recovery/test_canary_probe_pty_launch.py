@@ -39,11 +39,7 @@ from ralph.recovery.canary_probe import (
     ProbeResult,
     run_canary_probe,
 )
-from ralph.recovery.canary_probe_judge import (
-    CanaryMarkerState,
-    ProbeJudgeOutcome,
-    judge_probe,
-)
+from ralph.recovery.canary_probe_judge import CanaryMarkerState
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -58,6 +54,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
     ),
     "test_dialog_blocked_probe_outcome_leaves_agent_selectable_via_tracker": "operator rule: an agent is either on cooldown or not; with a one-attempt unproductive limit the charged attempt now starts an expiring unproductive_limit cooldown in the shared tracker, so the test asserts that non-dead cooldown and that the agent is selectable again once it expires",
+    "test_mismatched_marker_is_never_passed_and_the_judge_fails_it": "the test no longer builds synthetic AttemptFacts and calls judge_probe itself; it asserts the real production probe result, which the PTY transport now records the agent's tool use for, so a marker file whose content is wrong is a failed_reproducing_no_work verdict with a reason naming the mismatch",
 }
 
 _STUB = Path(__file__).resolve().parent / "fixtures" / "fake_trust_dialog_cli.py"
@@ -200,28 +197,6 @@ def test_trusted_parent_cwd_writes_marker_and_passes(
     assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
 
 
-def _probe_attempt_facts_from_run(
-    stdout_record: Path,
-    recorded: dict[str, object],
-) -> AttemptFacts:
-    captured_stdout = stdout_record.read_text(encoding="utf-8")
-    assert "claude tool:" in captured_stdout, (
-        "the probe run must show the agent using a tool to write the marker file; "
-        f"observed stdout: {captured_stdout!r}"
-    )
-    returncode = recorded["returncode"]
-    assert isinstance(returncode, int)
-    return AttemptFacts(
-        event_kinds=(AgentActivityKind.TOOL_USE.value,),
-        termination=TerminationRecord.create(
-            TerminationIssuer.AGENT_EXIT,
-            observed_returncode=returncode,
-            reported_returncode=returncode,
-            liveness_observed=False,
-        ),
-    )
-
-
 @pytest.mark.timeout_seconds(8)
 def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
     stub_agent_config: AgentConfig,
@@ -249,23 +224,24 @@ def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
         "the mismatch mode must write a marker file whose content is not the canary "
         f"content; observed content: {recorded['content']!r}"
     )
+    captured_stdout = stdout_record.read_text(encoding="utf-8")
+    assert "claude tool:" in captured_stdout, (
+        "the probe run must show the agent using a tool to write the marker file; "
+        f"observed stdout: {captured_stdout!r}"
+    )
 
-    assert result.outcome is not ProbeOutcome.PASSED, (
-        "a marker file whose content is wrong is never positive proof of the canary "
+    assert result.outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK, (
+        "a marker file whose content is wrong is a real negative verdict for the canary "
         f"task, whatever exit code the CLI returned; observed outcome: {result.outcome!r}"
     )
-    assert result.marker_written is not True, (
-        "a mismatched marker must never be recorded as a written canary marker; "
-        f"observed marker_written: {result.marker_written!r}"
+    assert result.detail == CanaryMarkerState.MISMATCHED.value
+    assert result.marker_written is False
+    assert "mismatch" in result.reason.lower(), (
+        f"the failed verdict must name the mismatch it observed; observed reason: {result.reason!r}"
     )
-
-    verdict = judge_probe(
-        CanaryMarkerState.MISMATCHED,
-        _probe_attempt_facts_from_run(stdout_record, recorded),
+    assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == [], (
+        "the probe must not leave the mismatched marker file behind"
     )
-    assert verdict.outcome is ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK
-    assert verdict.detail == CanaryMarkerState.MISMATCHED.value
-    assert verdict.marker_written is False
 
 
 @pytest.mark.timeout_seconds(8)
@@ -320,6 +296,85 @@ def _dead_attempt_facts() -> AttemptFacts:
             reported_returncode=1,
             liveness_observed=False,
         ),
+    )
+
+
+@pytest.mark.timeout_seconds(20)
+def test_mismatched_marker_probe_verdict_starts_an_expiring_dead_agent_cooldown(
+    stub_agent_config: AgentConfig,
+    tmp_path: Path,
+) -> None:
+    trusted_root = tmp_path / "trusted-root"
+    trusted_root.mkdir()
+    marker_record = tmp_path / "stub-marker.json"
+
+    probe_results: list[ProbeResult] = []
+
+    def probe(config: AgentConfig) -> ProbeResult:
+        result = run_canary_probe(
+            config,
+            timeout_s=3,
+            trusted_parent=trusted_root,
+            extra_env=_probe_env(
+                trusted_root,
+                STUB_MARKER_MODE="mismatch",
+                STUB_MARKER_RECORD=str(marker_record),
+            ),
+        )
+        probe_results.append(result)
+        return result
+
+    probe_runner = build_dead_agent_probe_runner(
+        lambda name: stub_agent_config if name == _AGENT_NAME else None,
+        probe,
+        max_probes=1,
+    )
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            dead_agent_probe_runner=probe_runner,
+        )
+    )
+
+    outcome = controller.finalize_attempt(
+        _PROBE_PHASE,
+        _AGENT_NAME,
+        facts=_dead_attempt_facts(),
+        attempt_failed=True,
+    )
+
+    assert len(probe_results) == 1
+    assert probe_results[0].outcome is ProbeOutcome.FAILED_REPRODUCING_NO_WORK
+    assert outcome.kind is AttemptOutcomeKind.AGENT_DEAD, (
+        "a confirmed mismatched marker is a real dead-agent verdict; "
+        f"observed outcome: {outcome.kind}"
+    )
+    assert outcome.starts_cooldown is True
+
+    store = controller.unavailability_store
+    reasons = store.snapshot().get("unavailability_reasons", {})
+    assert reasons.get(_AGENT_NAME) == str(UnavailabilityReason.DEAD_AGENT_NO_PROGRESS), (
+        "the dead-agent verdict must start the shared cooldown tracker entry; "
+        f"observed tracker snapshot: {store.snapshot()!r}"
+    )
+    wait_ms = store.earliest_unavailable_wait_ms(_PROBE_PHASE, [_AGENT_NAME])
+    assert wait_ms > 0, "the dead-agent cooldown must expire instead of skipping the agent"
+    agent_status = controller.ledger.status(_PROBE_PHASE, _AGENT_NAME)
+    assert isinstance(agent_status, Cooldown), (
+        f"the agent must be on an expiring cooldown; observed: {agent_status!r}"
+    )
+    assert "spent_agents" not in controller.snapshot()
+
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["probe_outcome"] == "failed_reproducing_no_work"
+    assert record["probe_reason"] == CanaryMarkerState.MISMATCHED.value
+
+    clock.advance(wait_ms / 1000 + 0.001)
+    assert store.is_available(_PROBE_PHASE, _AGENT_NAME) is True, (
+        "after the cooldown expires the agent must be selectable again; "
+        f"observed tracker snapshot: {store.snapshot()!r}"
     )
 
 

@@ -1270,6 +1270,7 @@ class PtyLineReader:
             if activity_signal.is_harness_echo:
                 watchdog.record_prompt_echo(queued_line)
             else:
+                self._observe_attempt_event(activity_signal)
                 self._record_non_echo_activity(watchdog, activity_signal)
         else:
             self._last_meaningful[0] = False
@@ -1285,6 +1286,14 @@ class PtyLineReader:
             pending_lines, exc = fire_result
             yield from self._capture_pending(pending_lines)
             raise exc
+
+    def _observe_attempt_event(self, activity_signal: AgentActivitySignal) -> None:
+        recorder = self._attempt_supervisor().recorder
+        tool_name: str | None = None
+        if activity_signal.kind == AgentActivityKind.TOOL_USE:
+            tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+            tool_name = tool_call[0] if tool_call is not None else None
+        recorder.observe_event(str(activity_signal.kind), tool_name)
 
     def _record_non_echo_activity(
         self, watchdog: IdleWatchdog, activity_signal: AgentActivitySignal

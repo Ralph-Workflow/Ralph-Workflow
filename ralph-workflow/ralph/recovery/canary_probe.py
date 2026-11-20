@@ -37,6 +37,7 @@ from ralph.pipeline.agent_entry_point import (
 from ralph.recovery.canary_probe_judge import (
     CANONICAL_DETAIL_VALUES,
     CanaryMarkerState,
+    ProbeJudgeOutcome,
     ProbeJudgeVerdict,
     judge_probe,
 )
@@ -650,8 +651,16 @@ def _verdict_result(verdict: ProbeJudgeVerdict, started: float) -> _ProbeResult:
         detail=verdict.detail,
         elapsed_ms=_elapsed_ms(started),
         marker_written=verdict.marker_written,
-        reason=verdict.reason or "",
+        reason=_verdict_reason(verdict),
     )
+
+
+def _verdict_reason(verdict: ProbeJudgeVerdict) -> str:
+    if verdict.reason:
+        return verdict.reason
+    if verdict.outcome is ProbeJudgeOutcome.FAILED_REPRODUCING_NO_WORK:
+        return verdict.detail
+    return ""
 
 
 def _elapsed_ms(started: float) -> int:
