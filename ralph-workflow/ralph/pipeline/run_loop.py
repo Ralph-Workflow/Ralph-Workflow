@@ -93,6 +93,7 @@ from ralph.pipeline.integration_resolution import (
     retained_integration_reason,
 )
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
+from ralph.pipeline.no_progress_hold import NoProgressHoldBackoff
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import (
     build_phase_entry_model_from_state,
@@ -231,6 +232,7 @@ class LoopContext:
     _session_handoff_dispatched: bool = False
     cold_capped_escalation_attempted: bool = False
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
+    retained_hold_backoff: NoProgressHoldBackoff = field(default_factory=NoProgressHoldBackoff)
 
 
 _LoopContext = LoopContext
@@ -2820,12 +2822,40 @@ def new_integration_outcome_log() -> IntegrationOutcomeLog:
     return IntegrationOutcomeLog()
 
 
+def _back_off_unchanged_retained_hold(
+    ctx: LoopContext,
+    backoff: NoProgressHoldBackoff,
+    remaining: str,
+    last_reason: str | None,
+) -> None:
+    from ralph.git.merge import branch_sha
+
+    root = Path(ctx.workspace_scope.root)
+    record = read_record(root)
+    feature = (record.integrated_feature_sha or record.pre_feature_sha) if record else ""
+    target_tip = (branch_sha(root, record.target) or "") if record else ""
+    wait_seconds = backoff.observe((remaining, last_reason or "", feature, target_tip))
+    if wait_seconds <= 0:
+        return
+    logger.warning(
+        "retained integration made no progress for {} checks in a row ({}); waiting {:.0f}s "
+        "before the next check",
+        backoff.repeats,
+        remaining,
+        wait_seconds,
+    )
+    ctx.sleep(wait_seconds)
+
+
 def _handle_retained_integration(
     state: PipelineState,
     ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
+    backoff = read_attr(ctx, "retained_hold_backoff", None)
     if retained_integration_reason(ctx.workspace_scope.root) is None:
+        if isinstance(backoff, NoProgressHoldBackoff):
+            backoff.reset()
         return state, None
     continued = _run_startup_integration(ctx, state.rebase)
     if continued is not None:
@@ -2833,6 +2863,8 @@ def _handle_retained_integration(
         _save_recovered_rebase_checkpoint(state, ctx)
     disk_after = retained_integration_reason(ctx.workspace_scope.root)
     if not disk_after:
+        if isinstance(backoff, NoProgressHoldBackoff):
+            backoff.reset()
         return state, None
     remaining = disk_after or state.rebase.last_reason or "durable integration record retained"
     if not state.rebase.recovery_record_retained:
@@ -2846,6 +2878,8 @@ def _handle_retained_integration(
         rebase=state.rebase.set_operation_display_state(OperationDisplayState.EVIDENCE_DIAGNOSIS)
     )
     _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
+    if isinstance(backoff, NoProgressHoldBackoff):
+        _back_off_unchanged_retained_hold(ctx, backoff, remaining, state.rebase.last_reason)
     return state, (state, prev_phase, 0)
 
 

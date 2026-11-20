@@ -8,7 +8,10 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
 from ralph.pipeline.auto_integrate_context import record_refresh
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
-from ralph.pipeline.auto_integrate_record import IntegrationRecord
+from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
+    release_refused_publication_record,
+)
 from ralph.pipeline.auto_integrate_record import clear_record as _clear_record
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     TerminalStateViolationError,
@@ -39,7 +42,7 @@ def _release_gate_refused_record(
         workspace_root,
         qualified_backup_ref(record.owning_worktree or str(workspace_root), record.pre_feature_sha),
     )
-    _clear_record(workspace_root)
+    release_refused_publication_record(workspace_root)
     logger.warning(
         "recovery: {}; the integration record is released and the commits stay on the "
         "feature branch until a new tree passes the gate",

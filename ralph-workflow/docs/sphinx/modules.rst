@@ -1711,6 +1711,13 @@ ralph.pipeline.prompt_prep
    :members:
    :show-inheritance:
 
+ralph.pipeline.no_progress_hold
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.no_progress_hold
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.publication_block
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -37,6 +37,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_live_session_that_ends_for_any_reason_never_starts_a_dead_agent_cooldown.cpu_budget": (
+        "the property test runs twelve recovery-controller examples and sits at the 1 s default "
+        "CPU budget; a 3 s budget keeps it from failing on shard contention"
+    ),
     "test_a_live_session_that_ends_for_any_reason_never_starts_a_dead_agent_cooldown (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_a_live_session_that_ends_for_any_reason_is_never_benched_or_spent with an unchanged body"
     ),
@@ -172,6 +176,7 @@ def _live_facts(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 @SLOW
 @given(
     issuer=st.sampled_from(list(TerminationIssuer)),

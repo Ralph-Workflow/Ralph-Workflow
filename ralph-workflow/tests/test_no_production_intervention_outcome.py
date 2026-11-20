@@ -11,6 +11,10 @@ from typing import Final
 import pytest
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_no_production_module_produces_an_intervention_outcome.release_refused_publication_record": (
+        "auto_integrate_record.py gained the gate-refusal release helpers above the allow-listed "
+        "RAISE_DIAGNOSTIC_INTERVENTION site, which moved from line 764 to 783 unchanged"
+    ),
     "status bar allow-list line": "the retained legacy attention key moved from line 139 to 140 when 429c3fa23 added the read_attr import above it; the guarded literal and its justification are unchanged",
 }
 
@@ -80,7 +84,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 764): (
+    ("pipeline/auto_integrate_record.py", 783): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),

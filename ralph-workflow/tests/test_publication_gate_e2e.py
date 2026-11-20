@@ -269,3 +269,78 @@ def test_a_retained_record_for_a_gate_refused_tree_is_released_instead_of_loopin
         PipelineState(phase="planning", rebase=outcomes[-1] or RebaseState()), ctx, "planning"
     )
     assert held is None
+
+
+def _owned_reintegration_record(feature: Path, target: str, target_sha: str | None) -> None:
+    feature_tip = _run(feature, "rev-parse", "HEAD").stdout.strip()
+    write_record(
+        feature,
+        IntegrationRecord(
+            phase="integrated",
+            target=target,
+            pre_feature_sha=feature_tip,
+            pre_target_sha=target_sha,
+            integrated_feature_sha=feature_tip,
+            operation_kind="feature_integrate",
+            owning_worktree=str(feature),
+            reintegrate_pending=True,
+        ),
+    )
+
+
+def _assert_released_without_looping(
+    tmp_git_repo: Path, feature: Path, target: str, before: str | None, runs: Path
+) -> None:
+    config = UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_target": target}}
+    )
+    logs: list[str] = []
+    sink = logger.add(lambda message: logs.append(str(message)), level="INFO", format="{message}")
+    try:
+        outcomes = [
+            integrate_before_planning(config, WorkspaceScope(feature), RebaseState())
+            for _tick in range(10)
+        ]
+    finally:
+        logger.remove(sink)
+
+    assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
+    assert read_record(feature) is None
+    assert branch_sha(tmp_git_repo, target) == before
+    assert not [line for line in logs if "cannot release its unfinished target landing" in line]
+    assert not any(outcome.recovery_record_retained for outcome in outcomes if outcome)
+    ctx = SimpleNamespace(
+        config=config,
+        workspace_scope=WorkspaceScope(feature),
+        policy_bundle=cached_default_policy_bundle(),
+        active_display=None,
+    )
+    _state, held = run_loop.ensure_planning_in_sync(
+        PipelineState(phase="planning", rebase=outcomes[-1] or RebaseState()), ctx, "planning"
+    )
+    assert held is None
+
+
+@pytest.mark.timeout_seconds(90)
+def test_an_owned_reintegration_refused_by_a_fresh_gate_run_is_released(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    fact, runs = _counting_red_gate(tmp_path)
+    target, feature = _feature_with_gate(tmp_git_repo, tmp_path, fact)
+    before = branch_sha(tmp_git_repo, target)
+    _owned_reintegration_record(feature, target, before)
+
+    _assert_released_without_looping(tmp_git_repo, feature, target, before, runs)
+
+
+@pytest.mark.timeout_seconds(90)
+def test_an_owned_reintegration_already_refused_by_the_gate_is_released(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    fact, runs = _counting_red_gate(tmp_path)
+    target, feature = _feature_with_gate(tmp_git_repo, tmp_path, fact)
+    before = branch_sha(tmp_git_repo, target)
+    assert _integrate(feature, target).publication_block is PublicationBlock.GATE_FAILED
+    _owned_reintegration_record(feature, target, before)
+
+    _assert_released_without_looping(tmp_git_repo, feature, target, before, runs)

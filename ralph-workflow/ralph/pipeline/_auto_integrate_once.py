@@ -15,6 +15,7 @@ from ralph.pipeline.auto_integrate_record import (
     START_INTEGRATING,
     IntegrationRecord,
     RecordReadOutcomeDisposition,
+    release_refused_publication_record,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_after_rejected_push,
@@ -261,9 +262,12 @@ def _integrate_once_owned(
     ok, skip_reason = ff_status.ok, ff_status.skip_reason
 
     _ai.post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
-    if ok or gate_refusal is not None:
+    if ok:
         _ai._delete_rebase_backup_ref(root, backup_ref)
         _ai._clear_record(root)
+    elif gate_refusal is not None:
+        _ai._delete_rebase_backup_ref(root, backup_ref)
+        release_refused_publication_record(root)
 
     record = _ai._record_rebase_outcome(
         rebase_outcome=rebase_result.rebase_outcome,

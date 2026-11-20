@@ -664,11 +664,9 @@ def adopt_active_rebase_record(
     return record
 
 
-def clear_record(
-    workspace_root: Path,
-    *,
-    backend: FileBackend = DEFAULT_FILE_BACKEND,
-) -> None:
+def _readable_record_for_unlink(
+    workspace_root: Path, backend: FileBackend
+) -> IntegrationRecord | None:
     outcome = read_record_outcome(workspace_root, backend=backend)
     if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
         raise RecordUnreadableError(
@@ -680,7 +678,32 @@ def clear_record(
             f"transient record lock contention at {record_path(workspace_root)}; "
             "bounded retry with a persisted deadline owns the backoff"
         )
-    record = outcome.record
+    return outcome.record
+
+
+def _unlink_record(workspace_root: Path, backend: FileBackend) -> None:
+    record_file = record_path(workspace_root)
+    try:
+        backend.unlink(record_file, missing_ok=True)
+    except FileNotFoundError:
+        return
+
+
+def release_refused_publication_record(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    _readable_record_for_unlink(workspace_root, backend)
+    _unlink_record(workspace_root, backend)
+
+
+def clear_record(
+    workspace_root: Path,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    record = _readable_record_for_unlink(workspace_root, backend)
     if record is not None and record.reintegrate_pending:
         from ralph.pipeline._landed_predicate import operation_landed
         from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
@@ -692,11 +715,7 @@ def clear_record(
             or not operation_landed(workspace_root, record).landed_on_target
         ):
             raise RuntimeError("owned reintegration cannot release its unfinished target landing")
-    record_file = record_path(workspace_root)
-    try:
-        backend.unlink(record_file, missing_ok=True)
-    except FileNotFoundError:
-        return
+    _unlink_record(workspace_root, backend)
 
 
 def clear_record_on_containment(
@@ -787,6 +806,7 @@ __all__ = [
     "read_record",
     "read_record_outcome",
     "record_path",
+    "release_refused_publication_record",
     "set_resolving_rebase",
     "transition_by_name",
     "write_record",
