@@ -4,6 +4,7 @@ import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Protocol
 
 import pytest
@@ -18,6 +19,7 @@ from ralph.pipeline.agent_entry_point import (
     EntryPointRunner,
     registered_runners,
 )
+from ralph.process.manager import ProcessStatus
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.canary_probe import (
     CANARY_MARKER_CONTENT,
@@ -218,6 +220,24 @@ def _gated_invoke(gate: threading.Event, calls: list[_Call]) -> _FakeInvoke:
         options: InvokeOptions | None = None,
     ) -> Iterator[str] | None:
         calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        gate.wait(timeout=60)
+        return iter(())
+
+    return _invoke
+
+
+def _spawn_reporting_invoke(gate: threading.Event, calls: list[_Call], pid: int) -> _FakeInvoke:
+    def _invoke(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterator[str] | None:
+        calls.append(_Call(config=config, prompt_file=prompt_file, options=options))
+        assert options is not None
+        on_spawn = options.on_spawn
+        assert on_spawn is not None
+        on_spawn(pid)
         gate.wait(timeout=60)
         return iter(())
 
@@ -869,3 +889,90 @@ def test_probe_outcome_exposes_exactly_the_three_contract_members() -> None:
         "inconclusive",
     ]
     assert DEFAULT_PROBE_TIMEOUT_S == 30
+
+
+def test_canary_probe_regression_scratch_removed_when_the_session_thread_never_ends(
+    tmp_path: Path,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    gate = threading.Event()
+    calls: list[_Call] = []
+    try:
+        result = run_canary_probe(
+            _agent_config(),
+            invoke_fn=_gated_invoke(gate, calls),
+            trusted_parent=trusted_parent,
+            timeout_s=0.1,
+        )
+        assert result.outcome == ProbeOutcome.INCONCLUSIVE
+        assert result.reason == "probe_timeout"
+        surviving = list((trusted_parent / ".agent" / "tmp").glob("canary-probe-*"))
+        assert len(surviving) == 1, "the scratch directory must survive the poll window"
+        scratch = surviving[0]
+        waiter = threading.Event()
+        removed = False
+        for _ in range(70):
+            if not scratch.exists():
+                removed = True
+                break
+            waiter.wait(timeout=0.05)
+        assert not gate.is_set(), (
+            "the session thread must still be hung when the scratch is reclaimed"
+        )
+        assert removed, (
+            "the scratch directory must be reclaimed even when the session thread never ends"
+        )
+    finally:
+        gate.set()
+
+
+def test_canary_probe_regression_scratch_reclaimed_on_a_terminal_process_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    gate = threading.Event()
+    calls: list[_Call] = []
+    messages: list[str] = []
+    sink_id = logger.add(messages.append, level="INFO", format="{message}")
+    monkeypatch.setattr(
+        "ralph.process.manager.get_process_manager",
+        lambda: SimpleNamespace(
+            get_record=lambda pid, include_terminal=True: SimpleNamespace(
+                pid=pid, status=ProcessStatus.EXITED
+            )
+        ),
+    )
+    try:
+        result = run_canary_probe(
+            _agent_config(),
+            invoke_fn=_spawn_reporting_invoke(gate, calls, 4321),
+            trusted_parent=trusted_parent,
+            timeout_s=1.0,
+        )
+        assert result.outcome == ProbeOutcome.INCONCLUSIVE
+        assert result.reason == "probe_timeout"
+        assert len(calls) == 1
+        options = calls[0].options
+        assert options is not None
+        scratch = options.workspace_path
+        assert scratch is not None
+        waiter = threading.Event()
+        removed = False
+        for _ in range(40):
+            if not scratch.exists():
+                removed = True
+                break
+            waiter.wait(timeout=0.02)
+        assert not gate.is_set(), (
+            "the session thread must still be hung when the scratch is reclaimed"
+        )
+        assert removed, "a terminal process record must reclaim the scratch without thread death"
+        assert not [
+            message for message in messages if "canary probe attempt outcome:" in message
+        ], "no attempt result may be published while the session thread is wedged"
+    finally:
+        gate.set()
+        logger.remove(sink_id)

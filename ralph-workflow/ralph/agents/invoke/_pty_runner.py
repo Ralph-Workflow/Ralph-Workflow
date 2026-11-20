@@ -24,6 +24,7 @@ from ralph.agents.invoke._errors import (
     InactivityTimeoutOpts,
     _IdleStreamTimeoutError,
 )
+from ralph.agents.invoke._invoke_options import report_spawn
 from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
@@ -124,6 +125,7 @@ def _spawn_pty_with_agy_log_offset(
             label=_agent_process_label(ctx),
         ),
     )
+    report_spawn(handle.pid)
     return handle, agy_cli_log
 
 

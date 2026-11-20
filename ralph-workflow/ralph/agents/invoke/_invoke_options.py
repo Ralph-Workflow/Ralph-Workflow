@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
+
+from loguru import logger
 
 _INVOKE_OPTS_UNSET: object = object()
 
@@ -94,6 +97,26 @@ _PLATFORM_OVERRIDE: ContextVar[str | None] = ContextVar(
     "ralph_invoke_platform_override",
     default=None,
 )
+_SPAWN_REPORT_CALLBACK: ContextVar[Callable[[int], None] | None] = ContextVar(
+    "ralph_invoke_spawn_report_callback",
+    default=None,
+)
+
+
+def report_spawn(pid: int) -> None:
+    callback = _SPAWN_REPORT_CALLBACK.get()
+    if callback is None:
+        return
+    with contextlib.suppress(Exception):
+        _report_spawn_to(callback, pid)
+
+
+def _report_spawn_to(callback: Callable[[int], None], pid: int) -> None:
+    try:
+        callback(pid)
+    except Exception as exc:
+        logger.warning("spawn-report callback failed for pid {}: {}", pid, exc)
+        raise
 
 
 @dataclass(frozen=True)
@@ -106,6 +129,7 @@ class InvokeOptions:
     phase: str | None = None
     agent_name: str | None = None
     failure_observation_sink: Callable[[AgentFailureEvent], None] | None = None
+    on_spawn: Callable[[int], None] | None = None
 
     model_flag: str | None = None
     session_id: str | None = None
@@ -224,3 +248,12 @@ class InvokeOptions:
             yield
         finally:
             _PLATFORM_OVERRIDE.reset(token)
+
+    @classmethod
+    @contextmanager
+    def spawn_report_override(cls, callback: Callable[[int], None] | None) -> Iterator[None]:
+        token = _SPAWN_REPORT_CALLBACK.set(callback)
+        try:
+            yield
+        finally:
+            _SPAWN_REPORT_CALLBACK.reset(token)

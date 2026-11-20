@@ -67,6 +67,7 @@ from ralph.agents.invoke._errors import (
     SupervisionInfrastructureError,
     _IdleStreamTimeoutError,
 )
+from ralph.agents.invoke._invoke_options import report_spawn
 from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
 from ralph.agents.invoke._session import (
@@ -1563,7 +1564,9 @@ def _spawn_process_with_agy_log_offset(
     ctx: AgentRunCtx,
 ) -> tuple[ManagedProcess, tuple[Path, int] | None]:
     agy_cli_log = agy_cli_log_start_offset() if ctx.config.transport == AgentTransport.AGY else None
-    return get_process_manager().spawn(argv, spawn_options), agy_cli_log
+    handle = get_process_manager().spawn(argv, spawn_options)
+    report_spawn(handle.pid)
+    return handle, agy_cli_log
 
 
 def _agent_process_label(ctx: AgentRunCtx) -> str:

@@ -15,6 +15,7 @@ from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.dead_agent_probe import PROBE_REASON_RUNNER_CRASHED
 from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     UnavailabilityReason,
@@ -127,7 +128,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "test_ac7_probe_budget_exhausted_keeps_unknown_and_selectable and extended to "
         "the probe-infrastructure-error arm, so both AC7 arms state the contract per "
         "entry point - the persisted verdict value is unknown, one ordinary ledger entry "
-        "holds no exclusion field, the agent stays available and the wait is zero"
+        "holds no exclusion field, the agent stays available and the wait is zero; the "
+        "crashing-probe arm now also states that the persisted probe outcome is the "
+        "inconclusive probe that could not run, carrying the probe_runner_crashed "
+        "reason, instead of an absent probe outcome"
     ),
     "test_ac16_positive_proof_only_exit_zero_alone_never_starts_a_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
     "test_ac16_registered_entry_points_honor_noninteractive_pretrusted_probe_contract": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key no longer exists, so the test asserts it is absent",
@@ -781,7 +785,11 @@ def test_ac7_probe_cannot_run_keeps_unknown_and_selectable(
     assert isinstance(record, dict)
     typed_record = as_mapping(record)
     assert typed_record.get("verdict") == "unknown"
-    assert typed_record.get("probe_outcome") is None
+    if scenario_name == "probe_unavailable" and entry_point is not AgentEntryPoint.CANARY_PROBE:
+        assert typed_record.get("probe_outcome") == "inconclusive"
+        assert typed_record.get("probe_reason") == PROBE_REASON_RUNNER_CRASHED
+    else:
+        assert typed_record.get("probe_outcome") is None
     if entry_point is AgentEntryPoint.CANARY_PROBE:
         assert observation.probe_calls == ()
         assert observation.ledger_entries == {}

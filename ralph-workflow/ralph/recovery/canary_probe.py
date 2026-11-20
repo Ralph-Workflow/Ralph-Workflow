@@ -16,6 +16,7 @@ from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
     IdleStreamTimeoutError,
+    InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
 )
@@ -47,7 +48,6 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, RawAgentInvoke
@@ -76,6 +76,7 @@ PROBE_REASON_TRANSPORT_NOT_PROBE_SAFE: Final[str] = "transport_not_probe_safe"
 PROBE_INNER_BUDGET_RATIO: Final[float] = 0.9
 _SCRATCH_REMOVAL_ATTEMPTS: Final[int] = 3
 _SCRATCH_REMOVAL_BACKOFF_S: Final[float] = 0.05
+_SESSION_JOIN_TIMEOUT_S: Final[float] = 0.5
 
 if PROBE_COULD_NOT_RUN_DETAIL not in CANONICAL_DETAIL_VALUES:
     raise RuntimeError(
@@ -114,6 +115,14 @@ class _ProbeResult:
 class _PreparedProbe:
     options: InvokeOptions
     prompt_file: str
+
+
+@dataclass
+class _SpawnedProcess:
+    pid: int | None = None
+
+    def report(self, pid: int) -> None:
+        self.pid = pid
 
 
 @dataclass(frozen=True)
@@ -185,6 +194,7 @@ def _run_canary_probe(
     timed_out = False
     session_thread: threading.Thread | None = None
     attempt: _ProbeInvoke | None = None
+    spawned = _SpawnedProcess()
     try:
         preflight = _preflight_failure(timeout_s, budget_exhausted, started)
         if preflight is not None:
@@ -200,7 +210,9 @@ def _run_canary_probe(
             return workspace
         workspace_path = workspace
         general = general_config if general_config is not None else GeneralConfig()
-        prepared = _prepare_probe(config, workspace_path, general, extra_env, timeout_s, started)
+        prepared = _prepare_probe(
+            config, workspace_path, general, extra_env, timeout_s, started, spawned
+        )
         if isinstance(prepared, _ProbeResult):
             return prepared
         invoke = invoke_fn if invoke_fn is not None else _production_invoke()
@@ -212,9 +224,29 @@ def _run_canary_probe(
     finally:
         if owns_workspace and workspace_path is not None:
             if timed_out:
-                _reap_scratch_when_the_session_ends(session_thread, workspace_path, attempt=attempt)
+                _reap_scratch_when_the_session_ends(
+                    session_thread,
+                    workspace_path,
+                    attempt=attempt,
+                    is_process_terminal=_terminal_process_predicate(spawned),
+                )
             else:
                 _remove_scratch_workspace(workspace_path)
+
+
+def _terminal_process_predicate(spawned: _SpawnedProcess) -> Callable[[], bool]:
+    from ralph.process.manager import get_process_manager, is_terminal_status
+
+    def _is_terminal() -> bool:
+        pid = spawned.pid
+        if pid is None:
+            return False
+        record = get_process_manager().get_record(pid, include_terminal=True)
+        if record is None:
+            return False
+        return is_terminal_status(record.status)
+
+    return _is_terminal
 
 
 def _reap_scratch_when_the_session_ends(
@@ -222,12 +254,13 @@ def _reap_scratch_when_the_session_ends(
     workspace_path: Path,
     *,
     attempt: _ProbeInvoke | None = None,
+    is_process_terminal: Callable[[], bool] | None = None,
 ) -> None:
     if session_thread is None and attempt is None:
         return
     threading.Thread(
         target=_remove_scratch_after_the_session_ends,
-        args=(session_thread, workspace_path, attempt),
+        args=(session_thread, workspace_path, attempt, is_process_terminal),
         name="ralph-canary-probe-reaper",
         daemon=True,
     ).start()
@@ -237,6 +270,7 @@ def _remove_scratch_after_the_session_ends(
     session_thread: threading.Thread | None,
     workspace_path: Path,
     attempt: _ProbeInvoke | None = None,
+    is_process_terminal: Callable[[], bool] | None = None,
 ) -> None:
     waiter = threading.Event()
     for _ in range(20):
@@ -247,9 +281,12 @@ def _remove_scratch_after_the_session_ends(
         if session_thread is not None and not session_thread.is_alive():
             _remove_scratch_workspace(workspace_path)
             return
+        if is_process_terminal is not None and is_process_terminal():
+            _remove_scratch_workspace(workspace_path)
+            return
         waiter.wait(timeout=0.05)
     if session_thread is not None:
-        session_thread.join()
+        session_thread.join(timeout=_SESSION_JOIN_TIMEOUT_S)
     _remove_scratch_workspace(workspace_path)
 
 
@@ -350,9 +387,12 @@ def _prepare_probe(
     extra_env: dict[str, str] | None,
     timeout_s: float,
     started: float,
+    spawned: _SpawnedProcess,
 ) -> _PreparedProbe | _ProbeResult:
     try:
-        options = _build_probe_options(config, workspace_path, general, extra_env, timeout_s)
+        options = _build_probe_options(
+            config, workspace_path, general, extra_env, timeout_s, spawned
+        )
     except (AttributeError, OSError, RuntimeError, ValueError, KeyError) as exc:
         return _inconclusive_result(PROBE_REASON_INTERNAL_ERROR, started, error=_error_text(exc))
     try:
@@ -432,6 +472,7 @@ def _build_probe_options(
     general: GeneralConfig,
     extra_env: dict[str, str] | None,
     timeout_s: float,
+    spawned: _SpawnedProcess,
 ) -> InvokeOptions:
     runtime = InvokeRuntimeOptions(
         verbose=False,
@@ -448,6 +489,7 @@ def _build_probe_options(
         options,
         idle_timeout_seconds=inner_budget,
         max_session_seconds=inner_budget,
+        on_spawn=spawned.report,
     )
 
 
@@ -473,9 +515,10 @@ def _invoke_with_timeout(
 
     def _run() -> None:
         try:
-            res = _dispatch_probe_attempt(
-                invoke, config, prepared, general, on_attempt_result=_record_result
-            )
+            with InvokeOptions.spawn_report_override(prepared.options.on_spawn):
+                res = _dispatch_probe_attempt(
+                    invoke, config, prepared, general, on_attempt_result=_record_result
+                )
             if not finished and res is not None:
                 finished.append(res)
         except (

@@ -26,8 +26,9 @@ from ralph.recovery.failure_classifier import FailureClassifier
 
 
 class _FakeHandle:
-    def __init__(self, master_fd: int) -> None:
+    def __init__(self, master_fd: int, pid: int = 4242) -> None:
         self.master_fd = master_fd
+        self.pid = pid
         self.terminate_calls: list[float | None] = []
 
     def poll(self) -> int | None:

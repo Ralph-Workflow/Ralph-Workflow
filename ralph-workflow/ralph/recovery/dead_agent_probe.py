@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
-from ralph.recovery.canary_probe import run_canary_probe
+from ralph.recovery.canary_probe import (
+    PROBE_COULD_NOT_RUN_DETAIL,
+    PROBE_REASON_BUDGET_EXHAUSTED,
+    PROBE_REASON_INTERNAL_ERROR,
+    ProbeOutcome,
+    ProbeResult,
+    run_canary_probe,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -13,9 +20,20 @@ if TYPE_CHECKING:
 
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
-    from ralph.recovery.canary_probe import ProbeResult
 
 DEFAULT_MAX_PROBES_PER_RUN = 3
+PROBE_REASON_AGENT_RESOLUTION_FAILED: Final[str] = "agent_resolution_failed"
+PROBE_REASON_AGENT_UNRESOLVED: Final[str] = "agent_unresolved"
+PROBE_REASON_PROBE_NOT_CONFIGURED: Final[str] = "probe_not_configured"
+PROBE_REASON_RUNNER_CRASHED: Final[str] = "probe_runner_crashed"
+
+
+def fail_open_probe_result(reason: str) -> ProbeResult:
+    return ProbeResult(
+        outcome=ProbeOutcome.INCONCLUSIVE,
+        detail=PROBE_COULD_NOT_RUN_DETAIL,
+        reason=reason,
+    )
 
 
 def build_dead_agent_probe_runner(
@@ -29,20 +47,20 @@ def build_dead_agent_probe_runner(
     def run(phase: str, agent: str) -> ProbeResult | None:
         nonlocal probes_started
         if probes_started >= max_probes:
-            return None
+            return fail_open_probe_result(PROBE_REASON_BUDGET_EXHAUSTED)
         try:
             config = resolve_agent(agent)
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.debug("dead-agent probe skipped for {}: {}", agent, exc)
-            return None
+            return fail_open_probe_result(PROBE_REASON_AGENT_RESOLUTION_FAILED)
         if config is None:
-            return None
+            return fail_open_probe_result(PROBE_REASON_AGENT_UNRESOLVED)
         probes_started += 1
         try:
             result = probe(config)
         except (OSError, RuntimeError, ValueError, KeyError) as exc:
             logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
-            return None
+            return fail_open_probe_result(PROBE_REASON_INTERNAL_ERROR)
         logger.info(
             "dead-agent probe phase={} agent={} outcome={} detail={} reason={}",
             phase,
@@ -79,7 +97,12 @@ def production_dead_agent_probe_runner(
 
 __all__ = [
     "DEFAULT_MAX_PROBES_PER_RUN",
+    "PROBE_REASON_AGENT_RESOLUTION_FAILED",
+    "PROBE_REASON_AGENT_UNRESOLVED",
+    "PROBE_REASON_PROBE_NOT_CONFIGURED",
+    "PROBE_REASON_RUNNER_CRASHED",
     "build_dead_agent_probe_runner",
+    "fail_open_probe_result",
     "production_dead_agent_probe_runner",
     "run_canary_probe",
 ]

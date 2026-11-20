@@ -5,13 +5,18 @@ from typing import TYPE_CHECKING
 
 from ralph.config.agent_config import AgentConfig
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.attempt_runner import seamed_dead_agent_probe_runner
+from ralph.pipeline.attempt_runner import (
+    fail_open_dead_agent_probe_runner,
+    seamed_dead_agent_probe_runner,
+)
 from ralph.recovery.canary_probe import (
     CANARY_MARKER_CONTENT,
     CANARY_MARKER_FILENAME,
+    PROBE_COULD_NOT_RUN_DETAIL,
     ProbeOutcome,
     ProbeResult,
 )
+from ralph.recovery.dead_agent_probe import PROBE_REASON_PROBE_NOT_CONFIGURED
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_injected_string_stream_reaches_the_probe_unchanged": (
@@ -21,6 +26,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_injected_stream_with_non_str_item_fails_at_consumption_time": (
         "seamed_dead_agent_probe_runner widened to return the richer ProbeResult carrier; "
         "assertion checks result.outcome == ProbeOutcome.INCONCLUSIVE"
+    ),
+    "test_the_fail_open_probe_runner_reports_that_no_probe_is_configured": (
+        "new coverage: the not-configured fail-open route returns an inconclusive probe "
+        "result carrying the probe_not_configured reason instead of a bare None, and the "
+        "assertion pins that carrier"
     ),
 }
 
@@ -102,3 +112,14 @@ def test_injected_stream_with_non_str_item_fails_at_consumption_time(
     assert consumed == items
     assert workspaces == []
     assert not list(tmp_path.iterdir())
+
+
+def test_the_fail_open_probe_runner_reports_that_no_probe_is_configured() -> None:
+    runner = fail_open_dead_agent_probe_runner()
+
+    result = runner("canary_probe", _AGENT)
+
+    assert result is not None
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
+    assert result.detail == PROBE_COULD_NOT_RUN_DETAIL
+    assert result.reason == PROBE_REASON_PROBE_NOT_CONFIGURED

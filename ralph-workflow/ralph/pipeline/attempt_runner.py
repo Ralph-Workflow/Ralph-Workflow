@@ -25,7 +25,9 @@ from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.controller_factory import RecoveryController, build_recovery_controller
 from ralph.recovery.dead_agent_probe import (
+    PROBE_REASON_PROBE_NOT_CONFIGURED,
     build_dead_agent_probe_runner,
+    fail_open_probe_result,
     production_dead_agent_probe_runner,
 )
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
@@ -127,7 +129,7 @@ def seamed_dead_agent_probe_runner(
 
 def fail_open_dead_agent_probe_runner() -> Callable[[str, str], ProbeResult | None]:
     def run(phase: str, agent: str) -> ProbeResult | None:
-        return None
+        return fail_open_probe_result(PROBE_REASON_PROBE_NOT_CONFIGURED)
 
     return run
 

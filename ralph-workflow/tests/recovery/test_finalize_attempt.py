@@ -7,6 +7,7 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, Termin
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.dead_agent_probe import PROBE_REASON_RUNNER_CRASHED
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
@@ -45,6 +46,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_dead_agent_cooldown": "operator rule: an agent is either on cooldown or not; the spent_agents snapshot key and is_spent are gone and the ordinary charge now cools the agent in the shared tracker, so the test asserts an expiring unproductive_limit cooldown rather than a dead-agent bench",
     "test_ac10_a_typed_signal_cools_the_agent_down_on_the_first_failure": "operator rule: an agent is either on cooldown or not; the ledger now shares the tracker so a consecutive limit of one would overlay a longer unproductive_limit cooldown, so this test uses the default limit of three to observe the dead-agent cooldown reason alone",
     "test_ac8_peers_failing_identically_are_surfaced_as_a_task_or_environment_failure": "operator rule: an agent is either on cooldown or not; is_spent is gone, so the test asserts the first peer holds an expiring unproductive_limit cooldown and is selectable after it expires",
+    "test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_dead_agent_cooldown (runner-crash probe reason)": (
+        "the crashing-probe-runner route now persists a non-empty probe_reason in the "
+        "schema-version-3 verdict record, so the test additionally asserts the record "
+        "carries the probe_runner_crashed reason and an inconclusive probe outcome"
+    ),
 }
 
 PHASE = "development"
@@ -196,6 +202,11 @@ def test_ac7_a_probe_that_cannot_run_leaves_the_attempt_unknown_and_without_a_de
         "agent; observed ledger agents: "
         f"{controller.ledger.registered_agents(PHASE)!r}"
     )
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["schema_version"] == 3
+    assert record["probe_outcome"] == "inconclusive"
+    assert record["probe_reason"] == PROBE_REASON_RUNNER_CRASHED
     _assert_unproductive_cooldown_then_selectable(controller, clock, AGENT_A)
 
 

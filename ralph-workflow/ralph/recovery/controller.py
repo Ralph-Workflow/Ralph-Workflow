@@ -62,6 +62,7 @@ from ralph.recovery.classifier import (
 )
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
+from ralph.recovery.dead_agent_probe import PROBE_REASON_RUNNER_CRASHED, fail_open_probe_result
 from ralph.recovery.dead_agent_verdict import TypedSignal
 from ralph.recovery.end_attempt import end_attempt
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
@@ -1369,7 +1370,7 @@ class RecoveryController:
             return runner(phase, agent)
         except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("dead-agent probe crashed phase={} agent={}: {}", phase, agent, exc)
-            return None
+            return fail_open_probe_result(PROBE_REASON_RUNNER_CRASHED)
 
     def record_confirmed_unavailability(
         self,

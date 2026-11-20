@@ -19,6 +19,7 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, Termin
 from ralph.recovery.attribution import Attribution, AttributionVerdict, RuntimeCause
 from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.dead_agent_probe import PROBE_REASON_RUNNER_CRASHED
 from ralph.recovery.dead_agent_verdict import (
     DeadAgentVerdict,
     PersistedVerdict,
@@ -77,6 +78,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "controller's own verdict record, so the reducer route into the pipeline state was "
         "unproven; the reducer copies the controller's record into the state, so the persisted "
         "state record must carry the same probe evidence and schema version"
+    ),
+    "test_the_verdict_record_carries_the_fail_open_reason_when_the_probe_runner_crashes": (
+        "new coverage: the controller swallows a crashing probe runner and used to persist an "
+        "empty probe reason, so the persisted record now has to name the fail-open route that "
+        "fired while the agent stays selectable"
     ),
 }
 
@@ -450,3 +456,34 @@ def test_the_reducer_persists_the_probe_reason_and_elapsed_ms_into_the_pipeline_
     assert record["probe_reason"] == "probe_terminated_by_runtime:supervisor_idle:rc=9"
     assert record["probe_elapsed_ms"] == 456
     assert record == controller.last_verdict_record
+
+
+def test_the_verdict_record_carries_the_fail_open_reason_when_the_probe_runner_crashes() -> None:
+    clock = FakeClock()
+
+    def crashing_probe_runner(phase: str, agent: str) -> ProbeResult:
+        raise RuntimeError("probe infrastructure unavailable")
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            clock=clock,
+            dead_agent_probe_runner=crashing_probe_runner,
+        )
+    )
+    facts = AttemptFacts(
+        exit_status="0",
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=0,
+            reported_returncode=0,
+        ),
+    )
+
+    controller.finalize_attempt("planning", "opencode", facts=facts, attempt_failed=True)
+
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["schema_version"] == 3
+    assert record["probe_reason"] == PROBE_REASON_RUNNER_CRASHED
+    assert record["probe_outcome"] == "inconclusive"
+    assert controller.unavailability_store.is_available("planning", "opencode") is True
