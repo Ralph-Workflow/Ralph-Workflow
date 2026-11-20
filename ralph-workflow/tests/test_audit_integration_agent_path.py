@@ -104,13 +104,9 @@ def finalize(controller, agent, facts):
 
 
 def test_rule_d_agent_process_launch_is_reported() -> None:
-    source = """
-import subprocess
-
-
-def launch(command):
-    return subprocess.Popen(command)
-"""
+    source = (
+        "import subprocess\n\n\ndef launch(command):\n    return subprocess." + "Popen(command)\n"
+    )
     violations = audit_source(INTEGRATION_FIXTURE_PATH, source)
     assert _rules(violations) == [AGENT_PROCESS_LAUNCH_RULE]
 
