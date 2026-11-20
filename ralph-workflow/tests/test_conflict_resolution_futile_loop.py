@@ -9,10 +9,6 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
 from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution.attempt_fault import (
-    classify_ralph_origin_fault,
-    ralph_origin_counts_as_liveness,
-)
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.round_verdict import round_termination_reason
@@ -55,8 +51,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
     ),
     "test_dead_tool_surface_fails_fast_and_hands_over": (
-        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
-        "the test asserts the candidate_unavailable cooldown and its expiry"
+        "operator rule: agent availability is cooldown-only; the resolver no longer writes "
+        "cooldown state directly, so the candidate cooldown is charged through the shared "
+        "recovery ledger as an unproductive_limit cooldown"
     ),
     "test_known_dead_surface_is_not_reentered": (
         "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
@@ -66,9 +63,29 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
         "the test asserts the agent is not cooling"
     ),
-    "test_a_watchdog_authored_fault_still_bars_the_surface": (
-        "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
-        "the test asserts the agent is not cooling"
+    "test_a_watchdog_authored_fault_never_bars_the_surface": (
+        "the resolver no longer classifies activity text; the watchdog's fault marker is "
+        "activity like any other and never decides the resolver's verdict"
+    ),
+    "test_transport_loop_detected_is_a_typed_attempt_failure": (
+        "removed: the resolver's message-text classifier was deleted with the shared agent "
+        "path, so no text can produce the transport-loop verdict"
+    ),
+    "test_supervision_relay_error_is_a_typed_attempt_failure": (
+        "removed: the resolver's message-text classifier was deleted with the shared agent "
+        "path; a supervision fault is reported from the typed exception instead"
+    ),
+    "test_agent_prose_about_tool_surfaces_is_not_a_ralph_fault": (
+        "removed: the resolver's message-text classifier was deleted with the shared agent "
+        "path, so agent prose is never inspected"
+    ),
+    "test_real_ralph_fault_tokens_are_still_classified": (
+        "removed: the resolver's message-text classifier was deleted with the shared agent "
+        "path, so fault tokens in agent text are no longer classified"
+    ),
+    "test_status_reports_activity_whatever_the_activity_text_says": (
+        "the status reporter no longer suppresses a report because the activity text looks "
+        "like a fault; the report is emitted for the activity either way"
     ),
     "test_an_agents_activity_event_cannot_kill_its_own_tool_surface": (
         "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so "
@@ -160,25 +177,13 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:
-    reason = classify_ralph_origin_fault("HTTP 503: transport_loop_detected")
-    assert reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-    assert ralph_origin_counts_as_liveness("transport_loop_detected") is False
-
-
-def test_supervision_relay_error_is_a_typed_attempt_failure() -> None:
-    payload = "SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: timed out"
-    reason = classify_ralph_origin_fault(payload)
-    assert reason is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
-    assert ralph_origin_counts_as_liveness(payload) is False
-
-
 def test_dead_tool_surface_fails_fast_and_hands_over(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
     clock = FakeClock()
-    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock, ledger=ledger))
     session = ResolutionSession(
         ledger=controller.ledger,
         recovery_controller=controller,
@@ -212,7 +217,7 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     assert "fallback" in called
     assert called.count("primary") == 1
     primary = _cooling(session, ("primary", "fallback"))["primary"]
-    assert primary.reason == "candidate_unavailable"
+    assert primary.reason == "unproductive_limit"
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
     _advance_past(clock, primary)
@@ -264,7 +269,7 @@ def test_known_dead_surface_is_not_reentered(
     assert "primary" not in _cooling(session, ("primary", "fallback"))
 
 
-def test_status_does_not_report_health_from_ralph_fault_text() -> None:
+def test_status_reports_activity_whatever_the_activity_text_says() -> None:
     reporter = ResolutionStatusReporter(
         display=None,
         target="main",
@@ -290,24 +295,7 @@ def test_status_does_not_report_health_from_ralph_fault_text() -> None:
         },
     )()
     reporter.observe(event)
-    assert reporter._last_emitted_at is None
-
-
-def test_agent_prose_about_tool_surfaces_is_not_a_ralph_fault() -> None:
-    assert classify_ralph_origin_fault("edited driver.py: the MCP tool surface is fine") is None
-    assert classify_ralph_origin_fault("the tool service comment explains the seam") is None
-    assert classify_ralph_origin_fault("noted repeated identical tool calls in a docstring") is None
-
-
-def test_real_ralph_fault_tokens_are_still_classified() -> None:
-    assert (
-        classify_ralph_origin_fault("HTTP 503: transport_loop_detected")
-        is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
-    )
-    assert (
-        classify_ralph_origin_fault("SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender: x")
-        is ResolutionTerminationReason.SUPERVISION_INFRASTRUCTURE_FAILURE
-    )
+    assert reporter._last_emitted_at == 1.0
 
 
 def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
@@ -320,7 +308,7 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(ledger=ledger)
-    listener = wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session)
     assert listener is not None
     for echoed in (
         'read attempt_fault.py: _TRANSPORT_LOOP = "transport_loop_detected"',
@@ -345,9 +333,7 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
-def test_a_watchdog_authored_fault_still_bars_the_surface(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_a_watchdog_authored_fault_never_bars_the_surface() -> None:
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
@@ -355,7 +341,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(ledger=ledger)
-    listener = wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session)
     assert listener is not None
     faulting = WaitingStatusEvent(
         kind=next(iter(WaitingStatusKind)),
@@ -375,7 +361,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     for _ in range(_REPEATED_WATCHDOG_TICKS):
         listener(faulting)
     assert "claude" not in _cooling(session, ("claude",)), "a plumbing fault is never run-scoped"
-    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+    assert session.terminal_reason is None, "activity text never decides the resolver's verdict"
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
@@ -539,7 +525,7 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(ledger=ledger)
-    listener = wrap_activity_listener(None, session, agent_name="claude")
+    listener = wrap_activity_listener(None, session)
     assert listener is not None
     listener(
         WaitingStatusEvent(

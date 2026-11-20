@@ -108,6 +108,10 @@ AGENT_VOCABULARY_ALLOWED_PHRASES: dict[str, str] = {
     r"(?i)(?:tool-registry-reset|recovery-attempt|restart) exhausted": "MCP recovery budgets",
 }
 
+_ALLOWED_PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(phrase) for phrase in AGENT_VOCABULARY_ALLOWED_PHRASES
+)
+
 TEST_TREE = "tests"
 _TEST_FUNCTION = re.compile(r"^[ \t]*(?:async[ \t]+)?def[ \t]+(test_\w+)", re.MULTILINE)
 TEST_NAME_ALLOWED_FILES: dict[str, str] = {
@@ -152,6 +156,10 @@ TEST_NAME_ALLOWED_PHRASES: dict[str, str] = {
         "evidence grading, liveness classification or git-status ordering"
     ),
 }
+
+_TEST_NAME_ALLOWED_PHRASE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(phrase) for phrase in (*AGENT_VOCABULARY_ALLOWED_PHRASES, *TEST_NAME_ALLOWED_PHRASES)
+)
 
 DOC_AGENT_PHRASE = re.compile(
     r"(?i)\b(?:benched|spent|demoted|exhausted) (?:resolver |fallback )?agents?\b"
@@ -198,6 +206,24 @@ class Violation:
         return f"{self.path}:{self.line}: {self.detail}"
 
 
+@dataclass(frozen=True)
+class _FileFacts:
+    identifiers: tuple[tuple[int, str], ...]
+    string_constants: tuple[tuple[int, str], ...]
+    status_classes: tuple[ast.ClassDef, ...]
+    mark_unavailable_calls: tuple[ast.Call, ...]
+
+
+@dataclass(frozen=True)
+class _CachedFile:
+    mtime_ns: int
+    size: int
+    source: str
+    parsed: bool
+    tree: ast.Module | Violation | None
+    facts: _FileFacts | None
+
+
 def _parse(source: str, rel_path: str) -> ast.Module | Violation:
     try:
         return ast.parse(source)
@@ -223,11 +249,12 @@ def _annotated_fields(node: ast.ClassDef) -> dict[str, str]:
     }
 
 
-def status_class_violations(tree: ast.Module, rel_path: str) -> list[Violation]:
+def status_class_violations(
+    tree: ast.Module, rel_path: str, facts: _FileFacts | None = None
+) -> list[Violation]:
+    classes = facts.status_classes if facts is not None else _file_facts(tree).status_classes
     violations: list[Violation] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
+    for node in classes:
         if not ({STATUS_BASE, "AgentStatus"} & _base_names(node)):
             continue
         if node.name not in ALLOWED_STATUS_CLASSES:
@@ -324,58 +351,76 @@ def selection_row_violations(tree: ast.Module, rel_path: str) -> list[Violation]
     return [Violation(rel_path, 1, "agent_availability is missing")]
 
 
-def _identifiers(tree: ast.Module) -> list[tuple[int, str]]:
-    found: list[tuple[int, str]] = []
+def _file_facts(tree: ast.Module) -> _FileFacts:
+    identifiers: list[tuple[int, str]] = []
+    string_constants: list[tuple[int, str]] = []
+    status_classes: list[ast.ClassDef] = []
+    mark_unavailable_calls: list[ast.Call] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            found.append((node.lineno, node.name))
+            identifiers.append((node.lineno, node.name))
+            if isinstance(node, ast.ClassDef):
+                status_classes.append(node)
         elif isinstance(node, ast.Name):
-            found.append((node.lineno, node.id))
+            identifiers.append((node.lineno, node.id))
         elif isinstance(node, ast.Attribute):
-            found.append((node.lineno, node.attr))
+            identifiers.append((node.lineno, node.attr))
         elif isinstance(node, ast.arg):
-            found.append((node.lineno, node.arg))
+            identifiers.append((node.lineno, node.arg))
         elif isinstance(node, ast.keyword) and node.arg is not None:
-            found.append((node.value.lineno, node.arg))
-    return found
+            identifiers.append((node.value.lineno, node.arg))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            string_constants.append((node.lineno, node.value))
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "mark_unavailable"
+        ):
+            mark_unavailable_calls.append(node)
+    return _FileFacts(
+        identifiers=tuple(identifiers),
+        string_constants=tuple(string_constants),
+        status_classes=tuple(status_classes),
+        mark_unavailable_calls=tuple(mark_unavailable_calls),
+    )
 
 
-def forbidden_identifier_violations(tree: ast.Module, rel_path: str) -> list[Violation]:
+def forbidden_identifier_violations(
+    tree: ast.Module, rel_path: str, facts: _FileFacts | None = None
+) -> list[Violation]:
     if not rel_path.startswith(FORBIDDEN_IDENTIFIER_SCOPES):
         return []
+    identifiers = facts.identifiers if facts is not None else _file_facts(tree).identifiers
     return [
         Violation(
             rel_path,
             line,
             f"identifier {name!r} names an agent exclusion state outside the cooldown system",
         )
-        for line, name in _identifiers(tree)
+        for line, name in identifiers
         if name not in FORBIDDEN_IDENTIFIER_EXEMPT
         and not any(part in name.lower() for part in FORBIDDEN_IDENTIFIER_EXEMPT_PARTS)
         and FORBIDDEN_IDENTIFIER.search(name)
     ]
 
 
-def _string_constants(tree: ast.Module) -> list[tuple[int, str]]:
-    return [
-        (node.lineno, node.value)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    ]
-
-
 def _names_old_agent_vocabulary(text: str, rel_path: str) -> bool:
     if (rel_path, text) in AGENT_VOCABULARY_ALLOWED_TOKENS:
         return False
+    if AGENT_VOCABULARY.search(text) is None:
+        return False
     remaining = text
-    for phrase in AGENT_VOCABULARY_ALLOWED_PHRASES:
-        remaining = re.sub(phrase, " ", remaining)
+    for pattern in _ALLOWED_PHRASE_PATTERNS:
+        remaining = pattern.sub(" ", remaining)
     return AGENT_VOCABULARY.search(remaining) is not None
 
 
-def agent_vocabulary_violations(tree: ast.Module, rel_path: str) -> list[Violation]:
+def agent_vocabulary_violations(
+    tree: ast.Module, rel_path: str, facts: _FileFacts | None = None
+) -> list[Violation]:
     if not rel_path.startswith(AGENT_VOCABULARY_SCOPES):
         return []
+    file_facts = facts if facts is not None else _file_facts(tree)
     violations = [
         Violation(
             rel_path,
@@ -383,7 +428,7 @@ def agent_vocabulary_violations(tree: ast.Module, rel_path: str) -> list[Violati
             f"identifier {name!r} uses bench/spent/demot/exhaust vocabulary for agent "
             "availability; every agent exclusion is the cooldown system",
         )
-        for line, name in _identifiers(tree)
+        for line, name in file_facts.identifiers
         if _names_old_agent_vocabulary(name, rel_path)
     ]
     violations.extend(
@@ -393,7 +438,7 @@ def agent_vocabulary_violations(tree: ast.Module, rel_path: str) -> list[Violati
             f"string {text[:60]!r} uses bench/spent/demot/exhaust vocabulary for agent "
             "availability; describe it as a cooldown",
         )
-        for line, text in _string_constants(tree)
+        for line, text in file_facts.string_constants
         if _names_old_agent_vocabulary(text, rel_path)
     )
     return violations
@@ -422,33 +467,40 @@ def cooldown_doc_pointer_violations(tree: ast.Module, rel_path: str) -> list[Vio
     ]
 
 
-def mark_unavailable_violations(tree: ast.Module, rel_path: str) -> list[Violation]:
+def mark_unavailable_violations(
+    tree: ast.Module, rel_path: str, facts: _FileFacts | None = None
+) -> list[Violation]:
     if rel_path in ALLOWED_MARK_UNAVAILABLE_MODULES:
         return []
+    calls = (
+        facts.mark_unavailable_calls
+        if facts is not None
+        else _file_facts(tree).mark_unavailable_calls
+    )
     return [
         Violation(
             rel_path,
             node.lineno,
             "only the recovery controller and the failure ledger may write the cooldown tracker",
         )
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "mark_unavailable"
+        for node in calls
     ]
 
 
-def _module_checks(tree: ast.Module, rel_path: str, source: str) -> list[Violation]:
+def _module_checks(
+    tree: ast.Module, rel_path: str, source: str, facts: _FileFacts | None = None
+) -> list[Violation]:
     violations: list[Violation] = []
+    file_facts = facts if facts is not None else _file_facts(tree)
     if "AgentStatus" in source:
-        violations.extend(status_class_violations(tree, rel_path))
+        violations.extend(status_class_violations(tree, rel_path, file_facts))
     if _SCOPED_TRIGGER.search(source) is not None:
-        violations.extend(forbidden_identifier_violations(tree, rel_path))
-        violations.extend(agent_vocabulary_violations(tree, rel_path))
+        violations.extend(forbidden_identifier_violations(tree, rel_path, file_facts))
+        violations.extend(agent_vocabulary_violations(tree, rel_path, file_facts))
     if rel_path in COOLDOWN_DOC_POINTER_MODULES:
         violations.extend(cooldown_doc_pointer_violations(tree, rel_path))
     if "mark_unavailable" in source:
-        violations.extend(mark_unavailable_violations(tree, rel_path))
+        violations.extend(mark_unavailable_violations(tree, rel_path, file_facts))
     if rel_path == LEDGER_MODULE:
         violations.extend(eligibility_alias_violations(tree, rel_path))
     if rel_path == WAIT_KIND_MODULE:
@@ -511,6 +563,61 @@ def source_violations_for_paths(
             source_violations((package_root / rel_path).read_text(encoding="utf-8"), rel_path)
         )
     return violations
+
+
+_FILE_CACHE: dict[tuple[Path, str], _CachedFile] = {}
+
+
+def _cached_source(path: Path, rel_path: str) -> _CachedFile:
+    stat = path.stat()
+    key = (path, rel_path)
+    cached = _FILE_CACHE.get(key)
+    if cached is not None and cached.mtime_ns == stat.st_mtime_ns and cached.size == stat.st_size:
+        return cached
+    entry = _CachedFile(
+        mtime_ns=stat.st_mtime_ns,
+        size=stat.st_size,
+        source=path.read_text(encoding="utf-8"),
+        parsed=False,
+        tree=None,
+        facts=None,
+    )
+    _FILE_CACHE[key] = entry
+    return entry
+
+
+def _cached_file(path: Path, rel_path: str) -> _CachedFile:
+    entry = _cached_source(path, rel_path)
+    if entry.parsed:
+        return entry
+    tree: ast.Module | Violation | None = None
+    facts: _FileFacts | None = None
+    if _needs_parse(entry.source, rel_path):
+        parsed = _parse(entry.source, rel_path)
+        tree = parsed
+        if not isinstance(parsed, Violation):
+            facts = _file_facts(parsed)
+    entry = _CachedFile(
+        mtime_ns=entry.mtime_ns,
+        size=entry.size,
+        source=entry.source,
+        parsed=True,
+        tree=tree,
+        facts=facts,
+    )
+    _FILE_CACHE[(path, rel_path)] = entry
+    return entry
+
+
+def _file_violations(path: Path, rel_path: str) -> list[Violation]:
+    entry = _cached_file(path, rel_path)
+    tree = entry.tree
+    if tree is None:
+        return []
+    if isinstance(tree, Violation):
+        return [tree]
+    facts = entry.facts if entry.facts is not None else _file_facts(tree)
+    return _module_checks(tree, rel_path, entry.source, facts)
 
 
 def _heading(line: str) -> tuple[int, str] | None:
@@ -587,6 +694,11 @@ def sole_doc_violations(text: str | None, rel_path: str = SOLE_COOLDOWN_DOC) -> 
     return violations
 
 
+def _line_has_doc_phrase_stem(line: str) -> bool:
+    lowered = line.lower()
+    return any(stem in lowered for stem in _DOC_PHRASE_STEMS)
+
+
 def doc_phrase_violations(text: str, rel_path: str) -> list[Violation]:
     exempt: tuple[int, int] | None = (
         _terminology_section(text) if rel_path.endswith(SOLE_COOLDOWN_DOC) else None
@@ -599,7 +711,7 @@ def doc_phrase_violations(text: str, rel_path: str) -> list[Violation]:
             f"an excluded agent is on cooldown (see {SOLE_COOLDOWN_DOC})",
         )
         for number, line in enumerate(text.splitlines(), start=1)
-        if any(stem in line.lower() for stem in _DOC_PHRASE_STEMS)
+        if _line_has_doc_phrase_stem(line)
         and (exempt is None or not (exempt[0] < number <= exempt[1]))
         for match in DOC_AGENT_PHRASE.finditer(line)
     ]
@@ -659,18 +771,18 @@ def _documentation_files(project_root: Path) -> list[tuple[Path, str]]:
 def documentation_violations(project_root: Path = _PROJECT_ROOT) -> list[Violation]:
     sole_doc = project_root / SOLE_COOLDOWN_DOC
     violations = sole_doc_violations(
-        sole_doc.read_text(encoding="utf-8") if sole_doc.is_file() else None
+        _cached_source(sole_doc, SOLE_COOLDOWN_DOC).source if sole_doc.is_file() else None
     )
     checkout_agents = project_root.parent / "AGENTS.md"
     agents_md = checkout_agents if checkout_agents.is_file() else project_root / "AGENTS.md"
     violations.extend(
         agents_md_violations(
-            agents_md.read_text(encoding="utf-8") if agents_md.is_file() else None,
+            _cached_source(agents_md, "AGENTS.md").source if agents_md.is_file() else None,
             "AGENTS.md",
         )
     )
     for path, rel_path in _documentation_files(project_root):
-        text = path.read_text(encoding="utf-8")
+        text = _cached_source(path, rel_path).source
         violations.extend(doc_phrase_violations(text, rel_path))
         if "/docs/" in f"/{rel_path}":
             violations.extend(doc_heading_violations(text, rel_path))
@@ -684,8 +796,8 @@ def _test_name_allowed(name: str, rel_path: str) -> bool:
     if rel_path.startswith(tuple(TEST_NAME_ALLOWED_FILES)):
         return True
     remaining = name
-    for phrase in (*AGENT_VOCABULARY_ALLOWED_PHRASES, *TEST_NAME_ALLOWED_PHRASES):
-        remaining = re.sub(phrase, " ", remaining)
+    for pattern in _TEST_NAME_ALLOWED_PHRASE_PATTERNS:
+        remaining = pattern.sub(" ", remaining)
     return AGENT_VOCABULARY.search(remaining) is None
 
 
@@ -703,16 +815,22 @@ def module_test_name_violations(text: str, rel_path: str) -> list[Violation]:
         )
     if not any(stem in text for stem in _DOC_PHRASE_STEMS):
         return violations
-    violations.extend(
-        Violation(
-            rel_path,
-            text.count("\n", 0, match.start()) + 1,
-            f"test {match.group(1)!r} uses bench/spent/demot/exhaust vocabulary for agent "
-            "availability; name it after the cooldown",
+    newlines_before = 0
+    previous_start = 0
+    for match in _TEST_FUNCTION.finditer(text):
+        newlines_before += text.count("\n", previous_start, match.start())
+        previous_start = match.start()
+        name = match.group(1)
+        if _test_name_allowed(name, rel_path):
+            continue
+        violations.append(
+            Violation(
+                rel_path,
+                newlines_before + 1,
+                f"test {name!r} uses bench/spent/demot/exhaust vocabulary for agent "
+                "availability; name it after the cooldown",
+            )
         )
-        for match in _TEST_FUNCTION.finditer(text)
-        if not _test_name_allowed(match.group(1), rel_path)
-    )
     return violations
 
 
@@ -730,7 +848,8 @@ def tree_test_name_violations(
     violations: list[Violation] = []
     for path in scan_paths:
         rel_path = path.relative_to(project_root).as_posix()
-        violations.extend(module_test_name_violations(path.read_text(encoding="utf-8"), rel_path))
+        source = _cached_source(path, rel_path).source
+        violations.extend(module_test_name_violations(source, rel_path))
     return violations
 
 
@@ -777,7 +896,7 @@ def _guard_test_module_violations(project_root: Path) -> list[Violation]:
     violations: list[Violation] = []
     for rel_path, names in GUARD_TESTS.items():
         guard_path = project_root / rel_path
-        source = guard_path.read_text(encoding="utf-8") if guard_path.is_file() else None
+        source = _cached_source(guard_path, rel_path).source if guard_path.is_file() else None
         violations.extend(guard_test_violations(source, rel_path, names))
     return violations
 
@@ -786,18 +905,36 @@ def guard_test_module_violations(package_root: Path = _PACKAGE_ROOT) -> list[Vio
     return _guard_test_module_violations(package_root.parent)
 
 
+def _scanned_python_files(package_root: Path, only: tuple[str, ...]) -> list[Path]:
+    if not only:
+        return sorted(package_root.rglob("*.py"))
+    directories: dict[Path, None] = {}
+    for prefix in only:
+        parent = prefix.rpartition("/")[0]
+        directories.setdefault(package_root / parent if parent else package_root, None)
+    found: set[Path] = set()
+    for directory in directories:
+        if directory.is_dir():
+            found.update(directory.rglob("*.py"))
+    return sorted(found)
+
+
 def collect_violations(
     package_root: Path = _PACKAGE_ROOT,
     project_root: Path = _PROJECT_ROOT,
+    *,
+    only: tuple[str, ...] = (),
 ) -> list[Violation]:
     violations: list[Violation] = []
-    for rel_path in _package_source_paths(package_root):
-        violations.extend(
-            source_violations((package_root / rel_path).read_text(encoding="utf-8"), rel_path)
-        )
+    for path in _scanned_python_files(package_root, only):
+        rel_path = path.relative_to(package_root).as_posix()
+        if rel_path.startswith("testing/") or (only and not rel_path.startswith(only)):
+            continue
+        violations.extend(_file_violations(path, rel_path))
     violations.extend(_guard_test_module_violations(project_root))
-    violations.extend(documentation_violations(project_root))
-    violations.extend(tree_test_name_violations(project_root))
+    if not only:
+        violations.extend(documentation_violations(project_root))
+        violations.extend(tree_test_name_violations(project_root))
     return violations
 
 

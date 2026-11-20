@@ -135,6 +135,10 @@ def _run(
     materializer: _FakeMaterializer,
     invoke: ResolutionInvoker,
 ) -> StopResolutionOutcome:
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.recovery.controller import RecoveryController
+
+    session = ResolutionSession(recovery_controller=RecoveryController())
     return run_conflict_resolution_outcome(
         root=workspace,
         target="main",
@@ -145,6 +149,7 @@ def _run(
         display=None,
         display_context=None,
         invoke=invoke,
+        session=session,
         observer=observer,
         prompt_materializer=materializer,
     )

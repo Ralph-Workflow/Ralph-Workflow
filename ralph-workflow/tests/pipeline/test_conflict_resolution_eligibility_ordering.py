@@ -15,12 +15,12 @@ from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_conflict_budget import resolve_failure_ledger
 from ralph.pipeline.conflict_resolution import bind_active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.chain_candidates import (
-    remember_dead_surface,
     session_ledger,
 )
 from ralph.pipeline.conflict_resolution.driver import can_continue_rounds
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
+    RecoveryControllerUnavailableError,
     ResolutionSession,
     ResolutionTerminationReason,
     ensure_session_controller,
@@ -35,6 +35,7 @@ from ralph.recovery.agent_failure_ledger import (
     AttemptFact,
     Cooldown,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -95,11 +96,9 @@ def test_ledger_and_registry_faults_start_expiring_cooldowns() -> None:
     assert _cooling(session, candidates) == {"agentA": "unproductive_limit"}
 
     session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "agentB")
-    assert _cooling(session, candidates) == {
-        "agentA": "unproductive_limit",
-        "agentB": "candidate_unavailable",
-    }
+    assert _cooling(session, candidates) == {"agentA": "unproductive_limit"}, (
+        "the resolver records its own outcome; only the shared system writes cooldown state"
+    )
 
     _advance_past_every_cooldown(clock, session, candidates)
 
@@ -107,7 +106,7 @@ def test_ledger_and_registry_faults_start_expiring_cooldowns() -> None:
     assert ledger.is_available(PHASE_RESOLUTION, "agentB")
 
 
-def test_only_a_candidate_unavailable_fault_starts_a_cooldown() -> None:
+def test_no_resolver_outcome_starts_a_cooldown_of_its_own() -> None:
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
     session = ResolutionSession(ledger=ledger)
@@ -115,21 +114,15 @@ def test_only_a_candidate_unavailable_fault_starts_a_cooldown() -> None:
 
     assert _cooling(session, candidates) == {}
 
-    session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    remember_dead_surface(session, "agentA")
-    assert _cooling(session, candidates) == {}
-
-    session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
-    remember_dead_surface(session, "agentA")
-    assert _cooling(session, candidates) == {}
-
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "agentA")
-    assert _cooling(session, candidates) == {"agentA": "candidate_unavailable"}
-
-    _advance_past_every_cooldown(clock, session, candidates)
-
-    assert _cooling(session, candidates) == {}
+    for reason in (
+        ResolutionTerminationReason.TOOL_SURFACE_DEAD,
+        ResolutionTerminationReason.ATTEMPT_FAILED,
+        ResolutionTerminationReason.CANDIDATE_UNAVAILABLE,
+    ):
+        session.terminal_reason = reason
+        assert _cooling(session, candidates) == {}, (
+            f"the resolver outcome {reason.value} must not write cooldown state"
+        )
 
 
 def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
@@ -158,7 +151,8 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
 
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
-    session = ResolutionSession(ledger=ledger)
+    controller = RecoveryController(ledger=ledger, options=RecoveryControllerOptions(clock=clock))
+    session = ResolutionSession(ledger=ledger, recovery_controller=controller)
 
     ledger.record(
         AttemptFact(
@@ -186,8 +180,6 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
     assert session.last_failure_cause is ResolutionFailureCause.NONE
     assert session.charge_conflict_budget is False
 
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "unsupported_agent")
     result = invoke_resolution_agent(
         agent_name="unsupported_agent",
         prompt_path=prompt,
@@ -199,8 +191,8 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         display_context=display_ctx,
         session=session,
     )
-    assert result.succeeded is False
-    assert executed == []
+    assert result.succeeded is True
+    assert executed == ["unsupported_agent"]
 
     result = invoke_resolution_agent(
         agent_name="healthy_agent",
@@ -214,10 +206,10 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
         session=session,
     )
     assert result.succeeded is True
-    assert executed == ["healthy_agent"]
+    assert executed == ["unsupported_agent", "healthy_agent"]
 
 
-def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
+def test_invoke_resolution_agent_without_a_shared_controller_launches_no_agent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     executed: list[str] = []
@@ -243,7 +235,6 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
 
     session = ResolutionSession()
     session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    remember_dead_surface(session, "agentA")
 
     result = invoke_resolution_agent(
         agent_name="agentA",
@@ -256,24 +247,10 @@ def test_invoke_resolution_agent_ledger_less_path_ignores_non_registry_faults(
         display_context=display_ctx,
         session=session,
     )
-    assert result.succeeded is True
-    assert executed == ["agentA"]
-
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "agentB")
-    result = invoke_resolution_agent(
-        agent_name="agentB",
-        prompt_path=prompt,
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=bundle,
-        display=None,
-        display_context=display_ctx,
-        session=session,
-    )
     assert result.succeeded is False
-    assert executed == ["agentA"]
+    assert executed == []
+    assert session.terminal_reason is ResolutionTerminationReason.EXCEPTION
+    assert session.charge_conflict_budget is False
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -292,8 +269,30 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "it expires on the fake clock"
     ),
     "test_only_a_candidate_unavailable_fault_starts_a_cooldown": (
-        "operator rule: an agent is either on cooldown or not; replaces the skipped_candidates "
-        "non-registry fault test with the expiring cooldown contract"
+        "operator rule: an agent is either on cooldown or not; the resolver's own outcome "
+        "vocabulary no longer writes cooldown state, so the test asserts that no resolver "
+        "outcome starts a cooldown of its own"
+    ),
+    "test_no_resolver_outcome_starts_a_cooldown_of_its_own": (
+        "the resolver's cooldown writes are gone with the shared agent path; the test pins "
+        "that no resolver outcome starts a cooldown and that only the shared system does"
+    ),
+    "test_ledger_reports_every_candidate_the_shared_system_cooled": (
+        "the resolver's cooldown writes are gone with the shared agent path; the test pins "
+        "that the ledger reports exactly the candidates the shared system cooled"
+    ),
+    "test_without_a_ledger_the_resolver_writes_no_cooldown_state": (
+        "the resolver's cooldown writes are gone with the shared agent path; the test pins "
+        "that a session without a ledger holds no cooldown state of its own"
+    ),
+    "test_session_controller_never_builds_a_controller": (
+        "the resolver no longer builds a private recovery controller; the test pins that "
+        "ensure_session_controller reports the missing shared controller instead of building "
+        "one, so the resolver never owns a second agent-failure state"
+    ),
+    "test_invoke_resolution_agent_without_a_shared_controller_launches_no_agent": (
+        "the resolver no longer builds a private recovery controller; without a shared "
+        "controller the resolver launches no agent and reports the missing shared path"
     ),
     "test_ledger_is_consulted_first_for_every_candidate_including_dead_surfaces": (
         "operator rule: an agent is either on cooldown or not; skipped_candidates and its "
@@ -335,26 +334,23 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
-def test_session_controller_creation_guarantees_ledger() -> None:
+def test_session_controller_never_builds_a_controller() -> None:
     bundle = _policy_bundle()
     session = ResolutionSession()
-    controller = ensure_session_controller(session, bundle)
-    assert session.recovery_controller is controller
-    ledger = session.ledger
-    assert ledger is not None
-    assert isinstance(ledger, AgentFailureLedger)
-    assert ledger is controller.ledger
+
+    with pytest.raises(RecoveryControllerUnavailableError):
+        ensure_session_controller(session, bundle)
+
+    assert session.recovery_controller is None
+    assert session.ledger is None
+    assert session_ledger(session) is None
 
 
-def test_ledger_reports_every_candidate_including_dead_surfaces_as_cooling() -> None:
+def test_ledger_reports_every_candidate_the_shared_system_cooled() -> None:
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
     session = ResolutionSession(ledger=ledger)
-    candidates = ("spent_agent", "dead_agent", "registry_only_agent", "healthy_agent")
-
-    session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(session, "dead_agent")
-    remember_dead_surface(session, "registry_only_agent")
+    candidates = ("spent_agent", "dead_agent", "healthy_agent")
 
     for spent in ("spent_agent", "dead_agent"):
         ledger.record(
@@ -368,8 +364,7 @@ def test_ledger_reports_every_candidate_including_dead_surfaces_as_cooling() -> 
     cooling = _cooling(session, candidates)
 
     assert cooling["spent_agent"] == "unproductive_limit"
-    assert "dead_agent" in cooling
-    assert cooling["registry_only_agent"] == "candidate_unavailable"
+    assert cooling["dead_agent"] == "unproductive_limit"
     assert "healthy_agent" not in cooling
 
     _advance_past_every_cooldown(clock, session, candidates)
@@ -395,10 +390,10 @@ def _cool_benched_agent(ledger: AgentFailureLedger) -> Cooldown:
 
 
 def test_chain_seams_consult_the_controller_ledger_when_the_session_has_none() -> None:
-    bundle = _policy_bundle()
     clock = FakeClock()
-    controller = ensure_session_controller(
-        ResolutionSession(ledger=AgentFailureLedger(clock=clock)), bundle
+    controller = RecoveryController(
+        ledger=AgentFailureLedger(clock=clock),
+        options=RecoveryControllerOptions(clock=clock),
     )
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
@@ -418,7 +413,11 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
+    clock = FakeClock()
+    controller = RecoveryController(
+        ledger=AgentFailureLedger(clock=clock),
+        options=RecoveryControllerOptions(clock=clock),
+    )
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     _cool_benched_agent(controller.ledger)
@@ -463,8 +462,11 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
 
 
 def test_integration_seam_resolves_the_controller_ledger_for_the_active_session() -> None:
-    bundle = _policy_bundle()
-    controller = ensure_session_controller(ResolutionSession(), bundle)
+    clock = FakeClock()
+    controller = RecoveryController(
+        ledger=AgentFailureLedger(clock=clock),
+        options=RecoveryControllerOptions(clock=clock),
+    )
     session = ResolutionSession(recovery_controller=controller, ledger=None)
 
     with bind_active_rebase_resolution_session(session):
@@ -475,7 +477,7 @@ def test_integration_seam_resolves_the_controller_ledger_for_the_active_session(
         assert resolve_failure_ledger(injected) is injected
 
 
-def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> None:
+def test_without_a_ledger_the_resolver_writes_no_cooldown_state() -> None:
     ledger = AgentFailureLedger(clock=FakeClock(), consecutive_limit=1, total_limit=1)
     ledger.record(
         AttemptFact(
@@ -492,10 +494,8 @@ def test_without_a_ledger_only_the_registry_capability_exclusion_applies() -> No
     without_ledger = ResolutionSession()
     assert session_ledger(without_ledger) is None
     without_ledger.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-    remember_dead_surface(without_ledger, "unavailable_agent")
-    assert _cooling(without_ledger, ("unhealthy_agent", "unavailable_agent")) == {
-        "unavailable_agent": "candidate_unavailable"
-    }
+    assert without_ledger.ledger is None
+    assert without_ledger.recovery_controller is None
 
 
 def test_continue_rounds_without_controller_or_ledger_fails_closed() -> None:

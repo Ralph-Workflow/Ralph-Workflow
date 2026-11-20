@@ -311,6 +311,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "integration agent path audit (audit_integration_agent_path)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_integration_agent_path"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "make test-verification-smoke",
         "make",
         ("test-verification-smoke",),

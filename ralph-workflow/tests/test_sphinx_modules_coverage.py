@@ -104,6 +104,7 @@ _EXCLUDED: dict[str, str] = {
     "recovery.fallover_event": "internal recovery type, not public API",
     "recovery.legacy_guard_migration": "internal legacy guard migration helper, not public API",
     "recovery.recovery_controller_options": "internal recovery type, not public API",
+    "recovery.restored_cooldowns": "internal recovery type, not public API",
     "recovery.unavailability_reason": "internal recovery type, not public API",
     "testing.fake_run": "test infrastructure, not public API",
     "testing.repo_structure_boundary_b11": "test infrastructure, not public API",

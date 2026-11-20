@@ -644,6 +644,7 @@ tests/test_pending_merge_commit_recovery.py|0,1,0
 tests/test_pending_merge_repair.py|4,4,8
 tests/test_pending_merge_repair_real_git.py|0,2,0
 tests/test_pending_merge_repair_resolver_health.py|0,1,0
+tests/test_pending_rebase_snapshot_repin.py|0,2,0
 tests/test_persisted_registry_row_cannot_pick_the_block.py|0,1,0
 tests/test_phase_and_commit_sessions_are_wired.py|0,1,0
 tests/test_phase_process_cleanup.py|0,0,15

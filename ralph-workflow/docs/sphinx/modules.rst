@@ -5796,6 +5796,13 @@ ralph.testing.audit_integration_invariants
    :members:
    :show-inheritance:
 
+ralph.testing.audit_integration_agent_path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_integration_agent_path
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_banned_constructs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

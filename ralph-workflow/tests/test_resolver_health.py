@@ -5,8 +5,8 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
-    clear_resolver,
     record_resolver_failure,
+    record_resolver_success,
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
@@ -107,7 +107,7 @@ def test_verified_success_clears_the_resolver_history() -> None:
     controller = _controller(FakeClock())
     _bench_unproductive(controller, "codex/a", "kaboom")
 
-    clear_resolver(controller, "codex/a")
+    record_resolver_success(controller, "codex/a")
 
     assert choose_resolver(controller, ("codex/a",)).agent == "codex/a"
 

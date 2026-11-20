@@ -6,11 +6,7 @@ from ralph.pipeline.conflict_resolution import announce_declared_decisions, atte
 
 
 def test_sealed_outcome_migration_regression_attempt_fault_rejects_text_evidence() -> None:
-    signature = inspect.signature(attempt_fault.classify_attempt_fault)
-
-    assert signature.parameters["evidence"].annotation == (
-        "AttemptFault | ResolutionTerminationReason | None"
-    )
+    assert not hasattr(attempt_fault, "classify_attempt_fault")
     assert "_classify_text_attempt_fault" not in inspect.getsource(attempt_fault)
 
 

@@ -31,8 +31,8 @@ from ralph.recovery.dead_agent_probe import (
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
 from ralph.recovery.recovery_controller_options import (
     RecoveryControllerOptions,
-    restored_cooldowns,
 )
+from ralph.recovery.restored_cooldowns import restored_cooldowns
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Mapping

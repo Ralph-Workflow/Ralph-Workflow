@@ -10,8 +10,8 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
-    clear_resolver,
     record_resolver_failure,
+    record_resolver_success,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
@@ -423,7 +423,7 @@ def test_other_phase_cooldown_applies_to_resolution_until_it_expires() -> None:
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
 
 
-def test_clear_resolver_resets_resolution_history() -> None:
+def test_recorded_success_resets_resolution_history() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
@@ -431,7 +431,7 @@ def test_clear_resolver_resets_resolution_history() -> None:
         record_resolver_failure(controller, "agentA", "fail 1")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
 
-    clear_resolver(controller, "agentA")
+    record_resolver_success(controller, "agentA")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
 
     for _ in range(3):
@@ -517,8 +517,7 @@ def test_faulty_health_recording_fails_closed() -> None:
     with pytest.raises(RuntimeError):
         record_resolver_failure(controller, "agentA", "error")
 
-    with pytest.raises(RuntimeError):
-        clear_resolver(controller, "agentA")
+    record_resolver_success(controller, "agentA")
 
 
 def test_fake_clock_shows_no_invocation_before_eligibility(
@@ -779,7 +778,7 @@ def test_fault_activity_text_does_not_exclude_candidate() -> None:
 
     ledger = AgentFailureLedger(clock=FakeClock())
     session = ResolutionSession(ledger=ledger)
-    listener = wrap_activity_listener(None, session, agent_name="agentA")
+    listener = wrap_activity_listener(None, session)
     assert listener is not None
 
     class FakeEvent:

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import functools
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 from git import GitCommandError, Repo
+from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
@@ -124,6 +127,48 @@ pytestmark = [
 ]
 
 
+REBASE_RESOLUTION_PHASE = "rebase_conflict_resolution"
+
+
+@contextmanager
+def capture_selection_announcements() -> Iterator[list[str]]:
+    announcements: list[str] = []
+
+    def sink(message: object) -> None:
+        record = getattr(message, "record", {})
+        content = str(record.get("message", ""))
+        if "Selected agent" in content:
+            announcements.append(content)
+
+    sink_id = logger.add(sink, level="INFO", format="{message}")
+    try:
+        yield announcements
+    finally:
+        logger.remove(sink_id)
+
+
+def assert_selected_agent_announcement_implies_launch(
+    announcements: Sequence[str],
+    launch_count: int,
+    *,
+    phase: str = REBASE_RESOLUTION_PHASE,
+) -> None:
+    prefix = f"Phase {phase}: Selected agent"
+    selected = [line for line in announcements if prefix in line]
+    if not selected:
+        return
+    assert launch_count >= 1, (
+        f"a selection announcement for phase {phase} must imply an actual launch: "
+        f"announced {selected}, launch count {launch_count}"
+    )
+
+
+@pytest.fixture(autouse=True)
+def selection_announcements() -> Iterator[list[str]]:
+    with capture_selection_announcements() as announcements:
+        yield announcements
+
+
 @functools.lru_cache(maxsize=2)
 def _make_config(*, remote_enabled: bool = False) -> UnifiedConfig:
     return UnifiedConfig.model_validate(
@@ -144,6 +189,7 @@ def scenario_git_commit_identity(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = materialize_conflicted_repo(tmp_path / "repo")
@@ -185,9 +231,11 @@ def test_symptom_1_corrupted_agents_toml_falls_back_and_proceeds(
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
     assert "agentA" in invocations
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_2_cooling_resolver_chain_enters_waiting_state_without_spinning(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = materialize_conflicted_repo(tmp_path / "repo")
@@ -230,9 +278,11 @@ def test_symptom_2_cooling_resolver_chain_enters_waiting_state_without_spinning(
     )
     assert outcome is not None
     assert not outcome.is_intervention_required
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_3_completed_rebase_advances_record_and_promotes(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = materialize_conflicted_repo(tmp_path / "repo")
@@ -321,9 +371,13 @@ def test_symptom_3_completed_rebase_advances_record_and_promotes(
     assert fresh_invocations == [], (
         "After supervisor restart, previously completed rebase must not redo stops"
     )
+    assert_selected_agent_announcement_implies_launch(
+        selection_announcements, len(invocations) + len(fresh_invocations)
+    )
 
 
 def test_symptom_6_unstaged_text_and_gitlink_conflict_staged_and_continued(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = tmp_path / "repo"
@@ -368,9 +422,11 @@ def test_symptom_6_unstaged_text_and_gitlink_conflict_staged_and_continued(
         f"got {outcome.last_outcome}"
     )
     assert not rebase_in_progress(repo_dir)
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_repro_ralphsite_wt02_worktree(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = tmp_path / "repo"
@@ -421,9 +477,11 @@ def test_symptom_repro_ralphsite_wt02_worktree(
     assert outcome.fast_forwarded, "Ralph-Site wt-02 must fast-forward the resolved local branch"
     assert outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
     assert not rebase_in_progress(repo_dir)
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_repro_ralphsite_wt04_worktree(
+    selection_announcements: list[str],
     tmp_path: Path,
 ) -> None:
     repo_dir = tmp_path / "repo"
@@ -483,10 +541,12 @@ def test_symptom_repro_ralphsite_wt04_worktree(
             outcome.last_reason is not None and "remote origin unreachable" in outcome.last_reason
         )
         assert not rebase_in_progress(repo_dir)
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 @pytest.mark.parametrize(("repo_state", "ledger_content"), _REPO_STATE_LEDGER_MATRIX_PARAMS)
 def test_matrix_axis_repo_state_x_ledger_content(
+    selection_announcements: list[str],
     tmp_path: Path,
     repo_state: str,
     ledger_content: str,
@@ -537,9 +597,11 @@ def test_matrix_axis_repo_state_x_ledger_content(
     if ledger_content == "spent_chain":
         assert "agentA" not in invocations
         assert "agentB" in invocations
+        assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands(
+    selection_announcements: list[str],
     tmp_git_repo: Path,
 ) -> None:
     repo_dir = tmp_git_repo
@@ -600,9 +662,11 @@ def test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands(
     head = repo_dir / "deleted.txt"
     assert head.exists(), "the declared delete/modify decision must keep the file landed"
     assert not rebase_in_progress(repo_dir)
+    assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
 def test_symptom_5_completed_rebase_proven_landed_by_anchor_chain(
+    selection_announcements: list[str],
     tmp_git_repo: Path,
 ) -> None:
     repo_dir = tmp_git_repo
@@ -611,11 +675,15 @@ def test_symptom_5_completed_rebase_proven_landed_by_anchor_chain(
     assert result.resolver_launches >= 1, "the conflicted first stop needs one resolver launch"
     assert result.terminal_state == "landed"
     assert not rebase_in_progress(repo_dir)
+    assert_selected_agent_announcement_implies_launch(
+        selection_announcements, result.resolver_launches
+    )
     verdict = [line for line in result.operator_lines if "proven landed" in line.content]
     assert verdict, "the operator must see one proven-landed line naming HEAD and anchors"
 
 
 def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
+    selection_announcements: list[str],
     tmp_git_repo: Path,
 ) -> None:
     from tests._scenario_git import git
@@ -633,6 +701,9 @@ def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
         "an empty-resolution stop must be proven landed by the recorded tree so the "
         "rebase is not withheld"
     )
+    assert_selected_agent_announcement_implies_launch(
+        selection_announcements, result.resolver_launches
+    )
     head = git(repo_dir, "rev-parse", "HEAD")
     target = git(repo_dir, "rev-parse", "main")
     assert head == target, (
@@ -642,6 +713,7 @@ def test_symptom_5_empty_resolution_stop_proven_landed_by_tree(
 
 
 def test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry(
+    selection_announcements: list[str],
     tmp_git_repo: Path,
 ) -> None:
     repo_dir = tmp_git_repo
@@ -653,9 +725,13 @@ def test_symptom_5_empty_resolution_stop_proven_landed_by_anchor_ancestry(
         line for line in result.operator_lines if "proven landed by anchor ancestry" in line.content
     ]
     assert verdict
+    assert_selected_agent_announcement_implies_launch(
+        selection_announcements, result.resolver_launches
+    )
 
 
 def test_symptom_5_unrelated_head_rejected_once_then_quiet(
+    selection_announcements: list[str],
     tmp_git_repo: Path,
 ) -> None:
     repo_dir = tmp_git_repo
@@ -671,6 +747,9 @@ def test_symptom_5_unrelated_head_rejected_once_then_quiet(
         f"the unrelated HEAD must be rejected exactly once, got {len(rejections)}"
     )
     assert "resume with" in rejections[0].content
+    assert_selected_agent_announcement_implies_launch(
+        selection_announcements, result.resolver_launches
+    )
 
 
 def test_landed_proof_facts_name_the_proof_inputs_not_the_retired_three_sha_allowlist() -> None:

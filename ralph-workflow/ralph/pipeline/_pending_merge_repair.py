@@ -21,8 +21,8 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
-    clear_resolver,
     record_resolver_failure,
+    record_resolver_success,
 )
 from ralph.workspace.context import WorkspaceContextError
 
@@ -334,7 +334,7 @@ def handoff_pending_merge_repair(
         return False
     invoked_ok = bool(reported[0]) if reported else False
     if _declared_repair_present(backend, declaration):
-        clear_resolver(controller, agent)
+        record_resolver_success(controller, agent)
         return invoked_ok
     record_resolver_failure(
         controller,

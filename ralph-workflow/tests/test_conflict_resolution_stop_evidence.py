@@ -23,6 +23,14 @@ from tests._conflict_resolution_futile_loop_support import (
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry": (
+        "invariant 13: integration has no agent-failure handling of its own; conflict resolution "
+        "no longer directly calls mark_candidate_unavailable, so the candidate cooldown is recorded "
+        "through the shared recovery controller as an unproductive_limit cooldown"
+    ),
+}
+
 
 def test_a_new_stop_starts_with_a_chargeable_budget(tmp_path: Path) -> None:
     from ralph.pipeline.conflict_resolution.session import begin_resolution_stop
@@ -176,7 +184,7 @@ def test_a_candidate_the_registry_cannot_produce_cools_down_until_its_expiry(
         session=session,
     )
     primary = _cooling(session, ("primary", "fallback"))["primary"]
-    assert primary.reason == "candidate_unavailable"
+    assert primary.reason in ("candidate_unavailable", "unproductive_limit")
     later: list[str] = []
     driver_module.run_conflict_resolution_pipeline(
         root=tmp_path,

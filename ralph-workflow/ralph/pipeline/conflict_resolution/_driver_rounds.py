@@ -18,11 +18,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     BUDGET_UNCHARGED_TERMINATION_REASONS,
-    attempt_fault_to_termination_reason,
-    classify_attempt_fault,
-)
-from ralph.pipeline.conflict_resolution.chain_candidates import (
-    remember_dead_surface as _remember_dead_surface,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     session_ledger,
@@ -206,12 +201,6 @@ def _handle_candidate_failure(
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
     del invoker_result
-    fault = classify_attempt_fault(session.terminal_reason)
-    _remember_dead_surface(session, agent_name)
-    if session.terminal_reason is None:
-        session.terminal_reason = (
-            attempt_fault_to_termination_reason(fault) or ResolutionTerminationReason.ATTEMPT_FAILED
-        )
     if isinstance(session.last_attempt_failure, BaseException):
         typed_outcome = ConflictAttemptOutcome.RAW
         exc: BaseException | None = session.last_attempt_failure
@@ -232,6 +221,8 @@ def _handle_candidate_failure(
         failed_index=offset,
         policy_bundle=policy_bundle,
     )
+    if session.terminal_reason is None:
+        session.terminal_reason = ResolutionTerminationReason.ATTEMPT_FAILED
     if session.terminal_reason in BUDGET_UNCHARGED_TERMINATION_REASONS:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     else:

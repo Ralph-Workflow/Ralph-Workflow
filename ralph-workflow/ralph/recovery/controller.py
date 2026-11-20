@@ -70,10 +70,8 @@ from ralph.recovery.failure_classifier import (
     watchdog_unavailability_reason,
 )
 from ralph.recovery.false_cooldown_feedback import FalseCooldownFeedback
-from ralph.recovery.recovery_controller_options import (
-    RecoveryControllerOptions,
-    persisted_cooldowns,
-)
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
+from ralph.recovery.restored_cooldowns import persisted_cooldowns
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.timeout_defaults import (
     AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,

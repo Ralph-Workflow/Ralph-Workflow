@@ -130,6 +130,9 @@ _INTEGRATION_SINGLE_SOURCE_STEP_LABEL: Final = (
 _INTEGRATION_NO_LEGACY_STEP_LABEL: Final = (
     "integration no-legacy audit (audit_integration_no_legacy)"
 )
+_INTEGRATION_AGENT_PATH_STEP_LABEL: Final = (
+    "integration agent path audit (audit_integration_agent_path)"
+)
 
 
 if not _KNOWN_TEST_STEP_LABELS:
@@ -203,6 +206,7 @@ for _integration_audit, _integration_audit_label in (
     ("audit_integration_swallow", _INTEGRATION_SWALLOW_STEP_LABEL),
     ("audit_integration_single_source", _INTEGRATION_SINGLE_SOURCE_STEP_LABEL),
     ("audit_integration_no_legacy", _INTEGRATION_NO_LEGACY_STEP_LABEL),
+    ("audit_integration_agent_path", _INTEGRATION_AGENT_PATH_STEP_LABEL),
 ):
     if not any(_integration_audit_label in label for label, *_rest in _VERIFY_STEPS):
         raise RuntimeError(

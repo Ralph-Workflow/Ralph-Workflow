@@ -15,7 +15,7 @@ from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, Termin
 from ralph.recovery.canary_probe import ProbeOutcome
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-from ralph.recovery.recovery_controller_options import restored_cooldowns
+from ralph.recovery.restored_cooldowns import restored_cooldowns
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 from ralph.recovery.wait_kind import WaitKind
 from tests.recovery._scenario_harness import _build_policy_bundle

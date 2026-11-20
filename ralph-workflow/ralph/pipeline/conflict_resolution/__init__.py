@@ -9,11 +9,6 @@ from ralph.pipeline.conflict_resolution._operator_command import (
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import (
-    AttemptFault,
-    attempt_fault_to_termination_reason,
-    classify_attempt_fault,
-)
 from ralph.pipeline.conflict_resolution.driver import (
     ResolutionAction,
     run_conflict_resolution_outcome,
@@ -31,16 +26,13 @@ from ralph.pipeline.conflict_resolution.rebase_loop import (
 )
 
 __all__ = [
-    "AttemptFault",
     "RebaseStop",
     "RebaseStopResolver",
     "ResolutionAction",
     "ResolutionTerminationReason",
     "active_rebase_resolution_session",
     "announce_declared_decisions",
-    "attempt_fault_to_termination_reason",
     "bind_active_rebase_resolution_session",
-    "classify_attempt_fault",
     "operator_command_for_paths",
     "resolution_session_from_config",
     "run_conflict_resolution_outcome",

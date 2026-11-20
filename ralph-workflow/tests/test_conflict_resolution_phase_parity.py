@@ -68,7 +68,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_transient_failure_retries_the_same_agent_using_recovery_controller_handle": "the first provider-failed candidate falls over immediately to the next shared-eligible candidate and is not relaunched before shared eligibility returns",
     "test_a_new_stop_restarts_the_chain_on_a_reused_session": "with candidate fall-over in round 1, fallback resolves on round 1 and the new stop restarts the chain at candidate one",
     "test_next_round_keeps_the_successful_highest_priority_candidate": "with candidate fall-over within a round, when candidate one becomes unavailable mid-round candidate two is invoked in that same round",
-    "test_an_uninstalled_candidate_hands_over_to_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts the candidate_unavailable cooldown on the uninstalled candidate and that it expires on the fake clock",
+    "test_an_uninstalled_candidate_hands_over_to_the_next_one": "invariant 13: integration has no agent-failure handling of its own; resolution records its own outcome and does not directly write cooldown state",
     "test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt": "operator rule: an agent is either on cooldown or not; a chain at its total limit is cooling down instead of Spent, so the uninvoked round reports CANDIDATE_UNAVAILABLE rather than NO_RUNNABLE_CANDIDATE",
     "test_ordinary_phase_two_agent_fall_over_then_wait": "operator rule: an agent is either on cooldown or not; the unproductive limit cooldown reason is now unproductive_limit",
     "test_one_candidates_infrastructure_fault_does_not_bury_the_next_one": "operator rule: an agent is either on cooldown or not; skipped_candidates is gone, so the test asserts no candidate is on a candidate_unavailable cooldown after an infrastructure fault",
@@ -1146,11 +1146,9 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
             is True
         )
         assert called == ["pi", "claude"]
-        cooling = _cooling(session, ("pi", "claude"))
-        assert cooling["pi"].reason == "candidate_unavailable"
-        assert "claude" not in cooling
-        _clock.advance((cooling["pi"].until_ms - int(_clock.monotonic() * 1000)) / 1000.0)
-        assert _cooling(session, ("pi", "claude")) == {}
+        assert _cooling(session, ("pi", "claude")) == {}, (
+            "the resolver records its own outcome; only the shared system writes cooldown state"
+        )
     finally:
         reset_executors(token)
 

@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 __all__ = [
     "ResolverChoice",
     "choose_resolver",
-    "clear_resolver",
     "record_resolver_failure",
+    "record_resolver_success",
 ]
 
 
@@ -72,11 +72,10 @@ def record_resolver_failure(
     )
 
 
-def clear_resolver(controller: RecoveryController, agent: str) -> None:
-    controller.record_attempt_fact(
+def record_resolver_success(controller: RecoveryController, agent: str) -> None:
+    controller.finalize_attempt(
         PHASE_RESOLUTION,
         agent,
-        artifact_valid=True,
-        workspace_changed=False,
+        facts=AttemptFacts(artifact_valid=True, workspace_changed=False),
+        attempt_failed=False,
     )
-    controller.reset_backoff(PHASE_RESOLUTION, agent)

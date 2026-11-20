@@ -77,6 +77,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
     resolution_outcome as _verdict_resolution_outcome,
 )
 from ralph.pipeline.conflict_resolution.session import (
+    NO_SHARED_AGENT_PATH_HALT_REASON,
     RecoveryControllerUnavailableError,
     ResolutionSession,
     begin_resolution_stop,
@@ -179,9 +180,9 @@ def _resolution_outcome(session: ResolutionSession, succeeded: bool) -> StopReso
 
 def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
     if session.recovery_controller is not None:
-        from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
+        from ralph.pipeline.conflict_resolution.resolver_health import record_resolver_success
 
-        clear_resolver(session.recovery_controller, agent)
+        record_resolver_success(session.recovery_controller, agent)
 
 
 def build_session_integration_status(
@@ -783,17 +784,13 @@ def _bootstrap_resolution_session(
 
         if isinstance(store, UnavailabilityStore):
             session.unavailability_store = store
-    if invoke is not None and session.probe_runner is None:
-        from ralph.pipeline.attempt_runner import fail_open_dead_agent_probe_runner
-
-        session.probe_runner = fail_open_dead_agent_probe_runner()
     _ensure_controller_best_effort(session, policy_bundle, pipeline_deps, config, display)
     if session.recovery_controller is None:
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.CONTEXT_FAILURE
-        session.halt_reason = "recovery controller unavailable"
+        session.halt_reason = NO_SHARED_AGENT_PATH_HALT_REASON
         emit_conflict_phase_line(
-            display, "conflict resolution blocked: recovery controller unavailable"
+            display, f"conflict resolution blocked: {NO_SHARED_AGENT_PATH_HALT_REASON}"
         )
         return True
     _bind_session_workspace(session, effective_scope)

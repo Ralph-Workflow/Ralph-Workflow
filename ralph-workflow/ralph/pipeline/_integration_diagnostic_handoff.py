@@ -184,8 +184,8 @@ def _invoke_and_judge(
 ) -> bool:
     from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
     from ralph.pipeline.conflict_resolution.resolver_health import (
-        clear_resolver,
         record_resolver_failure,
+        record_resolver_success,
     )
     from ralph.workspace.context import WorkspaceContextError
 
@@ -201,7 +201,7 @@ def _invoke_and_judge(
         raise
     verified, _reason = _check_operation_completion_proof(inspection_root, record, collector=col)
     if verified:
-        clear_resolver(controller, agent)
+        record_resolver_success(controller, agent)
     else:
         detail = failure_detail() if failure_detail is not None else None
         if detail is not None:
