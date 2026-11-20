@@ -45,6 +45,12 @@ def _defined_name(node: ast.AST) -> str | None:
     return None
 
 
+@cache
+def _file_ast(relative: str, source: str) -> ast.AST:
+    return ast.parse(source, filename=relative)
+
+
+@cache
 def _defining_modules(symbol: str) -> tuple[str, ...]:
     defining: list[str] = []
     escaped = re.escape(symbol)
@@ -56,11 +62,12 @@ def _defining_modules(symbol: str) -> tuple[str, ...]:
         source = data.decode("utf-8")
         if not definition_shape.search(source):
             continue
-        tree = ast.parse(source, filename=relative)
+        tree = _file_ast(relative, source)
         defining.extend(relative for node in ast.walk(tree) if _defined_name(node) == symbol)
     return tuple(sorted(defining))
 
 
+@cache
 def _pipeline_agent_selection_reexports() -> tuple[str, ...]:
     reexports: list[str] = []
     needle = _AGENT_SELECTION_SOURCE.encode("utf-8")
@@ -68,7 +75,7 @@ def _pipeline_agent_selection_reexports() -> tuple[str, ...]:
         if needle not in data:
             continue
         source = data.decode("utf-8")
-        tree = ast.parse(source, filename=relative)
+        tree = _file_ast(relative, source)
         for node in tree.body:
             if not isinstance(node, ast.ImportFrom):
                 continue
@@ -77,6 +84,15 @@ def _pipeline_agent_selection_reexports() -> tuple[str, ...]:
             if any(alias.name in _AGENT_SELECTION_API for alias in node.names):
                 reexports.append(relative)
     return tuple(sorted(reexports))
+
+
+def _warm_caches() -> None:
+    for sym in (_CONFLICT_KIND, *_AGENT_SELECTION_API):
+        _defining_modules(sym)
+    _pipeline_agent_selection_reexports()
+
+
+_warm_caches()
 
 
 def test_conflict_kind_has_exactly_one_defining_module() -> None:
