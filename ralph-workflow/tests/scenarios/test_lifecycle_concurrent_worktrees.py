@@ -27,6 +27,20 @@ pytestmark = [
     pytest.mark.timeout_seconds(20),
 ]
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_stale_lock_on_the_shared_target_is_recovered_and_both_siblings_land": (
+        "the stale-lock cell now bounds the same operator lines and failed landings "
+        "the concurrent cell bounds, so a recovery that repeats its landing report "
+        "fails instead of passing; the landing and no-park expectations are unchanged"
+    ),
+    "test_a_worktree_that_crashed_mid_operation_recovers_its_lock_and_lands": (
+        "the crashed-sibling cell now bounds the same operator lines and failed "
+        "landings the concurrent cell bounds, so a recovery that repeats its landing "
+        "report fails instead of passing; the landing and no-park expectations are "
+        "unchanged"
+    ),
+}
+
 _PARKING_LITERALS: tuple[str, ...] = (
     "operator action required",
     "needsoperator",
@@ -253,6 +267,14 @@ def test_a_stale_lock_on_the_shared_target_is_recovered_and_both_siblings_land(
     assert not _parked_state(beta_run), f"beta parked for a person: {beta_run.state}"
     assert _landed(beta_run), f"beta must land past the stale lock: {beta_run.state}"
 
+    recovery_texts = _operator_texts((alpha_run, beta_run))
+    assert len(recovery_texts) <= _MAX_OPERATOR_LINES, (
+        f"a stale-lock recovery must not log repeatedly: {recovery_texts}"
+    )
+    assert len(_failed_landings(recovery_texts)) <= _MAX_FAILED_LANDINGS, (
+        f"a stale-lock recovery must not retry the landing without bound: {recovery_texts}"
+    )
+
     assert_content_equivalence(
         tmp_git_repo,
         contract="the alpha sibling's work must reach the shared target",
@@ -303,6 +325,12 @@ def test_a_worktree_that_crashed_mid_operation_recovers_its_lock_and_lands(
     )
     assert _landed(beta_run), (
         f"the next tick must resume the crashed operation and land: {beta_run.state}"
+    )
+    assert len(texts) <= _MAX_OPERATOR_LINES, (
+        f"a crashed-sibling recovery must not log repeatedly: {texts}"
+    )
+    assert len(_failed_landings(texts)) <= _MAX_FAILED_LANDINGS, (
+        f"a crashed-sibling recovery must not retry the landing without bound: {texts}"
     )
     assert not git(beta, "status", "--porcelain"), (
         "the recovered operation must leave no paused rebase or conflict residue behind"

@@ -2,20 +2,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.git.merge import unmerged_paths
+from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline import attempt_stop_resolution
+from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from tests._scenario_harness import (
     SCENARIO_FILES,
     ScenarioResult,
     ScenarioRunner,
+    commit_file,
+    git,
     run_declared_decisions_and_gitlink_resolution,
     run_detached_head_probe_quietness,
     run_empty_resolution_stop,
     run_marker_resolution,
     run_marker_resolution_bounded,
     run_spent_chain_fall_over_then_wait,
+    scenario_config,
+    shared_executor_seam,
 )
+from tests.scenarios._counting_resolver import CountingResolver
+
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution import RebaseStop
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -119,3 +132,69 @@ def test_leaves_marker_mode_retains_the_rebase(tmp_git_repo: Path) -> None:
 
     assert result.resolver_launches == 1
     assert result.terminal_state == "retained"
+
+
+_THREE_CONFLICTED_FILES: tuple[str, ...] = ("alpha.txt", "beta.txt", "gamma.txt")
+_MARKER_FILE = "gamma.txt"
+
+
+def _paused_three_text_conflicts(root: Path) -> None:
+    for relative in _THREE_CONFLICTED_FILES:
+        commit_file(root, relative, "base\n", f"base {relative}")
+    git(root, "checkout", "-q", "-b", "feature")
+    for relative in _THREE_CONFLICTED_FILES:
+        (root / relative).write_text("feature\n", encoding="utf-8")
+    git(root, "add", "--", *_THREE_CONFLICTED_FILES)
+    git(root, "commit", "-q", "-m", "feature change")
+    git(root, "checkout", "-q", "main")
+    for relative in _THREE_CONFLICTED_FILES:
+        (root / relative).write_text("target\n", encoding="utf-8")
+    git(root, "add", "--", *_THREE_CONFLICTED_FILES)
+    git(root, "commit", "-q", "-m", "target change")
+    git(root, "checkout", "-q", "feature")
+    git(root, "rebase", "main", check=False)
+    if not rebase_in_progress(root):
+        raise AssertionError("scenario fixture did not pause in a conflicted rebase")
+
+
+class _MarkerLeavingResolver:
+    def __init__(self, marker_path: str) -> None:
+        self.marker_path = marker_path
+
+    def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
+        for relative in stop.conflicted_files:
+            if relative == self.marker_path:
+                continue
+            path = root / relative
+            if path.is_file():
+                path.write_text("resolved by scenario agent\n", encoding="utf-8")
+        return True
+
+
+def test_marker_leaving_resolver_is_re_dispatched_for_that_file_only(
+    tmp_git_repo: Path,
+) -> None:
+    _paused_three_text_conflicts(tmp_git_repo)
+    resolver = CountingResolver(_MarkerLeavingResolver(_MARKER_FILE))
+    conflict_config = scenario_config().conflict_resolution
+
+    with shared_executor_seam(None):
+        for _ in range(2):
+            attempt_stop_resolution(
+                "scenario-marker-scoped",
+                StopResolutionTrigger(
+                    name="rebase_stop",
+                    root=tmp_git_repo,
+                    target="main",
+                    resolver=resolver,
+                    conflict_config=conflict_config,
+                    force_retry=True,
+                ),
+            )
+
+    assert len(resolver.stops) == 2
+    assert resolver.stops[0].conflicted_files == _THREE_CONFLICTED_FILES
+    assert resolver.stops[0].sha == resolver.stops[1].sha
+    assert resolver.stops[1].conflicted_files == (_MARKER_FILE,)
+    assert unmerged_paths(tmp_git_repo) == [_MARKER_FILE]
+    assert rebase_in_progress(tmp_git_repo)

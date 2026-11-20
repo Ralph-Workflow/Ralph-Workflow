@@ -68,6 +68,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "pins the SKIPPED external-rebase oracle and every other pair pins "
         "autonomous landing with content equivalence"
     ),
+    "test_fault_injection_repeated_resolver_failure_waits_with_durable_resume_point": (
+        "the fake fails EVERY resolver launch, so the branch cannot land; the contract "
+        "is that the run never parks and never loops: the feature work stays on the "
+        "feature branch, a durable resume point pins the empty eligible-agent set, and "
+        "the run ends on a WAITING gate instead of relaunching the failing resolver"
+    ),
     "test_fault_injection_git_misreport_waits_then_lands": (
         "the git-ops seam misreports one git invocation: the rebase reports an "
         "unexpected 'already up to date', the landing reports an unexpected "
@@ -291,15 +297,18 @@ class _FastAgentRunner:
     completed_stops: list[str] = field(default_factory=list)
     clock: FakeClock | None = None
     fail_at_launch: int | None = None
+    fail_every_launch: bool = False
 
     def __call__(self, root: Path, _target: str, stop: RebaseStop) -> bool:
         self.launches += 1
         self.launch_times.append(self.clock.monotonic() if self.clock is not None else 0.0)
         stop_identity: str | None = None
-        if self.fail_at_launch is not None:
+        if self.fail_at_launch is not None or self.fail_every_launch:
             stop_identity = _rebase_head_sha(root)
             if stop_identity in self.completed_stops:
                 raise AssertionError("a completed stop must never be presented to the agent again")
+            if self.fail_every_launch:
+                raise ConnectionError("agent provider unavailable on every launch")
             if self.fail_at_launch == self.launches:
                 raise ConnectionError("agent provider unavailable partway through finite work")
         if self.mode is not AgentMode.EDITS_AND_STAGES:
@@ -418,6 +427,57 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
         contract="large finite work with a mid-work agent failure must still land",
         feature=feature_sha,
         source_refs=(target_before,),
+    )
+
+
+def test_fault_injection_repeated_resolver_failure_waits_with_durable_resume_point(
+    tmp_git_repo: Path,
+) -> None:
+    clock = FakeClock()
+    feature_sha = _large_conflicted_range(tmp_git_repo, commits=2, conflicts=1)
+    runner = _FastAgentRunner(fail_every_launch=True, clock=clock)
+
+    def drive() -> IntegrationRun:
+        return _drive(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
+
+    def assert_no_land(run: IntegrationRun, label: str) -> None:
+        assert run.error is None, f"{label} must not crash: {run.error}"
+        assert run.state is not None, f"{label} must leave an outcome"
+        assert not run.state.fast_forwarded, f"{label} must not claim a landing"
+        assert runner.completed_stops == [], "no conflict stop may be recorded as completed"
+        landed = _branch_contains(tmp_git_repo, feature_sha, "main")
+        assert not landed, "the feature work must stay on the feature branch"
+
+    assert_no_land(drive(), "the failing run")
+    assert runner.launches >= 1, "the failing resolver must have been launched"
+    durable = record_path(tmp_git_repo)
+    assert durable.exists(), "repeated resolver failures must leave a durable resume point"
+    record = json.loads(durable.read_text(encoding="utf-8"))
+    assert record.get("target") == "main" and record.get("pre_feature_sha") == feature_sha, (
+        "the resume point must record the target and anchor the feature work"
+    )
+    assert record.get("resolving_rebase") is True and record.get("rebase_continue_error"), (
+        "the resume point must record the paused rebase and why it stopped"
+    )
+    gate_key = record.get("resolution_gate_key")
+    assert gate_key is not None and gate_key[1] == [], (
+        "no agent is eligible while every launch fails, so the gate key pins the empty "
+        f"eligible-agent set, got {gate_key!r}"
+    )
+
+    clock.advance(3600.0)
+    assert_no_land(drive(), "the resumed attempt")
+    launches_before_wait = runner.launches
+    clock.advance(3600.0)
+    deferred = drive()
+    assert_no_land(deferred, "the deferred attempt")
+    state = deferred.state
+    reason = (state.last_reason or "") if state is not None else ""
+    assert reason.startswith("WAITING"), f"repeated failures must end on a wait: {reason!r}"
+    assert runner.launches == launches_before_wait, (
+        "the deferred attempt must not relaunch the failing resolver: the run waits for "
+        f"the resume point instead of looping, launches went from {launches_before_wait} "
+        f"to {runner.launches}"
     )
 
 

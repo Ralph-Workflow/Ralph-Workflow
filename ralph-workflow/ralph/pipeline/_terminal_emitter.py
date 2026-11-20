@@ -13,7 +13,3 @@ def terminal_message(message: str) -> str:
 
 def critical(message: str, *args: object) -> None:
     logger.critical(terminal_message(message), *args, build_identity())
-
-
-def terminal(message: str, *args: object) -> None:
-    logger.info(terminal_message(message), *args, build_identity())

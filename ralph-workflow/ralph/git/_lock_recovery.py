@@ -100,6 +100,7 @@ from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE
 
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 _STALE_LOCK_PROBE_TIMEOUT_S = 10.0
+_STALE_LOCK_PROBE_AGE_DIVISOR_S = 300.0
 _LIVE_HOLDER_PATIENCE_S = GIT_SUBPROCESS_TIMEOUT_SECONDS + GIT_TERMINATE_GRACE_SECONDS
 LIVE_HOLDER_PATIENCE_S: Final[float] = _LIVE_HOLDER_PATIENCE_S
 _LIVE_HOLDER_POLL_S = 3.0
@@ -320,6 +321,13 @@ def _stale_age_or_none(
     return age_seconds
 
 
+def _stale_probe_timeout_s(age_seconds: float) -> float:
+    return min(
+        _STALE_LOCK_PROBE_TIMEOUT_S,
+        max(_PROBE_TIMEOUT_S, age_seconds / _STALE_LOCK_PROBE_AGE_DIVISOR_S),
+    )
+
+
 class _ReapThreadLock:
     __slots__ = ()
     _lock: ClassVar[threading.Lock | None] = None
@@ -410,7 +418,7 @@ def _reap_stale_lock(
                 lock_path,
                 resolved_gitdir,
                 gitdir_common,
-                probe_timeout_s=_STALE_LOCK_PROBE_TIMEOUT_S,
+                probe_timeout_s=_stale_probe_timeout_s(age_seconds),
             )
         if liveness in {"live", "unknown"}:
             logger.warning(
@@ -682,6 +690,8 @@ __all__ = [
     "_PROBE_TIMEOUT_S",
     "_READ_ONLY_GIT_SUBCOMMANDS",
     "_STALE_GIT_LOCK_AGE_SECONDS",
+    "_STALE_LOCK_PROBE_AGE_DIVISOR_S",
+    "_STALE_LOCK_PROBE_TIMEOUT_S",
     "_STRUCTURAL_LOCK_DIRS",
     "_UNPROVABLE_LOCK_CEILING_S",
     "_UNPROVEN_HOLDER_PATIENCE_S",
@@ -735,6 +745,7 @@ __all__ = [
     "_scan_proc",
     "_sleep_fn",
     "_stale_age_or_none",
+    "_stale_probe_timeout_s",
     "_unlink_if_unchanged",
     "_walk_locks",
     "find_git_dirs",
