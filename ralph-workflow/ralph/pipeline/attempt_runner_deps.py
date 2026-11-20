@@ -98,6 +98,7 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
     def _invoke(
         target: InvokeAgentEffect | AgentConfig,
         *_args: object,
+        attempt_finalizer: object = None,
         **kwargs: object,
     ) -> object:
         if not isinstance(target, InvokeAgentEffect):
@@ -126,7 +127,7 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             raise TypeError("effect attempts require WorkspaceScope")
         if display_context is not None and not isinstance(display_context, DisplayContext):
             raise TypeError("effect attempts require DisplayContext or None")
-        attempt_finalizer = _attempt_finalizer_or_none(kwargs.pop("attempt_finalizer", None))
+        attempt_finalizer = _attempt_finalizer_or_none(attempt_finalizer)
         return _forward_effect(
             runner,
             target,

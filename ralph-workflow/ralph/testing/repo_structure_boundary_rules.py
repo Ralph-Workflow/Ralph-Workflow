@@ -154,7 +154,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/attempt_runner_deps.py",
         "raw_attempt_invoke",
-        169,
+        170,
         "raw attempt invocation seam reached only through the registered attempt runner",
     ),
     (

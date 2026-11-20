@@ -486,15 +486,11 @@ def source_violations(source: str, rel_path: str) -> list[Violation]:
     return _module_checks(parsed, rel_path, source)
 
 
-def _package_source_paths(package_root: Path, prefixes: tuple[str, ...]) -> tuple[str, ...]:
+def _package_source_paths(package_root: Path) -> tuple[str, ...]:
     rel_paths = tuple(
         path.relative_to(package_root).as_posix() for path in sorted(package_root.rglob("*.py"))
     )
-    return tuple(
-        rel_path
-        for rel_path in rel_paths
-        if not rel_path.startswith("testing/") and (not prefixes or rel_path.startswith(prefixes))
-    )
+    return tuple(rel_path for rel_path in rel_paths if not rel_path.startswith("testing/"))
 
 
 def recovery_source_paths(package_root: Path = _PACKAGE_ROOT) -> tuple[str, ...]:
@@ -793,18 +789,15 @@ def guard_test_module_violations(package_root: Path = _PACKAGE_ROOT) -> list[Vio
 def collect_violations(
     package_root: Path = _PACKAGE_ROOT,
     project_root: Path = _PROJECT_ROOT,
-    *,
-    only: tuple[str, ...] = (),
 ) -> list[Violation]:
     violations: list[Violation] = []
-    for rel_path in _package_source_paths(package_root, only):
+    for rel_path in _package_source_paths(package_root):
         violations.extend(
             source_violations((package_root / rel_path).read_text(encoding="utf-8"), rel_path)
         )
     violations.extend(_guard_test_module_violations(project_root))
-    if not only:
-        violations.extend(documentation_violations(project_root))
-        violations.extend(tree_test_name_violations(project_root))
+    violations.extend(documentation_violations(project_root))
+    violations.extend(tree_test_name_violations(project_root))
     return violations
 
 

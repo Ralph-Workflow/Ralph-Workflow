@@ -38,7 +38,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_availability_bench_or_spent_phrasing_in_a_doc_fails_the_audit with an unchanged body"
     ),
     "test_the_repository_passes_the_cooldown_only_audit": (
-        'replaces the whole-tree assertion collect_violations(only=("recovery/", SELECTION_MODULE)) == [] with a chunked sweep over recovery_source_paths(); operator rule: every agent exclusion is an expiring cooldown, so no recovery module may name a third availability state'
+        "replaces the whole-tree recovery-module assertion with a chunked sweep over recovery_source_paths(); operator rule: every agent exclusion is an expiring cooldown, so no recovery module may name a third availability state"
     ),
     "test_the_repository_test_names_pass_the_cooldown_only_audit": (
         "replaces the whole-tree assertion tree_test_name_violations() == [] with a chunked sweep over test_name_scan_paths(); operator rule: every agent exclusion is an expiring cooldown, so no test module or test name may use bench/spent/demot/exhaust vocabulary for agent availability"
