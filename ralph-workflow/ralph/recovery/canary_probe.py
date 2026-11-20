@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass, replace
@@ -46,7 +47,7 @@ from ralph.recovery.canary_probe_launch import (
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from ralph.config.agent_config import AgentConfig
     from ralph.pipeline.attempt_result import AttemptResult
@@ -62,6 +63,7 @@ DEFAULT_PROBE_TIMEOUT_S: Final[float] = 30
 PROBE_INCONCLUSIVE_VERDICT: Final[str] = "unknown"
 PROBE_AREA_RELATIVE_DIR: Final[str] = ".agent/tmp"
 PROBE_DIR_PREFIX: Final[str] = "canary-probe-"
+PROBE_OWNER_PID_FILENAME: Final[str] = "owner_pid"
 CANARY_PROBE_TASK: Final[str] = (
     f"Canary probe task.\nCreate one file named {CANARY_MARKER_FILENAME} in the current working directory.\nThe entire content of that file must be exactly this text:\n{CANARY_MARKER_CONTENT}\nCreate no other file, change no other file and run no other command.\nWhen the file exists, answer with the single line {CANARY_PROBE_REPLY}."
 )
@@ -413,7 +415,20 @@ def _create_scratch_workspace(
     probe_area = parent / PROBE_AREA_RELATIVE_DIR
     scratch = probe_area / f"{PROBE_DIR_PREFIX}{uuid4().hex}"
     scratch.mkdir(parents=True, exist_ok=False)
+    _write_owner_pid_marker(scratch)
     return scratch
+
+
+def _write_owner_pid_marker(scratch: Path) -> None:
+    try:
+        write_text_if_changed(
+            DEFAULT_FILE_BACKEND,
+            scratch / PROBE_OWNER_PID_FILENAME,
+            str(os.getpid()),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.debug("canary probe owner-pid marker write failed: {}", exc)
 
 
 def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
@@ -433,21 +448,22 @@ def _resolve_trusted_parent(trusted_parent: Path | None) -> Path | None:
         return None
 
 
-def _remove_scratch_workspace(workspace_path: Path) -> None:
+def _remove_scratch_workspace(workspace_path: Path) -> bool:
     workspace = FsWorkspace(workspace_path)
     root = workspace.root
     for attempt in range(_SCRATCH_REMOVAL_ATTEMPTS):
         if not root.is_dir():
-            return
+            return True
         try:
             workspace.delete(str(root), recursive=True)
         except OSError:
             if attempt == _SCRATCH_REMOVAL_ATTEMPTS - 1:
-                return
+                break
             backoff = threading.Event()
             backoff.wait(timeout=_SCRATCH_REMOVAL_BACKOFF_S)
             continue
-        return
+        return True
+    return not root.is_dir()
 
 
 def _is_within(candidate: Path, parent: Path) -> bool:
@@ -659,6 +675,61 @@ def _error_text(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+def sweep_canary_probe_scratch_workspaces(probe_area: Path, *, cutoff: float) -> int:
+    removed = 0
+    for scratch in _iter_probe_scratch_dirs(probe_area):
+        owner_pid = _read_owner_pid(scratch)
+        if owner_pid is None:
+            if not _is_aged_probe_scratch(scratch, cutoff):
+                continue
+        elif _probe_owner_pid_alive(owner_pid):
+            continue
+        if _remove_scratch_workspace(scratch):
+            removed += 1
+    return removed
+
+
+def _iter_probe_scratch_dirs(probe_area: Path) -> Iterator[Path]:
+    try:
+        candidates = DEFAULT_FILE_BACKEND.glob(probe_area, f"{PROBE_DIR_PREFIX}*")
+    except OSError:
+        return
+    for candidate in candidates:
+        if candidate.name.startswith(PROBE_DIR_PREFIX) and candidate.is_dir():
+            yield candidate
+
+
+def _read_owner_pid(scratch: Path) -> int | None:
+    try:
+        raw = DEFAULT_FILE_BACKEND.read_text(scratch / PROBE_OWNER_PID_FILENAME, encoding="utf-8")
+    except (KeyError, OSError, UnicodeDecodeError):
+        return None
+    try:
+        owner_pid = int(raw.strip())
+    except ValueError:
+        return None
+    return owner_pid if owner_pid > 0 else None
+
+
+def _probe_owner_pid_alive(owner_pid: int) -> bool:
+    try:
+        os.kill(owner_pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, OverflowError):
+        return True
+    return True
+
+
+def _is_aged_probe_scratch(scratch: Path, cutoff: float) -> bool:
+    try:
+        return scratch.lstat().st_mtime < cutoff
+    except OSError:
+        return False
+
+
 def _inconclusive_result(reason: str, started: float, *, error: str | None = None) -> _ProbeResult:
     return _ProbeResult(
         outcome=_ProbeOutcome.INCONCLUSIVE,
@@ -680,6 +751,7 @@ __all__ = [
     "DEFAULT_PROBE_TIMEOUT_S",
     "PROBE_COULD_NOT_RUN_DETAIL",
     "PROBE_INCONCLUSIVE_VERDICT",
+    "PROBE_OWNER_PID_FILENAME",
     "PROBE_REASON_BUDGET_EXHAUSTED",
     "PROBE_REASON_INTERNAL_ERROR",
     "PROBE_REASON_INVOCATION_ERROR",
@@ -689,4 +761,5 @@ __all__ = [
     "ProbeOutcome",
     "ProbeResult",
     "run_canary_probe",
+    "sweep_canary_probe_scratch_workspaces",
 ]

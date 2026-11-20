@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import json
 import shutil
 import sqlite3
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard, cast
 
 if sys.platform == "win32":
     import msvcrt
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
 
+from ralph._typed_attrs import read_attr
 from ralph.checked_accessors import as_object_dict
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
@@ -393,6 +395,22 @@ def _sweep_scratch_files(
     return removed
 
 
+class _CanaryProbeSweep(Protocol):
+    def __call__(self, probe_area: Path, *, cutoff: float) -> int: ...
+
+
+def _is_canary_probe_sweep(value: object) -> TypeGuard[_CanaryProbeSweep]:
+    return callable(value)
+
+
+def _sweep_canary_probe_scratch_workspaces(tmp_dir: Path, *, cutoff: float) -> int:
+    probe_module = importlib.import_module("ralph.recovery.canary_probe")
+    candidate = read_attr(probe_module, "sweep_canary_probe_scratch_workspaces", None)
+    if not _is_canary_probe_sweep(candidate):
+        return 0
+    return candidate(tmp_dir, cutoff=cutoff)
+
+
 def _sweep_run_state_db_rows(
     workspace_root: Path,
     *,
@@ -478,6 +496,7 @@ def _sweep_agent_dir_body(
     removed += _sweep_codex_home_dirs(
         tmp_dir, cutoff=cutoff, owners=owners, active_run_ids=keep_run_ids
     )
+    removed += _sweep_canary_probe_scratch_workspaces(tmp_dir, cutoff=cutoff)
     _prune_missing_temporary_path_owners(workspace_root)
     removed += _sweep_session_files(agent_dir, cutoff=cutoff)
     removed += _sweep_run_state_db_rows(workspace_root, cutoff=cutoff, keep_run_ids=keep_run_ids)

@@ -51,6 +51,15 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "ordinary-phase finalize on the shared controller must change the continuation "
         "retry-gate eligible-agent set through the same ledger"
     ),
+    "test_production_entry_recovery_retries_on_eligibility_and_command": (
+        "the production entry runs five real-git recovery rounds that spawn 257 git "
+        "processes, so the calling thread spends 2.4 CPU seconds idle and 2.6 CPU seconds "
+        "under host load on the fork and exec of those children alone; the file-wide 5 s "
+        "budget is left for the other tests and this test declares 20 s, the budget the "
+        "sibling real-git recovery tests in "
+        "tests/pipeline/test_continuation_retry_gate_blackbox.py use for the same cost "
+        "class"
+    ),
 }
 
 
@@ -586,6 +595,7 @@ def test_merge_continuation_retry_gate(
     assert "WAITING" in res2
 
 
+@pytest.mark.timeout_seconds(20)
 def test_production_entry_recovery_retries_on_eligibility_and_command(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
