@@ -470,8 +470,11 @@ new commit runs it again. A red gate, or a timeout, does not move the target or
 push: the commits stay on the feature branch, the record carries
 `publication_block`, and the run returns to the development loop with the gate
 output as its retry feedback, through the analysis loopback the policy already
-declares. After five gate failures in a row the run stops looping and finishes
-with its commits unpublished. A project whose policy declares no resolved
+declares. A refused tree is never retried: integration skips the landing until
+the tree changes, and planning continues with the commits unpublished instead of
+waiting for a landing that cannot happen. The failure count grows once per
+evaluated tree, and the run routes back to development at most five times
+before it carries on with its commits unpublished. A project whose policy declares no resolved
 verify command publishes as before. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 

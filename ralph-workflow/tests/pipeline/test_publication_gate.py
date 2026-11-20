@@ -11,6 +11,7 @@ from ralph.pipeline.publication_gate import (
     PublicationBlock,
     PublicationGateFailed,
     PublicationGateRun,
+    blocked_publication,
     check_publication_gate,
     declared_publication_gate,
     publication_gate_feedback,
@@ -23,6 +24,13 @@ from ralph.policy.loader import cached_default_policy_bundle
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_result_is_reused_only_for_the_same_tree": (
+        "reusing the red result for an unchanged tree no longer counts as another gate "
+        "failure; the counter counts real evaluations, and route-backs are bounded separately"
+    ),
+}
 
 _FACT = (
     "RALPH-FACT: authoritative_verify_command: `make -C ralph-workflow verify` "
@@ -151,7 +159,7 @@ def test_a_result_is_reused_only_for_the_same_tree(tmp_path: Path) -> None:
         first.exit_code,
         first.output_tail,
     )
-    assert again.consecutive_failures == first.consecutive_failures + 1
+    assert again.consecutive_failures == first.consecutive_failures
     assert rebased is not None
     assert rebased.tree_sha == _TREE_B
     assert len(gate.calls) == 2
@@ -237,3 +245,40 @@ def test_no_feedback_without_a_recorded_gate_failure(tmp_path: Path) -> None:
     policy = cached_default_policy_bundle().pipeline
 
     assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
+
+
+def test_route_backs_on_an_unchanged_tree_are_bounded(tmp_path: Path) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    check_publication_gate(tmp_path, "HEAD", runner=_ScriptedGate(2), tree_of=_trees(_TREE_A))
+
+    routed = [
+        publication_gate_feedback(tmp_path, policy, "development_commit")
+        for _ in range(MAX_PUBLICATION_GATE_FAILURES + 1)
+    ]
+
+    assert all(event is not None for event in routed[:MAX_PUBLICATION_GATE_FAILURES])
+    assert routed[-1] is None
+    result = check_publication_gate(
+        tmp_path, "HEAD", runner=_ScriptedGate(2), tree_of=_trees(_TREE_A)
+    )
+    assert result is not None
+    assert result.consecutive_failures == 1
+
+
+def test_the_blocked_tree_is_reported_without_running_or_counting_the_gate(
+    tmp_path: Path,
+) -> None:
+    _declare_gate(tmp_path)
+    gate = _ScriptedGate(2, "red")
+    check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_A))
+
+    blocked = [blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_A)) for _ in range(10)]
+
+    assert all(result is not None and result.tree_sha == _TREE_A for result in blocked)
+    assert len(gate.calls) == 1
+    assert blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
+    check_publication_gate(tmp_path, "HEAD", runner=_ScriptedGate(0), tree_of=_trees(_TREE_B))
+    assert blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
+    record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
+    assert record["consecutive_failures"] == 0

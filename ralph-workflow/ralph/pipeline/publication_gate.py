@@ -43,6 +43,7 @@ class PublicationGateResult:
     timed_out: bool
     output_tail: str
     consecutive_failures: int = 0
+    route_backs: int = 0
 
     @property
     def passed(self) -> bool:
@@ -56,7 +57,11 @@ class PublicationGateResult:
 
     @property
     def routes_back_to_development(self) -> bool:
-        return not self.passed and self.consecutive_failures <= MAX_PUBLICATION_GATE_FAILURES
+        return (
+            not self.passed
+            and self.consecutive_failures <= MAX_PUBLICATION_GATE_FAILURES
+            and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
+        )
 
     def feedback(self) -> str:
         verdict = "timed out" if self.timed_out else f"failed (exit {self.exit_code})"
@@ -138,6 +143,7 @@ def _load_record(root: Path) -> PublicationGateResult | None:
             consecutive_failures=as_int(
                 fields.get("consecutive_failures", 0), field="consecutive_failures"
             ),
+            route_backs=as_int(fields.get("route_backs", 0), field="route_backs"),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -165,6 +171,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "timed_out": result.timed_out,
         "output_tail": result.output_tail,
         "consecutive_failures": result.consecutive_failures,
+        "route_backs": result.route_backs,
     }
 
 
@@ -187,11 +194,7 @@ def check_publication_gate(
         and previous.tree_sha == tree_sha
         and previous.command == command
     ):
-        if previous.passed:
-            return previous
-        reused = replace(previous, consecutive_failures=previous.consecutive_failures + 1)
-        _save_record(root, reused)
-        return reused
+        return previous
     logger.info("Running the publication gate `{}` on tree {}", command, tree_sha)
     run = (runner or _run_gate_command)(command, root, timeout_seconds)
     result = PublicationGateResult(
@@ -202,7 +205,8 @@ def check_publication_gate(
         output_tail=run.output[-_OUTPUT_TAIL_CHARS:],
     )
     failures = 0 if result.passed else (previous.consecutive_failures if previous else 0) + 1
-    result = replace(result, consecutive_failures=failures)
+    route_backs = 0 if result.passed else (previous.route_backs if previous else 0)
+    result = replace(result, consecutive_failures=failures, route_backs=route_backs)
     if not result.passed:
         logger.warning(
             "Publication gate `{}` blocked tree {} (exit {}, timed out: {})",
@@ -217,6 +221,16 @@ def check_publication_gate(
 
 def last_publication_gate_result(root: Path) -> PublicationGateResult | None:
     return _load_record(root)
+
+
+def blocked_publication(
+    root: Path, feature_sha: str = "HEAD", *, tree_of: TreeLookup | None = None
+) -> PublicationGateResult | None:
+    record = _load_record(root)
+    if record is None or record.passed or declared_publication_gate(root) != record.command:
+        return None
+    tree_sha = (tree_of or _tree_of)(root, feature_sha)
+    return record if tree_sha and tree_sha == record.tree_sha else None
 
 
 def publication_gate_refusal(
@@ -244,6 +258,7 @@ def publication_gate_feedback(
     loop_phase = publication_gate_loop_phase(policy, commit_phase)
     if result is None or not result.routes_back_to_development or loop_phase is None:
         return None
+    _save_record(root, replace(result, route_backs=result.route_backs + 1))
     loop_target = policy.phases[loop_phase].transitions.on_loopback
     if loop_target:
         from ralph.phases.required_artifacts import retry_hint_path
@@ -307,6 +322,7 @@ __all__ = [
     "PublicationGateResult",
     "PublicationGateRun",
     "TreeLookup",
+    "blocked_publication",
     "check_publication_gate",
     "declared_publication_gate",
     "last_publication_gate_result",

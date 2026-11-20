@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.git.merge import is_ancestor
 from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
@@ -28,7 +29,7 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
-from ralph.pipeline.publication_gate import publication_gate_refusal
+from ralph.pipeline.publication_gate import blocked_publication, publication_gate_refusal
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -89,6 +90,9 @@ def _integrate_once(
 ) -> tuple[RebaseState | None, bool]:
     from ralph.pipeline import auto_integrate as _ai
 
+    unchanged_refusal = _unchanged_gate_refusal(root, target)
+    if unchanged_refusal is not None:
+        return unchanged_refusal, False
     clock_token = install_executors(clock=clock)
     try:
         with _ai.integration_transaction(root) as outcome:
@@ -112,6 +116,19 @@ def _integrate_once(
             )
     finally:
         reset_executors(clock_token)
+
+
+def _unchanged_gate_refusal(root: Path, target: str) -> RebaseState | None:
+    blocked = blocked_publication(root)
+    if blocked is None or blocked.block is None or not is_ancestor(root, target, "HEAD"):
+        return None
+    return _record_skip(
+        reason=(
+            f"publication gate `{blocked.command}` already refused tree {blocked.tree_sha}; "
+            "waiting for a new tree before landing"
+        ),
+        target=target,
+    ).model_copy(update={"publication_block": blocked.block})
 
 
 @dataclass(frozen=True, slots=True)

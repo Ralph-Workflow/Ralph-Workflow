@@ -2451,6 +2451,32 @@ def _ask_owner_planning_sync(
         return None
 
 
+def _publication_blocks_the_sync_gap(ctx: LoopContext, root: Path) -> bool:
+    from ralph.git.branch_relation import BranchRelation, branch_relation
+    from ralph.pipeline.publication_gate import blocked_publication
+
+    configured = _configured_sync_target(ctx)
+    if (
+        configured is None
+        or branch_relation(root, configured[1]) is not BranchRelation.FEATURE_AHEAD
+    ):
+        return False
+    blocked = blocked_publication(root)
+    if blocked is None:
+        return False
+    line = (
+        f"planning continues with the run's commits unpublished: publication gate "
+        f"`{blocked.command}` refused tree {blocked.tree_sha}; they land once a new tree passes it"
+    )
+
+    def _emit_unpublished_line(message: str) -> None:
+        emit_integration_warn_line(ctx.active_display, message)
+
+    with suppress(Exception):
+        integration_outcome_log().record(_emit_unpublished_line, line)
+    return True
+
+
 def _ensure_planning_in_sync(
     state: PipelineState,
     ctx: LoopContext,
@@ -2462,6 +2488,8 @@ def _ensure_planning_in_sync(
     if gap is None:
         return state, None
     root = Path(ctx.workspace_scope.root)
+    if _publication_blocks_the_sync_gap(ctx, root):
+        return state, None
     configured = _configured_sync_target(ctx)
     target = configured[1] if configured is not None else None
     remote = _configured_sync_remote(ctx)
