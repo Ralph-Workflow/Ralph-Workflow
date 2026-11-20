@@ -56,7 +56,6 @@ __all__ = [
     "capture_operator_lines",
     "commit_file",
     "corrupted_config",
-    "empty_resolution_stop_snapshot",
     "git",
     "paused_partial_out_of_reach_rebase",
     "paused_text_and_gitlink_rebase",
@@ -310,12 +309,6 @@ def corrupted_config(root: Path) -> Path:
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text("[general\nauto_integrate_enabled = true\n", encoding="utf-8")
     return config
-
-
-def _default_clock() -> FakeClock:
-    from ralph.agents.timeout_clock import FakeClock
-
-    return FakeClock()
 
 
 def _init_identity_repo(root: Path) -> None:

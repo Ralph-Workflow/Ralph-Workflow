@@ -7,7 +7,7 @@ import pytest
 from loguru import logger as loguru_logger
 
 from ralph.git.subprocess_runner import GitRunOptions, GitRunResult, run_git
-from ralph.pipeline._landed_predicate import operation_landed
+from ralph.pipeline import operation_landed
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     read_record,

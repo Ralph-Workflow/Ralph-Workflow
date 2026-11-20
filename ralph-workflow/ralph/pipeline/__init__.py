@@ -67,10 +67,12 @@ __all__ = [
     "attempt_stop_resolution",
     "build_integration_status",
     "choose_integration_strategy",
+    "cooldown_next_eligible",
     "decide_seam_action",
     "escalate_record_fact_outcome",
     "integration_action",
     "integration_owner_seam",
+    "operation_landed",
     "recover_target_resolution",
     "reduce",
     "resolve_conflicted_rebase",
@@ -126,9 +128,17 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
         "ralph.pipeline._integration_status",
         "build_integration_status",
     ),
+    "cooldown_next_eligible": (
+        "ralph.pipeline._integration_status",
+        "cooldown_next_eligible",
+    ),
     "choose_integration_strategy": (
         "ralph.pipeline.integration_strategy",
         "choose_integration_strategy",
+    ),
+    "operation_landed": (
+        "ralph.pipeline._landed_predicate",
+        "operation_landed",
     ),
     "decide_seam_action": ("ralph.pipeline._integration_owner_seam", "decide_seam_action"),
     "escalate_record_fact_outcome": (

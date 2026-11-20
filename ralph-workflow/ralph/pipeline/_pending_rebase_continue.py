@@ -94,10 +94,9 @@ def pending_rebase_identity_matches(root: Path, record: IntegrationRecord) -> bo
 def finish_pending_rebase(root: Path) -> None:
     record = read_record(root)
     if record is not None:
-        if (
-            classify_git_operation(record) is GitOperationKind.AWAITING_CONTINUE
-            and not rebase_in_progress_at(root)
-        ):
+        if classify_git_operation(
+            record
+        ) is GitOperationKind.AWAITING_CONTINUE and not rebase_in_progress_at(root):
             promoted = _promote_completed_rebase(root, record)
             if isinstance(promoted, str):
                 raise ValueError(promoted)

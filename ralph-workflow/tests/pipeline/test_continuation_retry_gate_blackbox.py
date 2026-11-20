@@ -190,6 +190,7 @@ def test_blackbox_retained_rebase_retry_invokes_resolver_and_gates_repeat(
             logger.remove(sink_id)
 
 
+@pytest.mark.timeout_seconds(20)
 def test_blackbox_retained_rebase_config_repair_and_eligibility(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -398,6 +399,7 @@ def test_blackbox_retained_merge_config_repair_and_eligibility(
             logger.remove(sink_id)
 
 
+@pytest.mark.timeout_seconds(20)
 def test_blackbox_retained_rebase_global_config_repair_and_legacy_ungated(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

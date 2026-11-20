@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -539,3 +540,37 @@ def test_an_allowlisted_test_name_passes_the_audit(rel_path: str, name: str) -> 
     source = f"def {name}() -> None:\n    pass\n"
 
     assert module_test_name_violations(source, rel_path) == []
+
+
+def test_the_selftest_flag_runs_the_self_check_instead_of_the_tree_audit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def _explode(*args: object, **kwargs: object) -> list[Violation]:
+        raise AssertionError("--selftest must not scan the repository tree")
+
+    monkeypatch.setattr(audit_module, "collect_violations", _explode)
+
+    assert main(["--selftest"]) == 0
+    out = capsys.readouterr().out
+    match = re.search(r"SELFTEST OK \((\d+) cases verified\)", out)
+    assert match is not None, out
+    assert int(match.group(1)) > 0
+    assert "Cooldown-only audit OK" not in out
+
+
+def test_the_selftest_flag_fails_loudly_when_a_planted_case_is_not_detected(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def _no_violations(source: str, rel_path: str) -> list[Violation]:
+        del source, rel_path
+        return []
+
+    monkeypatch.setattr(audit_module, "source_violations", _no_violations)
+
+    assert main(["--selftest"]) == 1
+    assert "SELFTEST FAILED" in capsys.readouterr().out
+
+
+def test_an_unsupported_flag_fails_loudly(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--not-a-flag"]) == 2
+    assert "unsupported command-line argument" in capsys.readouterr().out

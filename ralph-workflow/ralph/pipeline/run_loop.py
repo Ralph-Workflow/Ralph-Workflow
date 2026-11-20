@@ -231,6 +231,8 @@ class LoopContext:
     process_teardown: Callable[[], None] | None = None
     _session_handoff_dispatched: bool = False
     cold_capped_escalation_attempted: bool = False
+    resolver_cooldown_wait_reason: str = ""
+    conflict_work_bound_escalation_notified: bool = False
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
     retained_hold_backoff: NoProgressHoldBackoff = field(default_factory=NoProgressHoldBackoff)
 
@@ -1736,12 +1738,85 @@ def _resolve_blocking_conflict(
     return _resolve_orphaned_unmerged_index(ctx, target)
 
 
+def _conflict_round_allowed(
+    state: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+    *,
+    ledger: AgentFailureLedger | None,
+    candidates: tuple[str, ...],
+) -> bool:
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
+    if ledger is not None and candidates:
+        return True
+    return resolver_allowed(state, target, identity)
+
+
+def _resolver_cooldown_wait_reason(
+    ctx: LoopContext,
+    rebase: RebaseState | None,
+    installed: tuple[str, ...],
+) -> str:
+    from ralph.pipeline._integration_status import cooldown_next_eligible
+    from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
+    from ralph.pipeline.conflict_resolution.resolver_cooldown_text import (
+        resolvers_on_cooldown_reason,
+    )
+
+    paths = tuple(rebase.last_conflict_paths) if rebase is not None else ()
+    reason = resolvers_on_cooldown_reason(paths, operator_command_for_paths(paths))
+    controller_candidate: object = read_attr(ctx, "controller", None)
+    if isinstance(controller_candidate, RecoveryController):
+        next_agent, until_when = cooldown_next_eligible(
+            controller_candidate,
+            "rebase_conflict_resolution",
+            installed,
+        )
+        if next_agent:
+            reason = f"{reason}; next-eligible: {next_agent}; until-when: {until_when}"
+    return reason
+
+
+def _emit_resolver_cooldown_wait(
+    ctx: LoopContext,
+    rebase: RebaseState | None,
+    installed: tuple[str, ...],
+) -> None:
+    reason = _resolver_cooldown_wait_reason(ctx, rebase, installed)
+    previous: object = getattr(ctx, "resolver_cooldown_wait_reason", "")
+    if reason == previous:
+        return
+    ctx.resolver_cooldown_wait_reason = reason
+    logger.warning(
+        "integration resolution: every conflict resolver is on cooldown; waiting",
+    )
+    with suppress(Exception):
+        emit_integration_warn_line(ctx.active_display, reason)
+
+
+def _emit_work_bound_escalation(ctx: LoopContext, target: str) -> None:
+    notified: object = getattr(ctx, "conflict_work_bound_escalation_notified", False)
+    if notified:
+        return
+    ctx.conflict_work_bound_escalation_notified = True
+    logger.warning(
+        "integration resolution: the conflict work bound for target '{}' reached its limit;"
+        " escalating to the next resolution rung",
+        target,
+    )
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            "conflict resolution work bound reached its limit for this conflict;"
+            " escalating to the next resolution rung instead of repeating this one",
+        )
+
+
 def _run_owned_integration_conflict_resolution(
     ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
-    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
-
     target = _integration_target_or_none(ctx)
     if not target:
         return False
@@ -1768,17 +1843,15 @@ def _run_owned_integration_conflict_resolution(
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    if rebase is not None and _cold_capped_escalation_due(
-        ctx,
-        rebase,
-        target,
-        identity,
-        ledger=ledger,
-        candidates=installed,
+    if ledger is not None and not ledger.any_eligible(
+        "rebase_conflict_resolution",
+        installed,
     ):
-        return _run_cold_capped_escalation(ctx, target, rebase)
+        if installed:
+            _emit_resolver_cooldown_wait(ctx, rebase, installed)
+        return False
     allowed = (
-        resolver_allowed(
+        _conflict_round_allowed(
             rebase,
             target,
             identity,
@@ -1789,32 +1862,16 @@ def _run_owned_integration_conflict_resolution(
         else True
     )
     if rebase is not None and not allowed:
-        logger.warning(
-            "integration resolution: no eligible conflict resolver for target '{}'; escalating",
+        if _cold_capped_escalation_due(
+            ctx,
+            rebase,
             target,
-        )
-        with suppress(Exception):
-            emit_integration_warn_line(
-                ctx.active_display,
-                "no eligible conflict resolver for this conflict;"
-                " escalating instead of re-invoking the resolver",
-            )
-        return False
-    if ledger is not None and not ledger.any_eligible(
-        "rebase_conflict_resolution",
-        installed,
-    ):
-        logger.warning(
-            "integration resolution: every conflict resolver for target '{}' is in backoff;"
-            " deferring instead of re-invoking the resolver",
-            target,
-        )
-        with suppress(Exception):
-            emit_integration_warn_line(
-                ctx.active_display,
-                "conflict resolver is in backoff for this conflict;"
-                " deferring instead of re-invoking the resolver",
-            )
+            identity,
+            ledger=ledger,
+            candidates=installed,
+        ):
+            return _run_cold_capped_escalation(ctx, target, rebase)
+        _emit_work_bound_escalation(ctx, target)
         return False
     return _resolve_blocking_conflict(ctx, target, rebase)
 
@@ -2594,7 +2651,7 @@ _public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
     if rebase is None:
         return True
@@ -2623,18 +2680,13 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         if isinstance(controller_candidate, RecoveryController)
         else None
     )
-    allowed = (
-        resolver_allowed(
-            rebase,
-            target,
-            identity,
-            ledger=ledger,
-            candidates=installed,
-        )
-        if rebase is not None
-        else True
-    )
-    if allowed:
+    if _conflict_round_allowed(
+        rebase,
+        target,
+        identity,
+        ledger=ledger,
+        candidates=installed,
+    ):
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "
             "now on disk for '{}'; giving the resolver another attempt",

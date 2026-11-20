@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.git import merge as merge_module
 from ralph.git.git_run_result import GitRunResult
-from ralph.git.merge import ConflictStageEntries
+from ralph.git.merge import ConflictStageEntries, UnmergedPathsObservation
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -100,7 +100,11 @@ def _install_seams(
     monkeypatch.setattr(loop_module, "staged_conflict_marker_paths", lambda _root: [])
     if repo.never_finishes:
         monkeypatch.setattr(loop_module, "record_landed_stop", lambda _root, _stop: None)
-    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: list(_CONFLICTED))
+    monkeypatch.setattr(
+        loop_module,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=tuple(_CONFLICTED)),
+    )
     monkeypatch.setattr(loop_module, "_rev_parse_rebase_head", lambda _root: "abc1234")
     monkeypatch.setattr(loop_module, "_rebase_head_subject", lambda _root: "feature edit")
     monkeypatch.setattr(deterministic_module, "conflict_stage_entries", lambda _root, _paths: {})
@@ -471,7 +475,11 @@ def test_a_paused_rebase_with_its_stop_already_staged_is_continued(
 ) -> None:
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
-    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        loop_module,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=()),
+    )
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
     monkeypatch.setattr(loop_module, "_staged_paths", lambda _root: ["f.txt"])
     monkeypatch.setattr(loop_module, "paths_with_conflict_markers", lambda _root, _paths: [])
@@ -486,7 +494,11 @@ def test_a_paused_rebase_that_is_still_conflicted_is_not_continued(
 ) -> None:
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
-    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        loop_module,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=()),
+    )
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: ["still.py"])
     seen: list[RebaseStop] = []
 
@@ -499,10 +511,10 @@ def test_an_unexpected_exception_declines_without_propagating(
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
 
-    def _explode(**_kwargs: object) -> list[str]:
+    def _explode(_root: Path) -> UnmergedPathsObservation:
         raise RuntimeError("index unreadable")
 
-    monkeypatch.setattr(loop_module, "get_conflicted_files", _explode)
+    monkeypatch.setattr(loop_module, "observe_unmerged_paths", _explode)
 
     assert (
         resolve_rebase_in_progress(
@@ -833,7 +845,11 @@ def test_mixed_deterministic_conflict_declines_whole_stop(
 ) -> None:
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
-    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: ["one", "two"])
+    monkeypatch.setattr(
+        loop_module,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=("one", "two")),
+    )
     monkeypatch.setattr(
         deterministic_module,
         "conflict_stage_entries",
@@ -911,7 +927,11 @@ def test_a_staged_stop_with_surviving_markers_is_not_continued(
 ) -> None:
     repo = _FakeRepo(stops=1)
     _install_seams(monkeypatch, repo)
-    monkeypatch.setattr(loop_module, "get_conflicted_files", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        loop_module,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=()),
+    )
     monkeypatch.setattr(loop_module, "unmerged_paths", lambda _root: [])
     monkeypatch.setattr(loop_module, "_staged_paths", lambda _root: ["f.txt"])
     monkeypatch.setattr(loop_module, "paths_with_conflict_markers", lambda _root, _paths: ["f.txt"])

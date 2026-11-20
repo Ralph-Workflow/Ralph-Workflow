@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pytest
 
+import ralph.testing.audit_agent_failure_single_owner as audit_module
 from ralph.testing.audit_agent_failure_single_owner import (
     PRODUCTION_SCAN_SUBTREES,
     PROGRESS_PATH_ALLOWLIST,
     TEMPORARY_TRANSITIONAL_RULES,
+    SingleOwnerViolation,
     audit_production_source,
     audit_test_source,
     is_transitional_allowed,
+    main,
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
@@ -1278,3 +1282,37 @@ def delay_for(attempt: int) -> float:
         "ralph/pipeline/conflict_resolution/_retry_local.py", source
     )
     assert any(v.rule == "production_agent_retry_delay_outside_owner" for v in violations)
+
+
+def test_the_selftest_flag_runs_the_self_check_instead_of_the_tree_audit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def _explode(repo_root: object) -> list[SingleOwnerViolation]:
+        raise AssertionError("--selftest must not scan the repository tree")
+
+    monkeypatch.setattr(audit_module, "audit_single_owner", _explode)
+
+    assert main(["--selftest"]) == 0
+    out = capsys.readouterr().out
+    match = re.search(r"SELFTEST OK \((\d+) cases verified\)", out)
+    assert match is not None, out
+    assert int(match.group(1)) > 0
+    assert "AGENT FAILURE SINGLE OWNER AUDIT: OK" not in out
+
+
+def test_the_selftest_flag_fails_loudly_when_a_planted_case_is_not_detected(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def _no_violations(rel_path: str, source: str) -> list[SingleOwnerViolation]:
+        del rel_path, source
+        return []
+
+    monkeypatch.setattr(audit_module, "audit_test_source", _no_violations)
+
+    assert main(["--selftest"]) == 1
+    assert "SELFTEST FAILED" in capsys.readouterr().out
+
+
+def test_an_unsupported_flag_fails_loudly(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--not-a-flag"]) == 2
+    assert "unsupported command-line argument" in capsys.readouterr().out

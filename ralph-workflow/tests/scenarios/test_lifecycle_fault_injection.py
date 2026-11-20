@@ -33,18 +33,18 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget": (
-        "fixture shrunk from default 50/20 to "
-        "_BEYOND_TWO_COMMIT_PROGRESSING_STOPS commits and conflicts for the "
-        "test budget; progressing stops reset the spent counter so stop_cap+1 "
-        "was over-provisioned; same observable: a progressing conflict rebase "
-        "beyond the two-commit design point completes under scenario_config "
-        "without hitting a stop, round, attempt or time cap"
+        "the fixture builds the real range: 50 commits of which 20 conflict; every "
+        "conflicting stop is handed to the resolver, so the drive needs at least "
+        "20 resolver launches; the same observable: a progressing conflict rebase "
+        "beyond the two-commit design point completes under scenario_config without "
+        "hitting a stop, round, attempt or time cap"
     ),
     "test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure": (
-        "fixture and mid-work fail_at_launch / launch / completed_stops counts "
-        "scaled from 50/20 to _BEYOND_TWO_COMMIT_PROGRESSING_STOPS for the test "
-        "budget; same observable: survive one mid-work resolver failure then "
-        "continue to completion under FakeClock on both integrate drives"
+        "the fixture builds the real range: 50 commits of which 20 conflict; the "
+        "mid-work failure fires at launch 11 (conflicts // 2 + 1), the first drive "
+        "completes 10 stops before the failing launch, and after the shared "
+        "cooldown the continuation finishes the remaining stops without redoing a "
+        "finished one: 21 launches and 20 completed stops in total"
     ),
     "lifecycle fault injection uses GitPython setup, resolver staging, and landing checks": (
         "each fault cell still seeds the same tips and asserts autonomous landing "
@@ -65,7 +65,8 @@ pytestmark = [
     pytest.mark.timeout_seconds(30),
 ]
 
-_BEYOND_TWO_COMMIT_PROGRESSING_STOPS = 3
+_LARGE_RANGE_COMMITS = 50
+_LARGE_RANGE_CONFLICTS = 20
 _AUTHOR = Actor("Test Author", "author@example.com")
 _COMMITTER = Actor("Test Committer", "committer@example.com")
 _REPO_CACHE: dict[Path, Repo] = {}
@@ -280,7 +281,11 @@ class _FastAgentRunner:
         return True
 
 
-def _large_conflicted_range(root: Path, commits: int = 50, conflicts: int = 20) -> str:
+def _large_conflicted_range(
+    root: Path,
+    commits: int = _LARGE_RANGE_COMMITS,
+    conflicts: int = _LARGE_RANGE_CONFLICTS,
+) -> str:
     base = _commit_file(root, "shared.txt", "base\n", "base")
     sequence: list[FastImportCommit] = []
     for index in range(commits):
@@ -318,8 +323,8 @@ def test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget(tmp_git_
     clock = FakeClock()
     feature_sha = _large_conflicted_range(
         tmp_git_repo,
-        commits=_BEYOND_TWO_COMMIT_PROGRESSING_STOPS,
-        conflicts=_BEYOND_TWO_COMMIT_PROGRESSING_STOPS,
+        commits=_LARGE_RANGE_COMMITS,
+        conflicts=_LARGE_RANGE_CONFLICTS,
     )
     target_before = _rev_parse(tmp_git_repo, "main")
     run = _drive(
@@ -329,9 +334,10 @@ def test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget(tmp_git_
         clock=clock,
     )
     assert run.error is None, f"large finite work must not crash: {run.error}"
-    assert run.resolver_launches >= _BEYOND_TWO_COMMIT_PROGRESSING_STOPS, (
-        "a progressing conflict rebase beyond the two-commit design point must not "
-        "hit a stop, round, attempt or time cap"
+    assert run.resolver_launches >= _LARGE_RANGE_CONFLICTS, (
+        f"every one of the {_LARGE_RANGE_CONFLICTS} conflicting stops must reach the "
+        "resolver: a progressing conflict rebase beyond the two-commit design point "
+        "must not hit a stop, round, attempt or time cap"
     )
     _assert_content_equivalence(
         tmp_git_repo,
@@ -347,11 +353,11 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
     clock = FakeClock()
     feature_sha = _large_conflicted_range(
         tmp_git_repo,
-        commits=_BEYOND_TWO_COMMIT_PROGRESSING_STOPS,
-        conflicts=_BEYOND_TWO_COMMIT_PROGRESSING_STOPS,
+        commits=_LARGE_RANGE_COMMITS,
+        conflicts=_LARGE_RANGE_CONFLICTS,
     )
     target_before = _rev_parse(tmp_git_repo, "main")
-    fail_at_launch = _BEYOND_TWO_COMMIT_PROGRESSING_STOPS // 2 + 1
+    fail_at_launch = _LARGE_RANGE_CONFLICTS // 2 + 1
     runner = _FastAgentRunner(fail_at_launch=fail_at_launch, clock=clock)
     run1 = _drive(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
     assert run1.error is None, f"large finite work must survive one resolver failure: {run1.error}"
@@ -369,8 +375,8 @@ def test_fifty_commit_twenty_conflict_rebase_survives_midwork_agent_failure(
     clock.advance(3600.0)
     run2 = _drive(tmp_git_repo, config=scenario_config(), resolver=runner, clock=clock)
     assert run2.error is None, f"continuation must succeed: {run2.error}"
-    assert runner.launches == _BEYOND_TWO_COMMIT_PROGRESSING_STOPS + 1
-    assert len(runner.completed_stops) >= _BEYOND_TWO_COMMIT_PROGRESSING_STOPS
+    assert runner.launches == _LARGE_RANGE_CONFLICTS + 1
+    assert len(runner.completed_stops) == _LARGE_RANGE_CONFLICTS
     _assert_content_equivalence(
         tmp_git_repo,
         contract="large finite work with a mid-work agent failure must still land",

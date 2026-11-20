@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.testing.audit_integration_agent_path import (
     AGENT_CLASSIFICATION_RULE,
     AGENT_PROCESS_LAUNCH_RULE,
@@ -32,6 +34,7 @@ def _rules(violations: Sequence[Violation]) -> list[str]:
     return [violation.rule for violation in violations]
 
 
+@pytest.mark.timeout_seconds(20)
 def test_repository_tree_reports_no_violation() -> None:
     assert audit_tree(REPO_ROOT) == []
 

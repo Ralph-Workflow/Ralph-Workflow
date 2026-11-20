@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import ast
-import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Final
 
 from ralph.testing.audit_integration_invariants import (
     _LEDGER_ELIGIBILITY_KEYS,
     FORBIDDEN_PIPELINE_ELIGIBILITY_NAMES,
 )
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -32,6 +32,8 @@ __all__ = [
     "GUARDED_INTEGRATION_PATH_PREFIXES",
     "SHARED_INVOCATION_PATH_MODULES",
     "SHARED_PATH_BRANCH_RULE",
+    "WORK_BOUND_ELIGIBILITY_RULE",
+    "WORK_BOUND_LAUNCH_PERMISSION_RULE",
     "Violation",
     "audit_modules",
     "audit_source",
@@ -39,7 +41,6 @@ __all__ = [
     "main",
     "selftest",
 ]
-
 CONFLICT_RESOLUTION_PACKAGE: Final = "ralph/pipeline/conflict_resolution/"
 
 GUARDED_INTEGRATION_PATH_PREFIXES: Final[tuple[str, ...]] = (
@@ -238,6 +239,41 @@ AGENT_SELECTION_RULE: Final = "integration_agent_selection"
 AGENT_FREE_RETRY_RULE: Final = "integration_agent_free_retry_module"
 
 BUDGET_LAUNCH_PERMISSION_RULE: Final = "integration_budget_launch_permission"
+
+WORK_BOUND_ELIGIBILITY_RULE: Final = "integration_conflict_work_bound_eligibility"
+
+WORK_BOUND_LAUNCH_PERMISSION_RULE: Final = "integration_conflict_work_bound_launch_permission"
+
+CONFLICT_WORK_BOUND_FUNCTIONS: Final[tuple[str, ...]] = (
+    "conflict_budget_exhausted",
+    "resolver_allowed",
+)
+
+FORBIDDEN_WORK_BOUND_ELIGIBILITY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "AgentFailureLedger",
+        "AgentUnavailabilityTracker",
+        "Cooldown",
+        "any_eligible",
+        "chain_eligibility",
+        "earliest_available_wait_ms",
+        "eligibility_wait",
+        "finalize_attempt",
+        "is_eligible",
+        "mark_agent_unavailable",
+        "preferred_agent_index",
+        "record_attempt_fact",
+        "reset_backoff",
+    }
+)
+
+WORK_BOUND_ELIGIBILITY_NAMES: Final[tuple[str, ...]] = (
+    "any_eligible",
+    "chain_eligibility",
+    "earliest_available_wait_ms",
+    "is_eligible",
+    "preferred_agent_index",
+)
 
 RETRY_DELAY_OWNER_RULE: Final = "integration_retry_delay_second_owner"
 
@@ -578,9 +614,7 @@ def _exported_names(tree: ast.Module) -> list[str]:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        targets = [
-            target.id for target in node.targets if isinstance(target, ast.Name)
-        ]
+        targets = [target.id for target in node.targets if isinstance(target, ast.Name)]
         if "__all__" not in targets:
             continue
         if not isinstance(node.value, ast.List | ast.Tuple):
@@ -656,23 +690,108 @@ def _retry_delay_owner_violations(rel_path: str, tree: ast.Module) -> list[Viola
     ]
 
 
+def _referenced_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name):
+            names.add(child.id)
+        elif isinstance(child, ast.Attribute):
+            names.add(child.attr)
+        elif isinstance(child, ast.Import):
+            names.update(alias.name.rsplit(".", 1)[-1] for alias in child.names)
+        elif isinstance(child, ast.ImportFrom):
+            names.update(alias.name for alias in child.names)
+    return names
+
+
+def _is_work_bound_name(name: str) -> bool:
+    return name.lstrip("_") in CONFLICT_WORK_BOUND_FUNCTIONS
+
+
+def _work_bound_eligibility_violations(rel_path: str, tree: ast.Module) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if node.name not in CONFLICT_WORK_BOUND_FUNCTIONS:
+            continue
+        violations.extend(
+            Violation(
+                path=rel_path,
+                line=node.lineno,
+                rule=WORK_BOUND_ELIGIBILITY_RULE,
+                detail=(
+                    f"'{node.name}' references '{name}'; the conflict work bound measures "
+                    "lack of progress on one conflict identity and never answers agent "
+                    "eligibility, cooldown state or agent retry timing"
+                ),
+            )
+            for name in sorted(_referenced_names(node) & FORBIDDEN_WORK_BOUND_ELIGIBILITY_NAMES)
+        )
+    return violations
+
+
+def _work_bound_launch_permission_violations(rel_path: str, tree: ast.Module) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.BoolOp):
+            continue
+        names = _referenced_names(node)
+        if not any(_is_work_bound_name(name) for name in names):
+            continue
+        if not names & set(WORK_BOUND_ELIGIBILITY_NAMES):
+            continue
+        violations.append(
+            Violation(
+                path=rel_path,
+                line=node.lineno,
+                rule=WORK_BOUND_LAUNCH_PERMISSION_RULE,
+                detail=(
+                    "the conflict work bound is combined with agent eligibility in one "
+                    "decision; the work bound may only deny another round for the same "
+                    "conflict identity and the shared cooldown system alone answers "
+                    "whether an agent may launch"
+                ),
+            )
+        )
+    return violations
+
+
+def _work_bound_violations(rel_path: str, tree: ast.Module) -> list[Violation]:
+    return [
+        *_work_bound_eligibility_violations(rel_path, tree),
+        *_work_bound_launch_permission_violations(rel_path, tree),
+    ]
+
+
+def _source_may_contain_work_bound(source: str) -> bool:
+    return any(name in source for name in CONFLICT_WORK_BOUND_FUNCTIONS)
+
+
 def audit_source(rel_path: str, source: str) -> list[Violation]:
     shared_path = _is_shared_invocation_path(rel_path)
-    if not shared_path and not _is_guarded_integration_path(rel_path):
+    guarded_path = _is_guarded_integration_path(rel_path)
+    work_bound_source = _source_may_contain_work_bound(source)
+    if not work_bound_source and not shared_path and not guarded_path:
         return []
     if (
-        not shared_path
+        not work_bound_source
+        and not shared_path
         and rel_path not in ALWAYS_AUDITED_MODULES
         and not _source_may_contain_violation(source)
     ):
         return []
     tree = _parse_module(rel_path, source)
+    work_bound_violations = [] if tree is None else _work_bound_violations(rel_path, tree)
+    if not shared_path and not guarded_path:
+        return work_bound_violations
     if tree is None:
-        return []
+        return work_bound_violations
     nodes = list(ast.walk(tree))
     if shared_path:
-        return _shared_path_violations(rel_path, nodes)
+        return [*work_bound_violations, *_shared_path_violations(rel_path, nodes)]
     return [
+        *work_bound_violations,
         *_guarded_violations(rel_path, nodes),
         *_agent_free_retry_violations(rel_path, source),
         *_budget_launch_permission_violations(rel_path, tree),
@@ -718,28 +837,47 @@ def _retry_delay_owner_tree_violations(repo_root: Path) -> list[Violation]:
         return []
     exempt = {RETRY_DELAY_OWNER_MODULE, SHARED_COOLDOWN_OWNER_MODULE}
     token_bytes = tuple(name.encode("utf-8") for name in FORBIDDEN_RETRY_DELAY_CALLS)
-    for dirpath, dirnames, filenames in os.walk(base_dir):
-        if "__pycache__" in dirnames:
-            dirnames.remove("__pycache__")
-        for filename in sorted(filenames):
-            if not filename.endswith(".py"):
-                continue
-            full_path = Path(dirpath) / filename
-            rel_path = full_path.relative_to(repo_root).as_posix()
-            if rel_path in exempt:
-                continue
-            try:
-                raw = full_path.read_bytes()
-            except OSError:
-                continue
-            if not any(token in raw for token in token_bytes):
-                continue
-            try:
-                source = raw.decode("utf-8")
-                tree = ast.parse(source, filename=rel_path)
-            except (UnicodeDecodeError, SyntaxError):
-                continue
-            violations.extend(_retry_delay_owner_violations(rel_path, tree))
+    workspace = FsWorkspace(repo_root)
+    for relative in sorted(workspace.iter_files("ralph/pipeline")):
+        rel_path = PurePath(relative).as_posix()
+        if not rel_path.endswith(".py"):
+            continue
+        full_path = repo_root / rel_path
+        if rel_path in exempt:
+            continue
+        try:
+            raw = full_path.read_bytes()
+        except OSError:
+            continue
+        if not any(token in raw for token in token_bytes):
+            continue
+        try:
+            source = raw.decode("utf-8")
+            tree = ast.parse(source, filename=rel_path)
+        except (UnicodeDecodeError, SyntaxError):
+            continue
+        violations.extend(_retry_delay_owner_violations(rel_path, tree))
+    return violations
+
+
+def _work_bound_tree_violations(repo_root: Path) -> list[Violation]:
+    violations: list[Violation] = []
+    base_dir = repo_root / "ralph" / "pipeline"
+    if not base_dir.is_dir():
+        return []
+    already_audited = set(load_modules(repo_root))
+    workspace = FsWorkspace(repo_root)
+    for relative in sorted(workspace.iter_files("ralph/pipeline")):
+        rel_path = PurePath(relative).as_posix()
+        if not rel_path.endswith(".py") or rel_path in already_audited:
+            continue
+        full_path = repo_root / rel_path
+        try:
+            source = full_path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel_path)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        violations.extend(_work_bound_violations(rel_path, tree))
     return violations
 
 
@@ -747,6 +885,7 @@ def audit_tree(repo_root: Path) -> list[Violation]:
     return [
         *audit_modules(load_modules(repo_root)),
         *_retry_delay_owner_tree_violations(repo_root),
+        *_work_bound_tree_violations(repo_root),
     ]
 
 
@@ -757,13 +896,13 @@ def selftest() -> int:
             "def compute_retry_delay(attempt: int) -> float:\n"
             "    return RETRY_BASE_DELAY_SECONDS\n"
         ),
-        CONFLICT_BUDGET_MODULE: (
-            "__all__ = [\"ConflictIdentity\", \"apply_conflict_budget\"]\n"
-        ),
+        CONFLICT_BUDGET_MODULE: ('__all__ = ["ConflictIdentity", "apply_conflict_budget"]\n'),
     }
     clean_violations = audit_modules(clean_modules)
     if clean_violations:
-        sys.stdout.write(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n")
+        sys.stdout.write(
+            f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n"
+        )
         return 1
 
     planted_cases: list[tuple[str, str, str]] = [
@@ -774,13 +913,25 @@ def selftest() -> int:
         ),
         (
             CONFLICT_BUDGET_MODULE,
-            "__all__ = [\"resolver_allowed\"]\n",
+            '__all__ = ["resolver_allowed"]\n',
             BUDGET_LAUNCH_PERMISSION_RULE,
         ),
         (
             "ralph/pipeline/auto_integrate_second_backoff.py",
             "def compute_retry_delay(attempt: int) -> float:\n    return 1.0\n",
             RETRY_DELAY_OWNER_RULE,
+        ),
+        (
+            CONFLICT_BUDGET_MODULE,
+            "def resolver_allowed(state, target, identity):\n"
+            "    return state.ledger.any_eligible('rebase_conflict_resolution', ())\n",
+            WORK_BOUND_ELIGIBILITY_RULE,
+        ),
+        (
+            "ralph/pipeline/run_loop.py",
+            "def decide(state, ledger):\n"
+            "    return resolver_allowed(state) and ledger.any_eligible('phase', ())\n",
+            WORK_BOUND_LAUNCH_PERMISSION_RULE,
         ),
     ]
     for rel_path, source, expected_rule in planted_cases:

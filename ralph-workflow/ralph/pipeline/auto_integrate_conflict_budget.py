@@ -7,8 +7,6 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_backoff import MAX_RETRY_DEADLINE_HORIZON_SECONDS
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
@@ -120,14 +118,7 @@ def resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
-    *,
-    ledger: AgentFailureLedger | None = None,
-    candidates: Sequence[str] = (),
-    session: ResolutionSession | None = None,
 ) -> bool:
-    effective_ledger = resolve_failure_ledger(ledger, session=session)
-    if effective_ledger is not None and candidates:
-        return True
     return not conflict_budget_exhausted(state, target, identity)
 
 

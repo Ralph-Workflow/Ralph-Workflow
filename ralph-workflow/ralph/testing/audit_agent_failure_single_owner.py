@@ -63,6 +63,7 @@ __all__ = [
     "is_test_counter_read_allowed",
     "is_transitional_allowed",
     "main",
+    "selftest",
 ]
 
 PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = ("ralph",)
@@ -867,8 +868,77 @@ def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
     return sorted(violations, key=_violation_sort_key)
 
 
+_LEDGER_BUILD = "def build(clock):\n    return AgentFailureLedger(clock=clock)\n"
+_COUNTER_DECL = (
+    "class Worker:\n    def __init__(self):\n        self.consecutive_unproductive = 0\n"
+)
+_UNGUARDED_CALL = "def call_agent():\n    invoke_agent()\n"
+_COUNTER_READ = "def test_sample(ledger):\n    assert ledger.consecutive_unproductive == 1\n"
+_PRIVATE_LEDGER_READ = "def test_private(ledger):\n    entries = ledger._entries\n"
+_PRIVATE_OWNER_READ = (
+    'def test_backoff(c):\n    assert c._backoff_attempts.get("development:claude") == 2\n'
+)
+_SERIALISED_READ = (
+    'def test_snapshot(state):\n    assert state.ledger_snapshot["entries"]["development:claude"]'
+    '["cooldown_count"] == 1\n'
+)
+
+_SELFTEST_CASES: tuple[tuple[str, str, str, str], ...] = (
+    (
+        "production",
+        "ralph/pipeline/conflict_resolution/_scratch_ledger.py",
+        _LEDGER_BUILD,
+        "production_cooldown_state_construction_outside_owner",
+    ),
+    ("production", "ralph/pipeline/worker.py", _COUNTER_DECL, "production_streak_counter_state"),
+    (
+        "production",
+        "ralph/phases/example.py",
+        _UNGUARDED_CALL,
+        "production_agent_invoker_unchecked",
+    ),
+    ("test", "tests/recovery/test_sample.py", _COUNTER_READ, "test_counter_access"),
+    ("test", "tests/recovery/test_sample.py", _PRIVATE_LEDGER_READ, "test_private_ledger_access"),
+    (
+        "test",
+        "tests/recovery/test_sample.py",
+        _PRIVATE_OWNER_READ,
+        "test_private_failure_owner_access",
+    ),
+    ("test", "tests/recovery/test_sample.py", _SERIALISED_READ, "test_serialised_ledger_access"),
+    ("production", "ralph/pipeline/runner.py", "outcome = ledger.record(fact)\n", ""),
+)
+
+
+def selftest() -> int:
+    try:
+        verify_counter_access_detection()
+    except AssertionError as exc:
+        sys.stdout.write(f"SELFTEST FAILED: the counter-access self-check failed: {exc}\n")
+        return 1
+    verified = 0
+    for index, (kind, rel_path, source, expected_rule) in enumerate(_SELFTEST_CASES):
+        if kind == "production":
+            violations = audit_production_source(rel_path, source)
+        else:
+            violations = audit_test_source(rel_path, source)
+        rules = [violation.rule for violation in violations]
+        found = expected_rule in rules if expected_rule else not rules
+        if not found:
+            sys.stdout.write(f"SELFTEST FAILED: case {index}: {rules}\n")
+            return 1
+        verified += 1
+    sys.stdout.write(f"AGENT FAILURE SINGLE OWNER AUDIT: SELFTEST OK ({verified} cases verified)\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--selftest" in args:
+        return selftest()
+    if unsupported := [arg for arg in args if arg.startswith("-")]:
+        sys.stdout.write(f"unsupported command-line arguments: {', '.join(unsupported)}\n")
+        return 2
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_single_owner(repo_root)
     if violations:

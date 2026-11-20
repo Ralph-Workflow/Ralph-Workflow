@@ -479,11 +479,14 @@ verify command publishes as before. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
 An interrupted conflict-resolution record routes back to the configured
-resolution chain before ordinary phase dispatch, even when staging has cleared
-the unmerged index entries. Recovery continues the owned operation using its
-recorded target. A completed rebase must be verified and its record advanced
-to landing; a retained resolution flag alone must not keep planning in a retry
-loop. Planning resumes only after the target fast-forward succeeds.
+resolution chain before ordinary phase dispatch. When a paused rebase's
+unmerged index set is empty, the pipeline finishes the stop itself: it stages
+the resolved files and runs `git rebase --continue`, without consulting the
+resolution chain, the retry gate or an agent. Recovery continues the owned
+operation using its recorded target. A completed rebase must be verified and
+its record advanced to landing; a retained resolution flag alone must not keep
+planning in a retry loop. Planning resumes only after the target fast-forward
+succeeds.
 An outstanding integration record remains blocking even when Git reports a
 clean worktree. A successful commit, including an empty commit, is not retried
 because its subsequent integration needs recovery. Ralph Workflow preserves

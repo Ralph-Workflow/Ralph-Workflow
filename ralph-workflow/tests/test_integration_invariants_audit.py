@@ -14,6 +14,41 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "pins the no-legacy audit rule family that rejects NeedsOperator, "
         "operator action required, LandedProofFailed, and a LadderState parking member"
     ),
+    "test_planted_missing_gitlink_policy_owner_is_detected": (
+        "pins the gitlink_policy_owner_missing rule; without it the pointer-preference "
+        "owner module could disappear from the tree unnoticed"
+    ),
+    "test_planted_incomplete_gitlink_policy_owner_is_detected": (
+        "pins the gitlink_policy_owner_incomplete rule; the owner module must define "
+        "both the candidate list and the chooser"
+    ),
+    "test_planted_missing_gitlink_resolution_module_is_detected": (
+        "pins the gitlink_resolution_module_missing rule; the in-place resolver module must exist"
+    ),
+    "test_planted_gitlink_conflict_not_resolved_in_place_is_detected": (
+        "pins the gitlink_not_resolved_in_place rule; the resolution module must route "
+        "the conflict through the pointer policy owner"
+    ),
+    "test_planted_agent_eligible_gitlink_set_is_detected": (
+        "pins the gitlink conflict classified agent-eligible rule for an agent-eligible "
+        "set that holds a gitlink member"
+    ),
+    "test_planted_agent_eligible_gitlink_comparison_is_detected": (
+        "pins the gitlink conflict classified agent-eligible rule for a comparison "
+        "between a gitlink member and an agent-eligible set"
+    ),
+    "test_planted_watchdog_reason_class_without_operator_cap_is_detected": (
+        "pins the operator_cap_reason_missing rule for a watchdog reason class that "
+        "drops the operator cap member"
+    ),
+    "test_planted_watchdog_reason_reference_without_operator_cap_is_detected": (
+        "pins the operator_cap_reason_missing rule for a module that uses the watchdog "
+        "reason class while the class no longer carries the operator cap member"
+    ),
+    "test_planted_watchdog_reason_owner_without_operator_cap_is_detected": (
+        "pins the operator_cap_reason_missing rule for a tree whose watchdog reason "
+        "owner module no longer defines the reason class"
+    ),
 }
 
 _ENTRY_SOURCE = """from __future__ import annotations
@@ -77,12 +112,50 @@ _WATCHDOG_REASON_SOURCE = """class WatchdogFireReason:
     OPERATOR_CAP_REACHED = "operator_cap_reached"
 """
 
+_INCOMPLETE_GITLINK_POLICY_SOURCE = """POLICY_CANDIDATES = ()
+"""
+
+_GITLINK_CONFLICT_SOURCE = """class GitlinkConflict:
+    GITLINK_POINTER = "gitlink"
+"""
+
+_GITLINK_ELIGIBLE_SET_SOURCE = """from ralph.pipeline.conflict_resolution.gitlink_conflict import GitlinkConflict
+
+
+AGENT_ELIGIBLE_KINDS = frozenset({GitlinkConflict.GITLINK_POINTER})
+"""
+
+_GITLINK_ELIGIBLE_COMPARE_SOURCE = """from ralph.pipeline.conflict_resolution.gitlink_conflict import GitlinkConflict
+
+
+AGENT_ELIGIBLE_KINDS = frozenset()
+
+
+def is_agent_eligible(kind):
+    return GitlinkConflict.GITLINK_POINTER in AGENT_ELIGIBLE_KINDS
+"""
+
+_WATCHDOG_REASON_WITHOUT_CAP_SOURCE = """class WatchdogFireReason:
+    OTHER_REASON = "other_reason"
+"""
+
+_WATCHDOG_REASON_REFERENCE_SOURCE = """from ralph.agents.watchdog_fire_reason import WatchdogFireReason
+
+
+def pick(reason):
+    return reason is WatchdogFireReason
+"""
+
 
 def _write(root: Path, relative: str, source: str) -> Path:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
     return path
+
+
+def _remove(root: Path, relative: str) -> None:
+    (root / relative).unlink()
 
 
 def _clean_tree(tmp_path: Path) -> Path:
@@ -285,3 +358,133 @@ def test_planted_operator_parking_literals_fail_no_legacy_audit() -> None:
     rules = {v.rule for v in audit_modules(planted, ignore_transitional=True)}
     assert "operator-parking terminal literal reappeared" in rules
     assert "operator-parking LadderState member reappeared" in rules
+
+
+def test_planted_missing_gitlink_policy_owner_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _remove(tree, "ralph/pipeline/conflict_resolution/gitlink_policy.py")
+
+    assert "gitlink_policy_owner_missing" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/gitlink_policy.py:1" in _locations(
+        tree, "gitlink_policy_owner_missing"
+    )
+
+
+def test_planted_incomplete_gitlink_policy_owner_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/gitlink_policy.py",
+        _INCOMPLETE_GITLINK_POLICY_SOURCE,
+    )
+
+    assert "gitlink_policy_owner_incomplete" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/gitlink_policy.py:1" in _locations(
+        tree, "gitlink_policy_owner_incomplete"
+    )
+
+
+def test_planted_missing_gitlink_resolution_module_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _remove(tree, "ralph/pipeline/conflict_resolution/deterministic_resolution.py")
+
+    assert "gitlink_resolution_module_missing" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/deterministic_resolution.py:1" in _locations(
+        tree, "gitlink_resolution_module_missing"
+    )
+
+
+def test_planted_gitlink_conflict_not_resolved_in_place_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/deterministic_resolution.py",
+        "def resolve():\n    return None\n",
+    )
+
+    assert "gitlink_not_resolved_in_place" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/deterministic_resolution.py:1" in _locations(
+        tree, "gitlink_not_resolved_in_place"
+    )
+
+
+def test_planted_agent_eligible_gitlink_set_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/gitlink_conflict.py",
+        _GITLINK_CONFLICT_SOURCE,
+    )
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/runner.py",
+        _GITLINK_ELIGIBLE_SET_SOURCE,
+    )
+
+    assert "gitlink conflict classified agent-eligible" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/runner.py:4" in _locations(
+        tree, "gitlink conflict classified agent-eligible"
+    )
+
+
+def test_planted_agent_eligible_gitlink_comparison_is_detected(tmp_path: Path) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/gitlink_conflict.py",
+        _GITLINK_CONFLICT_SOURCE,
+    )
+    _write(
+        tree,
+        "ralph/pipeline/conflict_resolution/runner.py",
+        _GITLINK_ELIGIBLE_COMPARE_SOURCE,
+    )
+
+    assert "gitlink conflict classified agent-eligible" in _rules(tree)
+    assert "ralph/pipeline/conflict_resolution/runner.py:8" in _locations(
+        tree, "gitlink conflict classified agent-eligible"
+    )
+
+
+def test_planted_watchdog_reason_class_without_operator_cap_is_detected(
+    tmp_path: Path,
+) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/agents/watchdog_fire_reason.py",
+        _WATCHDOG_REASON_WITHOUT_CAP_SOURCE,
+    )
+
+    assert "operator_cap_reason_missing" in _rules(tree)
+    assert "ralph/agents/watchdog_fire_reason.py:1" in _locations(
+        tree, "operator_cap_reason_missing"
+    )
+
+
+def test_planted_watchdog_reason_reference_without_operator_cap_is_detected(
+    tmp_path: Path,
+) -> None:
+    tree = _clean_tree(tmp_path)
+    _write(
+        tree,
+        "ralph/agents/watchdog_fire_reason.py",
+        'OPERATOR_CAP_REACHED = "OPERATOR_CAP_REACHED"\n',
+    )
+    _write(tree, "ralph/agents/reason_user.py", _WATCHDOG_REASON_REFERENCE_SOURCE)
+
+    assert "operator_cap_reason_missing" in _rules(tree)
+    assert "ralph/agents/reason_user.py:5" in _locations(tree, "operator_cap_reason_missing")
+
+
+def test_planted_watchdog_reason_owner_without_operator_cap_is_detected(
+    tmp_path: Path,
+) -> None:
+    tree = _clean_tree(tmp_path)
+    _remove(tree, "ralph/agents/watchdog_fire_reason.py")
+    _write(tree, "ralph/agents/pacer.py", "def pace():\n    return None\n")
+
+    assert "operator_cap_reason_missing" in _rules(tree)
+    assert "ralph/agents/watchdog_fire_reason.py:1" in _locations(
+        tree, "operator_cap_reason_missing"
+    )

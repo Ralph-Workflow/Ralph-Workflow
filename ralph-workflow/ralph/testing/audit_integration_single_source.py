@@ -214,9 +214,7 @@ def _landed_sha_allowlist_violations(rel: str, tree: ast.Module) -> list[Violati
             fields = _recorded_operation_sha_fields(comparator)
             if len(fields) < _MINIMUM_ALLOWLISTED_SHA_FIELDS:
                 continue
-            violations.append(
-                Violation(rel, node.lineno, "operation landed has a SHA allowlist")
-            )
+            violations.append(Violation(rel, node.lineno, "operation landed has a SHA allowlist"))
     return violations
 
 
@@ -283,9 +281,7 @@ def _landed_second_predicate_violations(rel: str, tree: ast.Module) -> list[Viol
             continue
         if _references_landed_predicate(node):
             continue
-        violations.append(
-            Violation(rel, node.lineno, "operation landed has a second predicate")
-        )
+        violations.append(Violation(rel, node.lineno, "operation landed has a second predicate"))
     return violations
 
 

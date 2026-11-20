@@ -1024,9 +1024,7 @@ class RecoveryController:
 
     def _replayed_attempt_outcome(
         self, phase: str, agent: str | None
-    ) -> (
-        tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None
-    ):
+    ) -> tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None:
         key = (phase, agent or "")
         current = self._attempt_ordinals.get(key, 0)
         if current <= 0:
@@ -1082,9 +1080,7 @@ class RecoveryController:
         self,
         phase: str,
         agent: str | None,
-    ) -> (
-        tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None
-    ):
+    ) -> tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None:
         keys = self._attempt_outcome_keys.get((phase, agent or ""))
         if not keys:
             return None

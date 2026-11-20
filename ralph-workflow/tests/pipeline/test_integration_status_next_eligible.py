@@ -9,9 +9,8 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.pipeline import build_integration_status
-from ralph.pipeline._integration_status import cooldown_next_eligible
-from ralph.pipeline.conflict_resolution._driver_events import (
+from ralph.pipeline import build_integration_status, cooldown_next_eligible
+from ralph.pipeline.conflict_resolution import (
     emit_attempt_outcome,
     reset_driver_events_state,
 )

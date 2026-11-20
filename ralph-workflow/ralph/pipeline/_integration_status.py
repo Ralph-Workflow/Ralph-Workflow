@@ -48,9 +48,7 @@ class IntegrationStatus:
 
     @property
     def an_agent_is_ready(self) -> bool:
-        return (
-            self.next_eligible_agent is not None and self.until_when == NEXT_ELIGIBLE_NOW
-        )
+        return self.next_eligible_agent is not None and self.until_when == NEXT_ELIGIBLE_NOW
 
     @property
     def effective_can_finish(self) -> bool:
@@ -100,7 +98,9 @@ class IntegrationStatus:
                 parts.append(" ".join(waiting_parts))
             else:
                 parts.append(
-                    f"agents cannot finish this ({clause})" if clause else "agents cannot finish this"
+                    f"agents cannot finish this ({clause})"
+                    if clause
+                    else "agents cannot finish this"
                 )
         elif clause:
             parts.append(clause)

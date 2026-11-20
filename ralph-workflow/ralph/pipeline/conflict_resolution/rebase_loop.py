@@ -207,6 +207,7 @@ def _resolve_stops(
 ) -> bool:
     base = _rebase_base_sha(root) or target
     entry_landed = frozenset(_landed_shas_at_entry(root))
+    entry_landed_sorted: list[str] = sorted(entry_landed)
     skipped_entry_shas: set[str] = set()
     stops_spent = 0
     stops_seen = 0
@@ -214,12 +215,12 @@ def _resolve_stops(
     while rebase_in_progress_at(root):
         skipped_before = len(skipped_entry_shas)
         stops_seen += 1
-        logger.warning(
-            "TRACE stop {} begin cap={} stops_spent={} entry_landed={}",
+        logger.debug(
+            "conflict_resolution: stop {} begin cap={} stops_spent={} entry_landed={}",
             stops_seen,
             stop_cap,
             stops_spent,
-            sorted(entry_landed),
+            entry_landed_sorted,
         )
         if not _resolve_one_stop(
             root,
@@ -232,14 +233,14 @@ def _resolve_stops(
             resolved_shas,
             session=session,
         ):
-            logger.warning("TRACE stop {} did not resolve", stops_seen)
+            logger.debug("conflict_resolution: stop {} did not resolve", stops_seen)
             return False
         if len(skipped_entry_shas) > skipped_before:
-            logger.warning("TRACE stop {} skipped (already landed)", stops_seen)
+            logger.debug("conflict_resolution: stop {} skipped (already landed)", stops_seen)
             continue
         head_after = _rev_parse_rebase_head(root)
-        logger.warning(
-            "TRACE stop {} head_after={} resolved_last={}",
+        logger.debug(
+            "conflict_resolution: stop {} head_after={} resolved_last={}",
             stops_seen,
             head_after,
             resolved_shas[-1] if resolved_shas else None,
@@ -249,8 +250,8 @@ def _resolve_stops(
         else:
             stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
-        logger.warning(
-            "TRACE stop {} stops_spent={} resolved={} route={}",
+        logger.debug(
+            "conflict_resolution: stop {} stops_spent={} resolved={} route={}",
             stops_seen,
             stops_spent,
             not rebase_in_progress_at(root),

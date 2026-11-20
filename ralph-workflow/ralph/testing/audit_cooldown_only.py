@@ -938,8 +938,44 @@ def collect_violations(
     return violations
 
 
+_NO_EXPIRY = "class _Cooldown(_AgentStatus):\n    until_ms: int | None\n"
+_OPTIONAL_EXPIRY = "class UnavailabilityEntry:\n    unavailable_until_ms: str\n"
+_EXTRA_ROW = "def agent_availability(agent, available, cooldown_ms_remaining, x):\n    pass\n"
+
+_SELFTEST_CASES: tuple[tuple[str, str, str], ...] = (
+    ("recovery/example.py", "value = 1\n", ""),
+    (LEDGER_MODULE, "class _Parked(_AgentStatus):\n    pass\n", "third availability state"),
+    (LEDGER_MODULE, _NO_EXPIRY, "required `until_ms: int`"),
+    (LEDGER_MODULE, "type AgentEligibility = Eligible | Cooldown | Parked\n", "non-cooldown"),
+    (WAIT_KIND_MODULE, "class WaitKind:\n    NEVER_ELIGIBLE = 1\n", "no cooldown expiry"),
+    (TRACKER_MODULE, _OPTIONAL_EXPIRY, "required int expiry"),
+    (SELECTION_MODULE, _EXTRA_ROW, "availability and cooldown"),
+    ("recovery/controller.py", "self._spent_agents = {}\n", "outside the cooldown system"),
+    ("recovery/controller.py", "agent_is_spent = True\n", "vocabulary for agent availability"),
+    ("recovery/session.py", "ledger.mark_unavailable(phase, agent)\n", "cooldown tracker"),
+)
+
+
+def selftest() -> int:
+    verified = 0
+    for index, (rel_path, source, expected) in enumerate(_SELFTEST_CASES):
+        details = [violation.detail for violation in source_violations(source, rel_path)]
+        found = any(expected in detail for detail in details) if expected else not details
+        if not found:
+            sys.stdout.write(f"SELFTEST FAILED: case {index}: {details}\n")
+            return 1
+        verified += 1
+    sys.stdout.write(f"COOLDOWN-ONLY AUDIT: SELFTEST OK ({verified} cases verified)\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
-    del argv
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--selftest" in args:
+        return selftest()
+    if unsupported := [arg for arg in args if arg.startswith("-")]:
+        sys.stdout.write(f"unsupported command-line arguments: {', '.join(unsupported)}\n")
+        return 2
     violations = collect_violations()
     if violations:
         sys.stdout.write(f"COOLDOWN-ONLY AUDIT FAILED: {len(violations)} violation(s)\n")

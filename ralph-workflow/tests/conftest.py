@@ -6,6 +6,7 @@ import sys
 import tempfile
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -206,7 +207,7 @@ def _redirect_session_guard_constants(
         loader_mod.GLOBAL_AGENTS_CONFIG_PATH = session_config / "ralph-workflow-agents.toml"
 
     try:
-        import ralph.skills._state_store as state_store_mod
+        state_store_mod = import_module("ralph.skills._state_store")
     except ImportError:
         state_store_mod = sys.modules.get("ralph.skills._state_store")
     orig_default_state: Path | None = None
@@ -467,7 +468,7 @@ def _apply_isolate_process_home(
         loader_mod.GLOBAL_CONFIG_PATH = Path(config_dir + "/ralph-workflow.toml")
         loader_mod.GLOBAL_AGENTS_CONFIG_PATH = Path(config_dir + "/ralph-workflow-agents.toml")
     try:
-        import ralph.skills._state_store as state_store_mod
+        state_store_mod = import_module("ralph.skills._state_store")
     except ImportError:
         state_store_mod = sys.modules.get("ralph.skills._state_store")
     if state_store_mod is not None:

@@ -472,9 +472,9 @@ The failure ledger answers eligibility for every agent, and every other consumer
 
 A choice that reads Git reads it once.
 
-1. **The reader**: `ralph.pipeline.operation_snapshot_read.read_integration_snapshot(root, target=..., remote=..., agent_active=...)` returns one `IntegrationSnapshot` carrying the operation state, the HEAD state, the in-progress kind and its ownership, the worktree state, the durable-record state and the target relations.
-2. **The projection**: `ralph.pipeline.operation_snapshot_projection.observation_from_snapshot(snapshot)` is a pure function of that snapshot and derives the `Observation` the choice acts on.
-3. **The consequence**: the status a surface reports and the action the pipeline takes are derived from the same observation, so they cannot disagree about the unmerged set or about HEAD. `ralph.pipeline.integration_director.IntegrationDirector.observe` reads one snapshot and projects it.
+1. **The reader**: `ralph.pipeline.integration_director.IntegrationDirector.observe()` returns one `Observation` carrying the target and remote relations, the worktree state, the HEAD state, the in-progress kind and its ownership, the durable-record state and whether an agent is active.
+2. **The projection**: that `Observation` is the projection the choice acts on; the unmerged set itself is read only by `ralph.git.merge.observe_unmerged_paths(root)`, the single reader of git's unmerged index.
+3. **The consequence**: the status a surface reports and the action the pipeline takes are derived from the same observation, so they cannot disagree about the unmerged set or about HEAD.
 
 ### One landed predicate
 
@@ -502,8 +502,8 @@ Every cleanup rung declares the post-condition that proves it changed something,
 
 The facts about an integration stop are produced once and rendered by every surface that shows them.
 
-1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, whether agents can finish the stop, and the build identity. Its `summary` renders the one sentence for those facts.
-2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar, the residue-cleanup operator message and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths the pipeline will complete in place when agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the agent-completion flag and the build.
+1. **The model**: `ralph.pipeline._integration_status.IntegrationStatus` carries the cause, the paths with their per-path reasons, the exact next command, the preserved artefacts, whether agents can finish the stop, the next eligible agent with the time it becomes eligible, and the build identity. Its `summary` renders the one sentence for those facts.
+2. **The renderers**: the conflict-entry log line, the declared-conflict announcement, the agent-selection evidence, the status bar, the residue-cleanup operator message and `ralph --diagnose` all render that model. The conflict-entry line reports the resolvable count and the paths the pipeline will complete in place when agents cannot finish the stop. The declared-conflict announcement names, per file, why the file has no conflict markers and what form the declaration takes. The agent-selection evidence explains a skipped candidate by naming the candidate it ranks below. `ralph --diagnose` reconstructs the same facts from the persisted checkpoint and renders the cause, the paths, the agent-completion flag, the next command, the preserved artefacts, the next eligible agent with its eligibility time, and the build. A `WAITING` status line is emitted once per change in those facts, not once per tick.
 3. **The cleanup path**: `ralph.pipeline.integration_cleanup` builds an `IntegrationStatus` for the residue-cleanup message and renders it through `render_log`, so the cleanup path and the conflict path describe one stop in one vocabulary.
 
 ### One recorded, switchable strategy
