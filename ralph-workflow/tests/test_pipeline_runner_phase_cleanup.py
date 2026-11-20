@@ -140,13 +140,12 @@ def _apply_runner_stubs(
         kwargs.setdefault("bridge", _FakeBridge())
         kwargs.setdefault("invoke_agent", fake_invoke_agent)
         kwargs.setdefault("agent_invocation_error", AgentInvocationError)
-        attempt_finalizer = kwargs.pop("attempt_finalizer", None)
+        kwargs.setdefault("attempt_finalizer", None)
         return effect_executor_module.execute_agent_effect(
             effect,
             config,
             pipeline_deps,
             workspace_scope,
-            attempt_finalizer=attempt_finalizer,
             **kwargs,
         )
 
