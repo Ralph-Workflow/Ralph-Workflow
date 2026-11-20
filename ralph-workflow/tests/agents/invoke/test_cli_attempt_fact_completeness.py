@@ -288,6 +288,7 @@ _EXPECTED_REAL_CAPTURE_CELLS: tuple[tuple[str, str], ...] = (
     ("opencode", "descendant-hang"),
     ("opencode", "healthy"),
     ("opencode", "killed"),
+    ("pi", "descendant-hang"),
     ("pi", "healthy"),
     ("pi", "killed"),
 )
