@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,9 +17,11 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AGENT_CLASSIFICATION_RULE",
+    "AGENT_FREE_RETRY_RULE",
     "AGENT_PROCESS_LAUNCH_RULE",
     "AGENT_RETRY_DELAY_RULE",
     "AGENT_SELECTION_RULE",
+    "BUDGET_LAUNCH_PERMISSION_RULE",
     "CONFLICT_RESOLUTION_PACKAGE",
     "COOLDOWN_WRITE_RULE",
     "FORBIDDEN_AGENT_CLASSIFICATION_NAMES",
@@ -34,6 +37,7 @@ __all__ = [
     "audit_source",
     "audit_tree",
     "main",
+    "selftest",
 ]
 
 CONFLICT_RESOLUTION_PACKAGE: Final = "ralph/pipeline/conflict_resolution/"
@@ -90,6 +94,41 @@ RETRY_DELAY_EXEMPT_PATHS: Final[frozenset[str]] = frozenset(
         "ralph/pipeline/auto_integrate_conflict_budget.py",
         "ralph/pipeline/_auto_integrate_attempt_loop.py",
     }
+)
+
+AGENT_FREE_RETRY_MODULE: Final = "ralph/pipeline/auto_integrate_backoff.py"
+
+CONFLICT_BUDGET_MODULE: Final = "ralph/pipeline/auto_integrate_conflict_budget.py"
+
+RETRY_DELAY_OWNER_MODULE: Final = "ralph/pipeline/auto_integrate_backoff.py"
+
+SHARED_COOLDOWN_OWNER_MODULE: Final = "ralph/recovery/controller.py"
+
+AGENT_FREE_RETRY_FORBIDDEN_TOKENS: Final[tuple[str, ...]] = (
+    "agent",
+    "candidate",
+    "launch",
+    "resolver",
+)
+
+ALWAYS_AUDITED_MODULES: Final[frozenset[str]] = frozenset(
+    {
+        AGENT_FREE_RETRY_MODULE,
+        CONFLICT_BUDGET_MODULE,
+    }
+)
+
+LAUNCH_PERMISSION_NAME_TOKENS: Final[tuple[str, ...]] = (
+    "allow",
+    "eligible",
+    "launch",
+    "permit",
+)
+
+LAUNCH_PERMISSION_SUBJECT_TOKENS: Final[tuple[str, ...]] = (
+    "agent",
+    "candidate",
+    "resolver",
 )
 
 FORBIDDEN_COOLDOWN_WRITE_CALLS: Final[frozenset[str]] = frozenset(
@@ -172,7 +211,10 @@ VIOLATION_SOURCE_TRIGGERS: Final[tuple[str, ...]] = (
     *FORBIDDEN_RETRY_DELAY_CALLS,
     *FORBIDDEN_COOLDOWN_WRITE_CALLS,
     *FORBIDDEN_COOLDOWN_OWNER_CONSTRUCTIONS,
-    *FORBIDDEN_PROCESS_LAUNCH_NAMES,
+    *(name for name in FORBIDDEN_PROCESS_LAUNCH_NAMES if name != "exec"),
+    "os.exec",
+    "subprocess.Popen",
+    "pty.spawn",
     *FORBIDDEN_PIPELINE_ELIGIBILITY_NAMES,
     AGENT_ELIGIBILITY_NAME_MARKER,
     AGENT_SELECTION_NAME_SHAPES[0],
@@ -192,6 +234,12 @@ AGENT_PROCESS_LAUNCH_RULE: Final = "integration_agent_process_launch"
 SHARED_PATH_BRANCH_RULE: Final = "shared_path_integration_branch"
 
 AGENT_SELECTION_RULE: Final = "integration_agent_selection"
+
+AGENT_FREE_RETRY_RULE: Final = "integration_agent_free_retry_module"
+
+BUDGET_LAUNCH_PERMISSION_RULE: Final = "integration_budget_launch_permission"
+
+RETRY_DELAY_OWNER_RULE: Final = "integration_retry_delay_second_owner"
 
 SHARED_CLASSIFIER_OWNER: Final = "ralph/recovery/failure_classifier.py"
 
@@ -526,11 +574,97 @@ def _source_may_contain_violation(source: str) -> bool:
     return any(trigger in source for trigger in VIOLATION_SOURCE_TRIGGERS)
 
 
+def _exported_names(tree: ast.Module) -> list[str]:
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        targets = [
+            target.id for target in node.targets if isinstance(target, ast.Name)
+        ]
+        if "__all__" not in targets:
+            continue
+        if not isinstance(node.value, ast.List | ast.Tuple):
+            continue
+        return [
+            element.value
+            for element in node.value.elts
+            if isinstance(element, ast.Constant) and isinstance(element.value, str)
+        ]
+    return []
+
+
+def _is_launch_permission_name(name: str) -> bool:
+    lowered = name.lower()
+    if not any(token in lowered for token in LAUNCH_PERMISSION_SUBJECT_TOKENS):
+        return False
+    return any(token in lowered for token in LAUNCH_PERMISSION_NAME_TOKENS)
+
+
+def _agent_free_retry_violations(rel_path: str, source: str) -> list[Violation]:
+    if rel_path != AGENT_FREE_RETRY_MODULE:
+        return []
+    lowered = source.lower()
+    return [
+        Violation(
+            path=rel_path,
+            line=1,
+            rule=AGENT_FREE_RETRY_RULE,
+            detail=(
+                f"'{token}' appears in the agent-free retry module; this module paces "
+                "git, network and lock retries only and never times an agent launch"
+            ),
+        )
+        for token in AGENT_FREE_RETRY_FORBIDDEN_TOKENS
+        if token in lowered
+    ]
+
+
+def _budget_launch_permission_violations(rel_path: str, tree: ast.Module) -> list[Violation]:
+    if rel_path != CONFLICT_BUDGET_MODULE:
+        return []
+    return [
+        Violation(
+            path=rel_path,
+            line=1,
+            rule=BUDGET_LAUNCH_PERMISSION_RULE,
+            detail=(
+                f"'{name}' exports a resolver-launch permission; the conflict budget is a "
+                "no-progress bound and the launch permission is the shared cooldown answer"
+            ),
+        )
+        for name in _exported_names(tree)
+        if _is_launch_permission_name(name)
+    ]
+
+
+def _retry_delay_owner_violations(rel_path: str, tree: ast.Module) -> list[Violation]:
+    if rel_path in {RETRY_DELAY_OWNER_MODULE, SHARED_COOLDOWN_OWNER_MODULE}:
+        return []
+    return [
+        Violation(
+            path=rel_path,
+            line=node.lineno,
+            rule=RETRY_DELAY_OWNER_RULE,
+            detail=(
+                f"'{node.name}' is a second retry-delay implementation; the retry delay is "
+                f"owned by {RETRY_DELAY_OWNER_MODULE}"
+            ),
+        )
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name in FORBIDDEN_RETRY_DELAY_CALLS
+    ]
+
+
 def audit_source(rel_path: str, source: str) -> list[Violation]:
     shared_path = _is_shared_invocation_path(rel_path)
     if not shared_path and not _is_guarded_integration_path(rel_path):
         return []
-    if not shared_path and not _source_may_contain_violation(source):
+    if (
+        not shared_path
+        and rel_path not in ALWAYS_AUDITED_MODULES
+        and not _source_may_contain_violation(source)
+    ):
         return []
     tree = _parse_module(rel_path, source)
     if tree is None:
@@ -538,7 +672,12 @@ def audit_source(rel_path: str, source: str) -> list[Violation]:
     nodes = list(ast.walk(tree))
     if shared_path:
         return _shared_path_violations(rel_path, nodes)
-    return _guarded_violations(rel_path, nodes)
+    return [
+        *_guarded_violations(rel_path, nodes),
+        *_agent_free_retry_violations(rel_path, source),
+        *_budget_launch_permission_violations(rel_path, tree),
+        *_retry_delay_owner_violations(rel_path, tree),
+    ]
 
 
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
@@ -572,12 +711,97 @@ def load_modules(repo_root: Path) -> dict[str, str]:
     return modules
 
 
+def _retry_delay_owner_tree_violations(repo_root: Path) -> list[Violation]:
+    violations: list[Violation] = []
+    base_dir = repo_root / "ralph" / "pipeline"
+    if not base_dir.is_dir():
+        return []
+    exempt = {RETRY_DELAY_OWNER_MODULE, SHARED_COOLDOWN_OWNER_MODULE}
+    token_bytes = tuple(name.encode("utf-8") for name in FORBIDDEN_RETRY_DELAY_CALLS)
+    for dirpath, dirnames, filenames in os.walk(base_dir):
+        if "__pycache__" in dirnames:
+            dirnames.remove("__pycache__")
+        for filename in sorted(filenames):
+            if not filename.endswith(".py"):
+                continue
+            full_path = Path(dirpath) / filename
+            rel_path = full_path.relative_to(repo_root).as_posix()
+            if rel_path in exempt:
+                continue
+            try:
+                raw = full_path.read_bytes()
+            except OSError:
+                continue
+            if not any(token in raw for token in token_bytes):
+                continue
+            try:
+                source = raw.decode("utf-8")
+                tree = ast.parse(source, filename=rel_path)
+            except (UnicodeDecodeError, SyntaxError):
+                continue
+            violations.extend(_retry_delay_owner_violations(rel_path, tree))
+    return violations
+
+
 def audit_tree(repo_root: Path) -> list[Violation]:
-    return audit_modules(load_modules(repo_root))
+    return [
+        *audit_modules(load_modules(repo_root)),
+        *_retry_delay_owner_tree_violations(repo_root),
+    ]
+
+
+def selftest() -> int:
+    clean_modules = {
+        AGENT_FREE_RETRY_MODULE: (
+            "RETRY_BASE_DELAY_SECONDS = 0.5\n"
+            "def compute_retry_delay(attempt: int) -> float:\n"
+            "    return RETRY_BASE_DELAY_SECONDS\n"
+        ),
+        CONFLICT_BUDGET_MODULE: (
+            "__all__ = [\"ConflictIdentity\", \"apply_conflict_budget\"]\n"
+        ),
+    }
+    clean_violations = audit_modules(clean_modules)
+    if clean_violations:
+        sys.stdout.write(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n")
+        return 1
+
+    planted_cases: list[tuple[str, str, str]] = [
+        (
+            AGENT_FREE_RETRY_MODULE,
+            "def wait_before_retry(agent: str) -> None:\n    pass\n",
+            AGENT_FREE_RETRY_RULE,
+        ),
+        (
+            CONFLICT_BUDGET_MODULE,
+            "__all__ = [\"resolver_allowed\"]\n",
+            BUDGET_LAUNCH_PERMISSION_RULE,
+        ),
+        (
+            "ralph/pipeline/auto_integrate_second_backoff.py",
+            "def compute_retry_delay(attempt: int) -> float:\n    return 1.0\n",
+            RETRY_DELAY_OWNER_RULE,
+        ),
+    ]
+    for rel_path, source, expected_rule in planted_cases:
+        violations = audit_modules({rel_path: source})
+        rules = [violation.rule for violation in violations]
+        if expected_rule not in rules:
+            sys.stdout.write(
+                f"SELFTEST FAILED: {rel_path} did not produce rule '{expected_rule}', got {rules}\n"
+            )
+            return 1
+
+    sys.stdout.write(
+        f"INTEGRATION AGENT PATH AUDIT: SELFTEST OK ({len(clean_modules) + len(planted_cases)} cases verified)\n"
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--selftest" in args:
+        return selftest()
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(repo_root)
     if violations:

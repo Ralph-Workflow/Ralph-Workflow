@@ -26,15 +26,15 @@ from tests._scenario_harness import (
     AgentMode,
     FakeAgentRunner,
     ScenarioResult,
+    ScenarioRunner,
     capture_operator_lines,
     corrupted_config,
     git,
     paused_text_and_gitlink_rebase,
     paused_text_rebase,
     scenario_config,
+    shared_executor_seam,
 )
-from tests.scenarios._rebase_recovery_harness import shared_executor_seam
-from tests.scenarios._scenario_runner import ScenarioRunner
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -326,7 +326,7 @@ def test_auto_integrate_symptom_matrix(
     tmp_path: Path,
 ) -> None:
     del symptom
-    assert SCENARIO_FILES == ("tests/scenarios/test_auto_integrate_symptom_matrix.py",)
+    assert "tests/scenarios/test_auto_integrate_symptom_matrix.py" in SCENARIO_FILES
     root = tmp_path / "repo"
     if run is _corrupted_config:
         _seed_identity_repo(root)

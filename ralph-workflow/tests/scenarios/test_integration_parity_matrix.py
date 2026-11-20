@@ -18,6 +18,9 @@ from ralph.pipeline.conflict_resolution import (
     RebaseStop,
     run_rebase_conflict_resolution_pipeline,
 )
+from ralph.pipeline.conflict_resolution.git_worktree_observer import (
+    GitWorktreeConflictObserver,
+)
 from ralph.pipeline.conflict_resolution.resolver_health import record_resolver_failure
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.integration_actions import install_executors, reset_executors
@@ -53,6 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.pipeline.conflict_resolution.sight import ConflictSight
     from ralph.policy.models import PolicyBundle
 
 
@@ -421,43 +425,32 @@ class _ParitySideResult:
 class _BeforeAfterNoOps:
     git_ops: _NoOpGitOps = field(default_factory=_NoOpGitOps)
     mechanical_stage_calls: list[str] = field(default_factory=list)
-    continue_rebase_calls: list[str] = field(default_factory=list)
+
+    @property
+    def observer(self) -> _StubbedWorktreeObserver:
+        return _StubbedWorktreeObserver(self.mechanical_stage_calls)
 
     @property
     def calls(self) -> tuple[str, ...]:
-        return (
-            *self.git_ops.calls,
-            *self.mechanical_stage_calls,
-            *self.continue_rebase_calls,
-        )
+        return (*self.git_ops.calls, *self.mechanical_stage_calls)
 
 
-def _install_before_after_noops(monkeypatch: pytest.MonkeyPatch) -> _BeforeAfterNoOps:
-    stubs = _BeforeAfterNoOps()
+class _StubbedWorktreeObserver(GitWorktreeConflictObserver):
+    def __init__(self, mechanical_stage_calls: list[str]) -> None:
+        self._mechanical_stage_calls = mechanical_stage_calls
 
-    def _noop_stage(root: Path, kinds: object) -> tuple[str, ...]:
+    def stage_mechanical_conflicts(
+        self,
+        root: Path,
+        kinds: dict[str, ConflictSight],
+    ) -> tuple[str, ...]:
         del kinds
-        stubs.mechanical_stage_calls.append(f"stage_mechanical:{root.name}")
+        self._mechanical_stage_calls.append(f"stage_mechanical:{root.name}")
         return ()
 
-    def _noop_continue(root: Path, *args: object, **kwargs: object) -> None:
-        del args, kwargs
-        stubs.continue_rebase_calls.append(f"continue_rebase:{root.name}")
 
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.driver.stage_mechanical_conflicts",
-        _noop_stage,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.rebase_loop.continue_rebase_at",
-        _noop_continue,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.conflict_resolution.git_worktree_observer.stage_mechanical_conflicts",
-        _noop_stage,
-        raising=False,
-    )
-    return stubs
+def _install_before_after_noops() -> _BeforeAfterNoOps:
+    return _BeforeAfterNoOps()
 
 
 @contextmanager
@@ -525,14 +518,18 @@ def _parity_resolver(
     clock: FakeClock,
     controller: RecoveryController,
     display: ScenarioDisplay | None,
+    observer: GitWorktreeConflictObserver,
 ) -> object:
+    from ralph.pipeline.conflict_resolution.driver import (
+        run_rebase_conflict_resolution_outcome,
+    )
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
 
     session = ResolutionSession(ledger=controller.ledger, recovery_controller=controller)
 
     def _resolver(resolver_root: Path, target: str, stop: RebaseStop) -> bool:
         return isinstance(
-            run_rebase_conflict_resolution_pipeline(
+            run_rebase_conflict_resolution_outcome(
                 root=resolver_root,
                 target=target,
                 stop=stop,
@@ -544,6 +541,7 @@ def _parity_resolver(
                 display_context=None,
                 clock=clock.monotonic,
                 session=session,
+                observer=observer,
             ),
             ResolvedOutcome,
         )
@@ -591,7 +589,14 @@ def _run_parity_resolver_side(
                         name="rebase_stop",
                         root=root,
                         target="main",
-                        resolver=_parity_resolver(config, bundle, clock, controller, display),
+                        resolver=_parity_resolver(
+                            config,
+                            bundle,
+                            clock,
+                            controller,
+                            display,
+                            before_after.observer,
+                        ),
                         conflict_config=config.conflict_resolution,
                         force_retry=True,
                     ),
@@ -755,9 +760,8 @@ def _assert_structural_parity(resolver: _ParitySideResult, ordinary: _ParitySide
 @pytest.mark.timeout_seconds(5)
 def test_structural_parity_resolver_and_ordinary_phase_same_fake_agent(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    before_after = _install_before_after_noops(monkeypatch)
+    before_after = _install_before_after_noops()
     bundle = resolution_policy_bundle(_PARITY_AGENTS)
     resolver = _run_parity_resolver_side(
         tmp_path / "resolver-repo",
@@ -778,10 +782,9 @@ def test_structural_parity_resolver_and_ordinary_phase_same_fake_agent(
 @pytest.mark.parametrize("mode", _PARITY_FAILURE_MODES)
 def test_structural_parity_failure_modes_resolver_and_ordinary_same_fake_agent(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     mode: AgentMode,
 ) -> None:
-    before_after = _install_before_after_noops(monkeypatch)
+    before_after = _install_before_after_noops()
     bundle = resolution_policy_bundle(_PARITY_AGENTS)
     resolver = _run_parity_resolver_side(
         tmp_path / f"resolver-{mode.value}",
@@ -803,11 +806,10 @@ def test_structural_parity_failure_modes_resolver_and_ordinary_same_fake_agent(
 @pytest.mark.required_auto_integrate_e2e
 def test_parity_resolver_cooldown_applies_to_the_ordinary_phase_until_it_expires(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
-    before_after = _install_before_after_noops(monkeypatch)
+    before_after = _install_before_after_noops()
     bundle = resolution_policy_bundle(_PARITY_AGENTS)
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
@@ -861,11 +863,10 @@ def test_parity_resolver_cooldown_applies_to_the_ordinary_phase_until_it_expires
 @pytest.mark.timeout_seconds(5)
 def test_parity_resolver_falls_over_then_waits_for_the_earlier_cooldown(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 
-    before_after = _install_before_after_noops(monkeypatch)
+    before_after = _install_before_after_noops()
     bundle = resolution_policy_bundle(_PARITY_AGENTS)
     resolver = _run_parity_resolver_side(
         tmp_path / "resolver-repo",

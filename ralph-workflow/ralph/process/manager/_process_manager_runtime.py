@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from pathlib import Path
+from typing import TYPE_CHECKING, Final, Literal
 
 import psutil
 from loguru import logger
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
 
     from ralph.process.manager._process_event import ProcessEvent
     from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
+
+type ExitCodeLevel = Literal["DEBUG", "WARNING"]
 
 
 EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
@@ -105,6 +108,22 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
 
 _NO_EXPECTED_EXIT_CODES: Final[frozenset[int]] = frozenset()
 
+BENIGN_COMMAND_CLASSES: Final[Mapping[str, frozenset[int]]] = {
+    "git symbolic-ref --quiet": frozenset({1}),
+    "git merge-base --is-ancestor": frozenset({1}),
+    "git rev-parse --verify --quiet MERGE_HEAD": frozenset({1}),
+}
+
+_GIT_OPTIONS_WITH_VALUE: Final[frozenset[str]] = frozenset(
+    {
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--work-tree",
+        "-c",
+    }
+)
+
 
 def expected_exit_codes(label: str | None) -> frozenset[int]:
     if not label:
@@ -121,6 +140,63 @@ def expected_exit_codes(label: str | None) -> frozenset[int]:
         (codes for prefix, codes in prefixes if label.startswith(prefix)),
         _NO_EXPECTED_EXIT_CODES,
     )
+
+
+def _git_probe_class(command: Sequence[str]) -> str | None:
+    if not command or Path(command[0]).name != "git":
+        return None
+    args = command[1:]
+    flags: set[str] = set()
+    subcommand = ""
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token in _GIT_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if token.startswith("-"):
+            flags.add(token)
+            index += 1
+            continue
+        if not subcommand:
+            subcommand = token
+        index += 1
+    if subcommand == "symbolic-ref" and "--quiet" in flags:
+        return "git symbolic-ref --quiet"
+    if subcommand == "merge-base" and "--is-ancestor" in flags:
+        return "git merge-base --is-ancestor"
+    if (
+        subcommand == "rev-parse"
+        and "--verify" in flags
+        and "--quiet" in flags
+        and any(token.startswith("MERGE_HEAD") for token in args)
+    ):
+        return "git rev-parse --verify --quiet MERGE_HEAD"
+    return None
+
+
+def benign_command_class_exit_codes(command: Sequence[str]) -> frozenset[int]:
+    probe_class = _git_probe_class(command)
+    if probe_class is None:
+        return _NO_EXPECTED_EXIT_CODES
+    return BENIGN_COMMAND_CLASSES[probe_class]
+
+
+def exit_code_level(
+    label: str | None,
+    command: Sequence[str],
+    returncode: int | None,
+) -> ExitCodeLevel:
+    if returncode is None:
+        return "WARNING"
+    label_codes = expected_exit_codes(label)
+    if not label_codes:
+        return "WARNING"
+    if returncode in label_codes:
+        return "DEBUG"
+    if returncode in benign_command_class_exit_codes(command):
+        return "DEBUG"
+    return "WARNING"
 
 
 class _PsutilProcessAdapter:
@@ -230,8 +306,8 @@ def loguru_event_listener(event: ProcessEvent) -> None:
             record.failure_message,
         )
         return
-    if new_status == ProcessStatus.EXITED and record.returncode in expected_exit_codes(
-        record.label
+    if new_status == ProcessStatus.EXITED and (
+        exit_code_level(record.label, record.command, record.returncode) == "DEBUG"
     ):
         bound.debug(
             "process {} {} rc={} label={} command={} (expected answer)",
@@ -253,7 +329,10 @@ def loguru_event_listener(event: ProcessEvent) -> None:
 
 
 __all__ = [
+    "BENIGN_COMMAND_CLASSES",
     "EXPECTED_EXIT_CODES",
+    "benign_command_class_exit_codes",
+    "exit_code_level",
     "expected_exit_codes",
     "load_psutil_module",
     "loguru_event_listener",

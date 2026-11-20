@@ -3,14 +3,23 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from ralph.pipeline._landed_predicate import expected_landed_facts, operation_landed
+from ralph.pipeline._landed_predicate import (
+    expected_landed_facts,
+    landed_status,
+    operation_landed,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
-__all__ = ("LandedVerdict", "expected_landed_facts", "landed_verdict")
+__all__ = (
+    "LandedVerdict",
+    "expected_landed_facts",
+    "landed_status",
+    "landed_verdict",
+)
 
 
 class LandedVerdict(StrEnum):

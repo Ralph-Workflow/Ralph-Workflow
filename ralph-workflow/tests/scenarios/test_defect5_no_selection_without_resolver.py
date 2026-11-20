@@ -19,15 +19,13 @@ from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_agent_mode import AgentMode
+from tests._scenario_harness import FakeAgentRunner, paused_text_rebase, shared_executor_seam
 from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     FrozenClock,
     make_rebase_stop_resolver,
     make_scripted_resolver_process,
     resolution_policy_bundle,
 )
-from tests.scenarios._fake_agent_runner import FakeAgentRunner
-from tests.scenarios._paused_rebase_fixtures import paused_text_rebase
-from tests.scenarios._rebase_recovery_harness_helpers import shared_executor_seam
 from tests.scenarios.test_integration_scenario_matrix import (
     REBASE_RESOLUTION_PHASE,
     assert_selected_agent_announcement_implies_launch,

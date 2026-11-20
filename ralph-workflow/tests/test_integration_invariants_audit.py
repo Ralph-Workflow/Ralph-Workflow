@@ -18,8 +18,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 _ENTRY_SOURCE = """from __future__ import annotations
 
+from ralph.pipeline.key_unavailable import KeyUnavailable
+
 
 def _resolve_rebase_with_config(root, target, resolver, config):
+    return None
+
+
+def compute_resolution_attempt_key(root, record, config=None, **kwargs):
+    if False:
+        return KeyUnavailable("stub")
     return None
 """
 

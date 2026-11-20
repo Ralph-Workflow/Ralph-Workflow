@@ -13,7 +13,6 @@ from git import GitCommandError, Repo
 from typer.testing import CliRunner
 
 from ralph.cli.main import app
-from ralph.git.commit_result import CommitCreationResult
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 
 pytestmark = [
@@ -102,18 +101,6 @@ def _sha(root: Path, ref: str) -> str:
 
 @pytest.fixture
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr(
-        "ralph.git.operations.create_commit",
-        lambda *a, **kw: CommitCreationResult.already_advanced("00000000"),
-    )
-    monkeypatch.setattr(
-        "ralph.config.bootstrap.create_commit",
-        lambda *a, **kw: CommitCreationResult.already_advanced("00000000"),
-    )
-    monkeypatch.setattr(
-        "ralph.config.agents_bootstrap.create_commit",
-        lambda *a, **kw: CommitCreationResult.already_advanced("00000000"),
-    )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     monkeypatch.setenv("HOME", str(tmp_path / ".home"))
     (tmp_path / ".config").mkdir(parents=True, exist_ok=True)

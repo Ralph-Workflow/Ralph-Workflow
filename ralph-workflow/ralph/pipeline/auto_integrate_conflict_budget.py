@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -20,11 +19,9 @@ __all__ = [
     "MAX_TRACKED_CONFLICT_ATTEMPTS",
     "ConflictIdentity",
     "apply_conflict_budget",
-    "finish_conflict_attempt",
+    "conflict_budget_exhausted",
     "prior_conflict_count",
     "resolve_failure_ledger",
-    "resolver_allowed",
-    "start_conflict_attempt",
 ]
 
 
@@ -111,6 +108,14 @@ def _is_same_conflict(
     )
 
 
+def conflict_budget_exhausted(
+    state: RebaseState,
+    target: str,
+    identity: ConflictIdentity = _UNKNOWN_IDENTITY,
+) -> bool:
+    return _is_same_conflict(state, target, identity) and state.resolution_exhausted
+
+
 def resolver_allowed(
     state: RebaseState,
     target: str,
@@ -118,16 +123,12 @@ def resolver_allowed(
     *,
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
-    phase: str = "rebase_conflict_resolution",
     session: ResolutionSession | None = None,
-    **kwargs: object,
 ) -> bool:
-    del kwargs
-    del phase
     effective_ledger = resolve_failure_ledger(ledger, session=session)
     if effective_ledger is not None and candidates:
         return True
-    return not (_is_same_conflict(state, target, identity) and state.resolution_exhausted)
+    return not conflict_budget_exhausted(state, target, identity)
 
 
 @runtime_checkable
@@ -246,31 +247,3 @@ def apply_conflict_budget(
             f"{min(carried, attempts)} unresolved attempts; escalating to the next resolution strategy"
         )
     return updated.model_copy(update=update)
-
-
-_MAX_ACTIVE_CONFLICT_ATTEMPTS = 64
-_ACTIVE_CONFLICT_ATTEMPTS: OrderedDict[tuple[object, ...], None] = OrderedDict()
-
-
-def _conflict_attempt_key(identity: ConflictIdentity) -> tuple[object, ...]:
-    return (
-        identity.feature_sha,
-        identity.target_sha,
-        identity.conflicted_paths,
-        identity.stage_oids,
-        identity.scope,
-    )
-
-
-def start_conflict_attempt(identity: ConflictIdentity) -> bool:
-    key = _conflict_attempt_key(identity)
-    if key in _ACTIVE_CONFLICT_ATTEMPTS:
-        return False
-    while len(_ACTIVE_CONFLICT_ATTEMPTS) >= _MAX_ACTIVE_CONFLICT_ATTEMPTS:
-        _ACTIVE_CONFLICT_ATTEMPTS.popitem(last=False)
-    _ACTIVE_CONFLICT_ATTEMPTS[key] = None
-    return True
-
-
-def finish_conflict_attempt(identity: ConflictIdentity) -> None:
-    _ACTIVE_CONFLICT_ATTEMPTS.pop(_conflict_attempt_key(identity), None)

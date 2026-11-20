@@ -29,6 +29,7 @@ from ralph.pipeline.conflict_resolution.resolver_cooldown_text import (
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, rebase_resolution_signature
 from ralph.pipeline.integration_decision import NextAction
+from ralph.pipeline.key_unavailable import KeyUnavailable
 from ralph.pipeline.rebase_state import StartupRetentionReason
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -63,7 +65,7 @@ def compute_continuation_retry_gate_key(
     chain_agents: list[str] | tuple[str, ...] | None = None,
     config_path: Path | None = None,
     stop_identity: str | None = None,
-) -> object:
+) -> ResolutionAttemptKey | KeyUnavailable:
     from ralph.pipeline._stop_resolution_entry import compute_resolution_attempt_key
 
     return compute_resolution_attempt_key(
@@ -76,6 +78,18 @@ def compute_continuation_retry_gate_key(
         config_path=config_path,
         stop_identity=stop_identity,
     )
+
+
+def _store_resolution_gate_key(
+    root: Path,
+    record: IntegrationRecord,
+    key: ResolutionAttemptKey | KeyUnavailable,
+) -> None:
+    if isinstance(key, KeyUnavailable):
+        logger.warning("auto_integrate: continuation retry gate key unavailable: {}", key.reason)
+        return
+    stored = (key.stop_identity, key.eligible_agents, key.config_fingerprint)
+    write_record(root, (read_record(root) or record).with_resolution_gate_key(stored))
 
 
 def _continue_merge_resolution(
@@ -111,11 +125,7 @@ def _continue_merge_resolution(
             config_path=config_path,
             stop_identity=stop_identity,
         )
-        from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
-
-        if isinstance(key, ResolutionAttemptKey):
-            stored = (key.stop_identity, key.eligible_agents, key.config_fingerprint)
-            write_record(root, (read_record(root) or record).with_resolution_gate_key(stored))
+        _store_resolution_gate_key(root, record, key)
         return "merge resolution retained; continuation resolver required"
     result = attempt_stop_resolution(
         stop_identity,
@@ -162,6 +172,10 @@ def _continue_rebase_resolution(
     matches = active_operation_matches(root, record)
     if not matches:
         return "active rebase identity differs from retained ownership; operator work preserved"
+    from ralph.pipeline.mechanical_finish import mechanical_finish
+
+    if mechanical_finish(root, target):
+        return None
     if rebase_stop_resolver is None:
         return _retain_rebase_without_resolver(
             root,
@@ -335,7 +349,6 @@ def _retain_rebase_without_resolver(
     stop_identity: str | None,
 ) -> str:
     from ralph.pipeline._stop_resolution_entry import attempt_stop_resolution
-    from ralph.pipeline.resolution_attempt_key import ResolutionAttemptKey
     from ralph.pipeline.stop_resolution_blocked import StopResolutionBlocked
     from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 
@@ -368,9 +381,7 @@ def _retain_rebase_without_resolver(
         config_path=config_path,
         stop_identity=stop_identity,
     )
-    if isinstance(key, ResolutionAttemptKey):
-        stored = (key.stop_identity, key.eligible_agents, key.config_fingerprint)
-        write_record(root, (read_record(root) or record).with_resolution_gate_key(stored))
+    _store_resolution_gate_key(root, record, key)
     return "rebase resolution retained; continuation resolver required"
 
 

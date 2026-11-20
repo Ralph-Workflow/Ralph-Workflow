@@ -27,12 +27,14 @@ __all__ = [
     "audit_tree",
     "collect_eligibility_violations",
     "collect_gitlink_violations",
+    "collect_resolution_key_violations",
     "collect_resolver_violations",
     "collect_severity_violations",
     "collect_terminal_emitter_violations",
     "collect_watchdog_cap_violations",
     "load_modules",
     "main",
+    "selftest",
 ]
 
 RESOLUTION_ENTRY_MODULE: Final = "ralph/pipeline/_stop_resolution_entry.py"
@@ -120,6 +122,14 @@ GITLINK_POLICY_OWNER_SYMBOLS: Final[frozenset[str]] = frozenset(
         "choose_gitlink",
     }
 )
+
+RESOLUTION_KEY_MODULE: Final = "ralph/pipeline/_stop_resolution_entry.py"
+
+RESOLUTION_KEY_FUNCTION: Final = "compute_resolution_attempt_key"
+
+KEY_UNAVAILABLE_TYPE: Final = "KeyUnavailable"
+
+RESOLUTION_KEY_RULE: Final = "resolution_key_silent_fallback"
 
 WATCHDOG_FIRE_REASON_CLASS: Final = "WatchdogFireReason"
 
@@ -861,9 +871,104 @@ def _watchdog_reason_owner_path(modules: Mapping[str, str]) -> str:
     return "ralph/agents/watchdog_fire_reason.py"
 
 
+def _is_broad_handler(node: ast.ExceptHandler) -> bool:
+    caught = node.type
+    if caught is None:
+        return True
+    if isinstance(caught, ast.Name):
+        return caught.id in {"Exception", "BaseException"}
+    return False
+
+
+def _references_key_unavailable(node: ast.AST) -> bool:
+    return any(
+        (isinstance(part, ast.Name) and part.id == KEY_UNAVAILABLE_TYPE)
+        or (isinstance(part, ast.Attribute) and part.attr == KEY_UNAVAILABLE_TYPE)
+        for part in ast.walk(node)
+    )
+
+
+def _resolution_key_violations(path: str, source: str, tree: ast.Module) -> list[Violation]:
+    if path != RESOLUTION_KEY_MODULE:
+        return []
+    functions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name == RESOLUTION_KEY_FUNCTION
+    ]
+    if not functions:
+        return [
+            Violation(
+                path=path,
+                line=1,
+                rule=RESOLUTION_KEY_RULE,
+                detail=(
+                    f"{RESOLUTION_KEY_MODULE} must define {RESOLUTION_KEY_FUNCTION}; the "
+                    "resolution attempt key has one owner"
+                ),
+            )
+        ]
+    violations: list[Violation] = []
+    for function in functions:
+        if not _references_key_unavailable(function):
+            violations.append(
+                Violation(
+                    path=path,
+                    line=function.lineno,
+                    rule=RESOLUTION_KEY_RULE,
+                    detail=(
+                        f"{RESOLUTION_KEY_FUNCTION} must return the typed {KEY_UNAVAILABLE_TYPE} "
+                        "outcome instead of a differently shaped key"
+                    ),
+                )
+            )
+        for handler in ast.walk(function):
+            if not isinstance(handler, ast.ExceptHandler):
+                continue
+            if not _is_broad_handler(handler):
+                continue
+            violations.append(
+                Violation(
+                    path=path,
+                    line=handler.lineno,
+                    rule=RESOLUTION_KEY_RULE,
+                    detail=(
+                        f"{RESOLUTION_KEY_FUNCTION} must not swallow a broad exception; an "
+                        "unreadable key is a typed "
+                        f"{KEY_UNAVAILABLE_TYPE} outcome"
+                    ),
+                )
+            )
+    if KEY_UNAVAILABLE_TYPE not in source:
+        violations.append(
+            Violation(
+                path=path,
+                line=1,
+                rule=RESOLUTION_KEY_RULE,
+                detail=(
+                    f"{RESOLUTION_KEY_MODULE} must import the typed {KEY_UNAVAILABLE_TYPE} "
+                    "outcome"
+                ),
+            )
+        )
+    return violations
+
+
+def collect_resolution_key_violations(modules: Mapping[str, str]) -> list[Violation]:
+    violations: list[Violation] = []
+    for path, source in sorted(modules.items()):
+        tree = _parse_module(path, source)
+        if tree is None:
+            continue
+        violations.extend(_resolution_key_violations(path, source, tree))
+    return violations
+
+
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     return [
         *collect_resolver_violations(modules),
+        *collect_resolution_key_violations(modules),
         *collect_severity_violations(modules),
         *collect_terminal_emitter_violations(modules),
         *collect_eligibility_violations(modules),
@@ -894,8 +999,61 @@ def audit_tree(repo_root: Path) -> list[Violation]:
     return audit_modules(load_modules(repo_root))
 
 
+def selftest() -> int:
+    resolver_definition = "def _resolve_rebase_with_config():\n    pass\n"
+    clean_modules = {
+        RESOLUTION_KEY_MODULE: (
+            "from ralph.pipeline.key_unavailable import KeyUnavailable\n"
+            "def compute_resolution_attempt_key(root, record):\n"
+            "    try:\n"
+            "        return (record, (), 'fingerprint')\n"
+            "    except (OSError, ValueError) as exc:\n"
+            "        return KeyUnavailable(str(exc))\n"
+            + resolver_definition
+        ),
+    }
+    clean_violations = audit_modules(clean_modules)
+    if clean_violations:
+        sys.stdout.write(f"SELFTEST FAILED: clean modules produced violations: {clean_violations}\n")
+        return 1
+
+    planted_cases: list[tuple[str, str]] = [
+        (
+            "from ralph.pipeline.key_unavailable import KeyUnavailable\n"
+            "def compute_resolution_attempt_key(root, record):\n"
+            "    try:\n"
+            "        return (record, (), 'fingerprint')\n"
+            "    except Exception:\n"
+            "        return (record, (), None)\n"
+            + resolver_definition,
+            "broad exception",
+        ),
+        (
+            "def compute_resolution_attempt_key(root, record):\n"
+            "    return (record, (), 'fingerprint')\n" + resolver_definition,
+            "typed KeyUnavailable outcome",
+        ),
+    ]
+    for index, (source, expected_detail) in enumerate(planted_cases):
+        violations = audit_modules({RESOLUTION_KEY_MODULE: source})
+        details = [violation.detail for violation in violations]
+        if not any(expected_detail in detail for detail in details):
+            sys.stdout.write(
+                f"SELFTEST FAILED: case {index} did not produce '{expected_detail}', got {details}\n"
+            )
+            return 1
+
+    sys.stdout.write(
+        f"INTEGRATION INVARIANTS AUDIT: SELFTEST OK "
+        f"({len(clean_modules) + len(planted_cases)} cases verified)\n"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--selftest" in args:
+        return selftest()
     repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
     violations = audit_tree(repo_root)
     if violations:

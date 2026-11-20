@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
+    observe_unmerged_paths,
     paths_with_conflict_markers,
     stage_paths,
     staged_conflict_marker_paths,
     unmerged_paths,
 )
 from ralph.git.operation_snapshot import OperationState, observe_operation_snapshot
-from ralph.git.rebase.rebase import get_conflicted_files
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -214,6 +214,13 @@ def _resolve_stops(
     while rebase_in_progress_at(root):
         skipped_before = len(skipped_entry_shas)
         stops_seen += 1
+        logger.warning(
+            "TRACE stop {} begin cap={} stops_spent={} entry_landed={}",
+            stops_seen,
+            stop_cap,
+            stops_spent,
+            sorted(entry_landed),
+        )
         if not _resolve_one_stop(
             root,
             target,
@@ -225,15 +232,30 @@ def _resolve_stops(
             resolved_shas,
             session=session,
         ):
+            logger.warning("TRACE stop {} did not resolve", stops_seen)
             return False
         if len(skipped_entry_shas) > skipped_before:
+            logger.warning("TRACE stop {} skipped (already landed)", stops_seen)
             continue
         head_after = _rev_parse_rebase_head(root)
+        logger.warning(
+            "TRACE stop {} head_after={} resolved_last={}",
+            stops_seen,
+            head_after,
+            resolved_shas[-1] if resolved_shas else None,
+        )
         if head_after and resolved_shas and head_after != resolved_shas[-1]:
             stops_spent = 0
         else:
             stops_spent += 1
         route = route_after_stop(stops_spent, not rebase_in_progress_at(root), stop_cap)
+        logger.warning(
+            "TRACE stop {} stops_spent={} resolved={} route={}",
+            stops_seen,
+            stops_spent,
+            not rebase_in_progress_at(root),
+            route,
+        )
         if route == TERMINAL_RESOLVED:
             break
         if route == TERMINAL_ABANDONED:
@@ -521,13 +543,14 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
             "rebase; declining to resolve"
         )
         return None
-    conflicted = retained_rebase_paths(
-        root,
-        sha,
-        tuple(get_conflicted_files(repo_root=root) or staged_conflict_marker_paths(root)),
-    )
-    if "<staged-marker-query-failed>" in conflicted:
+    observed = observe_unmerged_paths(root)
+    if not observed.query_ok:
+        logger.warning(
+            "conflict_resolution: could not read the unmerged index at the paused rebase; "
+            "declining to resolve"
+        )
         return None
+    conflicted = retained_rebase_paths(root, sha, observed.paths)
     if not conflicted:
         logger.warning(
             "conflict_resolution: rebase is paused with no conflicted path; declining to resolve"

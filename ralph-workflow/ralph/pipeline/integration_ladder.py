@@ -48,7 +48,7 @@ from ralph.pipeline.ladder_facts import LadderFacts
 from ralph.pipeline.ladder_state import LadderState
 from ralph.pipeline.ladder_step_result import LadderStepResult
 from ralph.pipeline.ladder_transition import LadderTransition
-from ralph.pipeline.landed_verdict import LandedVerdict
+from ralph.pipeline.landed_verdict import LandedVerdict, expected_landed_facts, landed_status
 from ralph.pipeline.last_resort_agent_pool import LastResortAgentPool
 from ralph.pipeline.last_resort_agent_proof import LastResortAgentProof
 from ralph.pipeline.last_resort_wait_proof import LastResortWaitProof
@@ -670,28 +670,13 @@ def terminal_completion_message(
     preserved_copy: str,
     proof_failures: tuple[str, ...] = (),
 ) -> str:
-    expected = [
-        f"integrated_feature_sha={record.integrated_feature_sha or 'unset'}",
-        f"pre_target_sha={record.pre_target_sha or 'unset'}",
-        f"pre_feature_sha={record.pre_feature_sha}",
-    ]
-    if record.rebase_continue_stop:
-        expected.append(f"rebase_continue_stop={record.rebase_continue_stop}")
-    if record.rebase_continue_head:
-        expected.append(f"rebase_continue_head={record.rebase_continue_head}")
-    if record.rebase_continue_tree:
-        expected.append(f"rebase_continue_tree={record.rebase_continue_tree}")
-    if record.merge_commit_parent:
-        expected.append(f"merge_commit_parent={record.merge_commit_parent}")
-    failures = "; ".join(proof_failures) or reason
-    return (
-        f"Integration ladder terminal state: complete_in_place ({reason}); "
-        f"observed HEAD {observed_head or 'unreadable'}; "
-        f"expected {'; '.join(expected)}; "
-        f"proof failures: {failures}; "
-        f"preserved copy: {preserved_copy}; "
-        "resume point: ralph --resume"
+    status = landed_status(
+        observed_head=observed_head,
+        expected=expected_landed_facts(record),
+        failures=proof_failures or (reason,),
+        preserved=preserved_copy,
     )
+    return f"Integration ladder terminal state: complete_in_place ({reason}); {status}"
 
 
 def _wait_record(state: AttemptLedgerState) -> tuple[int, str] | None:

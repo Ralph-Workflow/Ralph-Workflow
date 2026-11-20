@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, assert_never
+from typing import TYPE_CHECKING, assert_never
 
 from ralph._typed_attrs import read_attr
+from ralph.pipeline._integration_status import build_integration_status, cooldown_next_eligible
+from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -13,6 +16,7 @@ from ralph.pipeline.resolution_outcome import (
     UnknownOutcome,
     WaitingOutcome,
 )
+from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -24,19 +28,15 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 
-class _SessionStatusBuilder(Protocol):
-    def __call__(self, session: ResolutionSession, *, cause: str) -> IntegrationStatus: ...
-
-
 class _DriverEventsState:
-    last_waiting_line: str | None = None
+    last_waiting_key: tuple[str, ...] | None = None
 
 
 _state = _DriverEventsState()
 
 
 def reset_driver_events_state() -> None:
-    _state.last_waiting_line = None
+    _state.last_waiting_key = None
 
 
 def _emit(display: ParallelDisplay | None, line: str) -> None:
@@ -47,6 +47,79 @@ def _emit(display: ParallelDisplay | None, line: str) -> None:
         fn(display, line)
         return
     emit_conflict_phase_line(display, line)
+
+
+def _chain_agents(session: ResolutionSession | None) -> tuple[str, ...]:
+    if session is None:
+        return ()
+    controller = session.recovery_controller
+    if controller is not None:
+        agents = controller.agents_for_phase(PHASE_RESOLUTION)
+        if agents:
+            return tuple(agents)
+    recovery_state = session.recovery_state
+    if not isinstance(recovery_state, PipelineState):
+        return ()
+    chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    if chain is None:
+        return ()
+    return tuple(chain.agents)
+
+
+def _cooldown_reasons(session: ResolutionSession | None) -> tuple[str, ...]:
+    if session is None:
+        return ()
+    controller = session.recovery_controller
+    if controller is None:
+        return ()
+    reasons: list[str] = []
+    for agent, status in controller.chain_eligibility(PHASE_RESOLUTION, _chain_agents(session)):
+        if status.is_eligible:
+            continue
+        reasons.append(f"{agent}: {status.reason or 'cooldown'}")
+    return tuple(reasons)
+
+
+def _progress_counts(session: ResolutionSession | None) -> tuple[int | None, int | None]:
+    if session is None:
+        return (None, None)
+    initial = session.initial_conflicted_count
+    remaining = len(session.unresolved_paths)
+    done = None if initial is None else max(initial - remaining, 0)
+    return (done, remaining)
+
+
+def _session_status(
+    session: ResolutionSession | None,
+    *,
+    cause: str,
+    path_reason: str,
+    agents_can_finish: bool,
+    strategy: str | None = None,
+) -> IntegrationStatus:
+    paths = tuple(session.unresolved_paths) if session is not None else ()
+    done, remaining = _progress_counts(session)
+    agent, until_when = cooldown_next_eligible(
+        session.recovery_controller if session is not None else None,
+        PHASE_RESOLUTION,
+        _chain_agents(session),
+    )
+    return build_integration_status(
+        cause=cause,
+        paths_with_reasons=tuple((path, path_reason) for path in paths),
+        command=operator_command_for_paths(paths),
+        agents_can_finish=agents_can_finish,
+        agent_reasons=_cooldown_reasons(session),
+        done_count=done,
+        remaining_count=remaining,
+        strategy=strategy,
+        next_eligible_agent=agent,
+        until_when=until_when,
+    )
+
+
+def _waiting_change_key(status: IntegrationStatus) -> tuple[str, ...]:
+    return status.change_key
 
 
 def announce_declared_decisions(
@@ -73,31 +146,20 @@ def emit_success(
     _emit(display, f"conflicts resolved in round {round_index}; {next_action}")
 
 
-def _session_progress(status_session: ResolutionSession) -> str:
-    from ralph.pipeline.conflict_resolution import driver as driver_mod
-
-    build_fn: object = read_attr(driver_mod, "build_session_integration_status", None)
-    if not callable(build_fn):
-        return "(unknown)"
-    status: object = build_fn(status_session, cause="PROGRESS")
-    progress: object = read_attr(status, "progress", "(unknown)")
-    return progress if isinstance(progress, str) else "(unknown)"
-
-
 def emit_attempt_outcome(
     display: ParallelDisplay | None,
     outcome: StopResolutionOutcome,
     session: ResolutionSession | None = None,
 ) -> None:
     if isinstance(outcome, ResolvedOutcome):
-        _state.last_waiting_line = None
+        _state.last_waiting_key = None
         return
     if session is not None and (
         session.terminal_reason is not None
         or session.last_activity_kind is not None
         or session.last_duration_seconds is not None
     ):
-        _state.last_waiting_line = None
+        _state.last_waiting_key = None
         from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
             ResolutionTerminationReason,
         )
@@ -115,61 +177,54 @@ def emit_attempt_outcome(
         duration = (
             session.last_duration_seconds if session.last_duration_seconds is not None else 0.0
         )
-        unresolved = session.unresolved_paths
+        status = _session_status(
+            session,
+            cause=reason_label,
+            path_reason="unresolved conflict",
+            agents_can_finish=False,
+        )
         line = (
-            f"{reason_label}: duration={duration:.1f}s; "
+            f"{status.summary}; "
+            f"duration={duration:.1f}s; "
             f"last_activity_kind={session.last_activity_kind or 'none'}; "
             f"last_activity_at={session.last_activity_at or 'never'}; "
-            f"last_progress={_session_progress(session)}; "
-            f"unresolved_paths={', '.join(unresolved)}; "
-            f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
+            "next=inspect typed reason, keep landed rebase stops, "
+            "and retry only if identity changed"
         )
         _emit(display, line)
         return
     match outcome:
         case WaitingOutcome(external_condition=condition, resumes_when=resumes_when):
-            line = f"waiting: {condition}; resumes_when={resumes_when}"
-            if line == _state.last_waiting_line:
+            status = _session_status(
+                session,
+                cause=f"WAITING: {condition}; resumes_when={resumes_when}",
+                path_reason="unresolved conflict",
+                agents_can_finish=False,
+            )
+            key = _waiting_change_key(status)
+            if key == _state.last_waiting_key:
                 return
-            _state.last_waiting_line = line
+            _state.last_waiting_key = key
+            line = status.render_log
         case RetryLaterOutcome(until=until, on_change=on_change):
-            _state.last_waiting_line = None
+            _state.last_waiting_key = None
             resume = f"until={until}" if until is not None else f"on_change={on_change}"
             line = f"retry later: {resume}"
         case NextStrategyOutcome(strategy=strategy):
-            _state.last_waiting_line = None
-            if session is not None and (
-                session.last_activity_kind is not None
-                or session.last_activity_at is not None
-                or session.last_duration_seconds is not None
-            ):
-                duration = (
-                    session.last_duration_seconds
-                    if session.last_duration_seconds is not None
-                    else 0.0
-                )
-                last_kind = session.last_activity_kind or "none"
-                last_at = (
-                    f"{session.last_activity_at:.1f}"
-                    if isinstance(session.last_activity_at, float)
-                    else (session.last_activity_at or "never")
-                )
-                paths = session.unresolved_paths
-                line = (
-                    f"{strategy}: duration={duration:.1f}s; "
-                    f"last_activity_kind={last_kind}; "
-                    f"last_activity_at={last_at}; "
-                    f"last_progress={_session_progress(session)}; "
-                    f"unresolved_paths={', '.join(paths)}; "
-                    f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
-                )
-            else:
-                line = f"{strategy}: next strategy"
+            _state.last_waiting_key = None
+            status = _session_status(
+                session,
+                cause=strategy,
+                path_reason="unresolved conflict",
+                agents_can_finish=True,
+                strategy=strategy,
+            )
+            line = status.render_log
         case ConfigFailureOutcome(file=file, parse_error=parse_error):
-            _state.last_waiting_line = None
+            _state.last_waiting_key = None
             line = f"configuration failure: {file}: {parse_error}"
         case UnknownOutcome(error=error):
-            _state.last_waiting_line = None
+            _state.last_waiting_key = None
             line = f"unknown resolution failure: {error}"
         case _ as unreachable:
             assert_never(unreachable)

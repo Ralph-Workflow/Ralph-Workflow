@@ -26,6 +26,11 @@ from ralph.pipeline._integration_continuation import (
     continue_retained_resolution as _continue_retained_resolution,
 )
 from ralph.pipeline._integration_log_dedupe import integration_outcome_log
+from ralph.pipeline._integration_status import (
+    IntegrationStatus,
+    build_integration_status,
+    cooldown_next_eligible,
+)
 from ralph.pipeline._owned_landing_reintegration import (
     git_shows_no_operation as _git_shows_no_operation,
 )
@@ -63,10 +68,12 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.conflict_resolution import ResolutionTerminationReason
+from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -134,6 +141,39 @@ def _completed_rebase_receipt_head(
     return head
 
 
+def _resolve_recovery_controller(
+    controller: RecoveryController | None,
+) -> RecoveryController | None:
+    if controller is not None:
+        return controller
+    from ralph.pipeline.effect_executor import current_agent_effect_dependencies
+
+    return current_agent_effect_dependencies().recovery_controller
+
+
+def _integration_status(
+    *,
+    cause: str,
+    paths: Sequence[str] = (),
+    controller: RecoveryController | None = None,
+    phase: str = "rebase_conflict_resolution",
+    agents_can_finish: bool = False,
+) -> IntegrationStatus:
+    effective_controller = _resolve_recovery_controller(controller)
+    chain: tuple[str, ...] = ()
+    if effective_controller is not None:
+        chain = effective_controller.agents_for_phase(phase)
+    agent, until_when = cooldown_next_eligible(effective_controller, phase, chain)
+    return build_integration_status(
+        cause=cause,
+        paths_with_reasons=tuple((path, "unresolved integration conflict") for path in paths),
+        command=operator_command_for_paths(paths),
+        agents_can_finish=agents_can_finish,
+        next_eligible_agent=agent,
+        until_when=until_when,
+    )
+
+
 def continue_retained_resolution(
     root: Path,
     record: IntegrationRecord,
@@ -153,17 +193,18 @@ def continue_retained_resolution(
         completed = record.with_completion_advanced(completed_head)
         write_record(root, completed)
         return completed
-    effective_controller = recovery_controller
+    effective_controller = _resolve_recovery_controller(recovery_controller)
     if effective_controller is None:
-        from ralph.pipeline.effect_executor import current_agent_effect_dependencies
-
-        effective_controller = current_agent_effect_dependencies().recovery_controller
-    if effective_controller is None:
-        return (
-            "WAITING: continuation retry key unavailable: "
-            "recovery controller required; pass the session/pipeline_deps controller "
-            "or an explicit recovery_controller"
+        status = _integration_status(
+            cause=(
+                "WAITING: continuation retry key unavailable: recovery controller required; "
+                "pass the session/pipeline_deps controller or an explicit recovery_controller"
+            ),
+            paths=record.resolving_paths,
+            controller=None,
+            phase=phase,
         )
+        return status.summary
     return _continue_retained_resolution(
         root,
         record,

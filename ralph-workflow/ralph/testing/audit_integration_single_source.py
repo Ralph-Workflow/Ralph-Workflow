@@ -60,6 +60,16 @@ _LANDED_DEFINITIONS = frozenset(
 _RETIRED_PORCELAIN_PATH_EXTRACTORS = frozenset({"porcelain_unmerged_paths"})
 _UNMERGED_PATH_SET_OWNER = "ralph/git/merge.py"
 _UNMERGED_PATH_SET_DEFINITIONS = frozenset({"observe_unmerged_paths", "unmerged_paths"})
+_LANDED_WRAPPER = "ralph/pipeline/landed_verdict.py"
+_LANDED_PREDICATE_NAME = "operation_landed"
+_MINIMUM_ALLOWLISTED_SHA_FIELDS = 2
+_RECORDED_OPERATION_SHA_FIELDS = frozenset(
+    {
+        "pre_feature_sha",
+        "pre_target_sha",
+        "integrated_feature_sha",
+    }
+)
 
 
 def _string_literals(node: ast.AST) -> set[str]:
@@ -181,6 +191,104 @@ def _module_level_unmerged_path_set_violations(rel: str, tree: ast.AST) -> list[
     ]
 
 
+def _recorded_operation_sha_fields(node: ast.AST) -> set[str]:
+    return {
+        part.attr
+        for part in ast.walk(node)
+        if isinstance(part, ast.Attribute) and part.attr in _RECORDED_OPERATION_SHA_FIELDS
+    }
+
+
+def _landed_sha_allowlist_violations(rel: str, tree: ast.Module) -> list[Violation]:
+    if rel == _LANDED_OWNER:
+        return []
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        if not any(isinstance(op, ast.In | ast.NotIn) for op in node.ops):
+            continue
+        for comparator in node.comparators:
+            if not isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+                continue
+            fields = _recorded_operation_sha_fields(comparator)
+            if len(fields) < _MINIMUM_ALLOWLISTED_SHA_FIELDS:
+                continue
+            violations.append(
+                Violation(rel, node.lineno, "operation landed has a SHA allowlist")
+            )
+    return violations
+
+
+def _is_boolean_expression(node: ast.AST) -> bool:
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, bool)
+    if isinstance(node, ast.Compare | ast.BoolOp):
+        return True
+    if isinstance(node, ast.UnaryOp):
+        return isinstance(node.op, ast.Not)
+    if isinstance(node, ast.Call):
+        func = node.func
+        if isinstance(func, ast.Name):
+            return func.id in {"isinstance", "issubclass"}
+        if isinstance(func, ast.Attribute):
+            return func.attr in {"isinstance", "issubclass"}
+    return False
+
+
+def _returns_bool(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    annotation = node.returns
+    if isinstance(annotation, ast.Name) and annotation.id == "bool":
+        return True
+    returns = [child for child in ast.walk(node) if isinstance(child, ast.Return)]
+    if not returns:
+        return False
+    return all(child.value is not None and _is_boolean_expression(child.value) for child in returns)
+
+
+def _has_record_parameter(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    for argument in arguments:
+        if argument.arg == "record":
+            return True
+        annotation = argument.annotation
+        if isinstance(annotation, ast.Name) and annotation.id == "IntegrationRecord":
+            return True
+        if isinstance(annotation, ast.Constant) and annotation.value == "IntegrationRecord":
+            return True
+    return False
+
+
+def _references_landed_predicate(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for part in ast.walk(node):
+        if isinstance(part, ast.Name) and part.id == _LANDED_PREDICATE_NAME:
+            return True
+        if isinstance(part, ast.Attribute) and part.attr == _LANDED_PREDICATE_NAME:
+            return True
+    return False
+
+
+def _landed_second_predicate_violations(rel: str, tree: ast.Module) -> list[Violation]:
+    if rel in {_LANDED_OWNER, _LANDED_WRAPPER}:
+        return []
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if "landed" not in node.name.lower():
+            continue
+        if not _returns_bool(node):
+            continue
+        if not _has_record_parameter(node):
+            continue
+        if _references_landed_predicate(node):
+            continue
+        violations.append(
+            Violation(rel, node.lineno, "operation landed has a second predicate")
+        )
+    return violations
+
+
 def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
     violations: list[Violation] = []
     for rel, source in sorted(modules.items()):
@@ -198,6 +306,8 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 violations.extend(_named_function_violations(rel, node))
         violations.extend(_module_level_unmerged_path_set_violations(rel, tree))
+        violations.extend(_landed_sha_allowlist_violations(rel, tree))
+        violations.extend(_landed_second_predicate_violations(rel, tree))
     return violations
 
 
@@ -218,6 +328,12 @@ def selftest() -> int:
         "ralph/git/operation_snapshot.py": "def operation_state(): pass\n",
         "ralph/recovery/agent_failure_ledger.py": "def is_agent_eligible(): pass\n",
         "ralph/pipeline/_landed_predicate.py": "def operation_landed(): pass\n",
+        "ralph/pipeline/landed_verdict.py": "def landed_verdict(): pass\n",
+        "ralph/pipeline/landed_delegate.py": (
+            "def _work_landed(root, record):\n"
+            "    from ralph.pipeline._landed_predicate import operation_landed\n"
+            "    return operation_landed(root, record).landed\n"
+        ),
         "ralph/git/merge.py": "def observe_unmerged_paths(): pass\ndef unmerged_paths(): pass\n",
     }
     clean_violations = audit_modules(clean_modules)
@@ -300,6 +416,26 @@ def selftest() -> int:
             "ralph/pipeline/integration_resolution.py",
             "def unmerged_paths(root):\n    return []\n",
             "unmerged path set has a second reader",
+        ),
+        (
+            "ralph/pipeline/landed_allowlist.py",
+            (
+                "def head_matches(record, head):\n"
+                "    return head not in (\n"
+                "        record.integrated_feature_sha,\n"
+                "        record.pre_target_sha,\n"
+                "        record.pre_feature_sha,\n"
+                "    )\n"
+            ),
+            "operation landed has a SHA allowlist",
+        ),
+        (
+            "ralph/pipeline/landed_second_predicate.py",
+            (
+                "def _recorded_work_landed(root, record):\n"
+                "    return record.integrated_feature_sha is not None\n"
+            ),
+            "operation landed has a second predicate",
         ),
     ]
 

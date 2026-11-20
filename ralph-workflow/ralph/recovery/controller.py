@@ -620,6 +620,7 @@ class RecoveryController:
         "_dead_agent_verdict_runner",
         "_failures_without_cooldown",
         "_false_cooldown_feedback",
+        "_finalized_attempts",
         "_last_attempt_charged_ledger",
         "_last_attempt_cooldown_reason",
         "_last_attempt_outcome",
@@ -691,6 +692,16 @@ class RecoveryController:
         self._last_attempt_outcome: AttemptOutcome | None = None
         self._last_attempt_charged_ledger: bool = False
         self._last_attempt_cooldown_reason: UnavailabilityReason | None = None
+        self._finalized_attempts: dict[
+            tuple[str, str],
+            tuple[
+                int,
+                AttemptOutcome,
+                PersistedVerdict | None,
+                UnavailabilityReason | None,
+                bool,
+            ],
+        ] = {}
         self._dead_agent_verdict_runner = opts.dead_agent_verdict_runner
         self._false_cooldown_feedback: FalseCooldownFeedback = (
             opts.false_cooldown_feedback
@@ -699,7 +710,7 @@ class RecoveryController:
         )
         self._attempt_outcome_memo: dict[
             str,
-            tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None],
+            tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool],
         ] = {}
         self._attempt_outcome_keys: dict[tuple[str, str], list[str]] = {}
         self._claimed_attempt_outcome_keys: set[str] = set()
@@ -962,6 +973,9 @@ class RecoveryController:
             claimed = self._claim_memoized_attempt(phase, agent)
             if claimed is not None:
                 return self._restore_memoized_attempt(claimed)
+            replayed = self._replayed_attempt_outcome(phase, agent)
+            if replayed is not None:
+                return self._restore_memoized_attempt(replayed)
 
         effective_charge_ledger = charge_ledger and not is_configuration_failure(
             exc, retryable_reason
@@ -991,14 +1005,36 @@ class RecoveryController:
             )
         self._last_attempt_outcome = outcome
         self._last_resolved_verdict = resolved_verdict
+        self._finalized_attempts[(phase, agent or "")] = (
+            self._attempt_ordinals.get((phase, agent or ""), 0),
+            outcome,
+            resolved_verdict,
+            self._last_attempt_cooldown_reason,
+            self._last_attempt_charged_ledger,
+        )
         if attempt_key is not None:
             self._attempt_outcome_memo[attempt_key] = (
                 outcome,
                 resolved_verdict,
                 self._last_attempt_cooldown_reason,
+                self._last_attempt_charged_ledger,
             )
             self._attempt_outcome_keys.setdefault((phase, agent or ""), []).append(attempt_key)
         return outcome
+
+    def _replayed_attempt_outcome(
+        self, phase: str, agent: str | None
+    ) -> (
+        tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None
+    ):
+        key = (phase, agent or "")
+        current = self._attempt_ordinals.get(key, 0)
+        if current <= 0:
+            return None
+        recorded = self._finalized_attempts.get(key)
+        if recorded is None or recorded[0] != current:
+            return None
+        return recorded[1], recorded[2], recorded[3], recorded[4]
 
     def _cool_down_repeated_failures(
         self, phase: str, agent: str, *, failed: bool, charged: bool
@@ -1028,10 +1064,15 @@ class RecoveryController:
 
     def _restore_memoized_attempt(
         self,
-        memoized: tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None],
+        memoized: tuple[
+            AttemptOutcome,
+            PersistedVerdict | None,
+            UnavailabilityReason | None,
+            bool,
+        ],
     ) -> AttemptOutcome:
-        outcome, resolved_verdict, cooldown_reason = memoized
-        self._last_attempt_charged_ledger = False
+        outcome, resolved_verdict, cooldown_reason, charged = memoized
+        self._last_attempt_charged_ledger = charged
         self._last_attempt_cooldown_reason = cooldown_reason
         self._last_attempt_outcome = outcome
         self._last_resolved_verdict = resolved_verdict
@@ -1041,7 +1082,9 @@ class RecoveryController:
         self,
         phase: str,
         agent: str | None,
-    ) -> tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None] | None:
+    ) -> (
+        tuple[AttemptOutcome, PersistedVerdict | None, UnavailabilityReason | None, bool] | None
+    ):
         keys = self._attempt_outcome_keys.get((phase, agent or ""))
         if not keys:
             return None

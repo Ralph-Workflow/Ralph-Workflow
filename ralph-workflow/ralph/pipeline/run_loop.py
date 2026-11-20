@@ -1745,6 +1745,15 @@ def _run_owned_integration_conflict_resolution(
     target = _integration_target_or_none(ctx)
     if not target:
         return False
+    from ralph.pipeline.mechanical_finish import mechanical_finish
+
+    if mechanical_finish(ctx.workspace_scope.root, target):
+        logger.info(
+            "integration resolution: the paused rebase for '{}' was already resolved; "
+            "the rebase continued without a resolver",
+            target,
+        )
+        return True
     identity = _conflict_identity_or_default(ctx, target)
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
@@ -3183,6 +3192,29 @@ def _ladder_escalation_reason(detail: str, preserved_copy: str) -> str:
     )
 
 
+def _integration_retry_alarm(state: PipelineState, ctx: LoopContext, detail: str) -> str:
+    from ralph.pipeline._integration_status import build_integration_status, cooldown_next_eligible
+
+    cause = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
+    controller_candidate: object = read_attr(ctx, "controller", None)
+    if not isinstance(controller_candidate, RecoveryController):
+        return cause
+    phase = str(state.previous_phase or state.phase)
+    next_agent, until_when = cooldown_next_eligible(
+        controller_candidate,
+        phase,
+        controller_candidate.agents_for_phase(phase),
+    )
+    status = build_integration_status(
+        cause=cause,
+        agents_can_finish=next_agent is not None and until_when == "now",
+        next_eligible_agent=next_agent,
+        until_when=until_when,
+        preserved=(_preserved_copy_clause_for_root(ctx.workspace_scope.root),),
+    )
+    return status.render_log
+
+
 def _wait_for_integration_retry(
     state: PipelineState,
     ctx: LoopContext,
@@ -3191,7 +3223,7 @@ def _wait_for_integration_retry(
 ) -> PipelineState:
     rebase = state.rebase
     detail = _render_current_observation_detail(rebase)
-    alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
+    alarm = _integration_retry_alarm(state, ctx, detail)
 
     def _emit_retry_alarm(message: str) -> None:
         critical("{}", message)

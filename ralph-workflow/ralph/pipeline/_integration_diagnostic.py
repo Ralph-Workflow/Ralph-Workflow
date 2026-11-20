@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph._build_identity import build_identity
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
@@ -459,7 +460,12 @@ def _pre_pass_failure(
             )
         write_resolution_terminal_marker(root, target_record, backend=backend)
         if not announced:
-            logger.warning("Integration ladder terminal state: complete_in_place ({})", reason)
+            logger.warning(
+                terminal_emitter.terminal_message(
+                    f"Integration ladder terminal state: complete_in_place ({reason})"
+                ),
+                build_identity(),
+            )
         return False
     target_record = _bump_attempt(record, reason, repair_attempt_cap=repair_attempt_cap)
     write_record(root, target_record, backend=backend)

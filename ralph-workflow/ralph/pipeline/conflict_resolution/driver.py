@@ -227,30 +227,6 @@ def build_session_integration_status(
 def emit_conflict_phase_line(
     display: object, message: str, *, channel: str = "rebase-conflict"
 ) -> None:
-    if message.endswith(": next strategy"):
-        reason_label = message.removesuffix(": next strategy")
-        session = _ACTIVE_SESSION[0]
-        if session is not None and (
-            session.last_activity_kind is not None
-            or session.last_activity_at is not None
-            or (session.last_duration_seconds is not None and session.last_duration_seconds > 0)
-        ):
-            dur = (
-                session.last_duration_seconds if session.last_duration_seconds is not None else 0.0
-            )
-            act_kind = session.last_activity_kind or "none"
-            act_at = session.last_activity_at or "never"
-            paths = ", ".join(session.unresolved_paths)
-            progress_status = build_session_integration_status(session, cause="PROGRESS")
-            message = (
-                f"{reason_label}: duration={dur:.1f}s; "
-                f"last_activity_kind={act_kind}; "
-                f"last_activity_at={act_at}; "
-                f"last_progress="
-                f"{progress_status.progress if progress_status is not None else '(unknown)'}; "
-                f"unresolved_paths={paths}; "
-                f"next=inspect typed reason, keep landed rebase stops, and retry only if identity changed"
-            )
     _status_emit_conflict_phase_line(display, message, channel=channel)
 
 
@@ -761,8 +737,7 @@ def _declared_decision_reason(
 
 
 def _status_scope(status: IntegrationStatus) -> str:
-    details = "; ".join(f"{path}: {reason}" for path, reason in status.paths_with_reasons)
-    return f"{status.summary}; path reasons: {details}" if details else status.summary
+    return status.scope
 
 
 def _bootstrap_resolution_session(

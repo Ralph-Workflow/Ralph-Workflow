@@ -193,7 +193,10 @@ def _scan_extra_project_local_configs() -> dict[Path, str | None]:
 def _redirect_session_guard_constants(
     session_config: Path,
 ) -> tuple[object, Path | None, Path | None, object, Path | None, object]:
-    loader_mod = sys.modules.get("ralph.config.loader")
+    try:
+        import ralph.config.loader as loader_mod
+    except ImportError:
+        loader_mod = sys.modules.get("ralph.config.loader")
     orig_global_config: Path | None = None
     orig_global_agents: Path | None = None
     if loader_mod is not None:
@@ -202,7 +205,10 @@ def _redirect_session_guard_constants(
         loader_mod.GLOBAL_CONFIG_PATH = session_config / "ralph-workflow.toml"
         loader_mod.GLOBAL_AGENTS_CONFIG_PATH = session_config / "ralph-workflow-agents.toml"
 
-    state_store_mod = sys.modules.get("ralph.skills._state_store")
+    try:
+        import ralph.skills._state_store as state_store_mod
+    except ImportError:
+        state_store_mod = sys.modules.get("ralph.skills._state_store")
     orig_default_state: Path | None = None
     orig_default_state_fn = None
     if state_store_mod is not None:
@@ -453,11 +459,17 @@ def _apply_isolate_process_home(
     if os.environ.get("CURSOR_API_KEY") != "test-dummy-key":
         os.environ["CURSOR_API_KEY"] = "test-dummy-key"
     config_dir = fake_home + "/.config"
-    loader_mod = sys.modules.get("ralph.config.loader")
+    try:
+        import ralph.config.loader as loader_mod
+    except ImportError:
+        loader_mod = sys.modules.get("ralph.config.loader")
     if loader_mod is not None:
         loader_mod.GLOBAL_CONFIG_PATH = Path(config_dir + "/ralph-workflow.toml")
         loader_mod.GLOBAL_AGENTS_CONFIG_PATH = Path(config_dir + "/ralph-workflow-agents.toml")
-    state_store_mod = sys.modules.get("ralph.skills._state_store")
+    try:
+        import ralph.skills._state_store as state_store_mod
+    except ImportError:
+        state_store_mod = sys.modules.get("ralph.skills._state_store")
     if state_store_mod is not None:
         capabilities_path = Path(config_dir + "/ralph-workflow-capabilities.json")
         state_store_mod.DEFAULT_STATE_PATH = capabilities_path

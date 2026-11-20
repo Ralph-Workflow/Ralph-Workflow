@@ -1,32 +1,23 @@
 from __future__ import annotations
 
 import functools
+import json
 import shutil
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 
-from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.git.rebase.rebase import rebase_in_progress
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
-from ralph.pipeline.conflict_resolution import (
-    RebaseStop,
-    run_rebase_conflict_resolution_pipeline,
+from ralph.pipeline.auto_integrate_record import (
+    AUTO_INTEGRATE_RECORD_FILENAME,
+    INTEGRATION_RECORD_VERSION,
+    IntegrationRecord,
+    write_record,
 )
-from ralph.pipeline.conflict_resolution.session import ResolutionSession
-from ralph.pipeline.integration_actions import install_executors, reset_executors
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-from ralph.workspace.scope import WorkspaceScope
 from tests.pipeline._auto_integrate_agent_failure_fixtures import TARGET
 from tests.test_pending_merge_commit_recovery import _commit, _git
-
-if TYPE_CHECKING:
-    from ralph.policy.models import PolicyBundle
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -99,196 +90,6 @@ def _make_config() -> UnifiedConfig:
 _REPO_STATE_LEDGER_MATRIX_PARAMS: list[tuple[str, str]] = [
     ("unstaged_edits", "spent_chain"),
 ]
-
-_PARITY_AGENTS: tuple[str, ...] = ("first", "second")
-
-
-class _ParityFakeAgent:
-    def __init__(self) -> None:
-        self.launches: list[str] = []
-
-    def __call__(self, effect: object, *args: object, **kwargs: object) -> object:
-        from ralph.pipeline.events import PipelineEvent
-
-        del args, kwargs
-        agent_name = str(getattr(effect, "agent_name", ""))
-        self.launches.append(agent_name)
-        if agent_name == "first":
-            return PipelineEvent.AGENT_FAILURE
-        return PipelineEvent.AGENT_SUCCESS
-
-
-class _ParityIntegrationClock:
-    def __init__(self, clock: FakeClock) -> None:
-        self._clock = clock
-
-    def now(self) -> float:
-        return self._clock.monotonic()
-
-    def sleep(self, seconds: float) -> None:
-        self._clock.sleep(seconds)
-
-
-def _parity_controller(bundle: PolicyBundle, clock: FakeClock) -> RecoveryController:
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
-    return RecoveryController(
-        options=RecoveryControllerOptions(clock=clock, ledger=ledger, policy_bundle=bundle)
-    )
-
-
-def _parity_paused_rebase(root: Path) -> None:
-    from tests._scenario_git import commit_file, git
-
-    root.mkdir(parents=True, exist_ok=True)
-    Repo.init(root, initial_branch="main")
-    commit_file(root, "shared.txt", "base\n", "base")
-    git(root, "checkout", "-q", "-b", "feature")
-    commit_file(root, "shared.txt", "feature\n", "feature change")
-    git(root, "checkout", "-q", "main")
-    commit_file(root, "shared.txt", "target\n", "target change")
-    git(root, "checkout", "-q", "feature")
-    git(root, "rebase", "main", check=False)
-    if not rebase_in_progress(root):
-        raise AssertionError("parity fixture did not pause in a conflicted rebase")
-
-
-def _parity_resolver(
-    config: UnifiedConfig,
-    bundle: PolicyBundle,
-    clock: FakeClock,
-    controller: RecoveryController,
-) -> object:
-    from ralph.pipeline.resolution_outcome import ResolvedOutcome
-
-    session = ResolutionSession(ledger=controller.ledger, recovery_controller=controller)
-
-    def _resolver(resolver_root: Path, target: str, stop: RebaseStop) -> bool:
-        return isinstance(
-            run_rebase_conflict_resolution_pipeline(
-                root=resolver_root,
-                target=target,
-                stop=stop,
-                config=config,
-                pipeline_deps=None,
-                workspace_scope=None,
-                policy_bundle=bundle,
-                display=None,
-                display_context=None,
-                clock=clock.monotonic,
-                session=session,
-            ),
-            ResolvedOutcome,
-        )
-
-    return _resolver
-
-
-def _run_parity_resolver_side(
-    root: Path, bundle: PolicyBundle, agent: _ParityFakeAgent
-) -> RecoveryController:
-    from ralph.pipeline import attempt_stop_resolution
-    from ralph.pipeline.effect_executor import (
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
-    )
-    from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
-
-    _parity_paused_rebase(root)
-    clock = FakeClock(start=0.0)
-    controller = _parity_controller(bundle, clock)
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {"auto_integrate_enabled": True, "auto_integrate_target": "main"},
-            "conflict_resolution": {"max_rounds_per_stop": 1, "max_rebase_conflict_stops": 1},
-        }
-    )
-    token = install_executors(clock=_ParityIntegrationClock(clock))
-    try:
-        deps_token = install_agent_effect_dependencies(
-            agent_runner=agent, recovery_controller=controller
-        )
-        try:
-            attempt_stop_resolution(
-                "parity-resolver-side",
-                StopResolutionTrigger(
-                    name="rebase_stop",
-                    root=root,
-                    target="main",
-                    resolver=_parity_resolver(config, bundle, clock, controller),
-                    conflict_config=config.conflict_resolution,
-                    force_retry=True,
-                ),
-            )
-        finally:
-            reset_agent_effect_dependencies(deps_token)
-    finally:
-        reset_executors(token)
-    return controller
-
-
-def _run_parity_ordinary_side(
-    root: Path, bundle: PolicyBundle, agent: _ParityFakeAgent
-) -> tuple[RecoveryController, object]:
-    from ralph.agents.registry import AgentRegistry
-    from ralph.config.enums import Verbosity
-    from ralph.config.models import AgentConfig
-    from ralph.display.context import make_display_context
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.effect_executor import (
-        install_agent_effect_dependencies,
-        reset_agent_effect_dependencies,
-    )
-    from ralph.pipeline.runner import run_pipeline_step
-    from ralph.pipeline.state import AgentChainState, PipelineState
-
-    agent_dir = root / ".agent"
-    agent_dir.mkdir(parents=True)
-    (root / "README.md").write_text("hello\n", encoding="utf-8")
-    (agent_dir / "PLAN.md").write_text(
-        "# A plan with enough words to pass validation\n", encoding="utf-8"
-    )
-    controller = _parity_controller(bundle, FakeClock(start=0.0))
-    agent_config = UnifiedConfig(agents={name: AgentConfig(cmd=name) for name in _PARITY_AGENTS})
-    display_ctx = make_display_context()
-    display = ParallelDisplay(workspace_root=root, display_context=display_ctx, is_quiet=True)
-    registry = AgentRegistry.from_config(agent_config)
-    state: object = PipelineState(
-        phase="development",
-        phase_chains={
-            "development": AgentChainState(agents=list(_PARITY_AGENTS), current_index=0, retries=0)
-        },
-        last_connectivity_state="online",
-    )
-    token = install_agent_effect_dependencies(agent_runner=agent, recovery_controller=controller)
-    try:
-        for _ in _PARITY_AGENTS:
-            state = run_pipeline_step(
-                state=state,
-                policy_bundle=bundle,
-                workspace_scope=WorkspaceScope(root),
-                config=agent_config,
-                display=display,
-                display_context=display_ctx,
-                verbosity=Verbosity.QUIET,
-                registry=registry,
-                pipeline_subscriber=None,
-                recovery_controller=controller,
-            )
-    finally:
-        reset_agent_effect_dependencies(token)
-    return controller, state
-
-
-def _durable_agent_shape(controller: RecoveryController, phase: str) -> object:
-    selection = controller.preferred_agent_index(phase, _PARITY_AGENTS)
-    return (
-        selection.index,
-        selection.agent,
-        tuple(name for name, _reason in selection.skipped_reasons),
-        tuple(
-            type(controller.agent_eligibility(phase, agent)).__name__ for agent in _PARITY_AGENTS
-        ),
-    )
 
 
 REPO_TEMPLATE_IGNORE = shutil.ignore_patterns("hooks", "*.sample", "description", "branches")
@@ -396,3 +197,17 @@ def interrupted_resolution_repo(root: Path, operation: str) -> tuple[str, str, s
         ),
     )
     return target, feature, main
+
+
+def wrong_version_record(root: Path, *, target: str = "main") -> Path:
+    path = root / ".agent" / AUTO_INTEGRATE_RECORD_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "record_version": INTEGRATION_RECORD_VERSION + 1,
+        "phase": "integrating",
+        "target": target,
+        "pre_feature_sha": "0" * 40,
+        "pre_target_sha": None,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path

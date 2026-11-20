@@ -328,7 +328,7 @@ def drive_integration(
 
         clock_adapter = _ClockAdapter()
 
-    from tests.scenarios._rebase_recovery_harness import shared_executor_seam
+    from tests._scenario_harness import shared_executor_seam
 
     token = install_executors(agent_runner=counting, clock=clock_adapter)
     try:

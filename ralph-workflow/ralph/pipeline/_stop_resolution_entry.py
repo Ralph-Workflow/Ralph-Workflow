@@ -384,6 +384,11 @@ def attempt_stop_resolution(
     if not isinstance(trigger, StopResolutionTrigger):
         raise TypeError("trigger must be a StopResolutionTrigger")
 
+    from ralph.pipeline.mechanical_finish import mechanical_finish
+
+    if trigger.name == "rebase_stop" and mechanical_finish(trigger.root, trigger.target):
+        return RebaseResolutionResult(ResolvedOutcome(), None, ResolutionFailureCause.NONE, None)
+
     record = _gate_record(trigger)
     computed = (
         trigger.key_provider()

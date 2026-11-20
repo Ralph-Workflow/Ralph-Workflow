@@ -29,9 +29,13 @@ def retained_merge_paths(root: Path, paths: tuple[str, ...]) -> tuple[str, ...]:
     record = read_record(root)
     if record is None or classify_git_operation(record) is not GitOperationKind.RESOLVING_MERGE:
         return paths
-    return tuple(
-        sorted(set(paths) | set(record.resolving_paths) | set(original_conflict_paths(root)))
-    )
+    scope = tuple(sorted(set(paths) | set(record.resolving_paths)))
+    if scope != record.resolving_paths and record.is_integrating:
+        write_record(
+            root,
+            record.with_transition(MARK_RESOLVING_MERGE, resolving_paths=scope),
+        )
+    return paths
 
 
 def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple[str, ...]:
@@ -49,4 +53,4 @@ def retained_rebase_paths(root: Path, sha: str, paths: tuple[str, ...]) -> tuple
                 resolving_stop_sha=sha,
             ),
         )
-    return scope
+    return paths

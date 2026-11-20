@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.scenarios._rebase_recovery_harness import (
+from tests._scenario_harness import (
     SCENARIO_FILES,
     ScenarioResult,
+    ScenarioRunner,
     run_declared_decisions_and_gitlink_resolution,
     run_detached_head_probe_quietness,
     run_empty_resolution_stop,
@@ -16,9 +16,6 @@ from tests.scenarios._rebase_recovery_harness import (
     run_marker_resolution_bounded,
     run_spent_chain_fall_over_then_wait,
 )
-
-if TYPE_CHECKING:
-    from tests.scenarios._scenario_runner import ScenarioRunner
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -105,7 +102,7 @@ def test_rebase_recovery_matrix(
     tmp_git_repo: Path,
 ) -> None:
     del symptom
-    assert SCENARIO_FILES == ("tests/scenarios/test_rebase_recovery_matrix.py",)
+    assert "tests/scenarios/test_rebase_recovery_matrix.py" in SCENARIO_FILES
     result = run(tmp_git_repo)
 
     assert result.resolver_launches == expected.launches

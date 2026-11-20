@@ -54,6 +54,12 @@ _RESOLUTION_CALLS = frozenset(
 _CAUSE_NAMES = frozenset({"cause", "failure_cause", "failure_reason", "reason", "terminal_reason"})
 
 _LEGACY_CONFLICT_CLASSIFIER_NAMES: frozenset[str] = frozenset({"classify_conflict_attempt"})
+_DELETED_PROCESS_LOCAL_STATE_NAMES: frozenset[str] = frozenset(
+    {
+        "_WAITING_STATE",
+        "_retained_round_fingerprints",
+    }
+)
 _REMOVED_RESOLUTION_CAP_NAMES: frozenset[str] = frozenset({"total_resolution_cap_seconds"})
 _LEGACY_GITLINK_ESCALATION_NAMES: frozenset[str] = frozenset({"escalate_gitlink_on_sight"})
 _LEGACY_OUTCOME_CLASS_NAMES: frozenset[str] = frozenset({"ResolutionOutcome"})
@@ -438,6 +444,14 @@ def _package_legacy_violations(rel: str, source: str, tree: ast.Module) -> list[
     package_key = _package_key(rel)
     identifier_lines = _identifier_lines(tree)
     violations = [
+        *_forbidden_identifier_violations(
+            rel,
+            identifier_lines,
+            _DELETED_PROCESS_LOCAL_STATE_NAMES,
+            "deleted process-local state reappeared",
+            "the run-loop process-local dedupe and waiting-state globals were deleted; "
+            "the durable resolution attempt key is the only 'state changed' definition",
+        ),
         *_forbidden_identifier_violations(
             rel,
             identifier_lines,
@@ -933,6 +947,33 @@ def _is_object_callable(value: object) -> TypeGuard[Callable[..., object]]:
     return callable(value)
 
 
+def _deleted_process_local_state_selftest() -> int:
+    clean_violations = audit_modules(
+        {
+            "ralph/pipeline/run_loop.py": "def _resolve_paused_rebase():\n    return None\n",
+        }
+    )
+    if clean_violations:
+        sys.stdout.write(
+            f"SELFTEST FAILED: clean module produced violations: {clean_violations}\n"
+        )
+        return 1
+    planted_cases: list[tuple[str, str]] = [
+        ("_retained_round_fingerprints", "def _retained_round_fingerprints():\n    return {}\n"),
+        ("_WAITING_STATE", "_WAITING_STATE = {}\n"),
+    ]
+    for expected, source in planted_cases:
+        violations = audit_modules({"ralph/pipeline/run_loop.py": source})
+        rules = [violation.rule for violation in violations]
+        if "deleted process-local state reappeared" not in rules:
+            sys.stdout.write(
+                f"SELFTEST FAILED: '{expected}' did not produce the deleted-state rule, "
+                f"got {rules}\n"
+            )
+            return 1
+    return 0
+
+
 def selftest() -> int:
     module = importlib.import_module("ralph.testing._integration_no_legacy_selftest")
     run_selftest = module_attr(module, "selftest")
@@ -941,7 +982,9 @@ def selftest() -> int:
     result = run_selftest()
     if not isinstance(result, int) or isinstance(result, bool):
         raise TypeError("expected int exit code from no-legacy selftest")
-    return result
+    if result != 0:
+        return result
+    return _deleted_process_local_state_selftest()
 
 
 def main(argv: list[str] | None = None) -> int:

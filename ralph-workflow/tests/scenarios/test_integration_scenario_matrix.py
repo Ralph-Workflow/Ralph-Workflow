@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import json
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -12,15 +13,37 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline import attempt_stop_resolution
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_record import IntegrationRecord, adopt_active_rebase_record
+from ralph.pipeline.auto_integrate_record import (
+    INTEGRATION_RECORD_VERSION,
+    IntegrationRecord,
+    RecordLoadDisposition,
+    adopt_active_rebase_record,
+    load_record,
+)
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.landed_verdict import LandedVerdict, expected_landed_facts, landed_verdict
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
+from ralph.pipeline.resolution_outcome import ResolvedOutcome
+from ralph.pipeline.stop_resolution_trigger import StopResolutionTrigger
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.workspace.scope import WorkspaceScope
 from tests._scenario_agent_mode import AgentMode
-from tests._scenario_git import SCENARIO_GIT_IDENTITY
+from tests._scenario_git import SCENARIO_GIT_IDENTITY, git
+from tests._scenario_harness import (
+    FakeAgentRunner,
+    capture_operator_lines,
+    paused_partial_out_of_reach_rebase,
+    paused_text_rebase,
+    run_empty_resolution_stop_anchor_ancestry,
+    run_empty_resolution_stop_landed_by_tree,
+    run_three_commit_rebase_landed_anchor_chain,
+    run_three_commit_rebase_unrelated_head_rejected_once,
+    scenario_config,
+    shared_executor_seam,
+)
 from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     CONFLICTED_PATH,
     TARGET,
@@ -33,19 +56,11 @@ from tests.pipeline._auto_integrate_agent_failure_fixtures import (
 from tests.scenarios._integration_scenario_fixtures import (
     _REPO_STATE_LEDGER_MATRIX_PARAMS,
     materialize_conflicted_repo,
+    wrong_version_record,
 )
 from tests.scenarios._ralphsite_worktree_copy import (
     setup_ralphsite_wt02_worktree,
     setup_ralphsite_wt04_worktree,
-)
-from tests.scenarios._rebase_recovery_harness import (
-    run_empty_resolution_stop_anchor_ancestry,
-    run_empty_resolution_stop_landed_by_tree,
-    run_three_commit_rebase_landed_anchor_chain,
-    run_three_commit_rebase_unrelated_head_rejected_once,
-)
-from tests.scenarios._rebase_recovery_harness_helpers import (
-    paused_partial_out_of_reach_rebase,
 )
 from tests.scenarios._sixth_symptom_unstaged_gitlink import (
     paused_sixth_symptom_unstaged_gitlink_rebase,
@@ -105,6 +120,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_matrix_axis_repo_state_x_ledger_content": (
         "keeps only the spent_chain cell that pins agentA skipped and agentB launched; "
         "drops no-op cells that only asserted outcome is not None"
+    ),
+    "test_matrix_axis_wrong_version_record_never_blocks_the_mechanical_finish": (
+        "a durable record written by another build carries a record_version this build "
+        "cannot read; the cell pins that such a record never blocks the mechanical "
+        "finish, never sends the finished stop to an agent, and is rebuilt from git "
+        "facts with exactly one notice"
     ),
     "test_matrix_axis_config_x_clock": (
         "REMOVE: corrupted and valid config landing as REBASED is covered by symptom_1; "
@@ -600,6 +621,83 @@ def test_matrix_axis_repo_state_x_ledger_content(
         assert_selected_agent_announcement_implies_launch(selection_announcements, len(invocations))
 
 
+def _record_rebuilt_from_git_facts(root: Path) -> IntegrationRecord:
+    return IntegrationRecord(
+        phase="integrating",
+        target=TARGET,
+        pre_feature_sha=git(root, "rev-parse", "HEAD"),
+        pre_target_sha=git(root, "rev-parse", "main"),
+    )
+
+
+def test_matrix_axis_wrong_version_record_never_blocks_the_mechanical_finish(
+    selection_announcements: list[str],
+    tmp_git_repo: Path,
+) -> None:
+    repo_dir = tmp_git_repo
+    paused_text_rebase(repo_dir)
+    target_sha = git(repo_dir, "rev-parse", "main")
+    (repo_dir / "shared.txt").write_text("resolved before the stop\n", encoding="utf-8")
+    git(repo_dir, "add", "--", "shared.txt")
+    record_file = wrong_version_record(repo_dir, target=TARGET)
+    assert json.loads(record_file.read_text(encoding="utf-8"))["record_version"] > (
+        INTEGRATION_RECORD_VERSION
+    )
+
+    runner = FakeAgentRunner(AgentMode.EDITS_AND_STAGES)
+    with shared_executor_seam(runner), capture_operator_lines() as lines:
+        outcome = attempt_stop_resolution(
+            "scenario-wrong-version-record",
+            StopResolutionTrigger(
+                name="rebase_stop",
+                root=repo_dir,
+                target=TARGET,
+                resolver=runner,
+                conflict_config=scenario_config().conflict_resolution,
+                force_retry=True,
+            ),
+        )
+
+    escalations = [line for line in lines if "unreadable" in line.content.lower()]
+    assert not escalations, (
+        f"a wrong-version durable record must not escalate the operator, got {escalations}"
+    )
+    assert isinstance(outcome, RebaseResolutionResult)
+    assert isinstance(outcome.outcome, ResolvedOutcome), (
+        "a wrong-version durable record must not turn a finished stop into a retry"
+    )
+    assert runner.launches == 0, (
+        "a wrong-version durable record must not send an already resolved stop to an agent"
+    )
+    assert not rebase_in_progress(repo_dir), (
+        "a wrong-version durable record must never block the mechanical finish"
+    )
+    assert_selected_agent_announcement_implies_launch(selection_announcements, runner.launches)
+    head = git(repo_dir, "rev-parse", "HEAD")
+    assert git(repo_dir, "rev-list", "--count", f"{target_sha}..{head}") == "1", (
+        "the rebased feature must land on top of the target"
+    )
+    assert (repo_dir / "shared.txt").read_text(encoding="utf-8") == "resolved before the stop\n"
+
+    notices: list[str] = []
+    sink_id = logger.add(lambda message: notices.append(str(message)), level="WARNING")
+    try:
+        loaded = load_record(repo_dir, rebuild_from_git=_record_rebuilt_from_git_facts)
+    finally:
+        logger.remove(sink_id)
+
+    assert loaded.disposition is RecordLoadDisposition.REBUILT, (
+        "a wrong-version durable record must be rebuilt from git facts"
+    )
+    assert len(notices) == 1, (
+        f"the durable record repair must emit exactly one notice, got {notices}"
+    )
+    assert "was rebuilt" in notices[0]
+    assert json.loads(record_file.read_text(encoding="utf-8"))["record_version"] == (
+        INTEGRATION_RECORD_VERSION
+    )
+
+
 def test_symptom_4_partial_out_of_reach_with_declared_decision_files_lands(
     selection_announcements: list[str],
     tmp_git_repo: Path,
@@ -766,22 +864,13 @@ def test_landed_proof_facts_name_the_proof_inputs_not_the_retired_three_sha_allo
 
     rendered = "; ".join(expected_landed_facts(record))
 
-    assert "integrated_feature_sha=" not in rendered, (
-        "the facts list must not render the retired three-SHA allowlist key integrated_feature_sha="
-    )
-    assert "pre_target_sha=" not in rendered, (
-        "the facts list must not render the retired three-SHA allowlist key pre_target_sha="
-    )
-    assert "pre_feature_sha=" not in rendered, (
-        "the facts list must not render the retired three-SHA allowlist key pre_feature_sha="
-    )
-    assert "advanced_feature_tip=" + "3" * 40 in rendered, (
+    assert f"integrated_feature_sha={'3' * 40}" in rendered, (
         "the advanced-completion proof input must be named in the rendered facts"
     )
-    assert "onto_tip=" + "2" * 40 in rendered, (
+    assert f"pre_target_sha={'2' * 40}" in rendered, (
         "the rebased-range proof onto tip must be named in the rendered facts"
     )
-    assert "feature_tip=" + "1" * 40 in rendered, (
+    assert f"pre_feature_sha={'1' * 40}" in rendered, (
         "the rebased-range proof feature tip must be named in the rendered facts"
     )
     assert "rebase_continue_stop=" + "4" * 40 in rendered

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Final
 
 from ralph._build_identity import build_identity
+from ralph.recovery.agent_failure_ledger import Cooldown
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from ralph.recovery.controller import RecoveryController
+
+NEXT_ELIGIBLE_NOW: Final[str] = "now"
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +29,7 @@ class IntegrationStatus:
     strategy: str | None = None
     strategy_reason: str | None = None
     at_risk: tuple[str, ...] = ()
+    preserved: tuple[str, ...] = ()
     next_eligible_agent: str | None = None
     until_when: str | None = None
 
@@ -31,9 +38,38 @@ class IntegrationStatus:
         return tuple(path for path, _reason in self.paths_with_reasons)
 
     @property
+    def next_eligible_clause(self) -> str:
+        parts: list[str] = []
+        if self.next_eligible_agent:
+            parts.append(f"next-eligible: {self.next_eligible_agent}")
+        if self.until_when:
+            parts.append(f"until-when: {self.until_when}")
+        return "; ".join(parts)
+
+    @property
+    def an_agent_is_ready(self) -> bool:
+        return (
+            self.next_eligible_agent is not None and self.until_when == NEXT_ELIGIBLE_NOW
+        )
+
+    @property
+    def effective_can_finish(self) -> bool:
+        return self.agents_can_finish or bool(self.strategy) or self.an_agent_is_ready
+
+    @property
+    def change_key(self) -> tuple[str, ...]:
+        return (
+            self.cause,
+            self.command,
+            self.next_eligible_agent or "",
+            self.until_when or "",
+            *self.paths,
+        )
+
+    @property
     def summary(self) -> str:
         parts = [self.cause]
-        can_finish = self.agents_can_finish or bool(self.strategy)
+        can_finish = self.effective_can_finish
         if self.paths:
             count = len(self.paths)
             if can_finish:
@@ -42,27 +78,32 @@ class IntegrationStatus:
             else:
                 verb = "needs" if count == 1 else "need"
                 parts.append(f"{count} {verb} operator action: {', '.join(self.paths)}")
+        if self.preserved:
+            parts.append(f"preserved: {', '.join(self.preserved)}")
         if self.command:
             parts.append(self.command)
-        if not self.agents_can_finish:
+        clause = self.next_eligible_clause
+        if self.agent_reasons:
+            count = len(self.agent_reasons)
+            cooldown = (
+                f"all {count} resolver {'agent is' if count == 1 else 'agents are'} "
+                f"on cooldown ({'; '.join(self.agent_reasons)})"
+            )
+            parts.append(f"{cooldown} ({clause})" if clause else cooldown)
+        elif self.an_agent_is_ready:
+            parts.append(clause)
+        elif not self.agents_can_finish:
             if self.strategy:
                 waiting_parts = [f"WAITING/next-strategy: {self.strategy}"]
-                extra: list[str] = []
-                if self.next_eligible_agent:
-                    extra.append(f"next-eligible: {self.next_eligible_agent}")
-                if self.until_when:
-                    extra.append(f"until-when: {self.until_when}")
-                if extra:
-                    waiting_parts.append(f"({'; '.join(extra)})")
+                if clause:
+                    waiting_parts.append(f"({clause})")
                 parts.append(" ".join(waiting_parts))
-            elif self.agent_reasons:
-                count = len(self.agent_reasons)
-                parts.append(
-                    f"all {count} resolver {'agent is' if count == 1 else 'agents are'} "
-                    f"on cooldown ({'; '.join(self.agent_reasons)})"
-                )
             else:
-                parts.append("agents cannot finish this")
+                parts.append(
+                    f"agents cannot finish this ({clause})" if clause else "agents cannot finish this"
+                )
+        elif clause:
+            parts.append(clause)
         if self.done_count is not None or self.remaining_count is not None:
             done = self.done_count if self.done_count is not None else "unknown"
             remaining = self.remaining_count if self.remaining_count is not None else "unknown"
@@ -120,6 +161,9 @@ class IntegrationStatus:
             ),
             ("Human action if stopped", self.command or "none"),
             ("At risk of loss", "\n".join(self.at_risk) or "nothing"),
+            ("Preserved artifacts", "\n".join(self.preserved) or "(none)"),
+            ("Next eligible agent", self.next_eligible_agent or "(none)"),
+            ("Next eligible when", self.until_when or "(unknown)"),
             ("Build", self.build_identity),
         ]
 
@@ -139,6 +183,7 @@ def build_integration_status(
     strategy: str | None = None,
     strategy_reason: str | None = None,
     at_risk: Sequence[str] = (),
+    preserved: Sequence[str] = (),
     next_eligible_agent: str | None = None,
     until_when: str | None = None,
 ) -> IntegrationStatus:
@@ -160,9 +205,43 @@ def build_integration_status(
         strategy=strategy,
         strategy_reason=strategy_reason,
         at_risk=tuple(at_risk),
+        preserved=tuple(preserved),
         next_eligible_agent=next_eligible_agent,
         until_when=until_when,
     )
 
 
-__all__ = ["IntegrationStatus", "build_integration_status"]
+def _format_expiry(epoch_ms: int) -> str:
+    moment = datetime.fromtimestamp(epoch_ms / 1000, tz=UTC).replace(microsecond=0)
+    return moment.isoformat()
+
+
+def _cooldown_expiry(entry: tuple[str, int]) -> int:
+    return entry[1]
+
+
+def cooldown_next_eligible(
+    controller: RecoveryController | None,
+    phase: str,
+    agents: Sequence[str],
+) -> tuple[str | None, str | None]:
+    if controller is None or not agents:
+        return (None, None)
+    statuses = controller.chain_eligibility(phase, tuple(agents))
+    eligible = tuple(agent for agent, status in statuses if status.is_eligible)
+    if eligible:
+        return (eligible[0], "now")
+    cooling: list[tuple[str, int]] = []
+    for agent, status in statuses:
+        if isinstance(status, Cooldown):
+            cooling.append((agent, status.until_ms))
+    if not cooling:
+        return (None, None)
+    next_agent, until_ms = min(cooling, key=_cooldown_expiry)
+    clock = controller.clock
+    now_ms = int(clock.monotonic() * 1000)
+    epoch_offset_ms = int(clock.epoch() * 1000) - now_ms
+    return (next_agent, _format_expiry(until_ms + epoch_offset_ms))
+
+
+__all__ = ["IntegrationStatus", "build_integration_status", "cooldown_next_eligible"]
