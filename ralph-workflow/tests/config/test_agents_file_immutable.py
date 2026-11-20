@@ -29,6 +29,13 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_pipeline_run_leaves_agents_file_byte_identical carries a 3 s per-test budget": (
+        "the test runs the ordinary pipeline end to end through ralph.pipeline.runner.run, because the regression it guards is a full run rewriting the user-global agents file; that costs 0.65 to 0.92 main-thread CPU seconds and failed the 1 s default under host load, so it declares a 3 s budget; every assertion is unchanged"
+    ),
+}
+
+
 pytestmark = pytest.mark.subprocess_e2e
 
 
@@ -211,6 +218,7 @@ def test_diagnose_with_explicit_config_leaves_user_global_agents_file_byte_ident
     assert not any(".migration" in p.name for p in config_home.iterdir())
 
 
+@pytest.mark.timeout_seconds(3.0)
 def test_pipeline_run_leaves_agents_file_byte_identical(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

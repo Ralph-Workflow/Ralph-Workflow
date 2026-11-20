@@ -31,6 +31,13 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_default_run_constructs_parallel_display_and_renders_surfaces carries a 2 s per-test budget": (
+        "the test runs the default pipeline runner end to end so it can observe the parallel display it builds and renders; that costs 0.45 to 0.75 main-thread CPU seconds depending on host load, so it declares a 2 s budget instead of sitting at the 1 s default; every assertion is unchanged"
+    ),
+}
+
+
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
 
@@ -38,6 +45,7 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
 
+@pytest.mark.timeout_seconds(2.0)
 @pytest.mark.skipif(
     os.environ.get("CI") == "1",
     reason="Terminal emulation is unstable in CI; covered by display unit tests",

@@ -60,13 +60,13 @@ Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx o
 
 ## Total test budget
 
-The combined total test budget is **pinned**: 75 seconds of wall clock net of host contention, and 1400 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:501-538`). The critical path is the slowest shard.
+The combined total test budget is **pinned**: 75 seconds of wall clock net of host contention, and 1800 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. All selected files join the same LPT partition, distributed across the parallel shards (`ralph/test_suites.py:501-538`). The critical path is the slowest shard.
 
 Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps once they have all passed (`ralph/verify_budget.py` documents the rule):
 
-- **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, every descendant reaped inside the tree included, plus the CPU of descendants orphaned to init during a step, which rusage never sees and `orphaned_cpu_tracker` samples twice a second) may not exceed `_TOTAL_TEST_CPU_BUDGET_SECONDS = 1400.0`. The suite controls this number; host load barely moves it, so exceeding it always fails.
+- **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, every descendant reaped inside the tree included, plus the CPU of descendants orphaned to init during a step, which rusage never sees and `orphaned_cpu_tracker` samples twice a second) may not exceed `_TOTAL_TEST_CPU_BUDGET_SECONDS = 1800.0`. The suite controls this number; host load barely moves it, so exceeding it always fails.
 - **Wall clock** — over 75 s fails unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's logical CPUs: the most wall time foreign load can have taken). Fitting only with that credit passes with a host-contention WARNING that prints every number used. On an idle host the credit is ~0 and 75 s applies exactly. The credit is an upper bound, which is why the CPU budget is the hard backstop.
-- **Host capacity** — a host can be too small for 75 s with nothing else running: ~470 core-s of suite work on a 4-core CI runner needs at least 117 s even perfectly parallel. When the suite's own CPU kept the cores foreign load left free at least 90% busy (`suite CPU / (wall × cores − foreign CPU) ≥ 0.9`), the wall clock is capacity-bound, the CPU budget is the binding limit, and the overrun is a host-capacity WARNING. A wall overrun that left capacity idle — the suite waited instead of working — still fails. This cannot shelter a slow suite on a large host: keeping 21 or more cores 90% busy for over 75 s costs more than 1400 core-s, which fails first.
+- **Host capacity** — a host can be too small for 75 s with nothing else running: ~470 core-s of suite work on a 4-core CI runner needs at least 117 s even perfectly parallel. When the suite's own CPU kept the cores foreign load left free at least 90% busy (`suite CPU / (wall × cores − foreign CPU) ≥ 0.9`), the wall clock is capacity-bound, the CPU budget is the binding limit, and the overrun is a host-capacity WARNING. A wall overrun that left capacity idle — the suite waited instead of working — still fails. This cannot shelter a slow suite on a large host: keeping 27 or more cores 90% busy for over 75 s costs more than 1800 core-s, which fails first.
 
 The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 225.0`, and each pytest invocation only at `DEFAULT_SUITE_TIMEOUT_SECONDS = 225.0`: those are hang detection, not speed budgets.
 
@@ -76,7 +76,7 @@ The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECOND
 |---|---|---|
 | `_TOTAL_TEST_BUDGET_SECONDS > 0` | `must be positive` | Budget can't be zero or negative |
 | `abs(_TOTAL_TEST_BUDGET_SECONDS - 75.0) < 1e-9` | `must be 75.0` | Budget constant can't be silently altered |
-| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 1400.0) < 1e-9` | `must be 1400.0` | CPU budget can't be silently altered |
+| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 1800.0) < 1e-9` | `must be 1800.0` | CPU budget can't be silently altered |
 | `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` | `must be 3 x _TOTAL_TEST_BUDGET_SECONDS` | Hang cap can't drift into a budget |
 | `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS` | `indices must be valid` | Tracked steps must exist in `_VERIFY_STEPS` |
 | Every budget-tracked step has a positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |

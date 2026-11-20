@@ -18,6 +18,7 @@ from ralph.testing._audit_integration_no_legacy_sentinels import (
     _is_denial_only_pre_rename_sentinel,
     _iter_folded_string_literals,
     _package_key,
+    _walked_nodes,
 )
 from ralph.workspace.fs import FsWorkspace
 
@@ -291,7 +292,7 @@ def _record_identifier_line(lines: dict[str, int], name: str, line: int) -> None
 
 def _identifier_lines(tree: ast.Module) -> dict[str, int]:
     lines: dict[str, int] = {}
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if isinstance(node, ast.alias):
             _record_identifier_line(lines, node.name.rsplit(".", 1)[-1], node.lineno)
             if node.asname is not None:
@@ -369,10 +370,10 @@ def _legacy_tuple_violations(path: str, tree: ast.Module) -> list[Violation]:
                 "never a tuple[bool, str]"
             ),
         )
-        for node in ast.walk(tree)
+        for node in _walked_nodes(tree)
         if isinstance(node, ast.Subscript) and _bool_str_tuple_annotation(node)
     ]
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if not _is_outcome_producer(node):
@@ -400,7 +401,7 @@ def _legacy_tuple_violations(path: str, tree: ast.Module) -> list[Violation]:
 
 def _exhaustive_match_violations(rel: str, tree: ast.Module) -> list[Violation]:
     violations: list[Violation] = []
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if not isinstance(node, ast.Match):
             continue
         matched_classes: set[str] = set()
@@ -581,7 +582,7 @@ def _classdef_pipeline_violations(rel: str, node: ast.ClassDef) -> list[Violatio
 def _pipeline_ast_violations(rel: str, tree: ast.Module) -> list[Violation]:
     violations: list[Violation] = []
     package_key = _package_key(rel)
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if isinstance(node, ast.Assign) and _resolution_call(node.value):
             violations.extend(
                 Violation(rel, node.lineno, "tuple-shaped resolution result unpack")
@@ -804,7 +805,7 @@ def _operator_parking_state_violations(rel: str, tree: ast.AST) -> list[Violatio
     if not _package_key(rel).startswith("ralph/pipeline/"):
         return []
     violations: list[Violation] = []
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if not isinstance(node, ast.ClassDef) or node.name != "LadderState":
             continue
         for stmt in node.body:

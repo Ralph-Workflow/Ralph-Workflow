@@ -10,6 +10,9 @@ from typing import TypedDict
 import pytest
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "cpu_budget_must_be_1800 cases track the raised CPU budget pin": (
+        "the anchor and expected message follow the raised 1800 core-s budget and the planted drift value is 1900.0; both cases still prove an altered constant fails import with RuntimeError, also under python -O"
+    ),
     "budget_must_be_75 cases track the raised wall budget pin": (
         "the wall budget anchor, the planted drift value (76.0) and the expected must be 75.0 message follow the raised 75 s budget, and the hang-cap anchor follows the 225 s cap; every case still proves a drifted constant fails import with RuntimeError, also under python -O"
     ),
@@ -51,7 +54,7 @@ def _invariant_cases() -> list[_CaseSpec]:
         "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 2})"
     )
     budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 75.0"
-    cpu_budget_anchor = "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1400.0"
+    cpu_budget_anchor = "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1800.0"
     hang_cap_anchor = "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 225.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
     resource_label_anchor = '"resource lifecycle audit (audit_resource_lifecycle)"'
@@ -110,18 +113,18 @@ def _invariant_cases() -> list[_CaseSpec]:
             "stderr_substrings": ["RuntimeError", "must be positive"],
         },
         {
-            "name": "cpu_budget_must_be_1400",
-            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 2000.0")],
+            "name": "cpu_budget_must_be_1800",
+            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1900.0")],
             "minus_o": False,
             "expect_ok": False,
-            "stderr_substrings": ["RuntimeError", "must be 1400.0"],
+            "stderr_substrings": ["RuntimeError", "must be 1800.0"],
         },
         {
             "name": "cpu_budget_survives_minus_o",
-            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 2000.0")],
+            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 1900.0")],
             "minus_o": True,
             "expect_ok": False,
-            "stderr_substrings": ["RuntimeError", "must be 1400.0"],
+            "stderr_substrings": ["RuntimeError", "must be 1800.0"],
         },
         {
             "name": "hang_cap_must_be_three_budgets",

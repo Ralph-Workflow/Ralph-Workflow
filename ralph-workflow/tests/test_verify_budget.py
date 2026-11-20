@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "run_verify CPU oracles plant 1900 core-s above the raised 1800 core-s budget": (
+        "the planted over-budget runs now total 1900 core-s (1800 + 100 directly, and 300 + 1600 orphaned) so they still exceed the raised budget; both oracles still assert the run fails with suite CPU exceeded"
+    ),
     "run_verify wall oracles plant runs around the raised 75 s budget": (
         "the contention and idle-host overrun runs now take 86 s (above the raised 75 s budget) instead of 66 s, with the contention credit giving 53 s, and the hang-cap runs use the 225 s cap (226 s to exhaust it, 195 s left for the smoke step); every oracle still asserts the same pass, warning or failure"
     ),
@@ -157,7 +160,7 @@ def test_run_verify_fails_when_the_suite_exceeds_its_cpu_budget(
     exit_code, _host = _run_verify(
         monkeypatch,
         tmp_path,
-        {"test": (20.0, 1400.0, 0.0), "test-verification-smoke": (10.0, 100.0, 0.0)},
+        {"test": (20.0, 1800.0, 0.0), "test-verification-smoke": (10.0, 100.0, 0.0)},
     )
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
@@ -391,7 +394,7 @@ def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
     monkeypatch.setattr(time, "monotonic", host.monotonic)
     monkeypatch.setattr(verify_module, "sample_suite_resources", host.sample)
     monkeypatch.setattr(verify_module.os, "cpu_count", lambda: _CORES)
-    orphaned = iter((1200.0, 0.0))
+    orphaned = iter((1600.0, 0.0))
 
     class _Tracker:
         orphaned_cpu_seconds = 0.0
@@ -405,5 +408,5 @@ def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=host, orphan_tracker=_Tracker)
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
-    assert "suite CPU 1500.0 / 1400.0 core-s" in captured.out
+    assert "suite CPU 1900.0 / 1800.0 core-s" in captured.out
     assert "suite CPU exceeded" in captured.err

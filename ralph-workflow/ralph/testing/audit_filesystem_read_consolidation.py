@@ -311,8 +311,27 @@ def _scope_keys(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[int | N
     return tuple(keys)
 
 
-def _scope_key(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> int | None:
-    return _scope_keys(node, parents)[0]
+def _scope_key_map(
+    nodes: Sequence[ast.AST], parents: dict[ast.AST, ast.AST]
+) -> dict[ast.AST, int | None]:
+    scopes: dict[ast.AST, int | None] = {}
+    for node in nodes:
+        chain: list[ast.AST] = []
+        current: ast.AST | None = node
+        scope: int | None = None
+        while current is not None:
+            if current in scopes:
+                scope = scopes[current]
+                break
+            if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
+                scope = id(current)
+                scopes[current] = scope
+                break
+            chain.append(current)
+            current = parents.get(current)
+        for visited in chain:
+            scopes[visited] = scope
+    return scopes
 
 
 def _assign_target_names(
@@ -342,8 +361,9 @@ def _collect_read_provenance(
     _import_alias_names(tree, imported_path_names, os_names, glob_names, direct_read_names)
     constructor_names = set(imported_path_names)
     path_names: set[tuple[int | None, str]] = {(None, name) for name in imported_path_names}
+    scopes = _scope_key_map(nodes, parents)
     for node in nodes:
-        scope = _scope_key(node, parents)
+        scope = scopes[node]
         match True:
             case _ if isinstance(node, ast.Assign):
                 if isinstance(node.value, ast.Name) and node.value.id in constructor_names:

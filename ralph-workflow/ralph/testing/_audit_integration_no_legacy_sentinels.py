@@ -117,8 +117,26 @@ def _constant_string_value(node: ast.AST) -> str | None:
     return None
 
 
+class _WalkCache:
+    __slots__ = ("nodes", "tree")
+
+    def __init__(self) -> None:
+        self.tree: ast.AST | None = None
+        self.nodes: tuple[ast.AST, ...] = ()
+
+
+_WALK_CACHE = _WalkCache()
+
+
+def _walked_nodes(tree: ast.AST) -> tuple[ast.AST, ...]:
+    if _WALK_CACHE.tree is not tree:
+        _WALK_CACHE.nodes = tuple(ast.walk(tree))
+        _WALK_CACHE.tree = tree
+    return _WALK_CACHE.nodes
+
+
 def _iter_folded_string_literals(tree: ast.AST) -> Iterator[tuple[str, int]]:
-    for node in ast.walk(tree):
+    for node in _walked_nodes(tree):
         if isinstance(node, ast.BinOp):
             folded = _constant_string_value(node)
             if folded is not None:

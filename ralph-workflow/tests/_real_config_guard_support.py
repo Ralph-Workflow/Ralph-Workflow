@@ -5,7 +5,10 @@ import os
 import stat
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 REAL_HOME: Path = Path(os.environ.get("HOME") or Path.home()).resolve()
 REAL_XDG_CONFIG_HOME: Path = (
@@ -512,25 +515,26 @@ _REPO_TREE_SKIPPED_RUNTIME_DIRS: frozenset[str] = frozenset({".agent", "tmp"})
 _REPO_TREE_SKIPPED_RUNTIME_FILES: frozenset[str] = frozenset({"checkpoint.json"})
 
 
-def _repo_tree_entry(path: Path) -> tuple[int, int] | None:
+def _repo_tree_entry(path: str) -> tuple[int, int] | None:
     try:
-        info = path.lstat()
+        info = os.lstat(path)
     except OSError:
         return None
     return info.st_size, info.st_mtime_ns
 
 
-def _scan_repo_tree() -> dict[Path, tuple[int, int]]:
-    entries: dict[Path, tuple[int, int]] = {}
-    for directory, dirnames, filenames in os.walk(_REPO_DIR):
+def _scan_repo_tree() -> dict[str, tuple[int, int]]:
+    entries: dict[str, tuple[int, int]] = {}
+    repo_dir = str(_REPO_DIR)
+    for directory, dirnames, filenames in os.walk(repo_dir):
         dirnames[:] = [
             name
             for name in dirnames
             if name not in _REPO_TREE_SKIPPED_DIRS
-            and not (directory == str(_REPO_DIR) and name in _REPO_TREE_SKIPPED_RUNTIME_DIRS)
+            and not (directory == repo_dir and name in _REPO_TREE_SKIPPED_RUNTIME_DIRS)
         ]
         for name in filenames:
-            path = Path(directory) / name
+            path = f"{directory}/{name}"
             entry = _repo_tree_entry(path)
             if entry is not None:
                 entries[path] = entry
@@ -539,30 +543,32 @@ def _scan_repo_tree() -> dict[Path, tuple[int, int]]:
             if child.name in _REPO_TREE_SKIPPED_RUNTIME_FILES:
                 continue
             if child.is_file(follow_symlinks=False):
-                entry = _repo_tree_entry(Path(child.path))
+                entry = _repo_tree_entry(child.path)
                 if entry is not None:
-                    entries[Path(child.path)] = entry
+                    entries[child.path] = entry
     return entries
 
 
-def _diff_repo_tree(
-    before: dict[Path, tuple[int, int]], after: dict[Path, tuple[int, int]]
+def _diff_repo_tree[K: (str, Path)](
+    before: Mapping[K, tuple[int, int]], after: Mapping[K, tuple[int, int]]
 ) -> list[str]:
-    created = [f"REPO TREE CREATED: {path}" for path in sorted(after.keys() - before.keys())]
-    changed = [
-        f"REPO TREE CHANGED: {path}"
-        for path in sorted(after.keys() & before.keys())
-        if after[path] != before[path]
+    created_paths: list[K] = sorted(after.keys() - before.keys())
+    changed_paths: list[K] = sorted(
+        key for key in after.keys() & before.keys() if after[key] != before[key]
+    )
+    deleted_paths: list[K] = sorted(before.keys() - after.keys())
+    return [
+        *(f"REPO TREE CREATED: {path}" for path in created_paths),
+        *(f"REPO TREE CHANGED: {path}" for path in changed_paths),
+        *(f"REPO TREE DELETED: {path}" for path in deleted_paths),
     ]
-    deleted = [f"REPO TREE DELETED: {path}" for path in sorted(before.keys() - after.keys())]
-    return [*created, *changed, *deleted]
 
 
-def _begin_repo_tree_guard() -> dict[Path, tuple[int, int]] | None:
+def _begin_repo_tree_guard() -> dict[str, tuple[int, int]] | None:
     _STATE.repo_tree_guard_depth += 1
     return _scan_repo_tree() if _STATE.repo_tree_guard_depth == 1 else None
 
 
-def _end_repo_tree_guard(before: dict[Path, tuple[int, int]] | None) -> list[str]:
+def _end_repo_tree_guard(before: dict[str, tuple[int, int]] | None) -> list[str]:
     _STATE.repo_tree_guard_depth -= 1
     return [] if before is None else _diff_repo_tree(before, _scan_repo_tree())

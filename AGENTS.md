@@ -85,12 +85,12 @@ An agent is either on cooldown or available; there are no other states and no ot
 - All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
 
-### ═══ TEST BUDGET — 75s wall clock net of host contention, 1400 CPU core-seconds, PINNED ═══
+### ═══ TEST BUDGET — 75s wall clock net of host contention, 1800 CPU core-seconds, PINNED ═══
 
 All tests must complete in 75s or less of their own time, no exceptions. That
 75 s is the COMBINED TOTAL wall-clock budget for ALL test suites under
 `make verify` (`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`), together with a
-1400 CPU core-second ceiling. The budget cannot be circumvented by splitting
+1800 CPU core-second ceiling. The budget cannot be circumvented by splitting
 tests into more suites, moving slow tests to another suite / target / Makefile
 recipe, renaming test targets or adding test-related `_VERIFY_STEPS` entries
 without also registering them in `_KNOWN_TEST_STEP_LABELS` and

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -47,17 +48,25 @@ from ralph.pipeline.state import PipelineState
 from ralph.workspace.context import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = pytest.mark.timeout_seconds(5)
-
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_integrated_transport_reaches_run_loop_alert_and_status_bar.cpu_budget": (
-        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    "resolver context failure tests use one per-test timeout mechanism": (
+        "the module-level timeout_seconds(5) marker and the 3 s markers on the three run-loop "
+        "alert tests are replaced by a single 2 s timeout_seconds marker on each of those three "
+        "tests; the other tests in the module use at most 0.12 CPU seconds and run under the "
+        "1 s default again; no assertion changes"
     ),
-    "test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar.cpu_budget": (
-        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    "integrated transport tests carry a 2 s per-test budget": (
+        "each test drives the production paused-rebase recovery against a real git repository, "
+        "which spawns about 34 git processes in the test call; that legitimately costs 0.4 to "
+        "0.75 main-thread CPU seconds depending on host load, so the tests declare a 2 s "
+        "budget instead of sitting at the 1 s default; no assertion changes"
     ),
-    "test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_status_bar.cpu_budget": (
-        "the run-loop integration test drives a real repository through the whole run loop and sits at the 1 s default CPU budget even on a quiet host; a 3 s budget keeps it from failing on shard contention"
+    "integrated transport tests copy one module-built paused-rebase repository": (
+        "the three run-loop alert tests each built the same paused rebase with fourteen git "
+        "processes inside the test call, which put them at 0.7 to 1.05 CPU seconds against the "
+        "1 s per-test budget on a loaded host; the repository is now built once per module and "
+        "copied into each test's tmp_path, so every test still starts from an identical, "
+        "independent paused rebase and every assertion is unchanged"
     ),
     "test_context_failure_enum_and_budget_uncharged (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_context_failure_enum_and_not_spent with an unchanged body"
@@ -521,6 +530,18 @@ def _setup_paused_rebase_repo(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.fixture(scope="module")
+def _paused_rebase_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return _setup_paused_rebase_repo(tmp_path_factory.mktemp("paused-rebase-template"))
+
+
+@pytest.fixture
+def paused_rebase_repo(_paused_rebase_template: Path, tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    shutil.copytree(_paused_rebase_template, repo, symlinks=True)
+    return repo
+
+
 def _make_loop_context(repo: Path) -> MagicMock:
     mock_ctx = MagicMock(spec=LoopContext)
     mock_ctx.workspace_scope = WorkspaceScope(root=repo)
@@ -539,11 +560,12 @@ def _make_loop_context(repo: Path) -> MagicMock:
     return mock_ctx
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(2.0)
 def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
+    paused_rebase_repo: Path,
 ) -> None:
-    repo = _setup_paused_rebase_repo(tmp_path)
+    repo = paused_rebase_repo
     mock_ctx = _make_loop_context(repo)
 
     feat_sha = run_git(
@@ -642,11 +664,12 @@ def test_integrated_transport_reaches_run_loop_alert_and_status_bar(
         logger.remove(sink_id)
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(2.0)
 def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
+    paused_rebase_repo: Path,
 ) -> None:
-    repo = _setup_paused_rebase_repo(tmp_path)
+    repo = paused_rebase_repo
     mock_ctx = _make_loop_context(repo)
 
     feat_sha = run_git(
@@ -748,11 +771,12 @@ def test_integrated_transport_config_failure_reaches_run_loop_alert_and_status_b
         logger.remove(sink_id)
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(2.0)
 def test_integrated_transport_generic_config_failure_reaches_run_loop_alert_and_status_bar(
     tmp_path: Path,
+    paused_rebase_repo: Path,
 ) -> None:
-    repo = _setup_paused_rebase_repo(tmp_path)
+    repo = paused_rebase_repo
     mock_ctx = _make_loop_context(repo)
 
     feat_sha = run_git(

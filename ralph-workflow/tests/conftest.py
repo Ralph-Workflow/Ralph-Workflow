@@ -249,7 +249,7 @@ def _collect_session_guard_violations(
     before: dict[Path, _ConfigPathSnapshot],
     project_local_before: dict[Path, str | None],
     extra_local_before: dict[Path, str | None],
-    repo_tree_before: dict[Path, tuple[int, int]] | None,
+    repo_tree_before: dict[str, tuple[int, int]] | None,
 ) -> list[str]:
     after = _scan_guarded_config_files(guarded_dirs)
     violations = _diff_config_snapshots(before, after)
