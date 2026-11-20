@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from loguru import logger
 from rich.console import Console
 
@@ -45,6 +46,8 @@ from ralph.pipeline.run_loop import (
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.context import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_context_failure_enum_and_budget_uncharged (renamed)": (
