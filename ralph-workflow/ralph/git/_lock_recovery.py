@@ -103,6 +103,7 @@ _LIVE_HOLDER_PATIENCE_S = GIT_SUBPROCESS_TIMEOUT_SECONDS + GIT_TERMINATE_GRACE_S
 LIVE_HOLDER_PATIENCE_S: Final[float] = _LIVE_HOLDER_PATIENCE_S
 _LIVE_HOLDER_POLL_S = 3.0
 LIVE_HOLDER_POLL_S: Final[float] = _LIVE_HOLDER_POLL_S
+_UNPROVEN_HOLDER_PATIENCE_S = 1.0
 
 
 _LOCK_BACKOFF_S: tuple[float, ...] = (0.2, 0.5, 1.0)
@@ -462,6 +463,27 @@ def reap_known_stale_locks(git_dir: Path, common_dir: Path | None, *, operation:
     return removed
 
 
+def _lock_holder_evidence(lock_path: Path) -> Literal["live", "dead", "unknown"]:
+    try:
+        age_seconds = time.time() - lock_path.stat().st_mtime
+    except OSError:
+        return "dead"
+    if age_seconds < _STALE_GIT_LOCK_AGE_SECONDS:
+        return "live"
+    try:
+        return _lock_has_no_live_holder(lock_path, _gitdir_for_lock(lock_path))
+    except OSError:
+        return "unknown"
+
+
+def _holder_patience_s(evidence: Literal["live", "dead", "unknown"]) -> float:
+    if evidence == "live":
+        return _LIVE_HOLDER_PATIENCE_S
+    if evidence == "dead":
+        return 0.0
+    return _UNPROVEN_HOLDER_PATIENCE_S
+
+
 def retry_after_lock_failure(
     git_dir: Path,
     common_dir: Path | None,
@@ -484,24 +506,23 @@ def retry_after_lock_failure(
         ]
         if not pending:
             return True
-        if time.monotonic() - started >= _LIVE_HOLDER_PATIENCE_S:
+        evidence: dict[Path, Literal["live", "dead", "unknown"]] = {
+            p: _lock_holder_evidence(p) for p in pending
+        }
+        if not any(value != "dead" for value in evidence.values()):
             return False
-        if not any(_lock_holder_is_waitable(p) for p in pending):
+        patience_s = max(_holder_patience_s(value) for value in evidence.values())
+        remaining_s = patience_s - (time.monotonic() - started)
+        if remaining_s <= 0:
+            logger.warning(
+                "Git lock {} was not released during {} within {:.0f}s; ending the "
+                "operation so the caller can retry.",
+                pending[0],
+                operation,
+                patience_s,
+            )
             return False
-        pause(_LIVE_HOLDER_POLL_S)
-
-
-def _lock_holder_is_waitable(lock_path: Path) -> bool:
-    try:
-        age_seconds = time.time() - lock_path.stat().st_mtime
-    except OSError:
-        return False
-    if age_seconds < _STALE_GIT_LOCK_AGE_SECONDS:
-        return True
-    try:
-        return _lock_has_no_live_holder(lock_path, _gitdir_for_lock(lock_path)) != "dead"
-    except OSError:
-        return False
+        pause(min(_LIVE_HOLDER_POLL_S, remaining_s))
 
 
 def _find_lock_holder(lock_path: Path) -> str:
@@ -559,7 +580,6 @@ def _run_git_operation_with_stale_lock_recovery[T](
     recover = recover_fn if recover_fn is not None else _recover_stale_git_lock
     sleep = sleep_fn if sleep_fn is not None else _sleep_fn
     find_holder = holder_fn if holder_fn is not None else _find_lock_holder
-    waitable = waitable_fn if waitable_fn is not None else _lock_holder_is_waitable
     slept_on_holder_s = 0.0
     holder_wait_started: float | None = None
 
@@ -583,21 +603,26 @@ def _run_git_operation_with_stale_lock_recovery[T](
                 waited_on_live_holder_s = max(
                     slept_on_holder_s, time.monotonic() - holder_wait_started
                 )
-                if (
-                    waited_on_live_holder_s < _LIVE_HOLDER_PATIENCE_S
-                    and lock_path.exists()
-                    and waitable(lock_path)
-                ):
+                if waitable_fn is not None:
+                    holder_patience_s = _LIVE_HOLDER_PATIENCE_S
+                    holder_may_release = waitable_fn(lock_path)
+                else:
+                    evidence = _lock_holder_evidence(lock_path)
+                    holder_patience_s = _holder_patience_s(evidence)
+                    holder_may_release = evidence != "dead"
+                remaining_s = holder_patience_s - waited_on_live_holder_s
+                if remaining_s > 0 and lock_path.exists() and holder_may_release:
                     logger.warning(
-                        "Git lock {} held by a live operation during {}; waiting "
+                        "Git lock {} may be held by a live operation during {}; waiting "
                         "(waited {:.0f}s of {:.0f}s)",
                         lock_path,
                         operation,
                         waited_on_live_holder_s,
-                        _LIVE_HOLDER_PATIENCE_S,
+                        holder_patience_s,
                     )
-                    sleep(_LIVE_HOLDER_POLL_S)
-                    slept_on_holder_s += _LIVE_HOLDER_POLL_S
+                    pause_s = min(_LIVE_HOLDER_POLL_S, remaining_s)
+                    sleep(pause_s)
+                    slept_on_holder_s += pause_s
                     continue
                 raise
 
@@ -653,6 +678,7 @@ __all__ = [
     "_STALE_GIT_LOCK_AGE_SECONDS",
     "_STRUCTURAL_LOCK_DIRS",
     "_UNPROVABLE_LOCK_CEILING_S",
+    "_UNPROVEN_HOLDER_PATIENCE_S",
     "ProbeExecutorStatus",
     "_ReapThreadLock",
     "_can_rule_out_non_git_process",
@@ -666,6 +692,7 @@ __all__ = [
     "_get_probe_executor",
     "_git_subcommand",
     "_gitdir_for_lock",
+    "_holder_patience_s",
     "_is_dead_process_os_error",
     "_is_git_process",
     "_is_infrastructure_daemon",
@@ -675,7 +702,7 @@ __all__ = [
     "_list_pids",
     "_lock_base_dir",
     "_lock_has_no_live_holder",
-    "_lock_holder_is_waitable",
+    "_lock_holder_evidence",
     "_lock_identity",
     "_lock_path_is_reapable",
     "_non_git_touches_repo",

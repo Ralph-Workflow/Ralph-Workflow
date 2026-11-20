@@ -120,9 +120,7 @@ def _table_text(output: str) -> str:
     return " ".join(cells)
 
 
-def test_diagnose_reports_relation_strategy_progress_and_risk_for_a_paused_rebase(
-    workspace: Path,
-) -> None:
+def _write_paused_rebase_record(workspace: Path) -> None:
     write_record(
         workspace,
         IntegrationRecord(
@@ -134,6 +132,12 @@ def test_diagnose_reports_relation_strategy_progress_and_risk_for_a_paused_rebas
             resolving_paths=("shared.txt",),
         ),
     )
+
+
+def test_diagnose_reports_relation_strategy_progress_and_risk_for_a_paused_rebase(
+    workspace: Path,
+) -> None:
+    _write_paused_rebase_record(workspace)
 
     result = CliRunner().invoke(app, ["--diagnose"], catch_exceptions=False)
     assert result.exit_code in (0, 1), result.output
@@ -148,3 +152,17 @@ def test_diagnose_reports_relation_strategy_progress_and_risk_for_a_paused_rebas
     assert "Remaining 1" in table, table
     assert "At risk of loss" in table, table
     assert "shared.txt" in table, table
+
+
+def test_diagnose_reports_the_human_fallback_command_for_a_paused_rebase(
+    workspace: Path,
+) -> None:
+    _write_paused_rebase_record(workspace)
+
+    result = CliRunner().invoke(app, ["--diagnose"], catch_exceptions=False)
+    assert result.exit_code in (0, 1), result.output
+    table = _table_text(result.output)
+
+    assert "Human action if stopped" in table, table
+    assert "git add -- shared.txt && git rebase --continue" in table, table
+    assert "Operator command git add -- shared.txt && git rebase --continue" in table, table

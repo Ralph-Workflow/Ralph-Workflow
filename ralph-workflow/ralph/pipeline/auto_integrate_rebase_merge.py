@@ -22,6 +22,7 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.git.rebase.rebase_operation_error import RebaseOperationError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_rebase_merge_failure import (
@@ -670,5 +671,5 @@ def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> N
             git_ops.abort_rebase(root)
         elif rebase_in_progress(root):
             abort_rebase_discarding_progress(root)
-    except (OSError, RuntimeError, ValueError, KeyError) as abort_exc:
+    except (OSError, RuntimeError, ValueError, KeyError, RebaseOperationError) as abort_exc:
         logger.warning("auto_integrate: abort_rebase failed: {}", abort_exc)

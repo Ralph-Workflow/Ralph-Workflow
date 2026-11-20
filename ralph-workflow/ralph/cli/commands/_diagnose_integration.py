@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -11,6 +10,7 @@ from ralph.pipeline._integration_status import IntegrationStatus, build_integrat
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.checkpoint import load as load_checkpoint
 from ralph.pipeline.checkpoint import run_state_path
+from ralph.pipeline.conflict_resolution import operator_command_for_paths
 from ralph.pipeline.integration_director import observe as observe_integration
 from ralph.pipeline.integration_observation import (
     InProgressKind,
@@ -51,7 +51,7 @@ def _persisted_integration_status(
     return build_integration_status(
         cause=cause,
         paths_with_reasons=tuple((path, "persisted integration conflict") for path in paths),
-        command=f"git add -- {' '.join(shlex.quote(p) for p in paths)}" if paths else "",
+        command=operator_command_for_paths(paths),
         agents_can_finish=False,
         done_count=None if view is None else view.done_count,
         remaining_count=None if view is None else view.remaining_count,
@@ -67,7 +67,7 @@ def _status_from_view(view: IntegrationLifecycleView | None) -> IntegrationStatu
         return None
     return build_integration_status(
         cause=view.state_text,
-        command="",
+        command=_human_action_command(view),
         done_count=view.done_count,
         remaining_count=view.remaining_count,
         relation=None if view.relation is None else view.relation.value,
@@ -85,6 +85,28 @@ class IntegrationLifecycleView:
     done_count: int
     remaining_count: int
     at_risk: tuple[str, ...]
+    unresolved_paths: tuple[str, ...] = ()
+    in_progress_kind: InProgressKind = InProgressKind.NONE
+
+
+_RESUME_COMMAND_BY_OPERATION: Final[dict[InProgressKind, str]] = {
+    InProgressKind.REBASE: "git rebase --continue",
+    InProgressKind.AM: "git am --continue",
+    InProgressKind.MERGE: "git merge --continue",
+    InProgressKind.CHERRY_PICK: "git cherry-pick --continue",
+    InProgressKind.REVERT: "git revert --continue",
+    InProgressKind.SEQUENCER: "git revert --continue",
+}
+
+
+def _human_action_command(view: IntegrationLifecycleView) -> str:
+    steps: list[str] = []
+    if view.unresolved_paths:
+        steps.append(operator_command_for_paths(view.unresolved_paths))
+    resume = _RESUME_COMMAND_BY_OPERATION.get(view.in_progress_kind)
+    if resume:
+        steps.append(resume)
+    return " && ".join(steps)
 
 
 _RELATION_BY_TARGET_VS_FEATURE: Final[dict[TargetVsFeature, IntegrationRelation]] = {
@@ -224,4 +246,6 @@ def _integration_lifecycle_view(workspace_root: Path) -> IntegrationLifecycleVie
         done_count=done,
         remaining_count=remaining,
         at_risk=remaining_paths or _worktree_risk(observation),
+        unresolved_paths=remaining_paths,
+        in_progress_kind=observation.in_progress_kind,
     )

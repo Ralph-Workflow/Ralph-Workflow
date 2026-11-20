@@ -10,8 +10,16 @@ from git import Actor, Commit, Repo
 from git.exc import GitError
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.git.rebase.rebase import RebaseFailed, RebaseNoOp
+from ralph.git.rebase.rebase_kinds import classify_rebase_error
 from ralph.pipeline import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_record import record_path
+from ralph.pipeline.integration_actions import (
+    default_git_ops,
+    install_executors,
+    reset_executors,
+)
+from ralph.pipeline.resolution_outcome import UnknownOutcome
 from tests._scenario_harness import (
     AgentMode,
     paused_text_rebase,
@@ -28,8 +36,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from ralph.config.models import UnifiedConfig
+    from ralph.git.rebase.rebase import RebaseResult
     from ralph.pipeline.conflict_resolution import RebaseStop
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
+    from ralph.pipeline.integration_actions import GitOps
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_fifty_commit_twenty_conflict_rebase_uses_the_two_commit_budget": (
@@ -57,6 +68,20 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "pins the SKIPPED external-rebase oracle and every other pair pins "
         "autonomous landing with content equivalence"
     ),
+    "test_fault_injection_git_misreport_waits_then_lands": (
+        "the git-ops seam misreports one git invocation: the rebase reports an "
+        "unexpected 'already up to date', the landing reports an unexpected "
+        "non-zero exit, and the rebase itself reports a non-zero exit that "
+        "leaves no rebase in progress to abort; the observable contract is the "
+        "same for all three: no crash, no false landing claim, an "
+        "operator-visible reason, a durable resume point that anchors the "
+        "feature work, and an autonomous landing on the resumed attempt"
+    ),
+    "test_fault_injection_non_c_locale_lands_autonomously": (
+        "the scenario builds the whole integration under a non-C LC_ALL/LANG; the "
+        "observable contract is that the git invocations and their output parsing "
+        "stay locale-independent and the branch still lands"
+    ),
 }
 
 pytestmark = [
@@ -67,6 +92,7 @@ pytestmark = [
 
 _LARGE_RANGE_COMMITS = 50
 _LARGE_RANGE_CONFLICTS = 20
+_NON_C_LOCALE = "de_DE.UTF-8"
 _AUTHOR = Actor("Test Author", "author@example.com")
 _COMMITTER = Actor("Test Committer", "committer@example.com")
 _REPO_CACHE: dict[Path, Repo] = {}
@@ -245,6 +271,16 @@ def _seed_diverged_feature(root: Path) -> str:
     _commit_file(root, "shared.txt", "base\n", "base")
     _checkout(root, "feature", create_branch=True)
     return _commit_file(root, "shared.txt", "feature\n", "feature")
+
+
+def _seed_diverged_branches(root: Path) -> str:
+    _commit_file(root, "base.txt", "base\n", "base")
+    _checkout(root, "feature", create_branch=True)
+    feature = _commit_file(root, "feature.txt", "feature\n", "feature")
+    _checkout(root, "main")
+    _commit_file(root, "target.txt", "target\n", "target change")
+    _checkout(root, "feature")
+    return feature
 
 
 @dataclass
@@ -597,6 +633,202 @@ def test_fault_injection_paired_cells_land_autonomously(
             feature=feature_sha,
             source_refs=("main",),
         )
+
+
+class _MisreportingGitOps:
+    def __init__(self, inner: GitOps, fault: str | None) -> None:
+        self.inner = inner
+        self.fault = fault
+
+    def rebase_onto(self, root: Path, target: str) -> RebaseResult:
+        if self.fault == "git-unexpected-output":
+            return RebaseNoOp("Branch is already up-to-date with upstream")
+        if self.fault == "git-rebase-nonzero-exit":
+            return RebaseFailed(
+                classify_rebase_error(
+                    "fatal: cannot lock ref 'refs/heads/feature': "
+                    "Unable to create 'refs/heads/feature.lock': File exists",
+                    "",
+                )
+            )
+        return self.inner.rebase_onto(root, target)
+
+    def abort_rebase(self, root: Path) -> None:
+        self.inner.abort_rebase(root)
+
+    def continue_rebase(self, root: Path) -> None:
+        self.inner.continue_rebase(root)
+
+    def abort_merge(self, root: Path) -> bool:
+        return self.inner.abort_merge(root)
+
+    def continue_merge(self, root: Path) -> bool:
+        return self.inner.continue_merge(root)
+
+    def abort_cherry_pick(self, root: Path) -> bool:
+        return self.inner.abort_cherry_pick(root)
+
+    def continue_cherry_pick(self, root: Path) -> bool:
+        return self.inner.continue_cherry_pick(root)
+
+    def stage_all(self, root: Path) -> bool:
+        return self.inner.stage_all(root)
+
+    def commit(
+        self,
+        root: Path,
+        *,
+        on_failure: Callable[[str], None] | None = None,
+    ) -> bool:
+        return self.inner.commit(root, on_failure=on_failure)
+
+    def fast_forward_target(
+        self,
+        root: Path,
+        target: str,
+        feature_sha: str,
+        *,
+        reclaim_target_worktree: bool = True,
+        on_reclaimed: Callable[[object], None] | None = None,
+    ) -> StopResolutionOutcome:
+        if self.fault == "git-nonzero-exit":
+            return UnknownOutcome(
+                error=RuntimeError("git exited with status 128: unexpected output")
+            )
+        return self.inner.fast_forward_target(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=on_reclaimed,
+        )
+
+    def land_feature(
+        self,
+        root: Path,
+        target: str,
+        feature_sha: str,
+        *,
+        reclaim_target_worktree: bool = True,
+        on_reclaimed: Callable[[object], None] | None = None,
+    ) -> StopResolutionOutcome:
+        return self.inner.land_feature(
+            root,
+            target,
+            feature_sha,
+            reclaim_target_worktree=reclaim_target_worktree,
+            on_reclaimed=on_reclaimed,
+        )
+
+    def create_backup_ref(
+        self,
+        root: Path,
+        pre_feature_sha: str | None,
+        owning_worktree: str | None = None,
+    ) -> str | None:
+        return self.inner.create_backup_ref(root, pre_feature_sha, owning_worktree)
+
+    def delete_backup_ref(self, root: Path, backup_ref: str | None) -> None:
+        self.inner.delete_backup_ref(root, backup_ref)
+
+    def reattach_head(self, root: Path, branch: str) -> bool:
+        return self.inner.reattach_head(root, branch)
+
+
+@pytest.mark.parametrize(
+    ("git_fault", "expected_reason_token"),
+    [
+        ("git-unexpected-output", "not an ancestor of feature"),
+        ("git-nonzero-exit", "git exited with status 128"),
+        ("git-rebase-nonzero-exit", "cannot lock ref"),
+    ],
+)
+def test_fault_injection_git_misreport_waits_then_lands(
+    tmp_git_repo: Path,
+    git_fault: str,
+    expected_reason_token: str,
+) -> None:
+    feature_sha = _seed_diverged_branches(tmp_git_repo)
+    git_ops = _MisreportingGitOps(inner=default_git_ops(), fault=git_fault)
+    token = install_executors(git_ops=git_ops)
+    try:
+        run1 = _drive(tmp_git_repo, resolver=_FastAgentRunner())
+    finally:
+        reset_executors(token)
+
+    assert run1.error is None, f"fault injection {git_fault} must not crash: {run1.error}"
+    assert run1.state is not None, f"fault injection {git_fault} must leave an outcome"
+    assert not run1.state.fast_forwarded, (
+        f"fault injection {git_fault} must not claim a landing it did not perform"
+    )
+    assert not _branch_contains(tmp_git_repo, feature_sha, "main"), (
+        f"fault injection {git_fault} must not land the feature work it did not finish"
+    )
+    assert expected_reason_token in (run1.state.last_reason or ""), (
+        f"fault injection {git_fault} must tell the operator why the landing stopped: "
+        f"{run1.state.last_reason}"
+    )
+    durable = record_path(tmp_git_repo)
+    assert durable.exists(), (
+        f"fault injection {git_fault} must leave a durable resume point for the next attempt"
+    )
+    record = json.loads(durable.read_text(encoding="utf-8"))
+    assert record.get("target") == "main", (
+        f"fault injection {git_fault} must record the target it was integrating into"
+    )
+    anchored = (
+        record.get("pre_feature_sha"),
+        record.get("integrated_feature_sha"),
+    )
+    assert any(
+        isinstance(sha, str) and _branch_contains(tmp_git_repo, sha, "feature") for sha in anchored
+    ), (
+        f"fault injection {git_fault} must anchor the feature work that stays on the "
+        f"feature branch, got {anchored}"
+    )
+
+    git_ops.fault = None
+    token = install_executors(git_ops=git_ops)
+    try:
+        run2 = _drive(tmp_git_repo, resolver=_FastAgentRunner())
+    finally:
+        reset_executors(token)
+
+    assert run2.error is None, (
+        f"fault injection {git_fault} must not crash on the resumed attempt: {run2.error}"
+    )
+    _assert_content_equivalence(
+        tmp_git_repo,
+        contract=f"fault injection {git_fault} must land after the resumed attempt",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
+
+
+def test_fault_injection_non_c_locale_lands_autonomously(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LC_ALL", _NON_C_LOCALE)
+    monkeypatch.setenv("LANG", _NON_C_LOCALE)
+    feature_sha = _seed_diverged_branches(tmp_git_repo)
+
+    run = _drive(tmp_git_repo, resolver=_FastAgentRunner())
+
+    assert run.error is None, f"a non-C locale must not crash the integration: {run.error}"
+    assert run.state is not None, "a non-C locale must leave an outcome"
+    assert run.state.fast_forwarded, (
+        f"a non-C locale must still land the branch: {run.state.last_reason}"
+    )
+    assert not any("did NOT land" in line.content for line in run.operator_lines), (
+        "a non-C locale must not report a landing failure"
+    )
+    _assert_content_equivalence(
+        tmp_git_repo,
+        contract="a non-C locale must land the same content as the C locale",
+        feature=feature_sha,
+        source_refs=("main",),
+    )
 
 
 def test_publication_failure_lands_and_verifies(tmp_git_repo: Path) -> None:
