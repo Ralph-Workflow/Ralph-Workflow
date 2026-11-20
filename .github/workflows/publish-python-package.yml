@@ -65,7 +65,7 @@ jobs:
         with:
           packages-dir: dist/
 
-      - name: Publish to PyPI (fallback: token auth)
+      - name: "Publish to PyPI (fallback: token auth)"
         if: steps.trusted-publish.outcome == 'failure' && secrets.PYPI_TOKEN != ''
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

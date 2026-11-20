@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
+from typing import NoReturn
 
 from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
@@ -37,7 +37,7 @@ def _opencode_harness(root: Path) -> tuple[_MainPhaseHarness, list[tuple[str, ob
         *,
         options: object = None,
         **_kwargs: object,
-    ) -> Iterator[str]:
+    ) -> NoReturn:
         assert options is not None
         agent = str(getattr(options, "agent_name", ""))
         probe = getattr(options, "workspace_probe", None)
@@ -65,7 +65,6 @@ def _opencode_harness(root: Path) -> tuple[_MainPhaseHarness, list[tuple[str, ob
         finally:
             release_workspace_awareness(root)
         raise OpenCodeResumableExitError(agent, returncode=0)
-        yield ""
 
     harness.config = UnifiedConfig(
         agents={

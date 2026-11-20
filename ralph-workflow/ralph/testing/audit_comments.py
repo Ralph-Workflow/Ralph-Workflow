@@ -4,10 +4,12 @@ import argparse
 import ast
 import contextlib
 import io
+import os
 import re
 import subprocess
 import sys
 import tokenize
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,6 +41,7 @@ __all__ = [
     "audit_repository",
     "main",
     "scan_python_source",
+    "scan_python_sources",
     "scan_source",
 ]
 
@@ -122,6 +125,10 @@ SKIP_DIRS: frozenset[str] = frozenset({"__pycache__", ".git", ".mypy_cache", ".r
 
 MAX_TEXT_LENGTH = 160
 
+_PYTHON_SCAN_PARALLEL_MIN_FILES = 256
+
+_PYTHON_SCAN_MAX_WORKERS = 8
+
 _DOCS_MARKER_RES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (marker, re.compile(r"(?<!\w)" + re.escape(marker) + r"(?!\w)", re.IGNORECASE))
     for marker in DOCS_MARKERS
@@ -197,15 +204,26 @@ def _python_tokens(text: str) -> Iterator[tokenize.TokenInfo]:
         yield from tokenize.generate_tokens(reader)
 
 
+def _statement_string_nodes(tree: ast.Module) -> list[ast.Expr]:
+    found: list[ast.Expr] = []
+    stack: list[ast.AST] = list(tree.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.Expr):
+            found.append(node)
+        for child in ast.iter_child_nodes(node):
+            if not isinstance(child, ast.expr):
+                stack.extend((child,))
+    return found
+
+
 def _python_docstrings(text: str, path: str) -> list[Finding]:
     try:
         tree = ast.parse(text)
     except SyntaxError:
         return []
     findings: list[Finding] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Expr):
-            continue
+    for node in _statement_string_nodes(tree):
         value = node.value
         if not isinstance(value, ast.Constant):
             continue
@@ -233,6 +251,37 @@ def scan_python_source(text: str, path: str) -> list[Finding]:
     findings.extend(_python_docstrings(text, path))
     findings.sort(key=_finding_line_order)
     return findings
+
+
+def scan_python_sources(sources: Sequence[tuple[str, str]], *, workers: int = 1) -> list[Finding]:
+    findings: list[Finding] = []
+    if workers <= 1:
+        for display, text in sources:
+            findings.extend(scan_python_source(text, display))
+        findings.sort(key=_finding_order)
+        return findings
+    batches = _python_source_batches(sources, workers)
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        for batch_findings in executor.map(_scan_python_batch, batches):
+            findings.extend(batch_findings)
+    findings.sort(key=_finding_order)
+    return findings
+
+
+def _scan_python_batch(batch: tuple[tuple[str, str], ...]) -> list[Finding]:
+    findings: list[Finding] = []
+    for display, text in batch:
+        findings.extend(scan_python_source(text, display))
+    return findings
+
+
+def _python_source_batches(
+    sources: Sequence[tuple[str, str]],
+    workers: int,
+) -> list[tuple[tuple[str, str], ...]]:
+    batch_count = max(1, workers * 4)
+    size = max(1, (len(sources) + batch_count - 1) // batch_count)
+    return [tuple(sources[index : index + size]) for index in range(0, len(sources), size)]
 
 
 def _starts_comment(text: str, index: int, *, yaml_style: bool, inline_hash: bool) -> bool:
@@ -677,6 +726,29 @@ def _scan_target(path: Path, display: str, mode: str) -> list[Finding]:
     return scan_source(text, display, mode)
 
 
+def _python_scan_workers(source_count: int) -> int:
+    if source_count < _PYTHON_SCAN_PARALLEL_MIN_FILES:
+        return 1
+    return max(1, min(_PYTHON_SCAN_MAX_WORKERS, os.cpu_count() or 1))
+
+
+def _scan_comment_targets(targets: list[_Target]) -> list[Finding]:
+    sources: list[tuple[str, str]] = []
+    remaining: list[_Target] = []
+    for target in targets:
+        if target.mode != MODE_PYTHON:
+            remaining.append(target)
+            continue
+        text = _read_text(target.path, target.rel)
+        if text is None:
+            continue
+        sources.append((target.rel, text))
+    findings = scan_python_sources(sources, workers=_python_scan_workers(len(sources)))
+    for target in remaining:
+        findings.extend(_scan_target(target.path, target.rel, target.mode))
+    return findings
+
+
 def _display_path(path: Path, base: Path) -> str:
     try:
         return path.relative_to(base).as_posix()
@@ -751,9 +823,7 @@ def audit_paths(
 def audit_repository(repo_root: Path | None = None) -> list[Finding]:
     root = repo_root if repo_root is not None else _repo_root()
     tracked = _tracked_files(root)
-    findings: list[Finding] = []
-    for target in _comment_targets(root, tracked):
-        findings.extend(_scan_target(target.path, target.rel, target.mode))
+    findings = _scan_comment_targets(_comment_targets(root, tracked))
     for target in _docs_targets(root, tracked):
         findings.extend(_scan_target(target.path, target.rel, target.mode))
     findings.sort(key=_finding_order)

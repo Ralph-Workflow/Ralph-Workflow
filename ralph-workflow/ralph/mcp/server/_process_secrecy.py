@@ -43,7 +43,7 @@ class _EnvironTable(Protocol):
 
 
 class _PointerType(Protocol):
-    def in_dll(self, library: object, name: str) -> _EnvironTable: ...
+    def in_dll(self, _library: object, name: str) -> _EnvironTable: ...
 
 
 class _PointerFactory(Protocol):
@@ -51,7 +51,7 @@ class _PointerFactory(Protocol):
 
 
 class _StringAt(Protocol):
-    def __call__(self, ptr: int, size: int = -1) -> bytes: ...
+    def __call__(self, _ptr: int, size: int = -1) -> bytes: ...
 
 
 class _Memset(Protocol):

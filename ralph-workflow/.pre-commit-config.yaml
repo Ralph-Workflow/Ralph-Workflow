@@ -3,20 +3,27 @@ repos:
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
+        files: ^ralph-workflow/(ralph|tests)/
       - id: end-of-file-fixer
+        files: ^ralph-workflow/(ralph|tests)/
       - id: check-yaml
       - id: check-added-large-files
       - id: check-toml
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.8
+    rev: v0.15.11
     hooks:
       - id: ruff
         args: [--fix]
+        files: ^ralph-workflow/(ralph|tests)/
       - id: ruff-format
+        files: ^ralph-workflow/(ralph|tests)/
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic>=2.7]
+        name: mypy
+        entry: uv run --directory ralph-workflow --locked python -m mypy ralph/
+        language: system
+        pass_filenames: false
+        files: ^ralph-workflow/ralph/

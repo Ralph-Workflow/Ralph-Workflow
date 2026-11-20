@@ -191,4 +191,3 @@ RALPH-FACT: visual_verdict_artifact: design_verdict
 RALPH-FACT: visual_capture_handle: ralph://media/{artifact_id}
 
 An appearance assertion (CSS/class/style/DOM) is NOT evidence of design quality. Design proof requires captures graded visually via the criterion 8 verdict.
-

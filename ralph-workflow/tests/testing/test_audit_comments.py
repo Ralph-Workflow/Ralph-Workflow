@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import ast
 import os
 import runpy
 from pathlib import Path
 
 import pytest
 
-from ralph.testing.audit_comments import FIX_HINT, audit_repository, main
+from ralph.testing.audit_comments import (
+    FIX_HINT,
+    audit_repository,
+    main,
+    scan_python_sources,
+)
 
 
 def _write(root: Path, name: str, content: str) -> Path:
@@ -791,3 +797,48 @@ def test_an_unreadable_explicit_file_fails_closed(
     assert "COMMENT-AUDIT INPUT ERROR" in output, reason
     assert "cannot read required target" in output, reason
     assert str(target) in output, reason
+
+
+def test_the_python_scan_detects_the_same_string_statements_as_a_full_tree_walk() -> None:
+    reason = "RALPH-TEST-REASON: the python scan must report every string statement a full tree walk reports"
+    source = (
+        '"module"\n'
+        "def f() -> None:\n"
+        '    "function"\n'
+        "class C:\n"
+        '    "class"\n'
+        "try:\n"
+        "    pass\n"
+        "except ValueError:\n"
+        '    "handler"\n'
+        "if True:\n"
+        '    "nested"\n'
+        "for _ in range(1):\n"
+        '    "loop"\n'
+        "with open('handle') as stream:\n"
+        '    "with"\n'
+        "match 1:\n"
+        "    case 1:\n"
+        '        "match"\n'
+    )
+    expected = sorted(
+        (node.lineno, node.value.value)
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+    findings = scan_python_sources([("sample.py", source)], workers=1)
+
+    assert [(finding.line, finding.text) for finding in findings] == expected, reason
+
+
+def test_the_parallel_python_scan_matches_the_sequential_scan() -> None:
+    reason = "RALPH-TEST-REASON: the parallel python scan must report the same findings as the sequential scan"
+    sources = [(f"mod_{index}.py", f"value_{index} = {index}\n") for index in range(40)]
+    sources.append(("mod_doc.py", '"doc"\n'))
+    sources.append(("mod_comment.py", "# comment\n"))
+
+    assert scan_python_sources(sources, workers=1) == scan_python_sources(sources, workers=3), (
+        reason
+    )
