@@ -34,6 +34,7 @@ from tests.scenarios.test_integration_scenario_matrix import (
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
     pytest.mark.timeout_seconds(20),
 ]
 

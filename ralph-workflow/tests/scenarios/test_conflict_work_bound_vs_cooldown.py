@@ -24,7 +24,11 @@ from tests._scenario_git import git
 from tests._scenario_harness import capture_operator_lines, paused_text_rebase, scenario_config
 from tests.pipeline._auto_integrate_agent_failure_fixtures import resolution_policy_bundle
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.required_auto_integrate_e2e,
+    pytest.mark.timeout_seconds(20),
+]
 
 _RESOLUTION_AGENT = "claude"
 _COOLDOWN_MARKER = "all resolver agents are on cooldown"
