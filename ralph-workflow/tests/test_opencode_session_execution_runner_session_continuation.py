@@ -78,6 +78,7 @@ class TestRunnerSessionContinuation:
             display_context=display_context,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -128,6 +129,7 @@ class TestRunnerSessionContinuation:
             display_context=display_context,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE

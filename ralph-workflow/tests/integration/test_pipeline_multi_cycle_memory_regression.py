@@ -138,6 +138,7 @@ def test_pipeline_multi_cycle_memory_regression_no_drift(
                     verbosity=Verbosity.QUIET,
                     invoke_agent=_invoke,
                     agent_invocation_error=AgentInvocationError,
+                    attempt_finalizer=None,
                 )
                 == PipelineEvent.AGENT_SUCCESS
             )

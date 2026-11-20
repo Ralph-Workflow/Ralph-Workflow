@@ -89,6 +89,7 @@ def test_effect_route_returns_the_carried_attempt_ended(
         display_context=display_context,
         invoke_agent=_carrying_invoke(carried_facts),
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert isinstance(result, AttemptEnded)

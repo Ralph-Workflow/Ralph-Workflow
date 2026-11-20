@@ -153,6 +153,7 @@ def test_runner_stale_session_internal_retry_succeeds(
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -247,6 +248,7 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
         state=_make_state(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -322,6 +324,7 @@ def test_runner_retry_prompt_condenses_visible_output_in_real_retry_flow(
         state=_make_state(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -386,6 +389,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
         state=_make_state(last_session_id="stale-original"),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -443,6 +447,7 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -510,6 +515,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -577,6 +583,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
         state=_make_state(last_session_id="deadbeef"),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -644,6 +651,7 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
         state=_make_state(last_session_id="lower-case-deadbeef"),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -824,6 +832,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_stderr(
         state=_make_state(last_session_id=stale_session_id),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -912,6 +921,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_str_exc
         state=_make_state(last_session_id=stale_session_id),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -993,6 +1003,7 @@ def test_stale_session_retry_prompt_includes_full_prior_output_marker_in_parsed_
         state=_make_state(last_session_id="parsed-output-stale-marker"),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1128,6 +1139,7 @@ def test_stale_session_retry_preserves_per_line_character_truncation(
         state=_make_state(last_session_id=stale_session_id),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1212,6 +1224,7 @@ def test_resume_retry_still_uses_12_line_tail_for_non_stale_session(
         state=_make_state(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1282,6 +1295,7 @@ def test_non_stale_fresh_retry_still_uses_12_line_tail(
         state=_make_state(last_session_id="prior-transient-session"),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1367,6 +1381,7 @@ def test_inactivity_timeout_with_session_resume_safe_false_still_uses_12_line_ta
         state=_make_state(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1446,6 +1461,7 @@ def test_runner_stale_session_retry_prompt_includes_stale_session_recovery_block
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS, (
@@ -1544,6 +1560,7 @@ def test_runner_explicit_session_retry_emits_stale_session_block_without_state(
         session_id=stale_session_id,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS, (
@@ -1643,6 +1660,7 @@ def test_stale_session_retry_prompt_empty_prior_output_includes_explanation_note
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -1779,6 +1797,7 @@ def test_stale_session_retry_prompt_nonempty_prior_output_keeps_existing_block(
         state=state,
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS

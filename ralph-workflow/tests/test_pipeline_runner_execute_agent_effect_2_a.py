@@ -169,6 +169,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -221,6 +222,7 @@ class TestExecuteAgentEffectA:
                 iter(()),
             )[1],
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -291,6 +293,7 @@ class TestExecuteAgentEffectA:
             policy_bundle=policy_bundle,
             invoke_agent=lambda *_args, **_kwargs: iter(()),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -353,6 +356,7 @@ class TestExecuteAgentEffectA:
                 iter(()),
             )[1],
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -385,6 +389,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -435,6 +440,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -479,6 +485,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -505,6 +512,7 @@ class TestExecuteAgentEffectA:
                 display_context=make_display_context(),
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=AgentError,
+                attempt_finalizer=None,
             )
 
     @pytest.mark.parametrize(
@@ -560,6 +568,7 @@ class TestExecuteAgentEffectA:
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
             policy_bundle=_load_default_policy_bundle(),
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -605,6 +614,7 @@ class TestExecuteAgentEffectA:
             agent_invocation_error=AgentError,
             state=PipelineState(phase="planning", previous_phase="planning_analysis"),
             policy_bundle=_load_default_policy_bundle(),
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -662,6 +672,7 @@ class TestExecuteAgentEffectA:
             parallel_worker=True,
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -852,6 +863,7 @@ class TestExecuteAgentEffectA:
             parallel_worker=True,
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -894,6 +906,7 @@ class TestExecuteAgentEffectA:
             agent_invocation_error=AgentError,
             state=PipelineState(phase="planning", previous_phase="planning"),
             policy_bundle=_load_default_policy_bundle(),
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1055,6 +1068,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=record_invoke,
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1082,6 +1096,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=raising_invoke,
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -1116,6 +1131,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=record_invoke,
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1159,6 +1175,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=stale_session_invoke,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         new_state = runner_session_module.apply_session_capture(state)
@@ -1199,6 +1216,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=context_exhausted_invoke,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         new_state = runner_session_module.apply_session_capture(state)
@@ -1230,6 +1248,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=raising_value_error,
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -1282,6 +1301,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=record_invoke,
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1331,6 +1351,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
         second = effect_executor_module.execute_agent_effect(
             effect,
@@ -1340,6 +1361,7 @@ class TestExecuteAgentEffectA:
             display_context=make_display_context(),
             invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert first == PipelineEvent.AGENT_SUCCESS

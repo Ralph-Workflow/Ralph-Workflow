@@ -216,6 +216,7 @@ def test_final_agent_invocation_fence_rejects_forced_ordinary_phase_bypass(tmp_p
             WorkspaceScope(tmp_path),
             display_context=MagicMock(),
             state=state,
+            attempt_finalizer=None,
         )
 
 
@@ -244,6 +245,7 @@ def test_final_fence_checks_live_verdict_without_pipeline_state(
             MagicMock(),
             WorkspaceScope(tmp_path),
             display_context=MagicMock(),
+            attempt_finalizer=None,
         )
 
     assert observed_states == [RebaseState()]
@@ -290,6 +292,7 @@ def test_final_fence_ignores_auto_integration_toggle(
             MagicMock(),
             WorkspaceScope(tmp_path),
             display_context=MagicMock(),
+            attempt_finalizer=None,
         )
 
 

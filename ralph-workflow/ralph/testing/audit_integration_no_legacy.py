@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Final, TypeGuard
 from ralph.checked_accessors import module_attr
 from ralph.testing import _audit_integration_no_legacy_sentinels as _no_legacy_sentinels
 from ralph.testing._audit_integration_no_legacy_sentinels import (
-    _RETIRED_HYPHEN_STEM,
     _RETIRED_REVIEW_DETAIL,
     _RETIRED_REVIEW_PATTERN,
     _RETIRED_REVIEW_RULE,
@@ -695,15 +694,12 @@ def _retired_review_violations(
                 detail=f"filename '{filename}' contains legacy {_RETIRED_STEM} spelling",
             )
         )
+    lowered = source.lower()
+    if "commit" not in lowered or "clean" not in lowered:
+        return violations
+
     if tree is not None:
         violations.extend(_folded_retired_review_violations(rel, tree))
-    lowered = source.lower()
-    if (
-        _RETIRED_STEM not in lowered
-        and _RETIRED_HYPHEN_STEM not in lowered
-        and ("commit" + "cleanup") not in lowered
-    ):
-        return violations
 
     reported_lines = {violation.line for violation in violations}
     for lineno, line in enumerate(source.splitlines(), start=1):
@@ -878,13 +874,15 @@ def audit_tree(repo_root: Path, *, ignore_transitional: bool = False) -> list[Vi
             source = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        tree = None
-        if path.suffix == ".py":
-            try:
-                tree = ast.parse(source, filename=rel)
-            except SyntaxError:
-                tree = None
-        repo_wide_violations.extend(_retired_review_violations(rel, source, tree))
+        lowered = source.lower()
+        if "commit" in lowered and "clean" in lowered:
+            tree = None
+            if path.suffix == ".py":
+                try:
+                    tree = ast.parse(source, filename=rel)
+                except SyntaxError:
+                    tree = None
+            repo_wide_violations.extend(_retired_review_violations(rel, source, tree))
 
     violations.extend(repo_wide_violations)
     return violations

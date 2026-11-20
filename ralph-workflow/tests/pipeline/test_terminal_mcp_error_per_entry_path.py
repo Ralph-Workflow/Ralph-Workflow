@@ -167,6 +167,7 @@ def test_mcp_server_error_converts_to_agent_failure(
             invoke_agent=_no_agent_output,
             agent_invocation_error=AgentInvocationError,
             bridge=fake_bridge,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -222,6 +223,7 @@ def test_mcp_server_error_logs_last_stage_at_warning(
             invoke_agent=_no_agent_output,
             agent_invocation_error=AgentInvocationError,
             bridge=fake_bridge,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE

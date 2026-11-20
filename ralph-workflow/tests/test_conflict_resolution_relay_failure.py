@@ -214,6 +214,7 @@ def test_executor_delivers_resolution_health_to_the_invocation(tmp_path: Path) -
             policy_bundle=_policy_bundle(),
             invoke_agent=invoke,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
     assert observed == [None, fault[0]]
 

@@ -485,6 +485,7 @@ class TestPipelineSharedExecutionCore:
             display_context=display_context,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
+            attempt_finalizer=None,
         )
 
         assert event == PipelineEvent.AGENT_SUCCESS
@@ -546,6 +547,7 @@ class TestPipelineSharedExecutionCore:
             policy_bundle=bundle,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
+            attempt_finalizer=None,
         )
 
         assert event == PipelineEvent.AGENT_SUCCESS

@@ -5,6 +5,10 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 _PROJECT_ROOT = _PACKAGE_ROOT.parent
@@ -482,6 +486,37 @@ def source_violations(source: str, rel_path: str) -> list[Violation]:
     return _module_checks(parsed, rel_path, source)
 
 
+def _package_source_paths(package_root: Path, prefixes: tuple[str, ...]) -> tuple[str, ...]:
+    rel_paths = tuple(
+        path.relative_to(package_root).as_posix() for path in sorted(package_root.rglob("*.py"))
+    )
+    return tuple(
+        rel_path
+        for rel_path in rel_paths
+        if not rel_path.startswith("testing/") and (not prefixes or rel_path.startswith(prefixes))
+    )
+
+
+def recovery_source_paths(package_root: Path = _PACKAGE_ROOT) -> tuple[str, ...]:
+    recovery_root = package_root / "recovery"
+    if not recovery_root.is_dir():
+        return ()
+    return tuple(
+        path.relative_to(package_root).as_posix() for path in sorted(recovery_root.rglob("*.py"))
+    )
+
+
+def source_violations_for_paths(
+    paths: Sequence[str], package_root: Path = _PACKAGE_ROOT
+) -> list[Violation]:
+    violations: list[Violation] = []
+    for rel_path in paths:
+        violations.extend(
+            source_violations((package_root / rel_path).read_text(encoding="utf-8"), rel_path)
+        )
+    return violations
+
+
 def _heading(line: str) -> tuple[int, str] | None:
     level = len(line) - len(line.lstrip("#"))
     if not 1 <= level <= _MAX_HEADING_LEVEL or line[level : level + 1] not in {" ", "\t"}:
@@ -685,12 +720,19 @@ def module_test_name_violations(text: str, rel_path: str) -> list[Violation]:
     return violations
 
 
-def tree_test_name_violations(project_root: Path = _PROJECT_ROOT) -> list[Violation]:
+def test_name_scan_paths(project_root: Path = _PROJECT_ROOT) -> tuple[Path, ...]:
     tests_dir = project_root / TEST_TREE
     if not tests_dir.is_dir():
-        return []
+        return ()
+    return tuple(sorted(tests_dir.rglob("test_*.py")))
+
+
+def tree_test_name_violations(
+    project_root: Path = _PROJECT_ROOT, paths: Sequence[Path] | None = None
+) -> list[Violation]:
+    scan_paths = test_name_scan_paths(project_root) if paths is None else tuple(paths)
     violations: list[Violation] = []
-    for path in sorted(tests_dir.rglob("test_*.py")):
+    for path in scan_paths:
         rel_path = path.relative_to(project_root).as_posix()
         violations.extend(module_test_name_violations(path.read_text(encoding="utf-8"), rel_path))
     return violations
@@ -735,6 +777,19 @@ def guard_test_violations(
     return violations
 
 
+def _guard_test_module_violations(project_root: Path) -> list[Violation]:
+    violations: list[Violation] = []
+    for rel_path, names in GUARD_TESTS.items():
+        guard_path = project_root / rel_path
+        source = guard_path.read_text(encoding="utf-8") if guard_path.is_file() else None
+        violations.extend(guard_test_violations(source, rel_path, names))
+    return violations
+
+
+def guard_test_module_violations(package_root: Path = _PACKAGE_ROOT) -> list[Violation]:
+    return _guard_test_module_violations(package_root.parent)
+
+
 def collect_violations(
     package_root: Path = _PACKAGE_ROOT,
     project_root: Path = _PROJECT_ROOT,
@@ -742,15 +797,11 @@ def collect_violations(
     only: tuple[str, ...] = (),
 ) -> list[Violation]:
     violations: list[Violation] = []
-    for path in sorted(package_root.rglob("*.py")):
-        rel_path = path.relative_to(package_root).as_posix()
-        if rel_path.startswith("testing/") or (only and not rel_path.startswith(only)):
-            continue
-        violations.extend(source_violations(path.read_text(encoding="utf-8"), rel_path))
-    for rel_path, names in GUARD_TESTS.items():
-        guard_path = project_root / rel_path
-        source = guard_path.read_text(encoding="utf-8") if guard_path.is_file() else None
-        violations.extend(guard_test_violations(source, rel_path, names))
+    for rel_path in _package_source_paths(package_root, only):
+        violations.extend(
+            source_violations((package_root / rel_path).read_text(encoding="utf-8"), rel_path)
+        )
+    violations.extend(_guard_test_module_violations(project_root))
     if not only:
         violations.extend(documentation_violations(project_root))
         violations.extend(tree_test_name_violations(project_root))

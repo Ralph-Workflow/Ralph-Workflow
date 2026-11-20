@@ -305,6 +305,7 @@ def _invoke_worker_effect(
     config = kwargs.pop("config")
     pipeline_deps = kwargs.pop("pipeline_deps")
     workspace_scope = kwargs.pop("workspace_scope")
+    kwargs.setdefault("attempt_finalizer", None)
     result: object = execute_agent_effect(
         target,
         config,

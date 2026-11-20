@@ -120,6 +120,7 @@ def test_mcp_server_error_conversion_returns_agent_failure(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=AgentInvocationError,
         bridge=fake_bridge,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -171,6 +172,7 @@ def test_mcp_server_error_conversion_captures_rich_fields(
         agent_invocation_error=AgentInvocationError,
         agent_invocation_error_sink=capture_invocation_error_sink,
         bridge=fake_bridge,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -229,6 +231,7 @@ def test_next_attempt_gets_fresh_bridge_after_mcp_server_error(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=AgentInvocationError,
         bridge=dead_bridge,
+        attempt_finalizer=None,
     )
     assert result1 == PipelineEvent.AGENT_FAILURE
 
@@ -249,6 +252,7 @@ def test_next_attempt_gets_fresh_bridge_after_mcp_server_error(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=AgentInvocationError,
         bridge=dead_bridge,
+        attempt_finalizer=None,
     )
     assert result2 == PipelineEvent.AGENT_SUCCESS
     assert len(bridge_factory.calls) == calls_before + 1

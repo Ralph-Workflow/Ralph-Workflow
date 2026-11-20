@@ -65,6 +65,7 @@ def _execute(tmp_path: Path, prompt_file: Path) -> tuple[int, ArtifactContractMi
             invoke_agent=invoke,
             agent_invocation_error=AgentInvocationError,
             required_artifact=required,
+            attempt_finalizer=None,
         )
     except ArtifactContractMismatchError as error:
         return calls, error

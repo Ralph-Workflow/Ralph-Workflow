@@ -153,6 +153,7 @@ def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch, tmp_path: Path
             verbosity=Verbosity.QUIET,
             invoke_agent=_fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
         assert event == PipelineEvent.AGENT_SUCCESS
         gc.collect()

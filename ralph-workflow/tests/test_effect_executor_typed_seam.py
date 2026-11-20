@@ -83,6 +83,7 @@ def test_display_and_injected_runner_dependencies_are_typed() -> None:
             workspace_scope,
             display_context=None,
             injected_option="preserved",
+            attempt_finalizer=None,
         )
     finally:
         reset_agent_effect_dependencies(token)

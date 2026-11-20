@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -11,6 +11,7 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     InactivityTimeoutOpts,
     TerminationRecorder,
+    attempt_facts_for_failure,
 )
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_quota_like_words_without_a_typed_signal_never_skip_to_a_cooldown_or_terminate": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_quota_like_words_without_a_typed_signal_never_skip_bench_or_terminate with an unchanged body"
+    ),
+    "test_explicit_finalizer_charges_the_ledger_once_for_the_failed_attempt": (
+        "the removed production fallback finalizer is replaced by an explicit finalizer that charges the shared controller, and the charge is now asserted through the public ledger snapshot instead of the eligibility status; renamed from test_fallback_finalizer_charges_the_ledger_once_for_the_failed_attempt"
     ),
 }
 
@@ -93,6 +97,36 @@ def _recording_finalizer(
     def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
         events.append(f"finalize:{finalization.attempt_ordinal}")
         return outcome
+
+    return finalize
+
+
+def _charging_finalizer(
+    controller: RecoveryController,
+    *,
+    phase: str = PHASE,
+    agent: str = AGENT,
+) -> Callable[[AttemptFinalization], AttemptOutcome]:
+    def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
+        facts = (
+            attempt_facts_for_failure(finalization.exc)
+            if finalization.exc is not None
+            else AttemptFacts(artifact_valid=not finalization.attempt_failed)
+        )
+        if finalization.workspace_changed is not None:
+            facts = replace(facts, workspace_changed=finalization.workspace_changed)
+        return controller.finalize_attempt(
+            phase,
+            agent,
+            facts=facts,
+            attempt_failed=finalization.attempt_failed,
+            typed_signal=finalization.typed_signal,
+            exc=finalization.exc,
+            retryable_reason=finalization.retryable_reason,
+            attempt_key=(
+                f"main_phase_loop:{phase}:{agent}:{controller.next_attempt_ordinal(phase, agent)}"
+            ),
+        )
 
     return finalize
 
@@ -197,7 +231,7 @@ def test_in_session_retry_finalizes_the_failed_attempt_once_before_the_next_atte
     )
 
 
-def test_fallback_finalizer_charges_the_ledger_once_for_the_failed_attempt(
+def test_explicit_finalizer_charges_the_ledger_once_for_the_failed_attempt(
     tmp_path: Path,
 ) -> None:
     events: list[str] = []
@@ -206,6 +240,7 @@ def test_fallback_finalizer_charges_the_ledger_once_for_the_failed_attempt(
     result = _run_effect(
         tmp_path,
         _failing_then_succeeding_invoke(events, _inactivity_failure()),
+        attempt_finalizer=_charging_finalizer(controller),
         controller=controller,
     )
 
@@ -213,11 +248,17 @@ def test_fallback_finalizer_charges_the_ledger_once_for_the_failed_attempt(
     assert events == ["invoke:1", "invoke:2"], (
         f"the retry must follow the failed attempt; {events=}"
     )
-    status = controller.ledger.status(PHASE, AGENT)
-    assert status.is_eligible, (
-        "the failed attempt must be charged to the ledger exactly once and the "
-        "successful retry must clear it"
+    entries = cast(
+        "dict[str, dict[str, object]]",
+        controller.ledger.snapshot()["entries"],
     )
+    assert entries.get(f"{PHASE}:{AGENT}") == {
+        "phase": PHASE,
+        "agent": AGENT,
+        "consecutive_unproductive": 1,
+        "total_unproductive": 1,
+        "cooldown_count": 0,
+    }, f"the failed attempt must be charged to the ledger exactly once; {entries=}"
 
 
 def test_runtime_ended_outcome_stops_the_same_agent_retry(tmp_path: Path) -> None:
@@ -270,6 +311,7 @@ def test_quota_like_words_without_a_typed_signal_never_skip_to_a_cooldown_or_ter
     _run_effect(
         tmp_path,
         _failing_then_succeeding_invoke(events, failure),
+        attempt_finalizer=_charging_finalizer(controller),
         controller=controller,
     )
 
@@ -290,7 +332,11 @@ def test_failure_log_line_shows_the_issuer_and_both_return_codes(tmp_path: Path)
     recorder.record_exit_status("agent")
     failure.facts = recorder.facts()
     try:
-        _run_effect(tmp_path, _failing_then_succeeding_invoke([], failure))
+        _run_effect(
+            tmp_path,
+            _failing_then_succeeding_invoke([], failure),
+            attempt_finalizer=None,
+        )
     finally:
         logger.remove(sink_id)
 

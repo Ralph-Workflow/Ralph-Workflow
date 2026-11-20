@@ -518,6 +518,7 @@ def test_commit_review_approve_is_graded_pass_and_advances_to_a_real_commit(
             display_context=display_context,
             invoke_agent=transport,
             required_artifact=mismatched,
+            attempt_finalizer=None,
         ),
         probe_runner=lambda *_args: None,
         workspace_probe=None,

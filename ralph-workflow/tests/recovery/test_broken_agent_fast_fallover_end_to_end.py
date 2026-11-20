@@ -120,6 +120,7 @@ def test_broken_agent_regression_falls_over_without_direct_mcp_retries(
         invoke_agent=broken_agent_invoke,
         agent_invocation_error=AgentInvocationError,
         max_recovery_attempts=10,
+        attempt_finalizer=None,
     )
 
     captured_intents: list[AgentRetryIntent] = []

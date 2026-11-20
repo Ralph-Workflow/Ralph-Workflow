@@ -514,6 +514,7 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
         display_context=display_context,
         state=reloaded_state,
         invoke_agent=mock_invoke,
+        attempt_finalizer=None,
     )
     assert event == PipelineEvent.AGENT_SUCCESS
     assert mock_invoke.call_count == 1

@@ -190,6 +190,7 @@ def test_same_name_override_mismatch_is_loud_before_invocation_and_not_charged(
             invoke_agent=invoke,
             required_artifact=required,
             recovery_controller=controller,
+            attempt_finalizer=None,
         )
 
     assert caught.value.phase == phase

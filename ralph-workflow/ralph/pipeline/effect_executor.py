@@ -99,7 +99,6 @@ from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.pipeline.watchdog_fire_record import record_watchdog_fire, watchdog_fire_detail
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.validation.artifact_contract import validate_artifact_contract
-from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attempt_failure_log_line import render_attempt_failure_log_line
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
@@ -141,7 +140,6 @@ if TYPE_CHECKING:
 
 
 _VERBOSE_LOG_LEVEL = 2
-_FALLBACK_FINALIZER_ENTRY_POINT = "main_phase_loop"
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
 _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _RECOVERY_CONTEXT_LINES = 12
@@ -394,7 +392,7 @@ def execute_agent_effect(
     extra_env: dict[str, str] | None = None,
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
-    attempt_finalizer: AttemptFinalizer | None = None,
+    attempt_finalizer: AttemptFinalizer | None,
     **opts: object,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
     injected = current_agent_effect_dependencies()
@@ -461,11 +459,7 @@ def execute_agent_effect(
     active_rec = _extract_recovery_controller(opts) or injected.recovery_controller
     if active_rec is None:
         active_rec = pipeline_deps.recovery_controller
-    resolved_attempt_finalizer = attempt_finalizer or _fallback_attempt_finalizer(
-        active_rec,
-        phase=str(effect.phase),
-        agent=effect.agent_name,
-    )
+    resolved_attempt_finalizer = attempt_finalizer
     active_ledger, active_clock = _resolve_active_ledger_and_clock(active_rec, pipeline_deps, state)
     if not _agent_launch_is_available(effect, active_rec, active_ledger):
         return _agent_unavailable_failure(effect.agent_name)
@@ -932,40 +926,6 @@ def _handle_recovery_attempt_failure(
     else:
         _set_last_captured_retry_intent(AgentRetryIntent())
     raise exc
-
-
-def _fallback_attempt_finalizer(
-    controller: RecoveryController | None,
-    *,
-    phase: str,
-    agent: str,
-) -> AttemptFinalizer | None:
-    if controller is None:
-        return None
-
-    def finalize(finalization: AttemptFinalization) -> AttemptOutcome:
-        facts = (
-            attempt_facts_for_failure(finalization.exc)
-            if finalization.exc is not None
-            else AttemptFacts(artifact_valid=not finalization.attempt_failed)
-        )
-        if finalization.workspace_changed is not None:
-            facts = replace(facts, workspace_changed=finalization.workspace_changed)
-        return controller.finalize_attempt(
-            phase,
-            agent,
-            facts=facts,
-            attempt_failed=finalization.attempt_failed,
-            typed_signal=finalization.typed_signal,
-            exc=finalization.exc,
-            retryable_reason=finalization.retryable_reason,
-            attempt_key=(
-                f"{_FALLBACK_FINALIZER_ENTRY_POINT}:{phase}:{agent}:"
-                f"{controller.next_attempt_ordinal(phase, agent)}"
-            ),
-        )
-
-    return finalize
 
 
 def _cooldown_after_finalization(

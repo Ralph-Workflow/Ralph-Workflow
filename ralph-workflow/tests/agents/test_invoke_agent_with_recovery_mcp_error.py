@@ -256,6 +256,7 @@ def test_invoke_agent_with_recovery_health_check_mcp_server_error_returns_agent_
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
     from ralph.pipeline.events import PipelineEvent
 

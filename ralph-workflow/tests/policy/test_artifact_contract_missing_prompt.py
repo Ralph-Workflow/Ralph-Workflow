@@ -133,6 +133,7 @@ def test_artifact_contract_regression_missing_rendered_prompt_does_not_preempt_t
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
         required_artifact=_required_artifact(),
+        attempt_finalizer=None,
     )
 
     assert calls == 1
@@ -181,6 +182,7 @@ def test_artifact_contract_absent_optional_non_artifact_prompt_is_compatible(
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
         required_artifact=None,
+        attempt_finalizer=None,
     )
 
     assert calls == 1
@@ -231,6 +233,7 @@ def test_artifact_contract_none_prompt_fails_closed_before_invocation_and_accoun
             invoke_agent=invoke,
             agent_invocation_error=AgentInvocationError,
             required_artifact=_required_artifact(),
+            attempt_finalizer=None,
         )
 
     assert calls == 0, "agent must not be invoked when no prompt is provided for required artifact"

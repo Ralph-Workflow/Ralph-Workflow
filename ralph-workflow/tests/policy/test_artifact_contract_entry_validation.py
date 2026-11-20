@@ -288,6 +288,7 @@ def test_effect_executor_raises_contract_mismatch_before_agent_invocation(
             invoke_agent=invoker_spy,
             agent_invocation_error=AgentInvocationError,
             required_artifact=req,
+            attempt_finalizer=None,
         )
 
     assert not invoked, "Agent must not be invoked when pre-entry contract validation fails"
@@ -340,6 +341,7 @@ def test_effect_executor_passes_when_artifact_contract_matches(
         invoke_agent=invoker_spy,
         agent_invocation_error=AgentInvocationError,
         required_artifact=req,
+        attempt_finalizer=None,
     )
 
     assert invoked, "Agent must be invoked when pre-entry contract validation passes"

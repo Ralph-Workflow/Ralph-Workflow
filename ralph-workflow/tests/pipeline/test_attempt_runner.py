@@ -478,6 +478,10 @@ def test_attempt_result_preserves_ordered_attempt_outcomes() -> None:
     assert result.attempt_outcomes == ((1, first), (2, second))
 
 
+def _sentinel_finalizer(_finalization: AttemptFinalization) -> AttemptOutcome:
+    return AttemptOutcome(AttemptOutcomeKind.COMPLETED, None, None, "sentinel")
+
+
 @pytest.mark.parametrize("binding", ["positional", "keyword"])
 def test_attempt_runner_regression_effect_adapter_forwards_arguments(
     tmp_path: Path,
@@ -509,7 +513,7 @@ def test_attempt_runner_regression_effect_adapter_forwards_arguments(
     display_context, pipeline_deps, workspace_scope = _effect_adapter_context(tmp_path)
     effect = _effect()
     config = _config()
-    finalizer = object()
+    finalizer: AttemptFinalizer = _sentinel_finalizer
     state = object()
     invoke = effect_attempt_invoke(runner)
 

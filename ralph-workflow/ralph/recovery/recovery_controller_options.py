@@ -87,7 +87,7 @@ _COOLDOWN_ATTEMPTS_KEY = "backoff_attempts"
 
 
 @dataclass(frozen=True)
-class RestoredCooldowns:
+class _RestoredCooldowns:
     entries: dict[str, UnavailabilityEntry]
     backoff_attempts: dict[str, int]
 
@@ -138,9 +138,9 @@ def restored_cooldowns(
     snapshot: Mapping[str, object] | None,
     *,
     clock: Clock,
-) -> RestoredCooldowns:
+) -> _RestoredCooldowns:
     if not snapshot:
-        return RestoredCooldowns(entries={}, backoff_attempts={})
+        return _RestoredCooldowns(entries={}, backoff_attempts={})
     attempts = {
         agent: as_int(value, field=f"{_COOLDOWN_ATTEMPTS_KEY}[{agent}]")
         for agent, value in as_mapping(
@@ -160,7 +160,7 @@ def restored_cooldowns(
         agent: min(expiry_ms - now_epoch_ms, _UNIVERSAL_COOLDOWN_CAP_MS)
         for agent, expiry_ms in expiries.items()
     }
-    return RestoredCooldowns(
+    return _RestoredCooldowns(
         entries={
             agent: _restored_entry(now_ms + left_ms, reasons.get(agent), attempts.get(agent, 0))
             for agent, left_ms in remaining.items()

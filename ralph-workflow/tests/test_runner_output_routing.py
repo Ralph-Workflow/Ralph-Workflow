@@ -190,6 +190,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
             state=state,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
+            attempt_finalizer=None,
         )
 
     _patch_common_runner_dependencies(monkeypatch)
@@ -293,6 +294,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             state=state,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
+            attempt_finalizer=None,
         )
 
     _patch_common_runner_dependencies(monkeypatch)

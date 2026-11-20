@@ -143,6 +143,7 @@ def test_config_idle_timeout_flows_to_invoke_options(
         display_context=make_display_context(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert captured.get("idle_timeout_seconds") == custom_timeout
@@ -224,6 +225,7 @@ def _run_with_config(
         display_context=make_display_context(),
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
 
@@ -425,6 +427,7 @@ def test_runner_does_not_launch_development_at_warning(
         policy_bundle=policy_bundle,
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert "options" not in captured
@@ -460,6 +463,7 @@ def test_development_past_warning_does_not_launch_for_remaining_hard_stop_budget
         policy_bundle=policy_bundle,
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert "options" not in captured
@@ -517,6 +521,7 @@ def test_agent_process_is_not_restarted_after_development_warning(
         policy_bundle=policy_bundle,
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -574,6 +579,7 @@ def test_agent_process_is_not_restarted_after_development_budget_expires(
         policy_bundle=policy_bundle,
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -648,6 +654,7 @@ def test_mcp_server_error_propagates_from_check_bridge_health(
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
     from ralph.pipeline.events import PipelineEvent
 
@@ -699,6 +706,7 @@ def test_bridge_shared_across_retry_attempts(
         display_context=make_display_context(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert len(recording_factory.calls) == 1, "bridge factory must be called only once"
@@ -752,6 +760,7 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
         display_context=make_display_context(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert len(health_check_calls) == 2, (
@@ -797,6 +806,7 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         WorkspaceScope(tmp_path),
         display_context=None,
         display=_FakeDisplay(),
+        attempt_finalizer=None,
     )
 
     assert recorded == [1], f"expected record_mcp_restart([1]); got {recorded}"
@@ -845,6 +855,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
 
     assert captured_intervals, "McpSupervisor factory was not called"
@@ -888,6 +899,7 @@ def test_mcp_server_error_propagates(
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
     from ralph.pipeline.events import PipelineEvent
 
@@ -947,6 +959,7 @@ def test_mcp_server_error_propagates_without_logger_exception(
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
+        attempt_finalizer=None,
     )
     from ralph.pipeline.events import PipelineEvent
 

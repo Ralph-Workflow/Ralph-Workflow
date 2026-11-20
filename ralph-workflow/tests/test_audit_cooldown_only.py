@@ -16,15 +16,17 @@ from ralph.testing.audit_cooldown_only import (
     WAIT_KIND_MODULE,
     Violation,
     agents_md_violations,
-    collect_violations,
     doc_heading_violations,
     doc_phrase_violations,
     documentation_violations,
+    guard_test_module_violations,
     guard_test_violations,
     main,
     module_test_name_violations,
+    recovery_source_paths,
     sole_doc_violations,
     source_violations,
+    source_violations_for_paths,
     tree_test_name_violations,
 )
 
@@ -35,7 +37,28 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_old_agent_availability_phrasing_in_a_doc_fails_the_audit": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_availability_bench_or_spent_phrasing_in_a_doc_fails_the_audit with an unchanged body"
     ),
+    "test_the_repository_passes_the_cooldown_only_audit": (
+        'replaces the whole-tree assertion collect_violations(only=("recovery/", SELECTION_MODULE)) == [] with a chunked sweep over recovery_source_paths(); operator rule: every agent exclusion is an expiring cooldown, so no recovery module may name a third availability state'
+    ),
+    "test_the_repository_test_names_pass_the_cooldown_only_audit": (
+        "replaces the whole-tree assertion tree_test_name_violations() == [] with a chunked sweep over test_name_scan_paths(); operator rule: every agent exclusion is an expiring cooldown, so no test module or test name may use bench/spent/demot/exhaust vocabulary for agent availability"
+    ),
 }
+
+_RECOVERY_CHUNK_SIZE = 8
+_TEST_NAME_CHUNK_SIZE = 200
+
+_RECOVERY_SOURCE_PATHS = recovery_source_paths()
+_RECOVERY_CHUNKS = tuple(
+    _RECOVERY_SOURCE_PATHS[start : start + _RECOVERY_CHUNK_SIZE]
+    for start in range(0, len(_RECOVERY_SOURCE_PATHS), _RECOVERY_CHUNK_SIZE)
+) or ((),)
+
+_TEST_NAME_SCAN_PATHS = audit_module.test_name_scan_paths()
+_TEST_NAME_CHUNKS = tuple(
+    _TEST_NAME_SCAN_PATHS[start : start + _TEST_NAME_CHUNK_SIZE]
+    for start in range(0, len(_TEST_NAME_SCAN_PATHS), _TEST_NAME_CHUNK_SIZE)
+) or ((),)
 
 
 _LEDGER_HEADER = """
@@ -63,8 +86,15 @@ def _details(violations: list[Violation]) -> str:
     return "\n".join(str(violation) for violation in violations)
 
 
-def test_the_repository_passes_the_cooldown_only_audit() -> None:
-    assert collect_violations(only=("recovery/", SELECTION_MODULE)) == []
+@pytest.mark.parametrize("chunk", _RECOVERY_CHUNKS)
+def test_the_repository_passes_the_cooldown_only_audit(chunk: tuple[str, ...]) -> None:
+    assert source_violations_for_paths(chunk) == []
+
+
+def test_the_recovery_audit_chunks_cover_every_recovery_module() -> None:
+    union = tuple(rel_path for chunk in _RECOVERY_CHUNKS for rel_path in chunk)
+
+    assert sorted(union) == sorted(recovery_source_paths())
 
 
 def test_a_status_class_without_an_expiry_fails_the_audit() -> None:
@@ -449,8 +479,19 @@ def test_a_documentation_tree_without_the_sole_doc_fails_the_audit(tmp_path: Pat
     assert "AGENTS.md must name the sole cooldown-system document" in details
 
 
-def test_the_repository_test_names_pass_the_cooldown_only_audit() -> None:
-    assert tree_test_name_violations() == []
+@pytest.mark.parametrize("chunk", _TEST_NAME_CHUNKS)
+def test_the_repository_test_names_pass_the_cooldown_only_audit(chunk: tuple[Path, ...]) -> None:
+    assert tree_test_name_violations(paths=chunk) == []
+
+
+def test_the_test_name_chunks_cover_every_test_module() -> None:
+    union = tuple(path for chunk in _TEST_NAME_CHUNKS for path in chunk)
+
+    assert sorted(union) == sorted(audit_module.test_name_scan_paths())
+
+
+def test_the_guard_test_modules_pass_the_cooldown_only_audit() -> None:
+    assert guard_test_module_violations() == []
 
 
 @pytest.mark.parametrize(

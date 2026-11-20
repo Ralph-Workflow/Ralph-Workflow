@@ -98,6 +98,7 @@ def test_execute_agent_effect_unexpected_error_logs_clean_message_without_curlie
         display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=AgentInvocationError,
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -147,6 +148,7 @@ def test_execute_agent_effect_unexpected_error_renders_clean_loguru_output(
             display_context=make_display_context(),
             invoke_agent=lambda *_a, **_kw: [],
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
     finally:
         effect_executor_module.logger.remove(sink_id)

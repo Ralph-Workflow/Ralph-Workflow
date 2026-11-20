@@ -145,6 +145,7 @@ def test_completion_enforcing_agent_regression_missing_receipt_writes_canonical_
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
         policy_bundle=_default_policy_bundle(),
+        attempt_finalizer=None,
     )
 
     hint = tmp_path / retry_hint_path("development")
@@ -184,6 +185,7 @@ def test_completion_enforcing_agent_regression_missing_sentinel_does_not_resubmi
         invoke_agent=invoke,
         agent_invocation_error=AgentInvocationError,
         policy_bundle=_default_policy_bundle(),
+        attempt_finalizer=None,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE

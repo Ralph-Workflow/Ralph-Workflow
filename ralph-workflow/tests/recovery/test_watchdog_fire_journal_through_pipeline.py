@@ -96,6 +96,7 @@ def _run_always_killed(
             display_context=ctx,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
     return prompts
 

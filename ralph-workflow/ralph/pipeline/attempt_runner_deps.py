@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents.invoke import AttemptEnded, InvokeOptions
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from ralph.agents.clock import Clock
+    from ralph.pipeline.attempt_finalizer import AttemptFinalizer
     from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.connectivity_state import ConnectivityState
     from ralph.workspace.probe import WorkspaceChangeProbe
@@ -32,10 +33,23 @@ class _EffectRunner(Protocol):
         workspace_scope: WorkspaceScope,
         *,
         display_context: DisplayContext | None,
+        attempt_finalizer: AttemptFinalizer | None,
     ) -> PipelineEvent | AgentFailureEvent | AttemptEnded: ...
 
 
 EffectRunner = _EffectRunner
+
+
+def _is_attempt_finalizer(value: object) -> TypeGuard[AttemptFinalizer]:
+    return callable(value)
+
+
+def _attempt_finalizer_or_none(value: object) -> AttemptFinalizer | None:
+    if value is None:
+        return None
+    if not _is_attempt_finalizer(value):
+        raise TypeError("attempt_finalizer must be callable or None")
+    return value
 
 
 def _as_effect_runner(value: object) -> _EffectRunner:
@@ -65,6 +79,7 @@ def _forward_effect(
     workspace_scope: WorkspaceScope,
     display_context: DisplayContext | None,
     *positional: object,
+    attempt_finalizer: AttemptFinalizer | None,
     **kwargs: object,
 ) -> object:
     return runner(
@@ -74,6 +89,7 @@ def _forward_effect(
         workspace_scope,
         *positional,
         display_context=display_context,
+        attempt_finalizer=attempt_finalizer,
         **kwargs,
     )
 
@@ -110,6 +126,7 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             raise TypeError("effect attempts require WorkspaceScope")
         if display_context is not None and not isinstance(display_context, DisplayContext):
             raise TypeError("effect attempts require DisplayContext or None")
+        attempt_finalizer = _attempt_finalizer_or_none(kwargs.pop("attempt_finalizer", None))
         return _forward_effect(
             runner,
             target,
@@ -118,6 +135,7 @@ def effect_attempt_invoke(runner: _EffectRunner) -> AttemptInvoke:
             workspace_scope,
             display_context,
             *positional,
+            attempt_finalizer=attempt_finalizer,
             **kwargs,
         )
 

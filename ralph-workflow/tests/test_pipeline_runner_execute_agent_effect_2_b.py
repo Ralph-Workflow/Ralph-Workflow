@@ -180,6 +180,7 @@ class TestExecuteAgentEffectB:
                 ]
             ),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -237,6 +238,7 @@ class TestExecuteAgentEffectB:
                 ]
             ),
             agent_invocation_error=AgentError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -313,6 +315,7 @@ class TestExecuteAgentEffectB:
             display_context=ctx,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -382,6 +385,7 @@ class TestExecuteAgentEffectB:
             display_context=ctx,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
+            attempt_finalizer=None,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
