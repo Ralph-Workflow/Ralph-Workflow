@@ -441,14 +441,25 @@ def _master_has_unread_output(master_fd: int) -> bool:
 class _PtyHandle:
     pid: None = None
 
-    def __init__(self, master_fd: int, *, polls_before_death: int = 5) -> None:
+    def __init__(
+        self,
+        master_fd: int,
+        *,
+        polls_before_death: int | None = None,
+        returncode: int | None = None,
+    ) -> None:
         self.master_fd = master_fd
         self._polls_before_death = polls_before_death
         self._polls = 0
+        self.returncode = returncode
         self.terminate_issuers: list[ProcessTerminationIssuer] = []
 
     def poll(self) -> int | None:
         self._polls += 1
+        if self.returncode is not None:
+            return self.returncode
+        if self._polls_before_death is None:
+            return None
         if self._polls < self._polls_before_death or _master_has_unread_output(self.master_fd):
             return None
         return -15
@@ -529,6 +540,7 @@ def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Pat
     handle = _PtyHandle(master_fd)
     supervisor = AttemptSupervisor(handle, process_teardown=_NoopTeardown())
     reader = _pty_reader(tmp_path, handle, supervisor)
+    slave_closed = False
     try:
         outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
@@ -537,12 +549,18 @@ def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Pat
 
         line = _TOOL_RESULT_QUOTA_LINES[0] + "\n"
         os.write(slave_fd, line.encode("utf-8"))
+        os.close(slave_fd)
+        slave_closed = True
 
         assert list(reader.read_lines()) == [line]
         assert supervisor.recorder.termination() == facts_before
         assert handle.terminate_issuers == terminate_before
+
+        handle.returncode = 0
+        assert handle.poll() == 0
     finally:
-        os.close(slave_fd)
+        if not slave_closed:
+            os.close(slave_fd)
         os.close(master_fd)
 
 

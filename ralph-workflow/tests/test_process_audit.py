@@ -132,6 +132,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_claude_interactive_interrupt_realtime.py",
     "test_terminal_state_restored_on_exit.py",
     "test_audit_test_policy.py",
+    "test_audit_integration_agent_path.py",
     "test_audit_mcp_timeout.py",
     "test_audit_filesystem_polling_invocation.py",
     "test_audit_resource_lifecycle.py",

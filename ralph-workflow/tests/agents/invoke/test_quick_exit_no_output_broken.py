@@ -6,6 +6,7 @@ import pytest
 
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
 from ralph.agents.invoke import BrokenAgentExitError, check_broken_agent_timer
+from ralph.agents.invoke.attempt_supervision import AttemptSupervisor, CompletionObserved
 from ralph.agents.timeout_clock import FakeClock
 from ralph.timeout_defaults import (
     BROKEN_AGENT_EXIT_SETTLE_SECONDS,
@@ -92,3 +93,22 @@ def test_meaningful_output_prevents_early_exit_classification() -> None:
     check_broken_agent_timer(handle, watchdog, "opencode")
 
     assert handle.terminated is False
+
+
+def test_completed_attempt_does_not_fall_over_on_early_exit_without_meaningful_output() -> None:
+    clock = FakeClock(start=0.0)
+    handle = _ManagedHandle(returncode=0)
+    watchdog = _watchdog(clock)
+    supervisor = AttemptSupervisor(handle)
+    supervisor.act(CompletionObserved())
+    clock.advance(2.0)
+
+    check_broken_agent_timer(handle, watchdog, "opencode", termination_recorder=supervisor.recorder)
+    clock.advance(BROKEN_AGENT_EXIT_SETTLE_SECONDS)
+
+    assert (
+        check_broken_agent_timer(
+            handle, watchdog, "opencode", termination_recorder=supervisor.recorder
+        )
+        is None
+    )

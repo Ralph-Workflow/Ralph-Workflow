@@ -271,6 +271,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/recovery/test_dead_agent_future_proofing.py": 22,
     "tests/recovery/test_dead_agent_pipeline_matrix.py": 109,
     "tests/recovery/test_ledger_migration.py": 10,
+    "tests/recovery/test_no_agent_runs_four_times_without_a_cooldown.py": 110,
     "tests/recovery/test_no_progress_quiet.py": 9,
     "tests/recovery/test_run_loop_real_resume_restart.py": 16,
     "tests/recovery/test_runner_offline_pause_resume.py": 22,
