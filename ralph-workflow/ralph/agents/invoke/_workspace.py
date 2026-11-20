@@ -250,7 +250,9 @@ class WorkspaceMonitor:
             return False
         self._observer = observer
         self._handler = make_change_tracker(
-            self._workspace, partial(WorkspaceMonitor._record_event_for_key, key)
+            self._workspace,
+            partial(WorkspaceMonitor._record_event_for_key, key),
+            partial(WorkspaceMonitor._record_access_for_key, key),
         )
         bind_observer_overflow(observer, self._workspace)
         return True
@@ -331,6 +333,17 @@ class WorkspaceMonitor:
         while len(self._seen_files) > _MAX_WORKSPACE_CHANGED_FILES:
             oldest = next(iter(self._seen_files))
             del self._seen_files[oldest]
+        self._note_activity(kind, weight)
+
+    def record_access(self, src_path: str) -> None:
+        if is_sidecar_path(self._workspace, src_path):
+            return
+        kind, weight = self.classify_path(src_path)
+        if weight == 0.0:
+            return
+        self._note_activity(kind, weight)
+
+    def _note_activity(self, kind: WorkspaceChangeKind, weight: float) -> None:
         self._event_count += 1
         self._last_event_at = self._now()
         if self._on_event is not None:
@@ -594,11 +607,19 @@ class WorkspaceMonitor:
 
     @classmethod
     def _record_event_for_key(cls, key: str, src_path: str) -> None:
+        for monitor in cls._monitors_for_key(key):
+            monitor.record_event(src_path)
+
+    @classmethod
+    def _record_access_for_key(cls, key: str, src_path: str) -> None:
+        for monitor in cls._monitors_for_key(key):
+            monitor.record_access(src_path)
+
+    @classmethod
+    def _monitors_for_key(cls, key: str) -> tuple[WorkspaceMonitor, ...]:
         with cls._shared_lock:
             shared = cls._shared_watches.get(key)
-            monitors = tuple(shared.monitors) if shared is not None else ()
-        for monitor in monitors:
-            monitor.record_event(src_path)
+            return tuple(shared.monitors) if shared is not None else ()
 
     def dispatch_event(self, event: object) -> None:
         if self._handler is None:

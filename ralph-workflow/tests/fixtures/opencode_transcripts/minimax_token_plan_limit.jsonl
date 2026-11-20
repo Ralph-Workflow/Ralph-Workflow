@@ -1,0 +1,2 @@
+{"type":"step_start","timestamp":1795098363100,"sessionID":"ses_fixture","part":{"id":"prt_fixture_1","messageID":"msg_fixture","sessionID":"ses_fixture","snapshot":"0000000000000000000000000000000000000000","type":"step-start"}}
+{"type":"error","timestamp":1795098364914,"sessionID":"ses_fixture","error":{"name":"APIError","data":{"message":"The Token Plan usage limit has been reached. To avoid interruption, please upgrade your plan or buy credits and turn on auto consumption. (2067)","statusCode":429,"isRetryable":true}}}

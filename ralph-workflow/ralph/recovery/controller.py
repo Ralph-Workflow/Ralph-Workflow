@@ -5,7 +5,7 @@ import contextlib
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
@@ -524,6 +524,9 @@ def _attempt_observation_present(facts: AttemptFacts) -> bool:
     )
 
 
+MAX_FAILURES_WITHOUT_COOLDOWN: Final[int] = 3
+
+
 def _charges_agent_ledger(outcome: AttemptOutcome, *, peer_failures_identical: bool) -> bool:
     if outcome.counts_toward_agent_state:
         return True
@@ -587,8 +590,10 @@ class RecoveryController:
         "_classifier",
         "_clock",
         "_consecutive_unproductive_limit",
+        "_cooldown_decisions",
         "_dead_agent_probe_runner",
         "_dead_agent_verdict_runner",
+        "_failures_without_cooldown",
         "_false_cooldown_feedback",
         "_last_attempt_charged_ledger",
         "_last_attempt_cooldown_reason",
@@ -677,6 +682,8 @@ class RecoveryController:
         self._attempt_ordinals: dict[tuple[str, str], int] = {}
         self._attempt_counts: dict[tuple[str, str], int] = {}
         self._attempt_durations: dict[tuple[str, str], int] = {}
+        self._failures_without_cooldown: dict[tuple[str, str], tuple[int, int, bool]] = {}
+        self._cooldown_decisions: dict[str, int] = {}
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
             existing_ledger: object = read_attr(
@@ -948,6 +955,15 @@ class RecoveryController:
             charge_ledger=effective_charge_ledger,
             failure=failure,
         )
+        if agent is not None and not probe_mode:
+            self._cool_down_repeated_failures(
+                phase,
+                agent,
+                failed=attempt_failed
+                and not (facts is not None and facts.artifact_valid)
+                and not (facts is not None and facts.workspace_changed is True),
+                charged=self._last_attempt_charged_ledger,
+            )
         self._last_attempt_outcome = outcome
         self._last_resolved_verdict = resolved_verdict
         if attempt_key is not None:
@@ -958,6 +974,32 @@ class RecoveryController:
             )
             self._attempt_outcome_keys.setdefault((phase, agent or ""), []).append(attempt_key)
         return outcome
+
+    def _cool_down_repeated_failures(
+        self, phase: str, agent: str, *, failed: bool, charged: bool
+    ) -> None:
+        key = (phase, agent)
+        decisions = self._cooldown_decisions.get(agent, 0)
+        previous_failures, decisions_seen, previous_uncharged = self._failures_without_cooldown.get(
+            key, (0, decisions, False)
+        )
+        if not failed or isinstance(self.agent_eligibility(phase, agent), Cooldown):
+            self._failures_without_cooldown.pop(key, None)
+            return
+        fresh = decisions != decisions_seen
+        failures = 1 if fresh else previous_failures + 1
+        uncharged = not charged or (previous_uncharged and not fresh)
+        if failures < MAX_FAILURES_WITHOUT_COOLDOWN or not uncharged:
+            self._failures_without_cooldown[key] = (failures, decisions, uncharged)
+            return
+        self._failures_without_cooldown.pop(key, None)
+        logger.warning(
+            "Agent {} failed {} attempts in a row in phase={} without a cooldown; starting one",
+            agent,
+            failures,
+            phase,
+        )
+        self._mark_agent_unavailable(phase, agent, reason=UnavailabilityReason.UNPRODUCTIVE_LIMIT)
 
     def _restore_memoized_attempt(
         self,
@@ -1554,6 +1596,7 @@ class RecoveryController:
         verdict: PersistedVerdict | None = None,
         unproductive: tuple[int, int] | None = None,
     ) -> None:
+        self._cooldown_decisions[agent] = self._cooldown_decisions.get(agent, 0) + 1
         prefix = "Confirmed agent unavailability " if verdict is not None else ""
         unproductive_text = ""
         if unproductive is not None:

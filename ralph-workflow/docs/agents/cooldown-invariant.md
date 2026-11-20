@@ -149,6 +149,19 @@ An attempt is unproductive when it ends without a valid artifact.
 - `[general] agent_max_consecutive_unproductive` (default `3`): that many
   consecutive unproductive attempts in one phase start an
   `unproductive_limit` cooldown. A workspace change resets only this count.
+  Only a write counts as a workspace change: the workspace watcher reports
+  file opens and read-only closes as agent activity, never as a change, so
+  an agent that only reads files keeps counting toward the limit.
+- Whatever the failure type, the same agent cannot fail more than three
+  attempts in a row in one phase without a cooldown when any of those
+  failures was not charged to it (for example identical failures across
+  every peer, an engine-side configuration fault or a runtime-ended
+  attempt). `RecoveryController.finalize_attempt` counts failed attempts per
+  phase and agent, resets the count on a successful attempt, on an attempt
+  that wrote to the workspace, or whenever a cooldown is logged for the
+  agent, and starts an `unproductive_limit` cooldown on the third
+  (`MAX_FAILURES_WITHOUT_COOLDOWN`). A streak of charged failures stays
+  governed by `agent_max_consecutive_unproductive`.
 - `[general] agent_max_total_unproductive` (default `9`): that many
   unproductive attempts in total, with or without a workspace change, start
   the same `unproductive_limit` cooldown.

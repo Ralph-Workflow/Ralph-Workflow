@@ -73,10 +73,13 @@ def _is_within_workspace(workspace: Path, src_path: str) -> bool:
 
 
 def make_change_tracker(
-    workspace: Path, deliver: Callable[[str], None]
+    workspace: Path,
+    deliver: Callable[[str], None],
+    deliver_access: Callable[[str], None] | None = None,
 ) -> WorkspaceChangeCoalescer:
     return WorkspaceChangeCoalescer(
         deliver=deliver,
+        deliver_access=deliver_access,
         is_within=lambda path: _is_within_workspace(workspace, path),
         on_overflow=lambda: awareness_for_workspace(workspace).set_freshness(
             "stale", cause="workspace_event_overflow"
