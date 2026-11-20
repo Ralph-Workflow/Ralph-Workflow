@@ -243,7 +243,7 @@ if TYPE_CHECKING:
         PipelinePolicy,
         PolicyBundle,
     )
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeResult
     from ralph.recovery.controller import RecoveryController
     from ralph.visual.capture_request import CaptureRequest
     from ralph.visual.policy_facts import PolicyFacts
@@ -433,7 +433,7 @@ def _main_phase_loop_controller(
 def _deps_seamed_probe_runner(
     pipeline_deps: PipelineDeps | None,
     config: UnifiedConfig,
-) -> Callable[[str, str], ProbeOutcome | None] | None:
+) -> Callable[[str, str], ProbeResult | None] | None:
     if pipeline_deps is None:
         return None
     return seamed_dead_agent_probe_runner(config, pipeline_deps.invoke_agent)

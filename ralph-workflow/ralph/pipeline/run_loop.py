@@ -146,7 +146,7 @@ if TYPE_CHECKING:
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.pro_support.watcher import ProMarkerWatcher
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeResult
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -3681,7 +3681,7 @@ def _effect_executor_seam_injected() -> bool:
 def _seamed_loop_probe_runner(
     config: UnifiedConfig,
     pipeline_deps: PipelineDeps | None,
-) -> Callable[[str, str], ProbeOutcome | None] | None:
+) -> Callable[[str, str], ProbeResult | None] | None:
     injected = pipeline_deps.invoke_agent if pipeline_deps is not None else None
     probe_runner = seamed_dead_agent_probe_runner(config, injected)
     if probe_runner is None and _effect_executor_seam_injected():

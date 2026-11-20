@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.attempt_facts import AttemptFacts, TerminationIssuer, TerminationRecord
 from ralph.recovery.attribution import Attribution, AttributionVerdict, RuntimeCause
-from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+from ralph.recovery.controller import RecoveryController
 from ralph.recovery.dead_agent_verdict import (
     DeadAgentVerdict,
     PersistedVerdict,
@@ -13,8 +15,13 @@ from ralph.recovery.dead_agent_verdict import (
     migrate_verdict_record,
     verdict_record,
 )
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_controller_finalization_persists_probe_reason_and_elapsed_ms_from_probe_runner": (
+        "pins that the controller's finalize_attempt plumbing preserves the probe reason "
+        "and elapsed time returned by the probe runner end-to-end into the persisted verdict record"
+    ),
     "test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged": (
         "new coverage: the migration ladder returns a record written by a newer schema "
         "unchanged, with its termination log intact; the current schema version is 3, so "
@@ -245,6 +252,37 @@ def test_the_verdict_record_persists_the_probe_reason_and_its_elapsed_ms() -> No
 
     assert record["probe_reason"] == "probe_timeout"
     assert record["probe_elapsed_ms"] == 1234
+
+
+def test_controller_finalization_persists_probe_reason_and_elapsed_ms_from_probe_runner() -> None:
+    clock = FakeClock()
+    probe_result = ProbeResult(
+        outcome=ProbeOutcome.INCONCLUSIVE,
+        reason="probe_terminated_by_runtime:supervisor_idle:rc=9",
+        elapsed_ms=456,
+        detail="idle timeout",
+    )
+    options = RecoveryControllerOptions(
+        clock=clock,
+        dead_agent_probe_runner=lambda phase, agent: probe_result,
+    )
+    controller = RecoveryController(options=options)
+    facts = AttemptFacts(
+        exit_status="0",
+        termination=TerminationRecord.create(
+            TerminationIssuer.UNKNOWN,
+            observed_returncode=0,
+            reported_returncode=0,
+        ),
+    )
+    controller.finalize_attempt("planning", "opencode", facts=facts, attempt_failed=True)
+
+    record = controller.last_verdict_record
+    assert record is not None
+    assert record["schema_version"] == 3
+    assert record["probe_reason"] == "probe_terminated_by_runtime:supervisor_idle:rc=9"
+    assert record["probe_elapsed_ms"] == 456
+    assert record["probe_outcome"] == "inconclusive"
 
 
 def test_a_verdict_record_newer_than_the_current_schema_is_returned_unchanged() -> None:

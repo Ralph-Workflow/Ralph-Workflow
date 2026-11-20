@@ -10,7 +10,19 @@ from ralph.recovery.canary_probe import (
     CANARY_MARKER_CONTENT,
     CANARY_MARKER_FILENAME,
     ProbeOutcome,
+    ProbeResult,
 )
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_injected_string_stream_reaches_the_probe_unchanged": (
+        "seamed_dead_agent_probe_runner widened to return the richer ProbeResult carrier; "
+        "assertion checks result.outcome == ProbeOutcome.PASSED"
+    ),
+    "test_injected_stream_with_non_str_item_fails_at_consumption_time": (
+        "seamed_dead_agent_probe_runner widened to return the richer ProbeResult carrier; "
+        "assertion checks result.outcome == ProbeOutcome.INCONCLUSIVE"
+    ),
+}
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -30,7 +42,7 @@ def _runner_for(
     workspaces: list[Path],
     *,
     write_marker: bool,
-) -> Callable[[str, str], ProbeOutcome | None]:
+) -> Callable[[str, str], ProbeResult | None]:
     def injected(
         config: AgentConfig,
         prompt_file: str,
@@ -65,9 +77,10 @@ def test_injected_string_stream_reaches_the_probe_unchanged(tmp_path: Path) -> N
     items = ["first line", "second line", "third line"]
     runner = _runner_for(items, consumed, workspaces, write_marker=True)
 
-    outcome = runner("canary_probe", _AGENT)
+    result = runner("canary_probe", _AGENT)
 
-    assert outcome == ProbeOutcome.PASSED
+    assert result is not None
+    assert result.outcome == ProbeOutcome.PASSED
     assert consumed == items
     assert len(workspaces) == 1
     assert workspaces[0] != tmp_path
@@ -82,9 +95,10 @@ def test_injected_stream_with_non_str_item_fails_at_consumption_time(
     items: list[object] = ["first line", 42]
     runner = _runner_for(items, consumed, workspaces, write_marker=False)
 
-    outcome = runner("canary_probe", _AGENT)
+    result = runner("canary_probe", _AGENT)
 
-    assert outcome == ProbeOutcome.INCONCLUSIVE
+    assert result is not None
+    assert result.outcome == ProbeOutcome.INCONCLUSIVE
     assert consumed == items
     assert workspaces == []
     assert not list(tmp_path.iterdir())

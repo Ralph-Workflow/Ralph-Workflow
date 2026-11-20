@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
@@ -948,28 +949,31 @@ def test_install_preserved_conflicting_skill_dir_is_not_swept_into_chore_commit(
 
     home = tmp_path / "fake-home"
     home.mkdir(parents=True, exist_ok=True)
-    with patch("pathlib.Path.home", return_value=home):
+    with (
+        patch("pathlib.Path.home", return_value=home),
+        patch.dict(os.environ, {"XDG_CONFIG_HOME": str(home / ".config")}),
+    ):
         outcome = install_project_baseline_skills_with_diff(tmp_path)
 
-    assert ".claude/skills/submit-artifact/alias" in outcome.written_paths, (
-        f"the dirty symlink descendant MUST be reported; got: {sorted(outcome.written_paths)}"
-    )
-    assert ".claude/skills/submit-artifact" in outcome.written_paths, (
-        f"the conflicting transition root MUST be reported; got: {sorted(outcome.written_paths)}"
-    )
+        assert ".claude/skills/submit-artifact/alias" in outcome.written_paths, (
+            f"the dirty symlink descendant MUST be reported; got: {sorted(outcome.written_paths)}"
+        )
+        assert ".claude/skills/submit-artifact" in outcome.written_paths, (
+            f"the conflicting transition root MUST be reported; got: {sorted(outcome.written_paths)}"
+        )
 
-    result = commit_skill_writes(
-        tmp_path,
-        written_paths=outcome.written_paths,
-        pre_contents=outcome.pre_contents,
-        create_commit_fn=create_commit,
-        stage_fn=stage_files,
-        intentional_transitions=outcome.intentional_transitions,
-    )
+        result = commit_skill_writes(
+            tmp_path,
+            written_paths=outcome.written_paths,
+            pre_contents=outcome.pre_contents,
+            create_commit_fn=create_commit,
+            stage_fn=stage_files,
+            intentional_transitions=outcome.intentional_transitions,
+        )
 
-    assert ".claude/skills/submit-artifact" in result.skipped_paths, (
-        f"conflicting transition root MUST be skipped; got: {result!r}"
-    )
+        assert ".claude/skills/submit-artifact" in result.skipped_paths, (
+            f"conflicting transition root MUST be skipped; got: {result!r}"
+        )
 
     repo = Repo(tmp_path)
     try:

@@ -23,6 +23,17 @@ from ralph.recovery.canary_probe import (
     run_canary_probe,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_production_seam_runs_the_probe_through_the_injected_invoke": (
+        "seamed_dead_agent_probe_runner widened to return the richer ProbeResult carrier "
+        "carrying .outcome and .reason; assertion checks result.outcome is ProbeOutcome.PASSED"
+    ),
+    "test_production_seam_judges_a_missing_marker_without_evidence_as_inconclusive": (
+        "seamed_dead_agent_probe_runner widened to return the richer ProbeResult carrier "
+        "carrying .outcome and .reason; assertion checks result.outcome is ProbeOutcome.INCONCLUSIVE"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -96,11 +107,12 @@ def test_production_seam_runs_the_probe_through_the_injected_invoke(tmp_path: Pa
     )
 
     assert runner is not None, "a config and an injected invoke must produce a probe runner"
-    outcome = runner("development", "codex")
+    result = runner("development", "codex")
 
-    assert outcome is ProbeOutcome.PASSED, (
+    assert result is not None
+    assert result.outcome is ProbeOutcome.PASSED, (
         "the real canary runner must judge the marker the injected invoke wrote and pass; "
-        f"observed outcome: {outcome!r}"
+        f"observed outcome: {result!r}"
     )
     assert len(calls) == 1, (
         f"the canary probe must reach the injected invoke exactly once (observed calls: {calls!r})"
@@ -127,11 +139,12 @@ def test_production_seam_judges_a_missing_marker_without_evidence_as_inconclusiv
     )
 
     assert runner is not None
-    outcome = runner("development", "codex")
+    result = runner("development", "codex")
 
-    assert outcome is ProbeOutcome.INCONCLUSIVE, (
+    assert result is not None
+    assert result.outcome is ProbeOutcome.INCONCLUSIVE, (
         "a missing marker with no recorded agent activity must be inconclusive, not a "
-        f"failure verdict (observed outcome: {outcome!r})"
+        f"failure verdict (observed outcome: {result!r})"
     )
     assert len(calls) == 1, f"the injected invoke must still run (observed calls: {calls!r})"
 

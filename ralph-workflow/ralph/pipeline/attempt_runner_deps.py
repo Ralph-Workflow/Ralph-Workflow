@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.clock import Clock
     from ralph.pipeline.attempt_finalizer import AttemptFinalizer
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
     from ralph.recovery.connectivity_state import ConnectivityState
     from ralph.workspace.probe import WorkspaceChangeProbe
 
@@ -185,7 +185,7 @@ def raw_attempt_invoke(invoke: _RawAgentInvoke) -> AttemptInvoke:
 class AttemptRunnerDeps:
     clock: Clock
     invoke: AttemptInvoke
-    probe_runner: Callable[[str, str], ProbeOutcome | None] | None
+    probe_runner: Callable[[str, str], ProbeResult | ProbeOutcome | None] | None
     workspace_probe: WorkspaceChangeProbe | None
     connectivity: Callable[[], ConnectivityState | None] | None
 

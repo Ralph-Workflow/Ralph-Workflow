@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.attempt_outcome import AttemptOutcome
-    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+    from ralph.recovery.canary_probe import ProbeResult
 
 
 _DEFAULT_CYCLE_CAP = 200
@@ -108,7 +108,7 @@ def _as_raw_agent_invoke(injected: InvokeAgentFn) -> RawAgentInvoke:
 def seamed_dead_agent_probe_runner(
     config: UnifiedConfig | None,
     injected_invoke: InvokeAgentFn | None,
-) -> Callable[[str, str], ProbeOutcome | None] | None:
+) -> Callable[[str, str], ProbeResult | None] | None:
     if config is None or injected_invoke is None:
         return None
 
@@ -125,8 +125,8 @@ def seamed_dead_agent_probe_runner(
     return build_dead_agent_probe_runner(resolve_agent, probe)
 
 
-def fail_open_dead_agent_probe_runner() -> Callable[[str, str], ProbeOutcome | None]:
-    def run(phase: str, agent: str) -> ProbeOutcome | None:
+def fail_open_dead_agent_probe_runner() -> Callable[[str, str], ProbeResult | None]:
+    def run(phase: str, agent: str) -> ProbeResult | None:
         return None
 
     return run

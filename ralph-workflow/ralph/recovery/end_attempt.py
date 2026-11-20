@@ -13,7 +13,7 @@ from ralph.recovery.dead_agent_verdict import (
 
 if TYPE_CHECKING:
     from ralph.recovery.attempt_facts import AttemptFacts
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 
 __all__ = ("end_attempt",)
 
@@ -23,9 +23,11 @@ def end_attempt(
     *,
     attempt_failed: bool,
     typed_signal: TypedSignal | None = None,
-    probe_outcome: ProbeOutcome | None = None,
+    probe_outcome: ProbeOutcome | ProbeResult | None = None,
     peer_failures_identical: bool = False,
     retryable_reason: str | None = None,
+    probe_reason: str = "",
+    probe_elapsed_ms: int | None = None,
 ) -> AttemptOutcome:
     if not attempt_failed and facts.artifact_valid:
         return AttemptOutcome(
@@ -43,7 +45,14 @@ def end_attempt(
             typed_signal is not None and typed_signal.provider_originated
         ),
     )
-    verdict = decide_dead_agent_verdict(facts, attribution, probe_outcome, typed_signal)
+    verdict = decide_dead_agent_verdict(
+        facts,
+        attribution,
+        probe_outcome,
+        typed_signal,
+        probe_reason=probe_reason,
+        probe_elapsed_ms=probe_elapsed_ms,
+    )
 
     if verdict.verdict is DeadAgentVerdict.AGENT_DEAD:
         return AttemptOutcome(

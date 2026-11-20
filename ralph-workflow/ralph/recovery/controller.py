@@ -53,6 +53,7 @@ from ralph.recovery.agent_unavailability_tracker import (
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.attribution import attribute_attempt
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.classifier import (
     ClassifiedFailure,
     FailureCategory,
@@ -380,16 +381,23 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
     from ralph.recovery.attempt_outcome import AttemptOutcome
     from ralph.recovery.attribution import AttributionVerdict
-    from ralph.recovery.canary_probe import ProbeOutcome
     from ralph.recovery.dead_agent_verdict import DeadAgentVerdict, PersistedVerdict
     from ralph.workspace.probe import WorkspaceChangeProbe
 
     _DeadAgentVerdictPredicate = Callable[[DeadAgentVerdict], bool]
     _RuntimeIssuedPredicate = Callable[[AttemptFacts], bool]
-    _DecideDeadAgentVerdict = Callable[
-        [AttemptFacts, AttributionVerdict, ProbeOutcome | None, TypedSignal | None],
-        PersistedVerdict,
-    ]
+
+    class _DecideDeadAgentVerdict(Protocol):
+        def __call__(
+            self,
+            facts: AttemptFacts,
+            attribution: AttributionVerdict,
+            probe_outcome: ProbeOutcome | ProbeResult | None,
+            typed_signal: TypedSignal | None,
+            *,
+            probe_reason: str = "",
+            probe_elapsed_ms: int | None = None,
+        ) -> PersistedVerdict: ...
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -465,12 +473,24 @@ def build_typed_agent_signal(
     )
 
 
+def _unpack_probe_result(
+    raw_probe: ProbeResult | ProbeOutcome | None,
+) -> tuple[ProbeOutcome | None, str, int | None]:
+    if raw_probe is None:
+        return None, "", None
+    if isinstance(raw_probe, ProbeResult):
+        return raw_probe.outcome, raw_probe.reason, raw_probe.elapsed_ms
+    return raw_probe, "", None
+
+
 def build_dead_agent_verdict(
     facts: AttemptFacts,
     *,
     attribution: AttributionVerdict | None = None,
-    probe_outcome: ProbeOutcome | None = None,
+    probe_outcome: ProbeOutcome | ProbeResult | None = None,
     typed_signal: TypedSignal | None = None,
+    probe_reason: str = "",
+    probe_elapsed_ms: int | None = None,
 ) -> PersistedVerdict:
     namespace = _dead_agent_verdict_namespace()
     decide = cast(
@@ -486,7 +506,14 @@ def build_dead_agent_verdict(
                 typed_signal is not None and typed_signal.provider_originated
             ),
         )
-    return decide(facts, effective_attribution, probe_outcome, typed_signal)
+    return decide(
+        facts,
+        effective_attribution,
+        probe_outcome,
+        typed_signal,
+        probe_reason=probe_reason,
+        probe_elapsed_ms=probe_elapsed_ms,
+    )
 
 
 _HEALTHY_VERDICT_VALUE = "healthy"
@@ -1055,6 +1082,8 @@ class RecoveryController:
         if effective_signal is None and signal is not None:
             effective_signal = signal
         probe_outcome: ProbeOutcome | None = None
+        probe_reason: str = ""
+        probe_elapsed_ms: int | None = None
         resolved_verdict: PersistedVerdict | None = None
         if not probe_mode:
             resolved_verdict = self._resolve_dead_agent_verdict(
@@ -1068,6 +1097,8 @@ class RecoveryController:
             )
             if resolved_verdict is not None:
                 probe_outcome = resolved_verdict.probe_outcome
+                probe_reason = resolved_verdict.probe_reason
+                probe_elapsed_ms = resolved_verdict.probe_elapsed_ms
                 if resolved_verdict.typed_signal is not None:
                     effective_signal = resolved_verdict.typed_signal
         outcome = end_attempt(
@@ -1077,6 +1108,8 @@ class RecoveryController:
             probe_outcome=probe_outcome,
             peer_failures_identical=peer_failures_identical,
             retryable_reason=retryable_reason,
+            probe_reason=probe_reason,
+            probe_elapsed_ms=probe_elapsed_ms,
         )
         remembered_verdict = outcome.verdict if outcome.verdict is not None else resolved_verdict
         if remembered_verdict is not None:
@@ -1252,15 +1285,18 @@ class RecoveryController:
                     typed_signal is not None and typed_signal.provider_originated
                 ),
             )
-        probe_outcome: ProbeOutcome | None = None
+        raw_probe: ProbeResult | ProbeOutcome | None = None
         if self._dead_agent_probe_runner is not None and agent is not None:
-            probe_outcome = self._run_probe_fail_open(phase, agent)
+            raw_probe = self._run_probe_fail_open(phase, agent)
+        probe_outcome, probe_reason, probe_elapsed_ms = _unpack_probe_result(raw_probe)
         if self._dead_agent_verdict_runner is None and effective_facts is not None:
             preliminary = build_dead_agent_verdict(
                 effective_facts,
                 attribution=attribution,
                 probe_outcome=probe_outcome,
                 typed_signal=typed_signal,
+                probe_reason=probe_reason,
+                probe_elapsed_ms=probe_elapsed_ms,
             )
             if _verdict_starts_cooldown(preliminary) or not _verdict_counts_toward_agent_state(
                 preliminary
@@ -1280,9 +1316,11 @@ class RecoveryController:
             attribution=attribution,
             probe_outcome=probe_outcome,
             typed_signal=typed_signal,
+            probe_reason=probe_reason,
+            probe_elapsed_ms=probe_elapsed_ms,
         )
 
-    def _run_probe_fail_open(self, phase: str, agent: str) -> ProbeOutcome | None:
+    def _run_probe_fail_open(self, phase: str, agent: str) -> ProbeResult | ProbeOutcome | None:
         runner = self._dead_agent_probe_runner
         if runner is None:
             return None

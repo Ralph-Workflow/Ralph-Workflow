@@ -11,7 +11,7 @@ from ralph.recovery.attempt_facts import (
     has_return_code_discrepancy,
 )
 from ralph.recovery.attribution import Attribution, AttributionVerdict
-from ralph.recovery.canary_probe import ProbeOutcome
+from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 from ralph.recovery.typed_signal import (
     TypedSignal,
     runtime_issued_termination_is_not_agent_fault,
@@ -102,26 +102,45 @@ def probe_outcome_verdict(probe_outcome: ProbeOutcome | None) -> DeadAgentVerdic
     return DeadAgentVerdict.UNKNOWN
 
 
+def _unpack_probe_carrier(
+    probe_outcome: ProbeOutcome | ProbeResult | None,
+    default_reason: str,
+    default_elapsed_ms: int | None,
+) -> tuple[ProbeOutcome | None, str, int | None]:
+    if isinstance(probe_outcome, ProbeResult):
+        return (
+            probe_outcome.outcome,
+            default_reason or probe_outcome.reason,
+            probe_outcome.elapsed_ms if default_elapsed_ms is None else default_elapsed_ms,
+        )
+    return probe_outcome, default_reason, default_elapsed_ms
+
+
 def decide_dead_agent_verdict(
     facts: AttemptFacts,
     attribution: AttributionVerdict,
-    probe_outcome: ProbeOutcome | None,
+    probe_outcome: ProbeOutcome | ProbeResult | None,
     typed_signal: TypedSignal | None = None,
     *,
     probe_reason: str = "",
     probe_elapsed_ms: int | None = None,
 ) -> PersistedVerdict:
+    effective_probe_outcome, effective_probe_reason, effective_probe_elapsed_ms = (
+        _unpack_probe_carrier(probe_outcome, probe_reason, probe_elapsed_ms)
+    )
     effective_typed_signal = typed_signal if typed_signal is not None else facts.typed_signal
     return PersistedVerdict(
-        verdict=_decide_verdict(facts, attribution, probe_outcome, effective_typed_signal),
+        verdict=_decide_verdict(
+            facts, attribution, effective_probe_outcome, effective_typed_signal
+        ),
         facts=facts,
         attribution=attribution,
-        probe_outcome=probe_outcome,
+        probe_outcome=effective_probe_outcome,
         termination=facts.termination,
         typed_signal=effective_typed_signal,
         return_code_discrepancy=has_return_code_discrepancy(facts.termination),
-        probe_reason=probe_reason,
-        probe_elapsed_ms=probe_elapsed_ms,
+        probe_reason=effective_probe_reason,
+        probe_elapsed_ms=effective_probe_elapsed_ms,
     )
 
 

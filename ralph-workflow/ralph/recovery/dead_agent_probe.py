@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
-    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
+    from ralph.recovery.canary_probe import ProbeResult
 
 DEFAULT_MAX_PROBES_PER_RUN = 3
 
@@ -23,10 +23,10 @@ def build_dead_agent_probe_runner(
     probe: Callable[[AgentConfig], ProbeResult],
     *,
     max_probes: int = DEFAULT_MAX_PROBES_PER_RUN,
-) -> Callable[[str, str], ProbeOutcome | None]:
+) -> Callable[[str, str], ProbeResult | None]:
     probes_started = 0
 
-    def run(phase: str, agent: str) -> ProbeOutcome | None:
+    def run(phase: str, agent: str) -> ProbeResult | None:
         nonlocal probes_started
         if probes_started >= max_probes:
             return None
@@ -51,7 +51,7 @@ def build_dead_agent_probe_runner(
             result.detail,
             result.reason,
         )
-        return result.outcome
+        return result
 
     return run
 
@@ -60,7 +60,7 @@ def production_dead_agent_probe_runner(
     config: UnifiedConfig | None,
     *,
     trusted_parent: Path | None = None,
-) -> Callable[[str, str], ProbeOutcome | None] | None:
+) -> Callable[[str, str], ProbeResult | None] | None:
     if config is None:
         return None
 

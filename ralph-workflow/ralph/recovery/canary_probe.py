@@ -121,6 +121,15 @@ class _ProbeInvoke:
     error: BaseException | None
     timed_out: bool
     session_thread: threading.Thread | None = None
+    finished: list[AttemptResult | None] | None = None
+
+    @property
+    def current_result(self) -> AttemptResult | None:
+        if self.result is not None:
+            return self.result
+        if self.finished and self.finished[0] is not None:
+            return self.finished[0]
+        return None
 
 
 ProbeOutcome = _ProbeOutcome
@@ -174,6 +183,7 @@ def _run_canary_probe(
     workspace_path: Path | None = None
     timed_out = False
     session_thread: threading.Thread | None = None
+    attempt: _ProbeInvoke | None = None
     try:
         preflight = _preflight_failure(timeout_s, budget_exhausted, started)
         if preflight is not None:
@@ -201,28 +211,44 @@ def _run_canary_probe(
     finally:
         if owns_workspace and workspace_path is not None:
             if timed_out:
-                _reap_scratch_when_the_session_ends(session_thread, workspace_path)
+                _reap_scratch_when_the_session_ends(session_thread, workspace_path, attempt=attempt)
             else:
                 _remove_scratch_workspace(workspace_path)
 
 
 def _reap_scratch_when_the_session_ends(
-    session_thread: threading.Thread | None, workspace_path: Path
+    session_thread: threading.Thread | None,
+    workspace_path: Path,
+    *,
+    attempt: _ProbeInvoke | None = None,
 ) -> None:
-    if session_thread is None:
+    if session_thread is None and attempt is None:
         return
     threading.Thread(
         target=_remove_scratch_after_the_session_ends,
-        args=(session_thread, workspace_path),
+        args=(session_thread, workspace_path, attempt),
         name="ralph-canary-probe-reaper",
         daemon=True,
     ).start()
 
 
 def _remove_scratch_after_the_session_ends(
-    session_thread: threading.Thread, workspace_path: Path
+    session_thread: threading.Thread | None,
+    workspace_path: Path,
+    attempt: _ProbeInvoke | None = None,
 ) -> None:
-    session_thread.join()
+    waiter = threading.Event()
+    for _ in range(20):
+        res = attempt.current_result if attempt is not None else None
+        if res is not None and res.facts is not None and res.facts.termination is not None:
+            _remove_scratch_workspace(workspace_path)
+            return
+        if session_thread is not None and not session_thread.is_alive():
+            _remove_scratch_workspace(workspace_path)
+            return
+        waiter.wait(timeout=0.05)
+    if session_thread is not None:
+        session_thread.join()
     _remove_scratch_workspace(workspace_path)
 
 
@@ -432,9 +458,17 @@ def _invoke_with_timeout(
     captured: list[BaseException] = []
     finished: list[AttemptResult | None] = []
 
+    def _record_result(res: AttemptResult) -> None:
+        if not finished:
+            finished.append(res)
+
     def _run() -> None:
         try:
-            finished.append(_dispatch_probe_attempt(invoke, config, prepared, general))
+            res = _dispatch_probe_attempt(
+                invoke, config, prepared, general, on_attempt_result=_record_result
+            )
+            if not finished and res is not None:
+                finished.append(res)
         except (
             AgentInvocationError,
             TypeError,
@@ -448,13 +482,22 @@ def _invoke_with_timeout(
     thread = threading.Thread(target=_run, name="ralph-canary-probe", daemon=True)
     thread.start()
     thread.join(timeout_s)
+    result = finished[0] if finished else None
+    error = captured[0] if captured else None
     if thread.is_alive():
-        return _ProbeInvoke(result=None, error=None, timed_out=True, session_thread=thread)
+        return _ProbeInvoke(
+            result=result,
+            error=error,
+            timed_out=True,
+            session_thread=thread,
+            finished=finished,
+        )
     return _ProbeInvoke(
-        result=finished[0] if finished else None,
-        error=captured[0] if captured else None,
+        result=result,
+        error=error,
         timed_out=False,
         session_thread=thread,
+        finished=finished,
     )
 
 
@@ -463,7 +506,12 @@ def _production_invoke() -> RawAgentInvoke:
 
 
 def _dispatch_probe_attempt(
-    invoke: RawAgentInvoke, config: AgentConfig, prepared: _PreparedProbe, general: GeneralConfig
+    invoke: RawAgentInvoke,
+    config: AgentConfig,
+    prepared: _PreparedProbe,
+    general: GeneralConfig,
+    *,
+    on_attempt_result: Callable[[AttemptResult], None] | None = None,
 ) -> AttemptResult | None:
     agent_name = _agent_name(config)
     unified = UnifiedConfig(
@@ -492,6 +540,8 @@ def _dispatch_probe_attempt(
         prompt_file=prepared.prompt_file,
         options=prepared.options,
     )
+    if on_attempt_result is not None and result is not None:
+        on_attempt_result(result)
     logger.info("canary probe attempt outcome: {}", result.outcome.kind)
     return result
 

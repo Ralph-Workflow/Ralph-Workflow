@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry, UnavailabilityStore
     from ralph.recovery.attempt_facts import AttemptFacts
     from ralph.recovery.attribution import AttributionVerdict
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
     from ralph.recovery.dead_agent_verdict import PersistedVerdict, TypedSignal
     from ralph.recovery.events import FailureEventBus
     from ralph.recovery.failure_classifier import FailureClassifier
@@ -64,7 +64,7 @@ class RecoveryControllerOptions:
     unavailability_entries: dict[str, UnavailabilityEntry] | None = None
     clock: Clock | None = None
     unavailability_store: UnavailabilityStore | None = None
-    dead_agent_probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
+    dead_agent_probe_runner: Callable[[str, str], ProbeResult | ProbeOutcome | None] | None = None
     dead_agent_verdict_runner: _DeadAgentVerdictRunner | None = None
     false_cooldown_feedback: FalseCooldownFeedback | None = None
 

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeOutcome, ProbeResult
 
 
 @dataclass(frozen=True)
@@ -35,4 +35,4 @@ class SmokeRunParams:
     require_multimodal_perception_secret: bool = True
     display: ParallelDisplay | None = None
     support_resolver: Callable[[str], AgentSupport | None] | None = None
-    probe_runner: Callable[[str, str], ProbeOutcome | None] | None = None
+    probe_runner: Callable[[str, str], ProbeResult | ProbeOutcome | None] | None = None

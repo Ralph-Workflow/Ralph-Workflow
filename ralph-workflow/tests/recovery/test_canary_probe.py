@@ -32,6 +32,14 @@ from ralph.recovery.canary_probe import (
 )
 from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dead_agent_probe_surfaces_the_probe_reason_for_the_post_mortem": (
+        "build_dead_agent_probe_runner widened to return the richer ProbeResult carrier "
+        "carrying .outcome and .reason; the assertion asserts result.outcome is ProbeOutcome.INCONCLUSIVE "
+        "and result.reason matches the expected probe reason"
+    ),
+}
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
@@ -603,6 +611,56 @@ def test_probe_removes_the_scratch_directory_once_the_timed_out_session_ends(
         gate.set()
 
 
+def test_probe_removes_scratch_directory_when_process_record_is_terminal_even_if_session_thread_hung(
+    tmp_path: Path,
+) -> None:
+    trusted_parent = tmp_path / "trusted"
+    trusted_parent.mkdir()
+    gate = threading.Event()
+    arrived = threading.Event()
+
+    def _block_on_outcome(message: object) -> None:
+        if "canary probe attempt outcome:" in str(message):
+            arrived.set()
+            gate.wait(timeout=5.0)
+
+    sink_id = logger.add(_block_on_outcome, format="{message}")
+
+    termination = TerminationRecord.create(
+        TerminationIssuer.AGENT_EXIT,
+        observed_returncode=0,
+        reported_returncode=0,
+    )
+    facts = AttemptFacts(exit_status="0", termination=termination)
+    calls: list[_Call] = []
+    try:
+        result = run_canary_probe(
+            _agent_config(),
+            invoke_fn=_attempt_ended_invoke(facts, calls),
+            trusted_parent=trusted_parent,
+            timeout_s=0.1,
+        )
+        assert arrived.wait(timeout=5.0), "the probe attempt outcome must be reached"
+        assert result.outcome == ProbeOutcome.INCONCLUSIVE
+        assert result.reason == "probe_timeout"
+        surviving = list((trusted_parent / ".agent" / "tmp").glob("canary-probe-*"))
+        waiter = threading.Event()
+        removed = False
+        if not surviving:
+            removed = True
+        else:
+            scratch = surviving[0]
+            for _ in range(40):
+                if not scratch.exists():
+                    removed = True
+                    break
+                waiter.wait(timeout=0.05)
+        assert removed, "the scratch directory must be removed once process record is terminal"
+    finally:
+        gate.set()
+        logger.remove(sink_id)
+
+
 def test_probe_dispatches_its_attempt_through_the_registered_canary_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -670,11 +728,13 @@ def test_dead_agent_probe_surfaces_the_probe_reason_for_the_post_mortem() -> Non
                 reason="no_pretrusted_workspace",
             ),
         )
-        outcome = runner("development", "fake-agent")
+        result = runner("development", "fake-agent")
     finally:
         logger.remove(sink_id)
 
-    assert outcome is ProbeOutcome.INCONCLUSIVE
+    assert result is not None
+    assert result.outcome is ProbeOutcome.INCONCLUSIVE
+    assert result.reason == "no_pretrusted_workspace"
     assert any("no_pretrusted_workspace" in record for record in records), (
         f"the probe reason must reach the post-mortem log (observed records: {records!r})"
     )

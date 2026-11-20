@@ -123,7 +123,7 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.pipeline.attempt_result import AttemptResult
     from ralph.pro_support.hooks import ProPipelineHooks
-    from ralph.recovery.canary_probe import ProbeOutcome
+    from ralph.recovery.canary_probe import ProbeResult
     from ralph.recovery.controller import RecoveryController
 
 
@@ -298,8 +298,8 @@ def _attempt_deps(
 
 def _lazy_commit_probe_runner(
     config: UnifiedConfig,
-) -> typing.Callable[[str, str], ProbeOutcome | None]:
-    def probe_runner(phase: str, agent: str) -> ProbeOutcome | None:
+) -> typing.Callable[[str, str], ProbeResult | None]:
+    def probe_runner(phase: str, agent: str) -> ProbeResult | None:
         from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
         run = production_dead_agent_probe_runner(config)
