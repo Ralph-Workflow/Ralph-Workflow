@@ -3748,6 +3748,13 @@ ralph.git.rebase.rebase_state_machine
    :members:
    :show-inheritance:
 
+ralph.git.shared_config_guard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.shared_config_guard
+   :members:
+   :show-inheritance:
+
 ralph.git.subprocess_runner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

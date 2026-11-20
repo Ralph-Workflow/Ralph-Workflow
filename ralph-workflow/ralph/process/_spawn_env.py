@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, MutableMapping
 
+from ralph.git.hardening import drop_inherited_git_dir_env
+
 MALLOC_DEBUG_NOISE_VARS: tuple[str, ...] = (
     "MallocStackLogging",
     "MallocStackLoggingNoCompact",
@@ -41,6 +43,7 @@ def child_env_for_spawn(
     cwd: str | None = None,
 ) -> dict[str, str]:
     child_env = os.environ.copy() if env is None else dict(env)
+    drop_inherited_git_dir_env(child_env)
     if cwd is not None:
         child_env["PWD"] = cwd
         child_env.pop("OLDPWD", None)

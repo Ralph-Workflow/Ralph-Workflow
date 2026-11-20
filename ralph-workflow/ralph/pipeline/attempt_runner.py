@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard, cast, runtime_checkable
 
 from ralph.agents.invoke import AttemptEnded, attempt_facts_for_failure
 from ralph.agents.registry import AgentRegistry
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.git.shared_config_guard import repair_shared_config, snapshot_shared_config
 from ralph.pipeline.agent_entry_point import (
     AgentEntryPoint,
     EntryPointRunner,
@@ -255,9 +257,11 @@ def run_agent_attempt(
         invoke_kwargs["config"] = config
     if state is not None:
         invoke_kwargs["state"] = state
+    shared_config = snapshot_shared_config(_attempt_workspace_root(execute_kwargs))
     try:
         event = deps.invoke(target, **invoke_kwargs)
     except BaseException as exc:
+        repair_shared_config(shared_config, attempt=_attempt_label(entry_point, phase, agent))
         if all(exc is not recorded for recorded in finalized_failures):
             finalize(
                 AttemptFinalization(
@@ -270,6 +274,7 @@ def run_agent_attempt(
                 )
             )
         raise
+    repair_shared_config(shared_config, attempt=_attempt_label(entry_point, phase, agent))
     if isinstance(event, AttemptEnded):
         carried_facts = event.facts
         if carried_facts is not None and not carried_facts.artifact_valid:
@@ -295,6 +300,22 @@ def run_agent_attempt(
         outcome,
         tuple((key, value[1]) for key, value in sorted(finalized.items())),
     )
+
+
+def _attempt_workspace_root(execute_kwargs: Mapping[str, object]) -> Path:
+    scope = execute_kwargs.get("workspace_scope")
+    root: object = getattr(scope, "root", None)
+    if isinstance(root, (str, Path)):
+        return Path(root)
+    for key in ("workspace_root", "repo_root", "root", "cwd"):
+        candidate = execute_kwargs.get(key)
+        if isinstance(candidate, (str, Path)):
+            return Path(candidate)
+    return Path.cwd()
+
+
+def _attempt_label(entry_point: AgentEntryPoint, phase: str, agent: str | None) -> str:
+    return f"{entry_point.value} {phase}/{agent or 'unknown agent'}"
 
 
 def _attempt_identity(

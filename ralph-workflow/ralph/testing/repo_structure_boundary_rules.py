@@ -148,7 +148,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/attempt_runner.py",
         "run_agent_attempt",
-        259,
+        262,
         "canonical attempt dispatch inside the registered attempt runner",
     ),
     (

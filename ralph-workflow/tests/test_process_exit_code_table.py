@@ -80,6 +80,10 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.shared_config_guard": (
+        "the reviewed process-label inventory now includes the shared git config guard's "
+        "restore label, so the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.publication_gate": (
         "the reviewed process-label inventory now includes the publication gate's command "
         "label and its tree probe, so the pinned digest of emitted labels changes"
@@ -107,10 +111,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "cc8514c1c80b7321c32e36fba4bc8e0a860cecc859b6f49ff6cc5094bba507ab"
+    "735e144ff8b4c137b595dd4d1bfee86dafacb44793a58e8d9f2c526873334c67"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds publication-gate-tree (rev-parse of the tree being "
+    "The reviewed inventory adds shared-config-guard:restore (git config --file on the "
+    "shared config after an agent attempt broke core.bare or core.worktree; any nonzero "
+    "exit stays loud), publication-gate-tree (rev-parse of the tree being "
     "published; rc=128 is git's answer for an unreadable commit) and publication-gate "
     "(the project's verify command; a nonzero exit is a red gate and stays loud), and "
     "recovery:feature-tip-exists (cat-file -e of a recorded "
