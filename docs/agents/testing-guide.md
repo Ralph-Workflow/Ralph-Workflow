@@ -315,7 +315,7 @@ def test_something_timing_sensitive() -> None: ...
 **Rules:**
 
 - Every `@pytest.mark.skip` attribute must include a `https://` URL.
-- A skip without a URL will fail the `make verify` audit.
+- A skip without a URL violates the testing policy; no automated gate detects it.
 
 ---
 
@@ -358,7 +358,7 @@ def test_pipeline_rejects_empty_agent_chain() -> None:
 - **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`.
 - **Update docs in the same commit** as the behavior or architecture change.
 - **Keep examples runnable.** Remove stale patterns immediately when the production API changes.
-- **Every `@pytest.mark.skip` requires an issue URL** (enforced by `make verify`).
+- **Every `@pytest.mark.skip` requires an issue URL.**
 
 <!-- whitebox-ledger:start -->
 

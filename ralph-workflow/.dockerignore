@@ -47,6 +47,4 @@ Formula/
 docs/
 
 sorbet/
-
-run_verify_internal.sh
 stubs/
