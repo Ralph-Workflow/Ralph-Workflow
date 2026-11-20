@@ -99,6 +99,7 @@ from ralph.git.errors import GitOperationError
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
 
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
+_STALE_LOCK_PROBE_TIMEOUT_S = 10.0
 _LIVE_HOLDER_PATIENCE_S = GIT_SUBPROCESS_TIMEOUT_SECONDS + GIT_TERMINATE_GRACE_SECONDS
 LIVE_HOLDER_PATIENCE_S: Final[float] = _LIVE_HOLDER_PATIENCE_S
 _LIVE_HOLDER_POLL_S = 3.0
@@ -405,7 +406,12 @@ def _reap_stale_lock(
         if liveness_fn is not None:
             liveness = liveness_fn(lock_path, resolved_gitdir)
         else:
-            liveness = _lock_has_no_live_holder(lock_path, resolved_gitdir, gitdir_common)
+            liveness = _lock_has_no_live_holder(
+                lock_path,
+                resolved_gitdir,
+                gitdir_common,
+                probe_timeout_s=_STALE_LOCK_PROBE_TIMEOUT_S,
+            )
         if liveness in {"live", "unknown"}:
             logger.warning(
                 "Refusing to auto-unlink git lock for {} (path={}, age={:.1f}s, liveness={}); "
