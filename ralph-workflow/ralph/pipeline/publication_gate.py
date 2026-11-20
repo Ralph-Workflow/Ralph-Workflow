@@ -57,11 +57,7 @@ class PublicationGateResult:
 
     @property
     def routes_back_to_development(self) -> bool:
-        return (
-            not self.passed
-            and self.consecutive_failures <= MAX_PUBLICATION_GATE_FAILURES
-            and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
-        )
+        return not self.passed and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
 
     def feedback(self) -> str:
         verdict = "timed out" if self.timed_out else f"failed (exit {self.exit_code})"
@@ -259,16 +255,48 @@ def publication_gate_feedback(
     if result is None or not result.routes_back_to_development or loop_phase is None:
         return None
     _save_record(root, replace(result, route_backs=result.route_backs + 1))
-    loop_target = policy.phases[loop_phase].transitions.on_loopback
-    if loop_target:
-        from ralph.phases.required_artifacts import retry_hint_path
-
-        hint = root / retry_hint_path(loop_target, pipeline_policy=policy)
-        hint.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text_if_changed(
-            DEFAULT_FILE_BACKEND, hint, result.feedback(), tmp_path=hint.with_suffix(".tmp")
-        )
+    _write_development_feedback(root, policy, loop_phase, result)
     return PublicationGateFailed(phase=commit_phase, detail=result.feedback())
+
+
+def _write_development_feedback(
+    root: Path, policy: PipelinePolicy, loop_phase: str, result: PublicationGateResult
+) -> bool:
+    loop_target = policy.phases[loop_phase].transitions.on_loopback
+    if not loop_target:
+        return False
+    from ralph.phases.required_artifacts import retry_hint_path
+
+    hint = root / retry_hint_path(loop_target, pipeline_policy=policy)
+    hint.parent.mkdir(parents=True, exist_ok=True)
+    return atomic_write_text_if_changed(
+        DEFAULT_FILE_BACKEND, hint, result.feedback(), tmp_path=hint.with_suffix(".tmp")
+    )
+
+
+def leave_publication_gate_feedback(root: Path, policy: PipelinePolicy) -> bool:
+    result = _load_record(root)
+    if result is None or not result.routes_back_to_development:
+        return False
+    loop_phase = next(
+        (
+            loop
+            for name, definition in policy.phases.items()
+            if definition.role == "commit"
+            and (loop := publication_gate_loop_phase(policy, name)) is not None
+        ),
+        None,
+    )
+    if loop_phase is None or not _write_development_feedback(root, policy, loop_phase, result):
+        return False
+    _save_record(root, replace(result, route_backs=result.route_backs + 1))
+    logger.warning(
+        "Publication gate `{}` refused tree {} outside a commit phase; its failure is left "
+        "for the next development pass",
+        result.command,
+        result.tree_sha,
+    )
+    return True
 
 
 def _upstream_phases(policy: PipelinePolicy, phase: str) -> list[str]:
@@ -326,6 +354,7 @@ __all__ = [
     "check_publication_gate",
     "declared_publication_gate",
     "last_publication_gate_result",
+    "leave_publication_gate_feedback",
     "publication_gate_feedback",
     "publication_gate_loop_phase",
     "publication_gate_record_path",

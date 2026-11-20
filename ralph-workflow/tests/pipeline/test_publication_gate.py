@@ -14,6 +14,7 @@ from ralph.pipeline.publication_gate import (
     blocked_publication,
     check_publication_gate,
     declared_publication_gate,
+    leave_publication_gate_feedback,
     publication_gate_feedback,
     publication_gate_loop_phase,
     publication_gate_record_path,
@@ -26,6 +27,18 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_repeated_gate_failures_stop_routing_back_once_the_budget_is_spent": (
+        "operator directive: the route-back cap counts only route-backs that actually gave "
+        "development the feedback; consecutive_failures is diagnostic, so a sixth red "
+        "evaluation with no route-back still routes back (wt-05 sat at 12 failures and 0 "
+        "route-backs with its agents never told why the gate failed)"
+    ),
+    "test_no_feedback_is_routed_once_the_gate_failure_budget_is_spent": (
+        "replaced by test_red_evaluations_from_non_commit_landings_never_starve_the_commit_"
+        "feedback: red evaluations from non-commit landings no longer exhaust the feedback "
+        "budget; the route-back bound itself stays pinned by "
+        "test_route_backs_on_an_unchanged_tree_are_bounded"
+    ),
     "test_a_result_is_reused_only_for_the_same_tree": (
         "reusing the red result for an unchanged tree no longer counts as another gate "
         "failure; the counter counts real evaluations, and route-backs are bounded separately"
@@ -199,7 +212,9 @@ def test_repeated_gate_failures_stop_routing_back_once_the_budget_is_spent(
 
     assert all(result is not None and not result.passed for result in results)
     routes = [result.routes_back_to_development for result in results if result is not None]
-    assert routes == [True] * MAX_PUBLICATION_GATE_FAILURES + [False]
+    assert routes == [True] * (MAX_PUBLICATION_GATE_FAILURES + 1)
+    assert results[-1] is not None
+    assert results[-1].consecutive_failures == MAX_PUBLICATION_GATE_FAILURES + 1
 
     green = check_publication_gate(
         tmp_path, "HEAD", runner=_ScriptedGate(0), tree_of=_trees("f" * 40)
@@ -230,15 +245,46 @@ def test_a_blocked_publication_hands_the_gate_output_to_the_development_prompt(
     assert "mypy: 3 errors" in hint.read_text(encoding="utf-8")
 
 
-def test_no_feedback_is_routed_once_the_gate_failure_budget_is_spent(tmp_path: Path) -> None:
+def test_red_evaluations_from_non_commit_landings_never_starve_the_commit_feedback(
+    tmp_path: Path,
+) -> None:
     policy = cached_default_policy_bundle().pipeline
     _declare_gate(tmp_path)
-    for index in range(MAX_PUBLICATION_GATE_FAILURES + 1):
+    for index in range(MAX_PUBLICATION_GATE_FAILURES * 2 + 2):
         check_publication_gate(
-            tmp_path, "HEAD", runner=_ScriptedGate(2), tree_of=_trees(f"{index + 1:040x}")
+            tmp_path,
+            "HEAD",
+            runner=_ScriptedGate(1, "[verify] FAILED: Open decision numbering\n"),
+            tree_of=_trees(f"{index + 1:040x}"),
         )
 
-    assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
+    event = publication_gate_feedback(tmp_path, policy, "development_commit")
+
+    assert event is not None
+    assert "Open decision numbering" in event.detail
+    hint = tmp_path / retry_hint_path("development", pipeline_policy=policy)
+    assert "Open decision numbering" in hint.read_text(encoding="utf-8")
+
+
+def test_a_planning_entry_refusal_leaves_the_gate_failure_for_development(
+    tmp_path: Path,
+) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    check_publication_gate(
+        tmp_path,
+        "HEAD",
+        runner=_ScriptedGate(1, "[verify] FAILED: Open decision numbering\n"),
+        tree_of=_trees(_TREE_A),
+    )
+
+    assert leave_publication_gate_feedback(tmp_path, policy) is True
+    assert leave_publication_gate_feedback(tmp_path, policy) is False
+
+    hint = tmp_path / retry_hint_path("development", pipeline_policy=policy)
+    assert "Open decision numbering" in hint.read_text(encoding="utf-8")
+    record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
+    assert record["route_backs"] == 1
 
 
 def test_no_feedback_without_a_recorded_gate_failure(tmp_path: Path) -> None:

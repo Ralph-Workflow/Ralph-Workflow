@@ -2573,7 +2573,10 @@ def _ask_owner_planning_sync(
 
 def _publication_blocks_the_sync_gap(ctx: LoopContext, root: Path) -> bool:
     from ralph.git.branch_relation import BranchRelation, branch_relation
-    from ralph.pipeline.publication_gate import blocked_publication
+    from ralph.pipeline.publication_gate import (
+        blocked_publication,
+        leave_publication_gate_feedback,
+    )
 
     configured = _configured_sync_target(ctx)
     if (
@@ -2584,6 +2587,8 @@ def _publication_blocks_the_sync_gap(ctx: LoopContext, root: Path) -> bool:
     blocked = blocked_publication(root)
     if blocked is None:
         return False
+    with suppress(OSError, RuntimeError, ValueError):
+        leave_publication_gate_feedback(root, ctx.policy_bundle.pipeline)
     line = (
         f"planning continues with the run's commits unpublished: publication gate "
         f"`{blocked.command}` refused tree {blocked.tree_sha}; they land once a new tree passes it"

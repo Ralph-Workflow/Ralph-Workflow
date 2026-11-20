@@ -10,6 +10,7 @@ from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
+from ralph.phases.required_artifacts import retry_hint_path
 from ralph.pipeline import run_loop
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
@@ -213,6 +214,38 @@ def test_planning_proceeds_past_a_gate_blocked_tree_instead_of_waiting(
 
     assert runs.read_text(encoding="utf-8").splitlines() == ["run"]
     assert branch_sha(tmp_git_repo, target) == before
+
+
+def test_a_planning_entry_gate_refusal_tells_the_next_development_pass_why(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    fact, _runs = _counting_red_gate(tmp_path)
+    target, feature = _feature_with_gate(tmp_git_repo, tmp_path, fact)
+    config = UnifiedConfig.model_validate(
+        {"general": {"auto_integrate_enabled": True, "auto_integrate_target": target}}
+    )
+    blocked = integrate_before_planning(config, WorkspaceScope(feature), RebaseState())
+    assert blocked is not None
+    assert blocked.publication_block is PublicationBlock.GATE_FAILED
+    bundle = cached_default_policy_bundle()
+    ctx = SimpleNamespace(
+        config=config,
+        workspace_scope=WorkspaceScope(feature),
+        policy_bundle=bundle,
+        active_display=None,
+    )
+
+    for _tick in range(3):
+        _state, held = run_loop.ensure_planning_in_sync(
+            PipelineState(phase="planning", rebase=blocked), ctx, "planning"
+        )
+        assert held is None
+
+    hint = feature / retry_hint_path("development", pipeline_policy=bundle.pipeline)
+    assert "Publication gate" in hint.read_text(encoding="utf-8")
+    gate = last_publication_gate_result(feature)
+    assert gate is not None
+    assert gate.route_backs == 1
 
 
 @pytest.mark.timeout_seconds(90)
