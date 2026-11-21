@@ -68,7 +68,11 @@ from ralph.pipeline.integration_actions import clear_executors
 from ralph.process import reset_process_manager
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
-pytest_plugins = ("ralph.testing.pytest_timeout_plugin", "tests._per_test_budget")
+pytest_plugins = (
+    "ralph.testing.pytest_timeout_plugin",
+    "tests._per_test_budget",
+    "tests._session_temp_containment",
+)
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES) | {
     "tests/test_integration_ladder_real_git.py",
 }
