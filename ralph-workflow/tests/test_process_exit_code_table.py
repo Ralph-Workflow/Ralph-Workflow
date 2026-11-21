@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.git_hooks_path": (
+        "user requirement: a commit hook rejection routes back to development; the new "
+        "git-hooks-path probe in git/operations.py tells a hook rejection from a git error, "
+        "so the reviewed label-site digest is refreshed"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.dirty_landing": (
         "user requirement: committed commits land while the worktree is dirty; the new "
         "pipeline/_dirty_landing.py probes reuse the reviewed git-transition-status and "
@@ -124,10 +129,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "236aa244495f77656d48dc32a6285fd7f3d545634bc09325377f82ec0c7fc233"
+    "2b1310d3ecdade1fe4b985d391d657cd6d4cd320efde89ba8f3706deab7865ec"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds publication-gate-syntax (sh -n of the declared gate "
+    "The reviewed inventory adds git-hooks-path (rev-parse --git-path hooks after a "
+    "failed commit, to tell a commit hook rejection from a git error; rc=128 is git's "
+    "answer outside a repository), publication-gate-syntax (sh -n of the declared gate "
     "command; rc=2 is the shell's answer that the declaration is not a command), "
     "git-detached-head-branch-tip (rev-parse --verify of a "
     "candidate branch for a detached HEAD; rc=128 is git's answer when that branch does not "

@@ -61,6 +61,18 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "KEEP two-run seal coverage; ADD distinct refusal proof that the literal 'run' "
         "segment cannot be stored as PipelineState.run_id"
     ),
+    "test_a_rejecting_commit_hook_routes_its_rejection_to_development_until_fixed": (
+        "KEEP the commit failure routing tests; ADD real-git proof that a pre-commit hook "
+        "printing a stdout progress line and a stderr rejection reaches the event, the "
+        "development retry hint and development routing, and that the fixed tree commits"
+    ),
+    "test_an_unchanged_hook_rejected_tree_fails_only_after_the_no_progress_limit": (
+        "KEEP the commit-recovery cap tests; ADD the bound for hook rejections: the shared "
+        "no-progress limit on an unchanged rejected tree, reset by a changed tree"
+    ),
+    "test_a_long_hook_output_is_bounded_and_keeps_the_rejection_line": (
+        "ADD distinct proof that a hook output above the 8 KB bound keeps its rejection line"
+    ),
 }
 
 _TEMPLATE_BRANCH = "main"
@@ -697,3 +709,124 @@ def test_two_rejections_seal_two_distinct_restorable_proposal_refs(tmp_path: Pat
     finally:
         repo.close()
     assert tracked.read_text(encoding="utf-8") == "first attempt\n"
+
+
+_REJECTING_PRE_COMMIT_HOOK = """#!/bin/sh
+echo " social-proof verifier ..."
+if git show :claims.md | grep -q UNSOURCED; then
+  echo "SOCIAL-PROOF BLOCK: claims.md states an unsourced count" >&2
+  exit 1
+fi
+"""
+
+
+def _install_rejecting_pre_commit_hook(repo_root: Path, repo: Repo) -> None:
+    hook = repo_root / ".githooks" / "pre-commit"
+    hook.parent.mkdir()
+    hook.write_text(_REJECTING_PRE_COMMIT_HOOK, encoding="utf-8")
+    hook.chmod(0o755)
+    repo.index.add([".githooks/pre-commit"])
+    actor = Actor("Test User", "test@example.com")
+    repo.index.commit("chore: add pre-commit hook", author=actor, committer=actor)
+    repo.git.config("core.hooksPath", ".githooks")
+
+
+def _stage_claims(repo_root: Path, repo: Repo, content: str) -> str:
+    from ralph.git.operations import write_tree
+
+    (repo_root / "claims.md").write_text(content, encoding="utf-8")
+    repo.index.add(["claims.md"])
+    return write_tree(repo_root)
+
+
+def test_a_rejecting_commit_hook_routes_its_rejection_to_development_until_fixed(
+    tmp_path: Path,
+) -> None:
+    from ralph.config.bootstrap import auto_seed_default_git_exclude
+    from ralph.phases.required_artifacts import read_validation_retry_hint
+    from ralph.pipeline.commit_hook_feedback import leave_commit_hook_feedback
+    from ralph.pipeline.events import CommitHookRejected
+    from ralph.pipeline.reducer import reduce
+    from ralph.pipeline.state import PipelineState
+
+    policy = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
+    repo = _init_test_git_repo(tmp_path, "main")
+    auto_seed_default_git_exclude(tmp_path)
+    _install_rejecting_pre_commit_hook(tmp_path, repo)
+    head_before = repo.head.commit.hexsha
+    rejected_tree = _stage_claims(tmp_path, repo, "1,000,000 users (UNSOURCED)\n")
+    message_file = _create_commit_message_artifact(tmp_path, "docs: add claims")
+
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=rejected_tree),
+        tmp_path,
+        branch="main",
+    )
+
+    assert isinstance(event, CommitHookRejected)
+    assert event.tree_sha == rejected_tree
+    assert "SOCIAL-PROOF BLOCK: claims.md states an unsourced count" in event.hook_output
+    assert "social-proof verifier" in event.hook_output
+    assert repo.head.commit.hexsha == head_before
+    commit_state = PipelineState(
+        phase="development_commit", previous_phase="development_commit_review"
+    )
+    routed, _ = reduce(commit_state, event, policy.pipeline)
+    assert routed.phase == "development"
+    assert routed.last_error is not None
+    assert "SOCIAL-PROOF BLOCK: claims.md states an unsourced count" in routed.last_error
+    assert leave_commit_hook_feedback(tmp_path, policy.pipeline, "development_commit", event)
+    development_hint = read_validation_retry_hint(tmp_path, "development")
+    assert "SOCIAL-PROOF BLOCK: claims.md states an unsourced count" in development_hint
+
+    fixed_tree = _stage_claims(tmp_path, repo, "Used by our own team (source: README, 2026)\n")
+    _create_commit_message_artifact(tmp_path, "docs: add sourced claims")
+    fixed = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=fixed_tree),
+        tmp_path,
+        branch="main",
+    )
+
+    assert fixed == PipelineEvent.COMMIT_SUCCESS
+    assert Repo(tmp_path).head.commit.tree.hexsha == fixed_tree
+    landed, _ = reduce(routed.copy_with(phase="development_commit"), fixed, policy.pipeline)
+    assert landed.phase != "failed_terminal"
+
+
+def test_an_unchanged_hook_rejected_tree_fails_only_after_the_no_progress_limit() -> None:
+    from ralph.pipeline.events import CommitHookRejected
+    from ralph.pipeline.no_progress_reroute import NO_PROGRESS_REROUTE_LIMIT
+    from ralph.pipeline.reducer import reduce
+    from ralph.pipeline.state import PipelineState
+
+    policy = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
+    rejection = CommitHookRejected(hook_output="BLOCK: unsourced count", tree_sha="a" * 40)
+    state = PipelineState(phase="development_commit", previous_phase="development_commit_review")
+    for _ in range(NO_PROGRESS_REROUTE_LIMIT):
+        state, _ = reduce(state.copy_with(phase="development_commit"), rejection, policy.pipeline)
+        assert state.phase == "development"
+
+    changed, _ = reduce(
+        state.copy_with(phase="development_commit"),
+        CommitHookRejected(hook_output="BLOCK: still unsourced", tree_sha="b" * 40),
+        policy.pipeline,
+    )
+    assert changed.phase == "development"
+    stuck, _ = reduce(state.copy_with(phase="development_commit"), rejection, policy.pipeline)
+    assert stuck.phase == "failed_terminal"
+    assert stuck.last_error is not None
+    assert "BLOCK: unsourced count" in stuck.last_error
+
+
+def test_a_long_hook_output_is_bounded_and_keeps_the_rejection_line() -> None:
+    from ralph.git.commit_hook_rejected_error import (
+        HOOK_OUTPUT_LIMIT_CHARS,
+        CommitHookRejectedError,
+    )
+
+    noise = "\n".join(f"checked file {index}" for index in range(3000))
+    error = CommitHookRejectedError(f"{noise}\nBLOCK: unsourced count in claims.md\n{noise}")
+
+    assert len(error.hook_output) <= HOOK_OUTPUT_LIMIT_CHARS
+    assert "BLOCK: unsourced count in claims.md" in error.hook_output
+    assert "BLOCK: unsourced count in claims.md" in str(error)

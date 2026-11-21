@@ -32,6 +32,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "git-branch-sha": frozenset({1}),
     "git-common-dir": frozenset({128}),
     "git-detached-head-branch-tip": frozenset({128}),
+    "git-hooks-path": frozenset({128}),
     "publication-gate-tree": frozenset({128}),
     "publication-gate-syntax": frozenset({2}),
     "git-is-ancestor": frozenset({1}),

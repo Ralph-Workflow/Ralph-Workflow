@@ -17,6 +17,7 @@ from ralph.display.parallel_display import (
     resolve_active_display,
 )
 from ralph.git._lock_recovery import reap_stale_locks
+from ralph.git.commit_hook_rejected_error import CommitHookRejectedError
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.commit_review import (
     add_to_git_exclude,
@@ -54,7 +55,7 @@ from ralph.pipeline._commit_executor_branch import (
     _reattach_head_if_detached,
 )
 from ralph.pipeline.effects import CommitEffect
-from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
+from ralph.pipeline.events import CommitHookRejected, CommitResidualEvent, Event, PipelineEvent
 from ralph.policy.models import PolicyBundle
 from ralph.workspace.scope import CONFIG_DIR_NAME
 
@@ -372,7 +373,7 @@ def _perform_commit_creation(
 
     try:
         result = _stage_and_create()
-    except CommitApprovalError:
+    except (CommitApprovalError, CommitHookRejectedError):
         raise
     except Exception:
         if _attempt_repair_git_state(repo_root, **repair_opts):
@@ -496,6 +497,8 @@ def execute_commit_effect(
         )
         set_last_commit_error(None)
         logger.info("Created commit: {}", sha[:8])
+    except CommitHookRejectedError as exc:
+        return _hook_rejection_event(repo_root, effect, exc, display, opts)
     except (GitError, OSError, RuntimeError, ValueError, KeyError) as exc:
         err_msg = f"{type(exc).__name__}: {exc}"
         _commit_failure_pending.record_failure(err_msg, effect.expected_tree_sha)
@@ -523,6 +526,28 @@ def execute_commit_effect(
         except (OSError, RuntimeError, ValueError) as exc:
             logger.warning("Unable to inspect residual commit work: {}", exc)
     return PipelineEvent.COMMIT_SUCCESS
+
+
+def _hook_rejection_event(
+    repo_root: Path,
+    effect: CommitEffect,
+    exc: CommitHookRejectedError,
+    display: ParallelDisplay | None,
+    opts: dict[str, object],
+) -> CommitHookRejected:
+    tree_sha = effect.expected_tree_sha or ""
+    if not tree_sha:
+        with suppress(GitError, OSError, RuntimeError, ValueError):
+            tree_sha = write_tree(repo_root)
+    set_last_commit_error(None)
+    logger.error(
+        "Commit hook rejected the commit of tree {}; routing the hook output back to "
+        "development:\n{}",
+        tree_sha or "(unknown)",
+        exc.hook_output,
+    )
+    _record_display_outcome(display, "hook rejected", **opts)
+    return CommitHookRejected(hook_output=exc.hook_output, tree_sha=tree_sha)
 
 
 def _has_content(message_file: str) -> bool:

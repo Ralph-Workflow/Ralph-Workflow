@@ -63,6 +63,7 @@ from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AgentFailureEvent,
     AnalysisDecisionEvent,
+    CommitHookRejected,
     CommitResidualEvent,
     Event,
     ExecutionResultEvent,
@@ -83,6 +84,7 @@ from ralph.pipeline.handoffs import (
     resolve_post_commit_phase,
 )
 from ralph.pipeline.loopback import handle_capped_phase_loopback_policy_driven
+from ralph.pipeline.no_progress_reroute import RerouteAction, next_reroute, reroute_signature
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
@@ -517,6 +519,8 @@ def _reduce_typed_pipeline_event(
         return _reduce_post_fanout_verification(state, event, pipeline_policy)
     if isinstance(event, PublicationGateFailed):
         return _reduce_publication_gate_failure(state, event, pipeline_policy, routing_timing)
+    if isinstance(event, CommitHookRejected):
+        return _reduce_commit_hook_rejection(state, event, pipeline_policy, routing_timing)
     if isinstance(event, PhaseFailureEvent):
         return _reduce_phase_failure(state, event, pipeline_policy, recovery, routing_timing)
     if isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
@@ -1222,6 +1226,57 @@ def _reduce_publication_gate_failure(
         return blocked, []
     return _handle_analysis_loopback(
         blocked.copy_with(phase=loop_phase), policy, routing_timing=routing_timing
+    )
+
+
+def _reduce_commit_hook_rejection(
+    state: PipelineState,
+    event: CommitHookRejected,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]]:
+    from ralph.pipeline.publication_gate import publication_gate_loop_phase
+
+    if policy is None:
+        return _advance_to_failed(state, "No policy loaded for commit hook rejection", policy)
+    loop_phase = publication_gate_loop_phase(policy, state.phase)
+    signature = reroute_signature(
+        state.phase, loop_phase or "", f"commit hook rejected tree {event.tree_sha}"
+    )
+    action, count = next_reroute(
+        state.commit_hook_rejection_signature, state.commit_hook_rejection_count, signature
+    )
+    rejected = state.copy_with(
+        last_error=event.feedback(),
+        last_agent_session_id=None,
+        agent_retry_intent=cleared_agent_retry_intent(),
+        pending_cycle_outcome=None,
+        commit_hook_rejection_signature=signature,
+        commit_hook_rejection_count=count,
+    )
+    if loop_phase is None:
+        return _enter_failed_recovery(
+            rejected,
+            "a commit hook rejected the commit and the policy has no development loop to "
+            f"fix the content:\n{event.hook_output}",
+            policy,
+        )
+    if action is RerouteAction.FAIL:
+        return _enter_failed_recovery(
+            rejected,
+            f"a commit hook rejected the unchanged tree {event.tree_sha} {count} times; "
+            f"development made no change the hook accepts:\n{event.hook_output}",
+            policy,
+        )
+    logger.bind(component="policy.routing").warning(
+        "Commit hook rejected tree {} (rejection {} of this tree); routing the hook output "
+        "back to development through {}",
+        event.tree_sha,
+        count,
+        loop_phase,
+    )
+    return _handle_analysis_loopback(
+        rejected.copy_with(phase=loop_phase), policy, routing_timing=routing_timing
     )
 
 

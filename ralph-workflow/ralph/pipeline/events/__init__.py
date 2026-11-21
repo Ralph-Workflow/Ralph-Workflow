@@ -5,6 +5,7 @@ from .agent_failure_event import (
     observation_from_event,
 )
 from .analysis_decision_event import AnalysisDecisionEvent
+from .commit_hook_rejected_event import CommitHookRejected
 from .commit_residual_event import CommitResidualEvent
 from .execution_result_event import ExecutionResultEvent
 from .phase_failure_event import PhaseFailureEvent
@@ -18,6 +19,7 @@ from .worker_started_event import WorkerStartedEvent
 Event = (
     PipelineEvent
     | CommitResidualEvent
+    | CommitHookRejected
     | PhaseFailureEvent
     | ExecutionResultEvent
     | WorkerStartedEvent
@@ -32,6 +34,7 @@ Event = (
 __all__ = [
     "AgentFailureEvent",
     "AnalysisDecisionEvent",
+    "CommitHookRejected",
     "CommitResidualEvent",
     "Event",
     "ExecutionResultEvent",

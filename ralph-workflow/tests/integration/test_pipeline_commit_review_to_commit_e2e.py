@@ -25,7 +25,7 @@ from ralph.pipeline.effects import (
     EmptyCommitEffect,
     InvokeAgentEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import CommitHookRejected, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -39,6 +39,15 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.memory import MemoryWorkspace
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_commit": (
+        "user requirement: a project commit hook rejection is a content problem routed back "
+        "to development, so the blocked commit now yields CommitHookRejected carrying the "
+        "hook diagnostic instead of COMMIT_FAILURE with a last commit error; the history "
+        "checks are kept"
+    ),
+}
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
@@ -668,7 +677,7 @@ def test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_com
         repo_root,
     )
 
-    assert event == PipelineEvent.COMMIT_FAILURE
+    assert isinstance(event, CommitHookRejected)
     assert _commit_history_shas(repo_root) == [head_before], (
         "A blocking pre-commit hook must leave the history untouched: no commit may be created."
     )
@@ -677,11 +686,11 @@ def test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_com
         assert repo.head.commit.hexsha == head_before
     finally:
         repo.close()
-    last_error = get_last_commit_error()
-    assert last_error is not None
-    assert "PRE_COMMIT_BLOCKED" in last_error, (
-        f"The hook's own diagnostic must be surfaced, got: {last_error!r}"
+    assert event.tree_sha == approved_tree
+    assert "PRE_COMMIT_BLOCKED" in event.hook_output, (
+        f"The hook's own diagnostic must be surfaced, got: {event.hook_output!r}"
     )
+    assert "PRE_COMMIT_BLOCKED" in event.feedback()
 
 
 def test_sha_bound_commit_refuses_a_hook_mutated_tree(tmp_git_repo: Path) -> None:

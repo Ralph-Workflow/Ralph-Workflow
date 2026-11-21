@@ -13,6 +13,7 @@ from loguru import logger
 
 from ralph.checked_accessors import as_bool, as_int, as_mapping, as_str
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+from ralph.failure_digest import failure_line_digest
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
@@ -166,28 +167,14 @@ class PublicationGateResult:
         )
 
 
-def _leading_lines(lines: list[str]) -> list[str]:
-    kept: list[str] = []
-    size = 0
-    for line in lines[:_DIGEST_HALF_LINES]:
-        size += len(line) + 1
-        if size > _DIGEST_HALF_CHARS:
-            break
-        kept.append(line)
-    return kept
-
-
 def _failure_digest(output: str) -> str:
-    lines = [
-        line.strip()[:_DIGEST_LINE_CHARS]
-        for line in output.splitlines()
-        if _DIGEST_LINE.search(line)
-    ]
-    head = _leading_lines(lines)
-    tail = _leading_lines(lines[len(head) :][::-1])[::-1]
-    omitted = len(lines) - len(head) - len(tail)
-    gap = [f"... {omitted} more matching lines ..."] if omitted else []
-    return "\n".join((*head, *gap, *tail))
+    return failure_line_digest(
+        output,
+        _DIGEST_LINE,
+        half_lines=_DIGEST_HALF_LINES,
+        half_chars=_DIGEST_HALF_CHARS,
+        line_chars=_DIGEST_LINE_CHARS,
+    )
 
 
 def _shows_correctness_failure(output: str) -> bool:
@@ -620,13 +607,11 @@ def publication_gate_feedback(
     if result is None or not result.routes_back_to_development:
         return None
     _save_record(root, replace(result, route_backs=result.route_backs + 1))
-    _write_development_feedback(root, policy, loop_phase, result)
+    write_loop_feedback(root, policy, loop_phase, result.feedback())
     return PublicationGateFailed(phase=commit_phase, detail=result.feedback())
 
 
-def _write_development_feedback(
-    root: Path, policy: PipelinePolicy, loop_phase: str, result: PublicationGateResult
-) -> bool:
+def write_loop_feedback(root: Path, policy: PipelinePolicy, loop_phase: str, feedback: str) -> bool:
     loop_target = policy.phases[loop_phase].transitions.on_loopback
     if not loop_target:
         return False
@@ -635,7 +620,7 @@ def _write_development_feedback(
     hint = root / retry_hint_path(loop_target, pipeline_policy=policy)
     hint.parent.mkdir(parents=True, exist_ok=True)
     return atomic_write_text_if_changed(
-        DEFAULT_FILE_BACKEND, hint, result.feedback(), tmp_path=hint.with_suffix(".tmp")
+        DEFAULT_FILE_BACKEND, hint, feedback, tmp_path=hint.with_suffix(".tmp")
     )
 
 
@@ -652,7 +637,7 @@ def leave_publication_gate_feedback(root: Path, policy: PipelinePolicy) -> bool:
         ),
         None,
     )
-    if loop_phase is None or not _write_development_feedback(root, policy, loop_phase, result):
+    if loop_phase is None or not write_loop_feedback(root, policy, loop_phase, result.feedback()):
         return False
     _save_record(root, replace(result, route_backs=result.route_backs + 1))
     logger.warning(
@@ -729,4 +714,5 @@ __all__ = [
     "red_publication_gate",
     "resolve_publication_gate",
     "run_advisory_publication_gate",
+    "write_loop_feedback",
 ]

@@ -26,11 +26,15 @@ def reroute_signature(failing_phase: str, target_phase: str, cause: str) -> str:
 
 
 def record_reroute(state: PipelineState, signature: str) -> tuple[RerouteAction, int]:
-    count = (
-        state.no_progress_reroute_count + 1
-        if state.no_progress_reroute_signature == signature
-        else 1
+    return next_reroute(
+        state.no_progress_reroute_signature, state.no_progress_reroute_count, signature
     )
+
+
+def next_reroute(
+    previous_signature: str | None, previous_count: int, signature: str
+) -> tuple[RerouteAction, int]:
+    count = previous_count + 1 if previous_signature == signature else 1
     if count < NO_PROGRESS_REROUTE_LIMIT:
         return RerouteAction.REROUTE, count
     if count == NO_PROGRESS_REROUTE_LIMIT:

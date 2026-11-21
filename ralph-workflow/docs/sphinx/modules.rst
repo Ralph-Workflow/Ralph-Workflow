@@ -310,6 +310,13 @@ ralph.checked_accessors
    :members:
    :show-inheritance:
 
+ralph.failure_digest
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.failure_digest
+   :members:
+   :show-inheritance:
+
 ralph.pydantic_validation_errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1037,6 +1044,13 @@ ralph.pipeline.events.phase_failure_event
    :members:
    :show-inheritance:
 
+ralph.pipeline.events.commit_hook_rejected_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.commit_hook_rejected_event
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.events.pipeline_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1732,6 +1746,13 @@ ralph.pipeline.publication_gate_slots
    :members:
    :show-inheritance:
 
+ralph.pipeline.commit_hook_feedback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.commit_hook_feedback
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.publication_block
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1967,6 +1988,13 @@ ralph.git.commit_tree_mismatch_error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.commit_tree_mismatch_error
+   :members:
+   :show-inheritance:
+
+ralph.git.commit_hook_rejected_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.commit_hook_rejected_error
    :members:
    :show-inheritance:
 

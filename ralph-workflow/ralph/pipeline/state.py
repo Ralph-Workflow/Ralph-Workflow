@@ -260,6 +260,8 @@ class PipelineState(_FrozenPipelineStateModel):
     no_progress_reroute_count: int = 0
     overridden_success_phase: PipelinePhase | None = None
     overridden_success_count: int = 0
+    commit_hook_rejection_signature: str | None = None
+    commit_hook_rejection_count: int = 0
     interrupted_by_user: bool = False
     git_auth_configured: bool = False
     pr_created: bool = False

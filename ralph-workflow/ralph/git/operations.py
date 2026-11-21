@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from ralph.git._lock_recovery import LivenessProbeFn
+    from ralph.git.git_run_result import GitRunResult
 
 from git import Actor, GitError, InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -44,6 +45,7 @@ from ralph.git._lock_recovery import (
 from ralph.git._lock_recovery import (
     _sleep_fn as _base_sleep_fn,
 )
+from ralph.git.commit_hook_rejected_error import CommitHookRejectedError
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.commit_tree_mismatch_error import CommitTreeMismatchError
 from ralph.git.git_command_queue import (
@@ -66,6 +68,32 @@ _PACKED_REF_PARTS = 2
 
 def _raise_git_commit_error(detail: str) -> NoReturn:
     raise GitOperationError("create_commit", detail)
+
+
+_COMMIT_HOOK_NAMES = ("pre-commit", "prepare-commit-msg", "commit-msg")
+
+
+def _hook_output(result: GitRunResult) -> str:
+    return "\n".join(part.strip() for part in (result.stderr, result.stdout) if part.strip())
+
+
+def _runs_a_commit_hook(repo_root: Path) -> bool:
+    hooks = run_git(("rev-parse", "--git-path", "hooks"), cwd=repo_root, label="git-hooks-path")
+    if hooks.returncode != 0 or not hooks.stdout.strip():
+        return False
+    hooks_dir = repo_root / hooks.stdout.strip()
+    return any(
+        (hooks_dir / name).is_file() and os.access(hooks_dir / name, os.X_OK)
+        for name in _COMMIT_HOOK_NAMES
+    )
+
+
+def _raise_commit_command_error(repo_root: Path, result: GitRunResult) -> NoReturn:
+    output = _hook_output(result)
+    git_refused = any(line.startswith("fatal:") for line in output.splitlines())
+    if not git_refused and _runs_a_commit_hook(repo_root):
+        raise CommitHookRejectedError(output)
+    _raise_git_commit_error(output or "git commit failed")
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -221,7 +249,7 @@ def _run_commit_hooks(
             options=GitRunOptions(env=hook_env),
         )
         if hook_result.returncode != 0:
-            raise GitOperationError("create_commit", hook_result.stderr.strip())
+            raise CommitHookRejectedError(_hook_output(hook_result))
 
 
 def find_repo_root(start: Path | str = Path()) -> Path:
@@ -865,8 +893,7 @@ def _execute_create_commit_with_hooks(
             ),
         )
     if commit_result.returncode != 0:
-        detail = commit_result.stderr.strip() or commit_result.stdout.strip()
-        _raise_git_commit_error(detail or "git commit failed")
+        _raise_commit_command_error(Path(repo_root), commit_result)
 
     created_sha = _current_head_sha(Path(repo_root)) or ""
     if not created_sha:

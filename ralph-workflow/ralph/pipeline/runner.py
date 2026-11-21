@@ -120,6 +120,7 @@ from ralph.pipeline.commit_executor import (
 from ralph.pipeline.commit_executor import (
     execute_commit_effect as _ee_execute_commit_effect,
 )
+from ralph.pipeline.commit_hook_feedback import leave_commit_hook_feedback
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
     read_cycle_baseline,
@@ -150,6 +151,7 @@ from ralph.pipeline.effects import (
 )
 from ralph.pipeline.events import (
     AgentFailureEvent,
+    CommitHookRejected,
     CommitResidualEvent,
     Event,
     PhaseFailureEvent,
@@ -1161,6 +1163,8 @@ def _event_after_integration(
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
 ) -> Event | CommitReviewEvent:
+    if isinstance(event, CommitHookRejected):
+        leave_commit_hook_feedback(workspace_scope.root, policy_bundle.pipeline, state.phase, event)
     if not isinstance(outcome, RebaseState):
         return event
     if outcome.integration_unresolved and not outcome.recovery_record_retained:
@@ -1338,7 +1342,7 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
 
 
 def _is_phase_transition_integration_event(event: object) -> bool:
-    return isinstance(event, (CommitResidualEvent, AgentFailureEvent)) or (
+    return isinstance(event, (CommitResidualEvent, CommitHookRejected, AgentFailureEvent)) or (
         isinstance(event, PipelineEvent) and event in _PHASE_TRANSITION_INTEGRATION_EVENTS
     )
 
