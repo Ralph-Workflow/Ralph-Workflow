@@ -3860,7 +3860,10 @@ def _run_inner_loop_after_startup(
         )
         _publish_state_snapshot(ctx, state)
         state = _handle_cooldown_delay(state, ctx)
-        if str(state.phase) != captured_phase:
+        if (
+            str(state.phase) != captured_phase
+            and state.phase not in ctx.policy_bundle.pipeline.terminal_states()
+        ):
             state = _reselect_preferred_agent(state, ctx)
         prev_phase = _runner_module.emit_phase_transition_if_changed(
             ctx.active_display,

@@ -13,6 +13,13 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "recover_missing_plan_handoff callers pass workspace_root": (
+        "the re-route now clears the retry hint of the re-entered phase under the workspace root "
+        "after repeated no-progress re-routes, so every caller names that root; no assertion changed"
+    ),
+}
+
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 _CONSUMED = 4000.0
 
@@ -67,6 +74,7 @@ def test_recovering_a_missing_plan_handoff_preserves_the_cycle(tmp_path: Path) -
         state=_in_cycle("development", consumed=7300.0),
         pipeline_policy=_pipeline(),
         checkpoint_path=tmp_path / "checkpoint.json",
+        workspace_root=tmp_path,
         subscriber=None,
         exc=MissingPlanHandoffError("no plan handoff at .agent/PLAN.md"),
     )
@@ -82,6 +90,7 @@ def test_the_cycle_after_a_missing_plan_handoff_keeps_its_budget(
         state=_in_cycle("development", consumed=7300.0),
         pipeline_policy=_pipeline(),
         checkpoint_path=tmp_path / "checkpoint.json",
+        workspace_root=tmp_path,
         subscriber=None,
         exc=MissingPlanHandoffError("no plan handoff at .agent/PLAN.md"),
     )

@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "recover_missing_plan_handoff callers pass workspace_root": (
+        "the re-route now clears the retry hint of the re-entered phase under the workspace root "
+        "after repeated no-progress re-routes, so every caller names that root; no assertion changed"
+    ),
+}
+
+
 def _load_default_policy_bundle() -> tuple[PipelinePolicy, ArtifactsPolicy]:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
@@ -104,6 +112,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             state=state,
             pipeline_policy=pipeline_policy,
             checkpoint_path=tmp_path / "ckpt.json",
+            workspace_root=tmp_path,
             subscriber=None,
             exc=MissingPlanHandoffError("test missing plan handoff"),
         )
@@ -180,6 +189,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             state=state_at_first_recovery,
             pipeline_policy=pipeline_policy,
             checkpoint_path=tmp_path / "ckpt.json",
+            workspace_root=tmp_path,
             subscriber=None,
             exc=MissingPlanHandoffError("first missing plan"),
         )
@@ -203,6 +213,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             state=advanced,
             pipeline_policy=pipeline_policy,
             checkpoint_path=tmp_path / "ckpt.json",
+            workspace_root=tmp_path,
             subscriber=None,
             exc=MissingPlanHandoffError("second missing plan"),
         )
@@ -254,6 +265,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             state=primed_state,
             pipeline_policy=pipeline_policy,
             checkpoint_path=tmp_path / "ckpt.json",
+            workspace_root=tmp_path,
             subscriber=None,
             exc=MissingPlanHandoffError("missing plan handoff"),
         )
@@ -319,6 +331,7 @@ class TestRunnerMissingPlanHandoffRecovery:
             state=primed_state,
             pipeline_policy=pipeline_policy,
             checkpoint_path=tmp_path / "ckpt.json",
+            workspace_root=tmp_path,
             subscriber=None,
             exc=MissingPlanHandoffError("missing plan handoff"),
         )

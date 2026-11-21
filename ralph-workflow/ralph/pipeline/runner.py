@@ -167,6 +167,7 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
     retained_integration_reason,
 )
+from ralph.pipeline.no_progress_reroute import with_agent_invoked
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
     render_phase_failure_report,
@@ -2304,11 +2305,13 @@ def _run_pipeline_step(
                         state=state,
                         pipeline_policy=policy_bundle.pipeline,
                         checkpoint_path=_checkpoint_path(workspace_scope),
+                        workspace_root=workspace_scope.root,
                         subscriber=pipeline_subscriber,
                         exc=exc,
                     ),
                     _phase_timer,
                 )
+            state = with_agent_invoked(state)
             run_id = str(uuid.uuid4())
             event = invoke_execute_effect_with_optional_display(
                 effect,
@@ -2565,6 +2568,7 @@ def _handle_inline_effect(
                     state=state,
                     pipeline_policy=pipeline_policy,
                     checkpoint_path=checkpoint_path,
+                    workspace_root=workspace_scope.root,
                     subscriber=effective_subscriber,
                     exc=exc,
                 )

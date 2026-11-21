@@ -7,6 +7,7 @@ import pytest
 
 from ralph.phases.required_artifacts import retry_hint_path
 from ralph.pipeline.publication_gate import (
+    MAX_INCONCLUSIVE_GATE_RUNS,
     MAX_PUBLICATION_GATE_FAILURES,
     PublicationBlock,
     PublicationGateFailed,
@@ -383,3 +384,106 @@ def test_unstructured_output_keeps_its_signature_across_timing_noise(tmp_path: P
         routed.append(publication_gate_feedback(tmp_path, policy, "development_commit"))
 
     assert routed[MAX_PUBLICATION_GATE_FAILURES:] == [None, None]
+
+
+_CANCELLED = "........\nRan 8 tests in 2.688s\n\nOK\n[verify] CANCELLED: received SIGTERM\n"
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "output"), [(-15, _CANCELLED), (-9, "killed\n"), (1, _CANCELLED)]
+)
+def test_a_gate_killed_by_a_signal_is_inconclusive_and_never_routes_back(
+    tmp_path: Path, exit_code: int, output: str
+) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+
+    result = check_publication_gate(
+        tmp_path, "HEAD", runner=_ScriptedGate(exit_code, output), tree_of=_trees(_TREE_A)
+    )
+
+    assert result is not None
+    assert result.inconclusive is True
+    assert result.block is PublicationBlock.GATE_FAILED
+    assert result.routes_back_to_development is False
+    assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
+    assert leave_publication_gate_feedback(tmp_path, policy) is False
+    assert not (tmp_path / retry_hint_path("development", pipeline_policy=policy)).exists()
+
+
+def test_an_inconclusive_gate_is_rerun_on_the_same_tree_a_bounded_number_of_times(
+    tmp_path: Path,
+) -> None:
+    _declare_gate(tmp_path)
+    gate = _ScriptedGate(-15, _CANCELLED)
+
+    for _ in range(MAX_INCONCLUSIVE_GATE_RUNS + 3):
+        check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_A))
+
+    assert len(gate.calls) == MAX_INCONCLUSIVE_GATE_RUNS
+    green = check_publication_gate(
+        tmp_path, "HEAD", runner=_ScriptedGate(0), tree_of=_trees(_TREE_B)
+    )
+    assert green is not None
+    assert green.passed
+
+
+def test_an_inconclusive_run_neither_charges_nor_resets_the_failure_budget(
+    tmp_path: Path,
+) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    _red(tmp_path, 1, _SIGNATURE_B)
+    assert publication_gate_feedback(tmp_path, policy, "development_commit") is not None
+    assert publication_gate_feedback(tmp_path, policy, "development_commit") is not None
+
+    check_publication_gate(
+        tmp_path, "HEAD", runner=_ScriptedGate(-15, _CANCELLED), tree_of=_trees(f"{2:040x}")
+    )
+    _red(tmp_path, 3, _SIGNATURE_B)
+
+    record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
+    assert record["route_backs"] == 2
+    assert record["inconclusive_runs"] == 0
+
+
+def test_a_legacy_record_without_a_signature_still_loads_with_its_counters(
+    tmp_path: Path,
+) -> None:
+    _declare_gate(tmp_path)
+    publication_gate_record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    publication_gate_record_path(tmp_path).write_text(
+        json.dumps(
+            {
+                "command": "make -C ralph-workflow verify",
+                "tree_sha": _TREE_A,
+                "exit_code": 1,
+                "timed_out": False,
+                "output_tail": _SIGNATURE_B,
+                "consecutive_failures": 16,
+                "route_backs": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    gate = _ScriptedGate(1, _SIGNATURE_B)
+
+    reused = check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_A))
+    fresh = check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_B))
+
+    assert reused is not None
+    assert reused.consecutive_failures == 16
+    assert gate.calls == [gate.calls[0]]
+    assert fresh is not None
+    assert fresh.consecutive_failures == 17
+    assert fresh.route_backs == 0
+
+
+def test_a_passed_gate_record_is_reused_for_the_same_tree(tmp_path: Path) -> None:
+    _declare_gate(tmp_path)
+    gate = _ScriptedGate(0, "[verify] All checks passed.\n")
+
+    for _ in range(3):
+        check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_A))
+
+    assert len(gate.calls) == 1

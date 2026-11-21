@@ -1718,6 +1718,13 @@ ralph.pipeline.no_progress_hold
    :members:
    :show-inheritance:
 
+ralph.pipeline.no_progress_reroute
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.no_progress_reroute
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.publication_block
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

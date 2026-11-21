@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 PUBLICATION_GATE_TIMEOUT_SECONDS: Final[float] = 1800.0
 MAX_PUBLICATION_GATE_FAILURES: Final[int] = 5
+MAX_INCONCLUSIVE_GATE_RUNS: Final[int] = 3
 _GATE_FACT_KEY: Final[str] = "authoritative_verify_command"
 _GATE_POLICY_FILE: Final[str] = "verification-policy.md"
 _UNRESOLVED_FACT: Final[str] = "PROJECT-FACT-UNRESOLVED"
@@ -39,6 +40,7 @@ _FAILED_STEP_MARKERS = (
     re.compile(r"^FAILED\s+(\S+)", re.MULTILINE),
     re.compile(r"failed while running:\s*(.+?)\s*$", re.MULTILINE),
 )
+_CANCELLED_MARKER = re.compile(r"^\s*\[verify\]\s+CANCELLED\b", re.MULTILINE)
 _VOLATILE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SIGNATURE_FALLBACK_LINES: Final[int] = 5
 
@@ -53,10 +55,17 @@ class PublicationGateResult:
     consecutive_failures: int = 0
     route_backs: int = 0
     failure_signature: str = ""
+    inconclusive_runs: int = 0
 
     @property
     def passed(self) -> bool:
         return self.exit_code == 0 and not self.timed_out
+
+    @property
+    def inconclusive(self) -> bool:
+        if self.passed or self.timed_out:
+            return False
+        return self.exit_code < 0 or _CANCELLED_MARKER.search(self.output_tail) is not None
 
     @property
     def block(self) -> PublicationBlock | None:
@@ -66,7 +75,11 @@ class PublicationGateResult:
 
     @property
     def routes_back_to_development(self) -> bool:
-        return not self.passed and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
+        return (
+            not self.passed
+            and not self.inconclusive
+            and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
+        )
 
     def feedback(self) -> str:
         verdict = "timed out" if self.timed_out else f"failed (exit {self.exit_code})"
@@ -154,7 +167,8 @@ def _load_record(root: Path) -> PublicationGateResult | None:
     try:
         fields = as_mapping(raw, field="publication gate record")
         output_tail = fields["output_tail"]
-        if not isinstance(output_tail, str):
+        signature = fields.get("failure_signature", "")
+        if not isinstance(output_tail, str) or not isinstance(signature, str):
             return None
         return PublicationGateResult(
             command=as_str(fields["command"], field="command"),
@@ -166,9 +180,8 @@ def _load_record(root: Path) -> PublicationGateResult | None:
                 fields.get("consecutive_failures", 0), field="consecutive_failures"
             ),
             route_backs=as_int(fields.get("route_backs", 0), field="route_backs"),
-            failure_signature=as_str(
-                fields.get("failure_signature", ""), field="failure_signature"
-            ),
+            failure_signature=signature,
+            inconclusive_runs=as_int(fields.get("inconclusive_runs", 0), field="inconclusive_runs"),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -198,6 +211,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "consecutive_failures": result.consecutive_failures,
         "route_backs": result.route_backs,
         "failure_signature": result.failure_signature,
+        "inconclusive_runs": result.inconclusive_runs,
     }
 
 
@@ -219,6 +233,7 @@ def check_publication_gate(
         and tree_sha
         and previous.tree_sha == tree_sha
         and previous.command == command
+        and (not previous.inconclusive or previous.inconclusive_runs >= MAX_INCONCLUSIVE_GATE_RUNS)
     ):
         return previous
     logger.info("Running the publication gate `{}` on tree {}", command, tree_sha)
@@ -230,6 +245,8 @@ def check_publication_gate(
         timed_out=run.timed_out,
         output_tail=run.output[-_OUTPUT_TAIL_CHARS:],
     )
+    if result.inconclusive:
+        return _record_inconclusive_run(root, result, previous)
     failures = 0 if result.passed else (previous.consecutive_failures if previous else 0) + 1
     signature = (
         ""
@@ -254,6 +271,32 @@ def check_publication_gate(
         )
     _save_record(root, result)
     return result
+
+
+def _record_inconclusive_run(
+    root: Path, result: PublicationGateResult, previous: PublicationGateResult | None
+) -> PublicationGateResult:
+    same_tree = previous is not None and previous.tree_sha == result.tree_sha
+    runs = (previous.inconclusive_runs if same_tree and previous is not None else 0) + 1
+    recorded = replace(
+        result,
+        consecutive_failures=previous.consecutive_failures if previous is not None else 0,
+        route_backs=previous.route_backs if previous is not None else 0,
+        failure_signature=previous.failure_signature if previous is not None else "",
+        inconclusive_runs=runs,
+    )
+    logger.warning(
+        "Publication gate `{}` on tree {} was stopped by a signal (exit {}); the result is "
+        "inconclusive, so the commits stay unpublished and the gate re-runs on the next landing "
+        "({} of {} inconclusive runs on this tree)",
+        result.command,
+        result.tree_sha,
+        result.exit_code,
+        runs,
+        MAX_INCONCLUSIVE_GATE_RUNS,
+    )
+    _save_record(root, recorded)
+    return recorded
 
 
 def last_publication_gate_result(root: Path) -> PublicationGateResult | None:
@@ -383,6 +426,7 @@ def publication_gate_loop_phase(policy: PipelinePolicy, commit_phase: str) -> st
 
 
 __all__ = [
+    "MAX_INCONCLUSIVE_GATE_RUNS",
     "MAX_PUBLICATION_GATE_FAILURES",
     "PUBLICATION_GATE_TIMEOUT_SECONDS",
     "GateRunner",

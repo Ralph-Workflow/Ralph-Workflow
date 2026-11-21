@@ -520,7 +520,7 @@ def _render_planning_prompt(
             worker_namespace=options.worker_namespace,
             pipeline_policy=context.pipeline_policy,
         )
-        if preserve_planning_context
+        if preserve_planning_context or options.previous_phase == phase
         else ""
     )
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
@@ -819,12 +819,11 @@ def _template_allows_missing_plan_handoff(template_name: str) -> bool:
     return template_name in {"planning.jinja", "planning_fallback.jinja"}
 
 
-def _resolve_required_plan_handoff(
+def _resolve_editable_plan(
     workspace: Workspace,
     *,
-    template_name: str,
-    allow_draft_fallback: bool = False,
-) -> tuple[str | None, str]:
+    allow_draft_fallback: bool,
+) -> tuple[str | None, str] | None:
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if plan_path:
         return plan_content, plan_path
@@ -833,6 +832,18 @@ def _resolve_required_plan_handoff(
         _content, diagnostics = parse_and_validate(draft, PLAN_SPEC)
         if not any(diagnostic.severity == "error" for diagnostic in diagnostics):
             return draft, ""
+    return None
+
+
+def _resolve_required_plan_handoff(
+    workspace: Workspace,
+    *,
+    template_name: str,
+    allow_draft_fallback: bool = False,
+) -> tuple[str | None, str]:
+    editable_plan = _resolve_editable_plan(workspace, allow_draft_fallback=allow_draft_fallback)
+    if editable_plan is not None:
+        return editable_plan
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
@@ -855,7 +866,11 @@ def _should_preserve_planning_context(
         _read_optional(workspace, retry_hint_path(phase, pipeline_policy=pipeline_policy))
     )
     preserve_retry_context = previous_phase == phase and has_retry_hint
-    return is_loopback or preserve_retry_context or resume_existing_phase
+    if is_loopback:
+        return True
+    if not (preserve_retry_context or resume_existing_phase):
+        return False
+    return _resolve_editable_plan(workspace, allow_draft_fallback=resume_existing_phase) is not None
 
 
 def _prepare_planning_prompt_context(
