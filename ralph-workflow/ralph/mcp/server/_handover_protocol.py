@@ -322,7 +322,7 @@ def _validate_init_metadata(
     if session_val != expected_session_id:
         return "session_id_mismatch", f"got {session_val} expected {expected_session_id}"
     fp_val = res.get("broker_secret_fingerprint")
-    if expected_broker_fingerprint is not None and fp_val != expected_broker_fingerprint:
+    if fp_val != expected_broker_fingerprint:
         return (
             "broker_fingerprint_mismatch",
             f"got {fp_val} expected {expected_broker_fingerprint}",

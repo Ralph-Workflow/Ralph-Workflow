@@ -19,6 +19,55 @@ pytest_plugins = ("pytester",)
 
 _CAPABILITY_STATE_FILE_NAME = "ralph-workflow-capabilities.json"
 
+_production_state_path_resolver = state_store.default_state_path
+
+
+def _guarded_config_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    capability_content: str | None = None,
+    capability_mode: int | None = None,
+) -> Path:
+    guarded = tmp_path / "guarded_config"
+    guarded.mkdir()
+    capability_state = guarded / _CAPABILITY_STATE_FILE_NAME
+    if capability_mode is not None:
+        capability_state.touch(mode=capability_mode)
+    if capability_content is not None:
+        capability_state.write_text(capability_content, encoding="utf-8")
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded))
+    _clear_recorded_write_violations()
+    return guarded
+
+
+def _run_nested_guard_session(pytester: pytest.Pytester, body: str) -> pytest.RunResult:
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(test_capability_mutation=textwrap.dedent(body))
+    return pytester.runpytest_inprocess("-q")
+
+
+def test_capability_state_resolver_follows_the_redirected_config_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    redirected_config = tmp_path / "redirected_config"
+    redirected_config.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(redirected_config))
+
+    assert _production_state_path_resolver() == (redirected_config / _CAPABILITY_STATE_FILE_NAME)
+
+    monkeypatch.delenv("XDG_CONFIG_HOME")
+
+    assert _production_state_path_resolver() == (
+        Path.home() / ".config" / _CAPABILITY_STATE_FILE_NAME
+    )
+
 
 def test_capability_state_writer_targets_only_the_isolated_session_home(
     tmp_path_factory: pytest.TempPathFactory,
@@ -26,7 +75,7 @@ def test_capability_state_writer_targets_only_the_isolated_session_home(
     base_temp = Path(str(tmp_path_factory.getbasetemp()))
     isolated_home = Path.home()
 
-    resolved = state_store.default_state_path()
+    resolved = _production_state_path_resolver()
 
     assert resolved == state_store.DEFAULT_STATE_PATH
     assert resolved.name == _CAPABILITY_STATE_FILE_NAME
@@ -98,41 +147,106 @@ def test_guard_ignores_only_unattributed_changes_to_the_capability_state_file(
     )
 
 
-def test_in_process_write_to_the_capability_state_file_still_fails_the_guard(
+def test_test_side_content_write_of_the_capability_state_file_fails_the_guard(
     pytester: pytest.Pytester,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    guarded = tmp_path / "guarded_config"
-    guarded.mkdir()
+    guarded = _guarded_config_dir(tmp_path, monkeypatch, capability_content='{"skills": {}}\n')
     capabilities = guarded / _CAPABILITY_STATE_FILE_NAME
-    capabilities.write_text('{"skills": {}}\n', encoding="utf-8")
-    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded))
-    _clear_recorded_write_violations()
 
-    pytester.makeconftest(
-        textwrap.dedent(
-            """
-            from tests.conftest import _guard_real_config_files
-            """
-        )
-    )
-    pytester.makepyfile(
-        test_in_process_write=textwrap.dedent(
-            f"""
-            from pathlib import Path
+    result = _run_nested_guard_session(
+        pytester,
+        f"""
+        from pathlib import Path
 
-            def test_deliberate_in_process_write_to_the_capability_state_file():
-                Path({str(capabilities)!r}).write_text("tampered", encoding="utf-8")
-            """
-        )
+        def test_deliberate_content_write():
+            Path({str(capabilities)!r}).write_text("tampered", encoding="utf-8")
+        """,
     )
 
-    result = pytester.runpytest_inprocess("-q")
     result.assert_outcomes(passed=1, errors=1)
     output = result.stdout.str()
     assert "ralph-workflow-capabilities.json" in output
     assert "MODIFIED (content hash changed)" in output
+
+
+def test_test_side_creation_of_the_capability_state_file_fails_the_guard(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guarded = _guarded_config_dir(tmp_path, monkeypatch)
+    capabilities = guarded / _CAPABILITY_STATE_FILE_NAME
+
+    result = _run_nested_guard_session(
+        pytester,
+        f"""
+        from pathlib import Path
+
+        def test_deliberate_creation():
+            Path({str(capabilities)!r}).write_text("{{}}", encoding="utf-8")
+        """,
+    )
+
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert "ralph-workflow-capabilities.json" in output
+    assert "CREATED:" in output
+
+
+def test_test_side_deletion_of_the_capability_state_file_fails_the_guard(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guarded = _guarded_config_dir(tmp_path, monkeypatch, capability_content='{"skills": {}}\n')
+    capabilities = guarded / _CAPABILITY_STATE_FILE_NAME
+
+    result = _run_nested_guard_session(
+        pytester,
+        f"""
+        from pathlib import Path
+
+        def test_deliberate_deletion():
+            Path({str(capabilities)!r}).unlink()
+        """,
+    )
+
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert "ralph-workflow-capabilities.json" in output
+    assert "DELETED:" in output
+
+
+def test_test_side_chmod_of_the_capability_state_file_fails_the_guard(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guarded = _guarded_config_dir(
+        tmp_path,
+        monkeypatch,
+        capability_content='{"skills": {}}\n',
+        capability_mode=0o600,
+    )
+    capabilities = guarded / _CAPABILITY_STATE_FILE_NAME
+
+    result = _run_nested_guard_session(
+        pytester,
+        f"""
+        import os
+        from pathlib import Path
+
+        def test_deliberate_chmod():
+            os.chmod(Path({str(capabilities)!r}), 0o644)
+        """,
+    )
+
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert "ralph-workflow-capabilities.json" in output
+    assert "MODIFIED (mode changed)" in output
 
 
 def test_external_process_rewrite_of_the_capability_state_file_raises_no_teardown_error(

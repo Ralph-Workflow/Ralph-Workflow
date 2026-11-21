@@ -39,6 +39,20 @@ _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APP
 
 _CAPABILITY_STATE_FILE_NAME = "ralph-workflow-capabilities.json"
 
+_MUTATION_CONTENT = "content"
+_MUTATION_CREATION = "creation"
+_MUTATION_DELETION = "deletion"
+_MUTATION_MODE = "mode"
+_MUTATION_TIMESTAMP = "timestamp"
+
+_CHANGE_EXPLANATIONS: dict[str, frozenset[str]] = {
+    "created": frozenset({_MUTATION_CREATION}),
+    "deleted": frozenset({_MUTATION_DELETION}),
+    "mode": frozenset({_MUTATION_MODE}),
+    "content": frozenset({_MUTATION_CONTENT}),
+    "mtime": frozenset({_MUTATION_CONTENT, _MUTATION_TIMESTAMP}),
+}
+
 _GUARDED_CONFIG_DIRS_ENV = "RALPH_TEST_GUARDED_CONFIG_DIRS"
 _GUARDED_CONFIG_DIRS_ENV_KEY = _GUARDED_CONFIG_DIRS_ENV.encode()
 
@@ -64,6 +78,12 @@ class _ConfigPathSnapshot(NamedTuple):
     sha256: str
     mode: int = 0
     ctime_ns: int = 0
+
+
+class _ConfigChange(NamedTuple):
+    path: Path
+    kind: str
+    message: str
 
 
 class _GuardState:
@@ -210,11 +230,15 @@ def _scan_guarded_config_files(
         _STATE.scanning = prev_scanning
 
 
-_ALL_RECORDED_WRITE_PATHS: set[Path] = set()
+_ALL_RECORDED_MUTATIONS: dict[Path, set[str]] = {}
 
 
-def _recorded_write_paths() -> frozenset[Path]:
-    return frozenset(path for _node, path in _STATE.recorded_writes) | _ALL_RECORDED_WRITE_PATHS
+def _record_in_process_mutation(path: Path, *kinds: str) -> None:
+    _ALL_RECORDED_MUTATIONS.setdefault(path, set()).update(kinds)
+
+
+def _in_process_mutation_kinds(path: Path) -> frozenset[str]:
+    return frozenset(_ALL_RECORDED_MUTATIONS.get(path, ()))
 
 
 def _is_capability_state_file(path: Path) -> bool:
@@ -222,22 +246,24 @@ def _is_capability_state_file(path: Path) -> bool:
     return path.name == _CAPABILITY_STATE_FILE_NAME and path.parent in guarded_dirs
 
 
-def _is_unattributed_capability_state_change(path: Path) -> bool:
-    return _is_capability_state_file(path) and path not in _recorded_write_paths()
+def _is_external_capability_state_change(path: Path, kind: str) -> bool:
+    if not _is_capability_state_file(path):
+        return False
+    return not (_in_process_mutation_kinds(path) & _CHANGE_EXPLANATIONS[kind])
 
 
 def _diff_config_snapshots(
     before: dict[Path, _ConfigPathSnapshot],
     after: dict[Path, _ConfigPathSnapshot],
 ) -> list[str]:
-    changes: list[tuple[Path, str]] = []
+    changes: list[_ConfigChange] = []
     created = set(after) - set(before)
     for p in sorted(created):
-        changes.append((p, f"CREATED: {p}"))
+        changes.append(_ConfigChange(p, "created", f"CREATED: {p}"))
 
     deleted = set(before) - set(after)
     for p in sorted(deleted):
-        changes.append((p, f"DELETED: {p}"))
+        changes.append(_ConfigChange(p, "deleted", f"DELETED: {p}"))
 
     common = set(before) & set(after)
     for p in sorted(common):
@@ -245,22 +271,33 @@ def _diff_config_snapshots(
         a = after[p]
         if b.mode != a.mode:
             changes.append(
-                (p, f"MODIFIED (mode changed): {p} (mode {oct(b.mode)} -> {oct(a.mode)})")
+                _ConfigChange(
+                    p,
+                    "mode",
+                    f"MODIFIED (mode changed): {p} (mode {oct(b.mode)} -> {oct(a.mode)})",
+                )
             )
         elif not b.is_dir and not a.is_dir:
             if b.sha256 != a.sha256:
                 changes.append(
-                    (
+                    _ConfigChange(
                         p,
+                        "content",
                         f"MODIFIED (content hash changed): {p} (sha256 {b.sha256} -> {a.sha256})",
                     )
                 )
             elif b.mtime_ns != a.mtime_ns:
                 changes.append(
-                    (p, f"MODIFIED (mtime changed): {p} (mtime {b.mtime_ns} -> {a.mtime_ns})")
+                    _ConfigChange(
+                        p,
+                        "mtime",
+                        f"MODIFIED (mtime changed): {p} (mtime {b.mtime_ns} -> {a.mtime_ns})",
+                    )
                 )
     return [
-        message for path, message in changes if not _is_unattributed_capability_state_change(path)
+        change.message
+        for change in changes
+        if not _is_external_capability_state_change(change.path, change.kind)
     ]
 
 
@@ -436,6 +473,51 @@ def _extract_write_path(args: tuple[object, ...]) -> Path | None:
     return _extract_guarded_path("open", args)
 
 
+_OS_MUTATION_EVENTS: dict[str, tuple[tuple[str, ...], bool]] = {
+    "os.remove": ((_MUTATION_DELETION,), False),
+    "os.mkdir": ((_MUTATION_CREATION,), False),
+    "os.rmdir": ((_MUTATION_DELETION,), False),
+    "os.rename": ((_MUTATION_DELETION,), True),
+    "os.chmod": ((_MUTATION_MODE,), False),
+    "os.utime": ((_MUTATION_TIMESTAMP,), False),
+    "os.truncate": ((_MUTATION_CONTENT,), False),
+}
+
+
+def _record_write(path: Path, *kinds: str) -> None:
+    _STATE.recorded_writes.append((_STATE.current_test_node, path))
+    _record_in_process_mutation(path, *kinds)
+
+
+def _record_open_event(args: tuple[object, ...]) -> None:
+    path = _extract_guarded_path("open", args)
+    if path is None:
+        return
+    mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
+    flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
+    if not (any(c in mode for c in ("w", "a", "x", "+")) or (flags & _WRITE_FLAGS)):
+        _STATE.recorded_reads.append((_STATE.current_test_node, path))
+        return
+    kinds = [_MUTATION_CONTENT, _MUTATION_TIMESTAMP]
+    if flags & os.O_CREAT:
+        kinds.append(_MUTATION_CREATION)
+    _record_write(path, *kinds)
+
+
+def _record_os_mutation_event(event: str, args: tuple[object, ...]) -> None:
+    entry = _OS_MUTATION_EVENTS.get(event)
+    if entry is None:
+        return
+    kinds, has_destination = entry
+    path = _extract_guarded_path(event, args)
+    if path is not None:
+        _record_write(path, *kinds)
+    if has_destination and len(args) > 1:
+        destination = _extract_guarded_path(event, (args[1],))
+        if destination is not None:
+            _record_write(destination, _MUTATION_CREATION, _MUTATION_CONTENT)
+
+
 def _install_config_guard_audit_hook() -> None:
     if _STATE.audit_hook_installed:
         return
@@ -447,34 +529,9 @@ def _install_config_guard_audit_hook() -> None:
         if _STATE.scanning or not args:
             return
         if event == "open":
-            p = _extract_guarded_path("open", args)
-            if p is not None:
-                mode = args[1] if len(args) > 1 and isinstance(args[1], str) else ""
-                flags = args[2] if len(args) > 2 and isinstance(args[2], int) else 0
-                is_write = any(c in mode for c in ("w", "a", "x", "+")) or bool(
-                    flags & _WRITE_FLAGS
-                )
-                if is_write:
-                    _STATE.recorded_writes.append((_STATE.current_test_node, p))
-                    _ALL_RECORDED_WRITE_PATHS.add(p)
-                else:
-                    _STATE.recorded_reads.append((_STATE.current_test_node, p))
-        elif event in (
-            "os.remove",
-            "os.unlink",
-            "os.mkdir",
-            "os.rmdir",
-            "os.rename",
-            "os.replace",
-        ):
-            p = _extract_guarded_path(event, args)
-            if p is not None:
-                _STATE.recorded_writes.append((_STATE.current_test_node, p))
-                _ALL_RECORDED_WRITE_PATHS.add(p)
-            if event in ("os.rename", "os.replace") and len(args) > 1:
-                p2 = _extract_guarded_path(event, (args[1],))
-                if p2 is not None:
-                    _STATE.recorded_writes.append((_STATE.current_test_node, p2))
+            _record_open_event(args)
+            return
+        _record_os_mutation_event(event, args)
 
     sys.addaudithook(_hook)
 

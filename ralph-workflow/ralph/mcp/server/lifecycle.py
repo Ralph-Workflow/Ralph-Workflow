@@ -20,6 +20,7 @@ from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, TypeGuard, cast
 import psutil
 from loguru import logger
 
+from ralph.agents._broker_secret import parent_broker_secret
 from ralph.config._env import copy_environ
 from ralph.mcp.bridge_diagnostics import (
     BridgeDiagnostics,
@@ -1136,6 +1137,13 @@ class RestartAwareMcpBridge:
                     verified = self._apply_baseline_unavailable(result, old_dead)
                 elif result.failure_stage == "effective_config_fingerprint_mismatch":
                     verified = self._apply_config_fingerprint_mismatch(result, old_dead)
+                elif result.failure_stage == "broker_fingerprint_mismatch":
+                    logger.warning(
+                        "Candidate verification refused on broker identity mismatch: the "
+                        "replacement child does not run under the broker identity pinned "
+                        "at the initial spawn. detail={}",
+                        result.detail,
+                    )
                 else:
                     logger.warning(
                         "Candidate verification failed: stage={} detail={}",
@@ -1957,6 +1965,7 @@ def start_mcp_server(
     )
     _host, port, listening_socket = reserve()
     try:
+        pinned_broker_identity: list[str | None] = []
         inner = _spawn_mcp_process(
             root,
             session,
@@ -1969,6 +1978,7 @@ def start_mcp_server(
             respawn=False,
             tool_catalog_snapshot=_resolve_catalog_snapshot(),
             activity_relay=effective_extras.activity_relay,
+            report_broker_identity=pinned_broker_identity.append,
         )
 
         def _restart_fn(*args: object, **kwargs: object) -> StandaloneMcpProcess:
@@ -1989,7 +1999,9 @@ def start_mcp_server(
                 activity_relay=effective_extras.activity_relay,
             )
 
-        broker_secret_val: str | None = getattr(session, "broker_secret", None)
+        broker_fingerprint: str | None = (
+            pinned_broker_identity[0] if pinned_broker_identity else None
+        )
         bridge = RestartAwareMcpBridge(
             inner,
             restart_fn=_restart_fn,
@@ -2001,7 +2013,7 @@ def start_mcp_server(
             activity_relay=effective_extras.activity_relay,
             workspace_root=root,
             session_id=session.session_id,
-            broker_fingerprint=_finger(broker_secret_val),
+            broker_fingerprint=broker_fingerprint,
             effective_config_fingerprint=compute_effective_config_fingerprint(root),
         )
         bridge._listening_socket = listening_socket
@@ -2186,6 +2198,19 @@ def _raise_startup_failure(
     ) from cause
 
 
+def _effective_broker_fingerprint(
+    session: SessionLike,
+    env: dict[str, str],
+) -> str | None:
+    declared: str | None = getattr(session, "broker_secret", None)
+    if isinstance(declared, str) and declared:
+        return _finger(declared)
+    ambient = parent_broker_secret(env.get)
+    if isinstance(ambient, str) and ambient:
+        return _finger(ambient)
+    return None
+
+
 def _spawn_mcp_process(
     root: Path,
     session: SessionLike,
@@ -2200,6 +2225,7 @@ def _spawn_mcp_process(
     make_before_break: bool = False,
     tool_catalog_snapshot: UpstreamToolCatalogSnapshot | None = None,
     activity_relay: ActivityRelay | None = None,
+    report_broker_identity: Callable[[str | None], None] | None = None,
 ) -> StandaloneMcpProcess:
     endpoint = f"http://127.0.0.1:{port}/mcp"
     log_offset = mcp_server_log_size(root)
@@ -2249,6 +2275,8 @@ def _spawn_mcp_process(
             respawn=respawn,
             make_before_break=make_before_break,
         )
+        if report_broker_identity is not None:
+            report_broker_identity(_effective_broker_fingerprint(session, env))
         if make_before_break:
             parent_sock, child_sock = create_handover_socketpair()
             child_fd = child_sock.fileno()
