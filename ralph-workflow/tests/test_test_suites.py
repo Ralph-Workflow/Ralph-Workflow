@@ -25,8 +25,10 @@ POLICY_WHITE_BOX_EXCEPTION = (
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_required_auto_integrate_e2e_registry_matches_discovery_contract": (
         "tests/pipeline/test_planning_gate_refusal_advances.py drives a real-git planning "
-        "pass past a gate-refused tree and joins the required real-git lane; the pinned "
-        "registry now names that file too, the assertion is unchanged"
+        "pass past a gate-refused tree and joins the required real-git lane, and the five "
+        "tests/scenarios/test_run_soak_*.py files drive whole real-git runs through the "
+        "public run loop under adversity and join it too; the pinned registry now names "
+        "those files, the assertion is unchanged"
     ),
     "test_required_e2e_lane_shard_count_is_pinned_to_eight": (
         "the required real-git lane was the make verify critical path at six shards "

@@ -30,7 +30,11 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
-from ralph.pipeline.publication_gate import blocked_publication, publication_gate_refusal
+from ralph.pipeline.publication_gate import (
+    blocked_publication,
+    held_publication_reason,
+    publication_gate_refusal,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -123,13 +127,9 @@ def _unchanged_gate_refusal(root: Path, target: str) -> RebaseState | None:
     blocked = blocked_publication(root)
     if blocked is None or blocked.block is None or not is_ancestor(root, target, "HEAD"):
         return None
-    return _record_skip(
-        reason=(
-            f"publication gate `{blocked.command}` already refused tree {blocked.tree_sha}; "
-            "waiting for a new tree before landing"
-        ),
-        target=target,
-    ).model_copy(update={"publication_block": blocked.block})
+    return _record_skip(reason=held_publication_reason(blocked), target=target).model_copy(
+        update={"publication_block": blocked.block}
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -127,6 +127,19 @@ def _without_terminal_waiting(state: PipelineState, policy: PipelinePolicy | Non
     return state.clear_waiting().copy_with(last_retry_delay_ms=0)
 
 
+def _without_overcome_failure(
+    before: PipelineState, after: PipelineState, policy: PipelinePolicy | None
+) -> PipelineState:
+    if policy is None or after.last_error is None or after.last_error != before.last_error:
+        return after
+    phase = policy.phases.get(before.phase)
+    if phase is None or after.phase == before.phase or after.phase != phase.transitions.on_success:
+        return after
+    if _should_preserve_commit_retry(before, after.phase, policy):
+        return after
+    return after.copy_with(last_error=None)
+
+
 def _dispatch_worker_event(
     state: PipelineState,
     event: object,
@@ -571,6 +584,7 @@ def reduce(
         integration_record=integration_record,
     )
     routed_state = _without_terminal_waiting(routed_state, pipeline_policy)
+    routed_state = _without_overcome_failure(state, routed_state, pipeline_policy)
     if routed_state.phase == "failed_terminal" and routed_state.is_waiting_state:
         routed_state = routed_state.clear_waiting().copy_with(last_retry_delay_ms=0)
     if recovery is not None and hasattr(recovery, "ledger"):

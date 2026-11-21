@@ -121,4 +121,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/scenarios/test_lifecycle_diagnose.py",
     "tests/scenarios/test_rebase_recovery_matrix.py",
     "tests/scenarios/test_last_resort_recovery.py",
+    "tests/scenarios/test_run_soak_observer.py",
+    "tests/scenarios/test_run_soak_publication_gate.py",
+    "tests/scenarios/test_run_soak_target_moves.py",
+    "tests/scenarios/test_run_soak_resume_boundaries.py",
+    "tests/scenarios/test_run_soak_resume_recovery.py",
 )

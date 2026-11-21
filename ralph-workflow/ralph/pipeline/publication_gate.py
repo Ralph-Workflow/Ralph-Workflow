@@ -470,8 +470,36 @@ def blocked_publication(
     record = _load_record(root)
     if record is None or record.passed or declared_publication_gate(root) != record.command:
         return None
+    if record.inconclusive and record.inconclusive_runs < MAX_INCONCLUSIVE_GATE_RUNS:
+        return None
     tree_sha = (tree_of or _tree_of)(root, feature_sha)
     return record if tree_sha and tree_sha == record.tree_sha else None
+
+
+def held_publication_reason(result: PublicationGateResult) -> str:
+    if result.invocation_error:
+        return (
+            f"publication gate is misconfigured: {result.invocation_error}; the run's commits "
+            "stay unpublished until the verification policy declares a runnable gate command"
+        )
+    if result.inconclusive:
+        return (
+            f"publication gate `{result.command}` was inconclusive on tree {result.tree_sha} "
+            f"{result.inconclusive_runs} times ({_last_output_line(result)}); waiting for a "
+            "new tree before landing"
+        )
+    verdict = "timed out" if result.timed_out else f"failed (exit {result.exit_code})"
+    return (
+        f"publication gate `{result.command}` already refused tree {result.tree_sha} "
+        f"({verdict}); waiting for a new tree before landing"
+    )
+
+
+def _last_output_line(result: PublicationGateResult) -> str:
+    return next(
+        (line.strip() for line in reversed(result.output_tail.splitlines()) if line.strip()),
+        f"exit {result.exit_code}",
+    )
 
 
 def publication_gate_refusal(
@@ -481,15 +509,11 @@ def publication_gate_refusal(
     if result is None or result.block is None:
         return None
     if result.inconclusive:
-        first_line = next(
-            (line.strip() for line in reversed(result.output_tail.splitlines()) if line.strip()),
-            f"exit {result.exit_code}",
-        )
         return (
             WaitingOutcome(
                 external_condition=(
                     f"publication gate `{result.command}` on tree {result.tree_sha} was "
-                    f"inconclusive ({first_line})"
+                    f"inconclusive ({_last_output_line(result)})"
                 ),
                 resumes_when="the gate re-runs on the next landing",
             ),
@@ -628,6 +652,7 @@ __all__ = [
     "check_publication_gate",
     "declared_publication_gate",
     "gate_failure_signature",
+    "held_publication_reason",
     "last_publication_gate_result",
     "leave_publication_gate_feedback",
     "publication_gate_feedback",
