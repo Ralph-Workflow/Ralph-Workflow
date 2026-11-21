@@ -80,6 +80,10 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.detached_head_branch_tip": (
+        "the reviewed process-label inventory now includes the detached-HEAD branch-tip "
+        "probe, so the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.shared_config_guard": (
         "the reviewed process-label inventory now includes the shared git config guard's "
         "restore label, so the pinned digest of emitted labels changes"
@@ -111,10 +115,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "735e144ff8b4c137b595dd4d1bfee86dafacb44793a58e8d9f2c526873334c67"
+    "84df110d0bdd05a1fc63d0e1eaa84d305ad09d66f9726eb98f89dc26f7fd445c"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds shared-config-guard:restore (git config --file on the "
+    "The reviewed inventory adds git-detached-head-branch-tip (rev-parse --verify of a "
+    "candidate branch for a detached HEAD; rc=128 is git's answer when that branch does not "
+    "exist), shared-config-guard:restore (git config --file on the "
     "shared config after an agent attempt broke core.bare or core.worktree; any nonzero "
     "exit stays loud), publication-gate-tree (rev-parse of the tree being "
     "published; rc=128 is git's answer for an unreadable commit) and publication-gate "

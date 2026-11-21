@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -33,6 +34,13 @@ _OUTPUT_TAIL_CHARS: Final[int] = 6000
 _TIMEOUT_EXIT_CODE: Final[int] = 124
 _TREE_LOOKUP_TIMEOUT_SECONDS: Final[float] = 30.0
 _BACKTICK_COMMAND = re.compile(r"`([^`]+)`")
+_FAILED_STEP_MARKERS = (
+    re.compile(r"^\s*\[verify\]\s+FAILED:\s*(.+?)\s*$", re.MULTILINE),
+    re.compile(r"^FAILED\s+(\S+)", re.MULTILINE),
+    re.compile(r"failed while running:\s*(.+?)\s*$", re.MULTILINE),
+)
+_VOLATILE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_SIGNATURE_FALLBACK_LINES: Final[int] = 5
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,7 @@ class PublicationGateResult:
     output_tail: str
     consecutive_failures: int = 0
     route_backs: int = 0
+    failure_signature: str = ""
 
     @property
     def passed(self) -> bool:
@@ -66,6 +75,23 @@ class PublicationGateResult:
             "commits were not published. Fix the failures below so the gate passes.\n"
             f"{self.output_tail}"
         )
+
+
+def gate_failure_signature(exit_code: int, *, timed_out: bool, output: str) -> str:
+    steps = sorted(
+        {
+            match.expand(r"\1").strip()
+            for marker in _FAILED_STEP_MARKERS
+            for match in marker.finditer(output)
+        }
+    )
+    if steps:
+        basis = "\n".join(steps)
+    else:
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        tail = [_VOLATILE_NUMBER.sub("#", line) for line in lines[-_SIGNATURE_FALLBACK_LINES:]]
+        basis = "\n".join((f"exit {exit_code} timed out {timed_out}", *tail))
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
 
 GateRunner = Callable[[str, Path, float], PublicationGateRun]
@@ -140,6 +166,9 @@ def _load_record(root: Path) -> PublicationGateResult | None:
                 fields.get("consecutive_failures", 0), field="consecutive_failures"
             ),
             route_backs=as_int(fields.get("route_backs", 0), field="route_backs"),
+            failure_signature=as_str(
+                fields.get("failure_signature", ""), field="failure_signature"
+            ),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -168,6 +197,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "output_tail": result.output_tail,
         "consecutive_failures": result.consecutive_failures,
         "route_backs": result.route_backs,
+        "failure_signature": result.failure_signature,
     }
 
 
@@ -201,8 +231,19 @@ def check_publication_gate(
         output_tail=run.output[-_OUTPUT_TAIL_CHARS:],
     )
     failures = 0 if result.passed else (previous.consecutive_failures if previous else 0) + 1
-    route_backs = 0 if result.passed else (previous.route_backs if previous else 0)
-    result = replace(result, consecutive_failures=failures, route_backs=route_backs)
+    signature = (
+        ""
+        if result.passed
+        else gate_failure_signature(run.exit_code, timed_out=run.timed_out, output=run.output)
+    )
+    same_failure = previous is not None and previous.failure_signature == signature
+    route_backs = previous.route_backs if same_failure and previous is not None else 0
+    result = replace(
+        result,
+        consecutive_failures=failures,
+        route_backs=0 if result.passed else route_backs,
+        failure_signature=signature,
+    )
     if not result.passed:
         logger.warning(
             "Publication gate `{}` blocked tree {} (exit {}, timed out: {})",
@@ -353,6 +394,7 @@ __all__ = [
     "blocked_publication",
     "check_publication_gate",
     "declared_publication_gate",
+    "gate_failure_signature",
     "last_publication_gate_result",
     "leave_publication_gate_feedback",
     "publication_gate_feedback",

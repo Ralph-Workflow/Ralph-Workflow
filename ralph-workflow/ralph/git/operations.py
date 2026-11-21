@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from ralph.git._lock_recovery import LivenessProbeFn
 
@@ -467,11 +467,28 @@ def _current_head_sha(repo_root: Path) -> str | None:
     return head_sha or None
 
 
+def _local_branch_at(repo_root: Path, branch: str, head_sha: str) -> bool:
+    if not branch or branch.startswith(("refs/", "-")):
+        return False
+    tip = run_git(
+        ("rev-parse", "--verify", f"refs/heads/{branch}"),
+        cwd=repo_root,
+        label="git-detached-head-branch-tip",
+    )
+    return tip.returncode == 0 and tip.stdout.strip() == head_sha
+
+
 def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
     head_sha = _current_head_sha(repo_root)
     if not head_sha:
         return None
+    for candidate in _detached_head_branch_candidates(repo_root, head_sha):
+        if _local_branch_at(repo_root, candidate, head_sha):
+            return candidate
+    return None
 
+
+def _detached_head_branch_candidates(repo_root: Path, head_sha: str) -> Iterator[str]:
     points_at_result = run_git(
         (
             "for-each-ref",
@@ -486,7 +503,7 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
         for line in points_at_result.stdout.splitlines():
             branch = line.strip()
             if branch:
-                return branch
+                yield branch
 
     head_file = Path(repo_root) / ".git" / "HEAD"
     if head_file.is_file():
@@ -497,7 +514,7 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
         if content.startswith("ref: refs/heads/"):
             candidate = content.removeprefix("ref: refs/heads/").strip()
             if candidate:
-                return candidate
+                yield candidate
 
     reflog_result = run_git(
         ("reflog", "-n", "50", "--format=%gs"),
@@ -505,7 +522,7 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
         label="git-reflog-detached-head-reattach",
     )
     if reflog_result.returncode != 0:
-        return None
+        return
     for line in reflog_result.stdout.splitlines():
         for marker in ("switch branch to ", "checkout: moving from "):
             idx = line.find(marker)
@@ -516,8 +533,7 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
             if len(parts) == _REFLOG_DEST_PARTS:
                 dest = parts[1].strip()
                 if dest:
-                    return dest
-    return None
+                    yield dest
 
 
 def _head_tree_sha(repo_root: Path, head_sha: str) -> str | None:
@@ -559,7 +575,9 @@ def _reattach_or_resolve_ref_name(repo_root: Path) -> str:
     if not reattached_ref:
         raise GitOperationError(
             "create_commit",
-            "HEAD is detached and no feature branch to commit onto",
+            f"HEAD is detached at {_current_head_sha(repo_root) or 'an unreadable commit'} and "
+            "no feature branch to commit onto points at it; switch to a branch "
+            "(git switch -c <name>) before committing",
         )
     atomic_ref = run_git(
         ("update-ref", "-m", "ralph reattach detached HEAD", "HEAD", reattached_ref),

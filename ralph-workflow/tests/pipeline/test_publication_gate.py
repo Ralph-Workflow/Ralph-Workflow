@@ -328,3 +328,58 @@ def test_the_blocked_tree_is_reported_without_running_or_counting_the_gate(
     assert blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
     record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
     assert record["consecutive_failures"] == 0
+
+
+_SIGNATURE_A = "[verify] FAILED: Open decision numbering\n"
+_SIGNATURE_B = (
+    "[verify] FAILED: RSpec shard 4/4 (exit 1)\n"
+    "[verify] FAILED: RSpec phase or a concurrent static lane\n"
+)
+
+
+def _red(tmp_path: Path, index: int, output: str) -> None:
+    check_publication_gate(
+        tmp_path, "HEAD", runner=_ScriptedGate(1, output), tree_of=_trees(f"{index:040x}")
+    )
+
+
+def test_a_new_gate_failure_gets_its_own_route_back_budget(tmp_path: Path) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    for index in range(1, MAX_PUBLICATION_GATE_FAILURES + 1):
+        _red(tmp_path, index, f"took {index}.{index}s\n{_SIGNATURE_A}")
+        assert publication_gate_feedback(tmp_path, policy, "development_commit") is not None
+    _red(tmp_path, 100, _SIGNATURE_A)
+    assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
+
+    _red(tmp_path, 101, _SIGNATURE_B)
+    event = publication_gate_feedback(tmp_path, policy, "development_commit")
+
+    assert event is not None
+    assert "RSpec shard 4/4" in event.detail
+    record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
+    assert record["route_backs"] == 1
+    assert record["failure_signature"]
+
+
+def test_an_unchanged_gate_failure_stops_routing_back_after_its_budget(tmp_path: Path) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    routed = []
+    for index in range(1, MAX_PUBLICATION_GATE_FAILURES + 3):
+        _red(tmp_path, index, f"[verify] step took {index * 7} s\n{_SIGNATURE_B}")
+        routed.append(publication_gate_feedback(tmp_path, policy, "development_commit"))
+
+    assert all(event is not None for event in routed[:MAX_PUBLICATION_GATE_FAILURES])
+    assert routed[MAX_PUBLICATION_GATE_FAILURES:] == [None, None]
+
+
+def test_unstructured_output_keeps_its_signature_across_timing_noise(tmp_path: Path) -> None:
+    policy = cached_default_policy_bundle().pipeline
+    _declare_gate(tmp_path)
+    routed = []
+    for index in range(1, MAX_PUBLICATION_GATE_FAILURES + 3):
+        _red(tmp_path, index, f"lint error in app.py\nfinished in {index * 3}.{index}s\n")
+        routed.append(publication_gate_feedback(tmp_path, policy, "development_commit"))
+
+    assert routed[MAX_PUBLICATION_GATE_FAILURES:] == [None, None]

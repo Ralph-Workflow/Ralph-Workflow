@@ -58,6 +58,7 @@ from ralph.pipeline.auto_integrate_sync import (
 )
 from ralph.pipeline.integration_actions import default_clock
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
 from ralph.pipeline.integration_owner import RecordFactOutcome
 
 if TYPE_CHECKING:
@@ -86,6 +87,9 @@ CATCHUP_REMOTE_SKIPPED = "remote-skipped"
 CATCHUP_FAST_FORWARDED = "fast-forwarded"
 
 CATCHUP_DEFERRED_AGENT_PHASE = "deferred: an agent phase is active in this checkout"
+CATCHUP_DEFERRED_GIT_OPERATION = (
+    "deferred: a git operation in this checkout belongs to the run, not to catch-up"
+)
 
 CATCHUP_REFUSED_AGENT_ACTIVE = "refused: agent is currently active"
 CATCHUP_LEASE_UNKNOWN = "failed: agent lease state is unknown"
@@ -810,6 +814,11 @@ def _execute_fast_forward(
     return _failure_reason(kind, observation.summary)
 
 
+def _git_operation_in_progress(root: Path) -> bool:
+    kind = read_in_progress_kind(root)
+    return kind.is_known_good and kind.value is not InProgressKind.NONE
+
+
 def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
     repo: Repo | None = None
     try:
@@ -1027,6 +1036,11 @@ class AutoIntegrateCatchupWorker:
             target = resolve_integration_target(self._config, self._root)
             if target is None:
                 return
+            if _git_operation_in_progress(self._root):
+                logger.debug(
+                    "auto_integrate catch-up publication {}", CATCHUP_DEFERRED_GIT_OPERATION
+                )
+                return
             window = self._publication_window(target)
             if window is None:
                 logger.debug(
@@ -1073,6 +1087,7 @@ def start_catchup_worker_if_enabled(
 __all__ = [
     "CATCHUP_DEFEDITELY_FAILED",
     "CATCHUP_DEFERRED_AGENT_PHASE",
+    "CATCHUP_DEFERRED_GIT_OPERATION",
     "CATCHUP_DIRTY",
     "CATCHUP_DISABLED",
     "CATCHUP_DIVERGED",
