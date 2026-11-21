@@ -571,22 +571,23 @@ def _reattach_or_resolve_ref_name(repo_root: Path) -> str:
     )
     if ref_result.returncode == 0 and ref_result.stdout.strip():
         return ref_result.stdout.strip()
-    reattached_ref = _resolve_detached_head_reattach_branch(repo_root)
-    if not reattached_ref:
+    reattached_branch = _resolve_detached_head_reattach_branch(repo_root)
+    if not reattached_branch:
         raise GitOperationError(
             "create_commit",
             f"HEAD is detached at {_current_head_sha(repo_root) or 'an unreadable commit'} and "
             "no feature branch to commit onto points at it; switch to a branch "
             "(git switch -c <name>) before committing",
         )
+    reattached_ref = f"refs/heads/{reattached_branch}"
     atomic_ref = run_git(
-        ("update-ref", "-m", "ralph reattach detached HEAD", "HEAD", reattached_ref),
+        ("symbolic-ref", "-m", "ralph reattach detached HEAD", "HEAD", reattached_ref),
         cwd=repo_root,
         label="git-update-ref-head-reattach",
         options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph create_commit"}),
     )
     if atomic_ref.returncode != 0:
-        detail = atomic_ref.stderr.strip() or "git update-ref HEAD reattach failed"
+        detail = atomic_ref.stderr.strip() or "git symbolic-ref HEAD reattach failed"
         raise GitOperationError("create_commit", detail)
     logger.info("Reattached detached HEAD to branch '{}'", reattached_ref)
     return reattached_ref

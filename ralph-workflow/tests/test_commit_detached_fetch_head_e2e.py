@@ -58,3 +58,24 @@ def test_a_detached_checkout_whose_branch_moved_on_is_not_reset_onto_that_branch
         create_commit(tmp_path, "feat: on a detached checkout", expected_head=detached_tip)
 
     assert get_head_sha(tmp_path) == detached_tip
+
+
+def test_a_detached_checkout_at_a_branch_tip_commits_onto_that_branch(
+    tmp_path: Path,
+) -> None:
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, *_IDENTITY, "commit", "-q", "--allow-empty", "-m", "base")
+    base = get_head_sha(tmp_path)
+    _git(tmp_path, "checkout", "-q", "--detach")
+    (tmp_path / "change.txt").write_text("staged\n", encoding="utf-8")
+    _git(tmp_path, "add", "change.txt")
+
+    create_commit(tmp_path, "feat: on a detached branch tip", expected_head=base)
+
+    new_tip = _git(tmp_path, "rev-parse", "refs/heads/main")
+    assert new_tip != base
+    assert _git(tmp_path, "rev-parse", f"{new_tip}^") == base
+    assert _git(tmp_path, "symbolic-ref", "HEAD") == "refs/heads/main"
+    assert get_head_sha(tmp_path) == new_tip
+    assert not (tmp_path / ".git" / "main").exists()
+    assert _git(tmp_path, "for-each-ref", "--format=%(refname)") == "refs/heads/main"

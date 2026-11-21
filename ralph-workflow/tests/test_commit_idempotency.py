@@ -29,6 +29,15 @@ _real_read_text = Path.read_text
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_create_commit_detached_head_reattaches_to_feature_branch and "
+    "test_create_commit_detached_head_falls_back_to_head_file_residual reattach checks": (
+        "the old checks pinned the bug: update-ref HEAD <short name> detached HEAD and the CAS "
+        "targeted a top-level ref; they now pin symbolic-ref HEAD refs/heads/feature/work and "
+        "the CAS on refs/heads/feature/work"
+    ),
+}
+
 
 class _FakeRunGitScript:
     def __init__(self) -> None:
@@ -75,6 +84,7 @@ class _FakeRunGitScript:
             "rev-parse": self._rev_parse,
             "commit-tree": self._commit_tree,
             "update-ref": self._update_ref,
+            "symbolic-ref": self._symbolic_ref_attach,
             "reflog": self._reflog,
             "hook": self._hook,
         }
@@ -127,6 +137,9 @@ class _FakeRunGitScript:
             returncode=self.update_ref_returncode,
             stderr=self.update_ref_stderr,
         )
+
+    def _symbolic_ref_attach(self, headless_args: tuple[str, ...]) -> GitRunResult:
+        return self._result(headless_args, returncode=0)
 
     def _reflog(self, headless_args: tuple[str, ...]) -> GitRunResult:
         body = "\n".join(self.reflog_lines) + ("\n" if self.reflog_lines else "")
@@ -350,13 +363,13 @@ def test_create_commit_detached_head_reattaches_to_feature_branch(
         "--format=%(refname:short)",
     ) in script.calls
     assert (
-        "update-ref",
+        "symbolic-ref",
         "-m",
         "ralph reattach detached HEAD",
         "HEAD",
-        "feature/work",
+        "refs/heads/feature/work",
     ) in script.calls
-    assert ("update-ref", "feature/work", _REWRITTEN_SHA, _FULL_SHA) in script.calls
+    assert ("update-ref", "refs/heads/feature/work", _REWRITTEN_SHA, _FULL_SHA) in script.calls
 
 
 def test_create_commit_detached_head_falls_back_to_head_file_residual(
@@ -387,11 +400,11 @@ def test_create_commit_detached_head_falls_back_to_head_file_residual(
 
     assert result.status is CommitCreationStatus.CREATED
     assert (
-        "update-ref",
+        "symbolic-ref",
         "-m",
         "ralph reattach detached HEAD",
         "HEAD",
-        "feature/work",
+        "refs/heads/feature/work",
     ) in script.calls
 
 
