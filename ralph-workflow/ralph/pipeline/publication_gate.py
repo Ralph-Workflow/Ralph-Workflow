@@ -76,6 +76,20 @@ _NO_SLOT_EXIT_CODE: Final[int] = -1
 _SYNTAX_CHECK_TIMEOUT_SECONDS: Final[float] = 10.0
 _INVOCATION_EXIT_CODE: Final[int] = 2
 _SIGNATURE_FALLBACK_LINES: Final[int] = 5
+_DIGEST_HALF_LINES: Final[int] = 100
+_DIGEST_HALF_CHARS: Final[int] = 10000
+_DIGEST_LINE_CHARS: Final[int] = 400
+_DIGEST_LINE = re.compile(
+    "|".join(
+        (
+            _CORRECTNESS_FAILURE.pattern,
+            _TIME_BUDGET_MARKER.pattern,
+            _CANCELLED_MARKER.pattern,
+            r"\bError:",
+        )
+    ),
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +104,11 @@ class PublicationGateResult:
     failure_signature: str = ""
     inconclusive_runs: int = 0
     invocation_error: str = ""
+    failure_digest: str = ""
+
+    @property
+    def failure_evidence(self) -> str:
+        return f"{self.failure_digest}\n{self.output_tail}"
 
     @property
     def passed(self) -> bool:
@@ -97,7 +116,7 @@ class PublicationGateResult:
 
     @property
     def _interrupted(self) -> bool:
-        return self.exit_code < 0 or _CANCELLED_MARKER.search(self.output_tail) is not None
+        return self.exit_code < 0 or _CANCELLED_MARKER.search(self.failure_evidence) is not None
 
     @property
     def time_only(self) -> bool:
@@ -105,10 +124,10 @@ class PublicationGateResult:
             self.passed
             or self.timed_out
             or self.invocation_error
-            or _shows_correctness_failure(self.output_tail)
+            or _shows_correctness_failure(self.failure_evidence)
         ):
             return False
-        return _TIME_BUDGET_MARKER.search(self.output_tail) is not None or (
+        return _TIME_BUDGET_MARKER.search(self.failure_evidence) is not None or (
             self._interrupted and self.inconclusive_runs >= MAX_INCONCLUSIVE_GATE_RUNS
         )
 
@@ -135,11 +154,41 @@ class PublicationGateResult:
 
     def feedback(self) -> str:
         verdict = "timed out" if self.timed_out else f"failed (exit {self.exit_code})"
+        summary = (
+            f"Failure summary:\n{self.failure_digest}"
+            if self.failure_digest
+            else f"No failure lines were found in the gate output (exit {self.exit_code}); "
+            "read the output tail for the cause."
+        )
         return (
             f"Publication gate `{self.command}` {verdict} on tree {self.tree_sha}; the run's "
             "commits were not published. Fix the failures below so the gate passes.\n"
-            f"{self.output_tail}"
+            f"{summary}\n\nOutput tail:\n{self.output_tail}"
         )
+
+
+def _leading_lines(lines: list[str]) -> list[str]:
+    kept: list[str] = []
+    size = 0
+    for line in lines[:_DIGEST_HALF_LINES]:
+        size += len(line) + 1
+        if size > _DIGEST_HALF_CHARS:
+            break
+        kept.append(line)
+    return kept
+
+
+def _failure_digest(output: str) -> str:
+    lines = [
+        line.strip()[:_DIGEST_LINE_CHARS]
+        for line in output.splitlines()
+        if _DIGEST_LINE.search(line)
+    ]
+    head = _leading_lines(lines)
+    tail = _leading_lines(lines[len(head) :][::-1])[::-1]
+    omitted = len(lines) - len(head) - len(tail)
+    gap = [f"... {omitted} more matching lines ..."] if omitted else []
+    return "\n".join((*head, *gap, *tail))
 
 
 def _shows_correctness_failure(output: str) -> bool:
@@ -150,7 +199,9 @@ def _shows_correctness_failure(output: str) -> bool:
 
 
 def _warn_time_only(result: PublicationGateResult) -> None:
-    markers = sorted({match.group(0) for match in _TIME_BUDGET_MARKER.finditer(result.output_tail)})
+    markers = sorted(
+        {match.group(0) for match in _TIME_BUDGET_MARKER.finditer(result.failure_evidence)}
+    )
     cause = (
         ", ".join(repr(marker) for marker in markers)
         if markers
@@ -165,19 +216,22 @@ def _warn_time_only(result: PublicationGateResult) -> None:
     )
 
 
-def gate_failure_signature(exit_code: int, *, timed_out: bool, output: str) -> str:
+def gate_failure_signature(
+    exit_code: int, *, timed_out: bool, output: str, digest: str = ""
+) -> str:
     steps = sorted(
         {
             match.expand(r"\1").strip()
             for marker in _FAILED_STEP_MARKERS
-            for match in marker.finditer(output)
+            for match in marker.finditer(f"{digest}\n{output}")
         }
     )
     if steps:
         basis = "\n".join(steps)
     else:
         lines = [line.strip() for line in output.splitlines() if line.strip()]
-        tail = [_VOLATILE_NUMBER.sub("#", line) for line in lines[-_SIGNATURE_FALLBACK_LINES:]]
+        evidence = digest.splitlines() or lines[-_SIGNATURE_FALLBACK_LINES:]
+        tail = [_VOLATILE_NUMBER.sub("#", line) for line in evidence]
         basis = "\n".join((f"exit {exit_code} timed out {timed_out}", *tail))
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
 
@@ -323,10 +377,12 @@ def _load_record(root: Path) -> PublicationGateResult | None:
         output_tail = fields["output_tail"]
         signature = fields.get("failure_signature", "")
         invocation_error = fields.get("invocation_error", "")
+        digest = fields.get("failure_digest", "")
         if (
             not isinstance(output_tail, str)
             or not isinstance(signature, str)
             or not isinstance(invocation_error, str)
+            or not isinstance(digest, str)
         ):
             return None
         return PublicationGateResult(
@@ -342,6 +398,7 @@ def _load_record(root: Path) -> PublicationGateResult | None:
             failure_signature=signature,
             inconclusive_runs=as_int(fields.get("inconclusive_runs", 0), field="inconclusive_runs"),
             invocation_error=invocation_error,
+            failure_digest=digest,
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -373,6 +430,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "failure_signature": result.failure_signature,
         "inconclusive_runs": result.inconclusive_runs,
         "invocation_error": result.invocation_error,
+        "failure_digest": result.failure_digest,
         "time_only": result.time_only,
     }
 
@@ -433,6 +491,7 @@ def check_publication_gate(
         exit_code=run.exit_code,
         timed_out=run.timed_out,
         output_tail=run.output[-_OUTPUT_TAIL_CHARS:],
+        failure_digest=_failure_digest(run.output),
     )
     if result.inconclusive:
         return _record_inconclusive_run(root, result, previous)
@@ -441,7 +500,12 @@ def check_publication_gate(
     signature = (
         ""
         if cleared
-        else gate_failure_signature(run.exit_code, timed_out=run.timed_out, output=run.output)
+        else gate_failure_signature(
+            result.exit_code,
+            timed_out=result.timed_out,
+            output=result.output_tail,
+            digest=result.failure_digest,
+        )
     )
     same_failure = previous is not None and previous.failure_signature == signature
     route_backs = previous.route_backs if same_failure and previous is not None else 0

@@ -130,3 +130,85 @@ def test_an_exhausted_inconclusive_budget_lands_as_time_only(tmp_path: Path) -> 
     assert time_only == [False] * (MAX_INCONCLUSIVE_GATE_RUNS - 1) + [True] * 3
     assert held == [False] * (MAX_INCONCLUSIVE_GATE_RUNS + 2)
     assert _record(tmp_path)["time_only"] is True
+
+
+_HEARTBEAT = "# [visual-harness:heartbeat] test in progress...\n" * 200
+
+
+def test_a_failure_far_before_the_output_tail_is_kept_and_routes_back(tmp_path: Path) -> None:
+    _declare(tmp_path)
+    policy = cached_default_policy_bundle().pipeline
+    output = f"[verify] FAILED: rspec shard 2\n{_HEARTBEAT}"
+
+    result = check_publication_gate(tmp_path, "HEAD", runner=_Gate(5, output), tree_of=_tree)
+    event = publication_gate_feedback(tmp_path, policy, "development_commit")
+
+    assert result is not None
+    assert "[verify] FAILED: rspec shard 2" not in result.output_tail
+    assert result.time_only is False
+    assert result.inconclusive is False
+    assert result.routes_back_to_development is True
+    assert "[verify] FAILED: rspec shard 2" in str(_record(tmp_path)["failure_digest"])
+    assert event is not None
+    summary = event.detail.index("Failure summary:")
+    assert summary < event.detail.index("[verify] FAILED: rspec shard 2")
+    assert event.detail.index("[verify] FAILED: rspec shard 2") < event.detail.index("Output tail:")
+
+
+def test_a_deadline_marker_far_before_the_output_tail_is_still_time_only(
+    tmp_path: Path,
+) -> None:
+    _declare(tmp_path)
+    output = f"[DEADLINE] Verification deadline exhausted (525s budget)\n{_HEARTBEAT}"
+
+    result = check_publication_gate(tmp_path, "HEAD", runner=_Gate(3, output), tree_of=_tree)
+
+    assert result is not None
+    assert result.time_only is True
+    assert result.block is None
+    assert blocked_publication(tmp_path, "HEAD", tree_of=_tree) is None
+
+
+def test_a_red_gate_without_failure_lines_routes_back_and_says_so(tmp_path: Path) -> None:
+    _declare(tmp_path)
+    policy = cached_default_policy_bundle().pipeline
+
+    result = check_publication_gate(tmp_path, "HEAD", runner=_Gate(5, _HEARTBEAT), tree_of=_tree)
+    event = publication_gate_feedback(tmp_path, policy, "development_commit")
+
+    assert result is not None
+    assert result.time_only is False
+    assert result.routes_back_to_development is True
+    assert event is not None
+    assert "No failure lines were found" in event.detail
+    assert "exit 5" in event.detail
+    assert "heartbeat" in event.detail
+
+
+def test_a_record_saved_without_a_failure_digest_still_loads(tmp_path: Path) -> None:
+    _declare(tmp_path)
+    policy = cached_default_policy_bundle().pipeline
+    publication_gate_record_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    publication_gate_record_path(tmp_path).write_text(
+        json.dumps(
+            {
+                "command": "bin/verify",
+                "tree_sha": _TREE,
+                "exit_code": 1,
+                "timed_out": False,
+                "output_tail": "[verify] FAILED: unit tests\n",
+                "failure_signature": "0123456789abcdef",
+            }
+        ),
+        encoding="utf-8",
+    )
+    gate = _Gate(1, "[verify] FAILED: unit tests\n")
+
+    result = check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_tree)
+    event = publication_gate_feedback(tmp_path, policy, "development_commit")
+
+    assert gate.calls == 0
+    assert result is not None
+    assert result.routes_back_to_development is True
+    assert event is not None
+    assert "[verify] FAILED: unit tests" in event.detail
