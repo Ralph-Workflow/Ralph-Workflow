@@ -22,6 +22,15 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_gate_that_ran_out_of_time_is_inconclusive": (
+        "operator directive: a gate run whose only failure markers are time or budget markers "
+        "is time-only and lands with a warning instead of re-running inconclusively; renamed "
+        "to test_a_gate_that_ran_out_of_time_lands_as_time_only"
+    ),
+}
+
+
 _TREE = "a" * 40
 
 
@@ -97,7 +106,7 @@ def _tree(_root: Path, _commit: str) -> str:
         "Combined test budget exhausted: wall 400s / 75s\n",
     ],
 )
-def test_a_gate_that_ran_out_of_time_is_inconclusive(tmp_path: Path, output: str) -> None:
+def test_a_gate_that_ran_out_of_time_lands_as_time_only(tmp_path: Path, output: str) -> None:
     _declare(tmp_path)
     policy = cached_default_policy_bundle().pipeline
     calls: list[str] = []
@@ -110,10 +119,11 @@ def test_a_gate_that_ran_out_of_time_is_inconclusive(tmp_path: Path, output: str
     check_publication_gate(tmp_path, "HEAD", runner=runner, tree_of=_tree)
 
     assert first is not None
-    assert first.inconclusive is True
+    assert first.time_only is True
+    assert first.block is None
     assert first.routes_back_to_development is False
     assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 def test_a_red_gate_without_a_time_marker_still_routes_back(tmp_path: Path) -> None:

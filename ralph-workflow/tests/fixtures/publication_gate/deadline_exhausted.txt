@@ -1,0 +1,70 @@
+s:heartbeat] test in progress...
+visual-contract duration guard failed: visual contract aggregate measured 107494.179ms at or above 104000ms; see docs/ralph-workflow-policy/visual-feedback-policy.md regression_guard_fraction
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+test_helper: verify-lane sizing -> 11 workers (40 cores / 3 declared rails lanes; solo default 16; memory-safe ceiling 11 (8192 MiB / 720 MiB/worker))
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/test/db/migration/final_product_per_plan_replay_test.rb:6: warning: already initialized constant UniqueSubmissionsWorkProductPerPlan
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/db/migrate/20261016000000_unique_submissions_work_product_per_plan.rb:21: warning: previous definition of UniqueSubmissionsWorkProductPerPlan was here
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/test/db/migration/final_product_per_plan_replay_test.rb:8: warning: already initialized constant ReparentFinalProductConsolidationChildren
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/db/migrate/20261017010000_reparent_final_product_consolidation_children.rb:3: warning: previous definition of ReparentFinalProductConsolidationChildren was here
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/test/db/migration/final_product_per_plan_replay_test.rb:10: warning: already initialized constant RepairFinalProductConsolidationArtifactIdentity
+/opt/data/Expeditions/Expeditions-Core/wt-02-verification/db/migrate/20261017020000_repair_final_product_consolidation_artifact_identity.rb:3: warning: previous definition of RepairFinalProductConsolidationArtifactIdentity was here
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+# [visual-harness:heartbeat] test in progress...
+WARNING:  there is no transaction in progress
+[final-product-per-plan-replay] could not restore the consolidation shape (audit_table_missing=true unique_index_missing=true): RuntimeError: simulated restoration failure
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+# [visual-harness:heartbeat] test in progress...
+WARNING:  SET CONSTRAINTS can only be used in transaction blocks
+WARNING:  SET CONSTRAINTS can only be used in transaction blocks
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
+test_helper: verify-lane sizing -> 11 workers (40 cores / 3 declared rails lanes; solo default 16; memory-safe ceiling 11 (8192 MiB / 720 MiB/worker))
+
+================ TIMEOUT: DESCENDANT PROCESS TREE ================
+
+stage=test-rails root_pid=2583449 root_elapsed=66.0s descendants=11
+  PID     PPID      PGID      ELAPSED    COMMAND
+  ------------------------------------------------------------------
+  2583449 2407964   2583449   66.0s      ruby /opt/data/Expeditions/Expeditions-Core/wt-02-verification/bin/rails test test/service
+  2605128 2583449   2583449   9.0s       Rails test worker 0 - Reviews::PlanApprovalRecommendationParityTest#test_PlanActivityRecom
+  2605136 2583449   2583449   9.0s       Rails test worker 1 - FinalProducts::ItemTokenAfterRemovalTest#test_an_item_added_after_re
+  2605141 2583449   2583449   9.0s       Rails test worker 2 - Reviews::PlanApprovalRecommendationParityTest#test_mentor_declining_
+  2605146 2583449   2583449   9.0s       Rails test worker 3 - Reviews::PlanApprovalRecommendationParityTest#test_withdrawn_plan_ap
+  2605152 2583449   2583449   9.0s       Rails test worker 4 - Reviews::PlanApprovalRecommendationParityTest#test_accepting_a_plan_
+  2605158 2583449   2583449   9.0s       Rails test worker 5 - Reviews::PlanApprovalRecommendationParityTest#test_direct_mentor_ret
+  2605166 2583449   2583449   9.0s       Rails test worker 6 - Reviews::PlanApprovalRecommendationParityTest#test_plan_activity_rec
+  2605172 2583449   2583449   9.0s       Rails test worker 7 - Reviews::PlanApprovalRecommendationParityTest#test_accepting_a_stale
+  2605178 2583449   2583449   9.0s       Rails test worker 8 - Reviews::PlanApprovalRecommendationParityTest#test_direct_mentor_app
+  2605183 2583449   2583449   9.0s       Rails test worker 9 - Reviews::PlanApprovalRecommendationParityTest#test_accepting_a_plan_
+  2605191 2583449   2583449   9.0s       [ruby] <defunct>
+  ---- recent output (test-rails) ----
+  | # Running:
+  | .
+  | .
+  | .
+  | .
+  | .
+  | .
+  | .
+==================================================================
+
+[DEADLINE] Verification deadline exhausted (525s budget); cleaning owned container expeditions_verify_pg_8ae625d0a04e_2407964_9e2bee92a80f7830f43e577923b48b98 (lane layout-fit).
+[DEADLINE] Verification deadline exhausted (525s budget); cleaning owned container expeditions_verify_pg_8ae625d0a04e_2407964_4450d68d4b1369364d1bdea00a39eebe (lane db-runtime).
+[DEADLINE] Verification deadline exhausted (525s budget); cleaning owned container expeditions_verify_pg_8ae625d0a04e_2407964_c4ca409764b98bf87699706d4d7a8c80 (lane transactional).
+[DEADLINE] Verification deadline exhausted (525s budget); cleaning owned container expeditions_verify_pg_8ae625d0a04e_2407964_c3c6f634871c0c4e6d7836850d9d7ca2 (lane db-runtime-pgtap).
+[DEADLINE] Verification deadline exhausted (525s budget); cleaning owned container expeditions_verify_pg_8ae625d0a04e_2407964_f444c3486121627dbf544f765175edff (lane db).
+[db-idle-sweep:end] db_runtime idle reaper: nothing idle

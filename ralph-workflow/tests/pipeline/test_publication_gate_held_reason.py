@@ -17,6 +17,19 @@ if TYPE_CHECKING:
 
 _TREE = "c" * 40
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_inconclusive_tree_is_held_only_after_its_last_allowed_rerun": (
+        "operator directive: a tree whose inconclusive re-runs are used up lands as time-only "
+        "instead of being held forever; renamed to "
+        "test_an_inconclusive_tree_is_never_held_and_lands_once_its_reruns_are_used_up"
+    ),
+    "test_a_held_publication_names_why_the_gate_holds_the_commits": (
+        "operator directive: an inconclusive or time-only gate result no longer holds the "
+        "commits, so the inconclusive case is removed; the time-only landing is pinned by "
+        "tests/pipeline/test_publication_gate_time_only.py"
+    ),
+}
+
 
 def _declare(root: Path, value: str) -> None:
     policy = root / "docs" / "ralph-workflow-policy" / "verification-policy.md"
@@ -37,7 +50,9 @@ def _runner(exit_code: int, output: str) -> object:
     return run
 
 
-def test_an_inconclusive_tree_is_held_only_after_its_last_allowed_rerun(tmp_path: Path) -> None:
+def test_an_inconclusive_tree_is_never_held_and_lands_once_its_reruns_are_used_up(
+    tmp_path: Path,
+) -> None:
     _declare(tmp_path, "`make verify`")
     held: list[bool] = []
 
@@ -45,20 +60,13 @@ def test_an_inconclusive_tree_is_held_only_after_its_last_allowed_rerun(tmp_path
         check_publication_gate(tmp_path, "HEAD", runner=_runner(-15, ""), tree_of=_tree)
         held.append(blocked_publication(tmp_path, "HEAD", tree_of=_tree) is not None)
 
-    assert held == [False] * (MAX_INCONCLUSIVE_GATE_RUNS - 1) + [True]
+    assert held == [False] * MAX_INCONCLUSIVE_GATE_RUNS
 
 
 @pytest.mark.parametrize(
     ("declaration", "exit_code", "output", "named"),
     [
         pytest.param("`make verify`", 1, "[verify] FAILED: lint\n", "already refused", id="red"),
-        pytest.param(
-            "`make verify`",
-            3,
-            "[DEADLINE REACHED] budget exceeded\n",
-            "was inconclusive",
-            id="inconclusive",
-        ),
         pytest.param(
             "`make verify`", 127, "sh: 1: make: not found\n", "misconfigured", id="invocation"
         ),

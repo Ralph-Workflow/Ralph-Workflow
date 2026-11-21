@@ -483,12 +483,23 @@ process on the host share a limiter: a file-lock semaphore in
 `RALPH_PUBLICATION_GATE_SLOT_DIR`) with `RALPH_PUBLICATION_GATE_SLOTS` slots,
 by default one per 16 CPU cores and at least one. A gate that waits for a slot
 logs once and keeps the landing waiting for at most 30 minutes; without a slot
-it is re-tried on the next landing and never counted as a failure. A gate run
-that is stopped by a signal, prints `[verify] CANCELLED`, or reports a time
-budget (`[DEADLINE REACHED]`, `deadline exceeded`, `budget exhausted`) is
-inconclusive: the commits stay unpublished, development gets no "fix the
-failures" route-back, and the gate re-runs on the next landing, at most three
-times per tree. Interrupted
+it is re-tried on the next landing and never counted as a failure. A failed
+gate run is time-only when its output shows a time or budget marker
+(`[DEADLINE REACHED]`, `deadline exceeded`, `budget exhausted`,
+`deadline exhausted`, `duration guard failed`, or `measured <n>ms at or above
+<n>ms`) and no correctness failure: no `FAILED` test or `[verify] FAILED:` step,
+no `failed while running:` line, no `<n> failed` / `<n> failures` / `<n> errors`
+/ `<n> offenses` count, and no `ERROR`, `FAIL`, `file:line: error` or
+`error TS<n>` line, where a line that also carries a time marker does not
+count. A time-only result counts as passed with a warning: the landing
+proceeds, one WARNING names the time markers and the tree, the record carries
+`"time_only": true`, and the tree is not re-run. A gate run that is stopped by
+a signal or prints `[verify] CANCELLED` with no time marker is inconclusive: the
+commits stay unpublished, development gets no "fix the failures" route-back,
+and the gate re-runs on the next landing, at most three times per tree. After
+the third inconclusive run the tree lands as time-only, or, when its output
+shows a correctness failure, is refused and routed back like a red gate.
+Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
 An interrupted conflict-resolution record routes back to the configured

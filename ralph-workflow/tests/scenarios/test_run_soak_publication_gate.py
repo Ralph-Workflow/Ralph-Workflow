@@ -4,11 +4,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline.publication_gate import MAX_INCONCLUSIVE_GATE_RUNS
 from tests.scenarios._run_soak import TARGET, AgentCall, SoakRun, assert_soak_invariant, git
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_run_through_each_publication_gate_outcome_lands_or_says_why": (
+        "operator directive: a deadline-marker gate run with no correctness failure is "
+        "time-only and lands with a warning, so the signal-kill-then-deadline case now lands "
+        "after two gate runs instead of holding the commits after three"
+    ),
+}
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -34,10 +41,10 @@ def _break_the_target(soak: SoakRun, _call: AgentCall) -> None:
         pytest.param(
             'if [ "$(grep -c . RUNS)" -eq 1 ]; then kill -TERM $$; fi; '
             "echo '[DEADLINE REACHED] budget of 5s exceeded'; exit 3",
-            "inconclusive",
+            None,
             1,
-            MAX_INCONCLUSIVE_GATE_RUNS,
-            id="inconclusive-signal-kill-then-deadline-marker",
+            2,
+            id="signal-kill-then-deadline-marker-lands-time-only",
         ),
         pytest.param("no-such-soak-gate --all", "never started", 1, 1, id="invocation-error"),
     ],

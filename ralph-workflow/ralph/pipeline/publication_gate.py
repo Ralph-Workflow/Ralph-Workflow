@@ -47,9 +47,27 @@ TIME_BUDGET_MARKERS: Final[tuple[str, ...]] = (
     "[DEADLINE REACHED]",
     "deadline exceeded",
     "budget exhausted",
+    "deadline exhausted",
+    "duration guard failed",
 )
+_MEASURED_OVER_LIMIT = r"measured \d+(?:\.\d+)?\s*ms at or above \d+(?:\.\d+)?\s*ms"
 _TIME_BUDGET_MARKER = re.compile(
-    "|".join(re.escape(marker) for marker in TIME_BUDGET_MARKERS), re.IGNORECASE
+    "|".join((*(re.escape(marker) for marker in TIME_BUDGET_MARKERS), _MEASURED_OVER_LIMIT)),
+    re.IGNORECASE,
+)
+_CORRECTNESS_FAILURE = re.compile(
+    "|".join(
+        (
+            r"^\s*\[verify\]\s+FAILED:",
+            r"^\s*(?:--- )?FAIL(?:ED)?\b",
+            r"^\s*ERROR\b",
+            r"failed while running:",
+            r"\b[1-9]\d* (?:failed|failures?|errors?|offenses?)\b",
+            r":\d+(?::\d+)?: error\b",
+            r"\berror TS\d+",
+        )
+    ),
+    re.IGNORECASE,
 )
 _VOLATILE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SHELL_DIAGNOSTIC = re.compile(r"^(?:/bin/)?sh: .*(?:syntax error|not found|unexpected)", re.I)
@@ -78,25 +96,38 @@ class PublicationGateResult:
         return self.exit_code == 0 and not self.timed_out
 
     @property
-    def inconclusive(self) -> bool:
-        if self.passed or self.timed_out:
+    def _interrupted(self) -> bool:
+        return self.exit_code < 0 or _CANCELLED_MARKER.search(self.output_tail) is not None
+
+    @property
+    def time_only(self) -> bool:
+        if (
+            self.passed
+            or self.timed_out
+            or self.invocation_error
+            or _shows_correctness_failure(self.output_tail)
+        ):
             return False
-        return (
-            self.exit_code < 0
-            or _CANCELLED_MARKER.search(self.output_tail) is not None
-            or _TIME_BUDGET_MARKER.search(self.output_tail) is not None
+        return _TIME_BUDGET_MARKER.search(self.output_tail) is not None or (
+            self._interrupted and self.inconclusive_runs >= MAX_INCONCLUSIVE_GATE_RUNS
         )
 
     @property
+    def inconclusive(self) -> bool:
+        if self.passed or self.timed_out or self.time_only:
+            return False
+        return self._interrupted and self.inconclusive_runs < MAX_INCONCLUSIVE_GATE_RUNS
+
+    @property
     def block(self) -> PublicationBlock | None:
-        if self.passed:
+        if self.passed or self.time_only:
             return None
         return PublicationBlock.GATE_TIMED_OUT if self.timed_out else PublicationBlock.GATE_FAILED
 
     @property
     def routes_back_to_development(self) -> bool:
         return (
-            not self.passed
+            self.block is not None
             and not self.inconclusive
             and not self.invocation_error
             and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
@@ -109,6 +140,29 @@ class PublicationGateResult:
             "commits were not published. Fix the failures below so the gate passes.\n"
             f"{self.output_tail}"
         )
+
+
+def _shows_correctness_failure(output: str) -> bool:
+    return any(
+        _CORRECTNESS_FAILURE.search(line) and not _TIME_BUDGET_MARKER.search(line)
+        for line in output.splitlines()
+    )
+
+
+def _warn_time_only(result: PublicationGateResult) -> None:
+    markers = sorted({match.group(0) for match in _TIME_BUDGET_MARKER.finditer(result.output_tail)})
+    cause = (
+        ", ".join(repr(marker) for marker in markers)
+        if markers
+        else f"{result.inconclusive_runs} inconclusive runs"
+    )
+    logger.warning(
+        "Publication gate `{}` on tree {} failed on time only ({}), with no correctness "
+        "failure; landing the commits with this time-only warning",
+        result.command,
+        result.tree_sha,
+        cause,
+    )
 
 
 def gate_failure_signature(exit_code: int, *, timed_out: bool, output: str) -> str:
@@ -319,6 +373,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "failure_signature": result.failure_signature,
         "inconclusive_runs": result.inconclusive_runs,
         "invocation_error": result.invocation_error,
+        "time_only": result.time_only,
     }
 
 
@@ -341,7 +396,7 @@ def check_publication_gate(
         and tree_sha
         and previous.tree_sha == tree_sha
         and previous.command == command
-        and (not previous.inconclusive or previous.inconclusive_runs >= MAX_INCONCLUSIVE_GATE_RUNS)
+        and not previous.inconclusive
     ):
         return previous
     if declaration.command is None:
@@ -381,10 +436,11 @@ def check_publication_gate(
     )
     if result.inconclusive:
         return _record_inconclusive_run(root, result, previous)
-    failures = 0 if result.passed else (previous.consecutive_failures if previous else 0) + 1
+    cleared = result.passed or result.time_only
+    failures = 0 if cleared else (previous.consecutive_failures if previous else 0) + 1
     signature = (
         ""
-        if result.passed
+        if cleared
         else gate_failure_signature(run.exit_code, timed_out=run.timed_out, output=run.output)
     )
     same_failure = previous is not None and previous.failure_signature == signature
@@ -392,11 +448,13 @@ def check_publication_gate(
     result = replace(
         result,
         consecutive_failures=failures,
-        route_backs=0 if result.passed else route_backs,
+        route_backs=0 if cleared else route_backs,
         failure_signature=signature,
         invocation_error=invocation_error,
     )
-    if not result.passed:
+    if result.time_only:
+        _warn_time_only(result)
+    elif not result.passed:
         logger.warning(
             "Publication gate `{}` blocked tree {} (exit {}, timed out: {})",
             command,
@@ -420,16 +478,19 @@ def _record_inconclusive_run(
         failure_signature=previous.failure_signature if previous is not None else "",
         inconclusive_runs=runs,
     )
-    logger.warning(
-        "Publication gate `{}` on tree {} was stopped by a signal (exit {}); the result is "
-        "inconclusive, so the commits stay unpublished and the gate re-runs on the next landing "
-        "({} of {} inconclusive runs on this tree)",
-        result.command,
-        result.tree_sha,
-        result.exit_code,
-        runs,
-        MAX_INCONCLUSIVE_GATE_RUNS,
-    )
+    if recorded.time_only:
+        _warn_time_only(recorded)
+    else:
+        logger.warning(
+            "Publication gate `{}` on tree {} was stopped by a signal (exit {}); the result is "
+            "inconclusive, so the commits stay unpublished and the gate re-runs on the next "
+            "landing ({} of {} inconclusive runs on this tree)",
+            result.command,
+            result.tree_sha,
+            result.exit_code,
+            runs,
+            MAX_INCONCLUSIVE_GATE_RUNS,
+        )
     _save_record(root, recorded)
     return recorded
 
@@ -468,9 +529,9 @@ def blocked_publication(
     root: Path, feature_sha: str = "HEAD", *, tree_of: TreeLookup | None = None
 ) -> PublicationGateResult | None:
     record = _load_record(root)
-    if record is None or record.passed or declared_publication_gate(root) != record.command:
+    if record is None or record.block is None or record.inconclusive:
         return None
-    if record.inconclusive and record.inconclusive_runs < MAX_INCONCLUSIVE_GATE_RUNS:
+    if declared_publication_gate(root) != record.command:
         return None
     tree_sha = (tree_of or _tree_of)(root, feature_sha)
     return record if tree_sha and tree_sha == record.tree_sha else None
@@ -481,12 +542,6 @@ def held_publication_reason(result: PublicationGateResult) -> str:
         return (
             f"publication gate is misconfigured: {result.invocation_error}; the run's commits "
             "stay unpublished until the verification policy declares a runnable gate command"
-        )
-    if result.inconclusive:
-        return (
-            f"publication gate `{result.command}` was inconclusive on tree {result.tree_sha} "
-            f"{result.inconclusive_runs} times ({_last_output_line(result)}); waiting for a "
-            "new tree before landing"
         )
     verdict = "timed out" if result.timed_out else f"failed (exit {result.exit_code})"
     return (
