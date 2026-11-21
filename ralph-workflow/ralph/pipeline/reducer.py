@@ -403,6 +403,15 @@ def _route_reduced_decision(
         )
         and is_phase_boundary
     ):
+        logger.warning(
+            "Phase transition {} -> {} held in {}: {} (integration outcome: {}; reason: {})",
+            state.phase,
+            new_state.phase,
+            state.phase,
+            decision_str,
+            rebase.last_outcome.value if rebase.last_outcome is not None else "none",
+            rebase.last_reason or "none",
+        )
         new_state = new_state.copy_with(
             phase=state.phase,
             last_agent_session_id=None,

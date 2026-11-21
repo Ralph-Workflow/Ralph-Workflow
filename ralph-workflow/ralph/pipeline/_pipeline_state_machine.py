@@ -100,19 +100,20 @@ def _check_blocking_decision(
         if rebase_state.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION:
             return PhaseDecision.BLOCK_FOR_RECOVERY
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
-    last_outcome = rebase_state.last_outcome
-    fast_forwarded = rebase_state.fast_forwarded
-    unlanded_rebase = (
-        last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
-        and fast_forwarded is False
-    )
     if (
-        unlanded_rebase
+        (_is_unlanded_rebase(rebase_state) and rebase_state.publication_block is None)
         or rebase_state.integration_unresolved is True
         or rebase_state.recovery_record_retained is True
     ):
         return PhaseDecision.BLOCK_FOR_RECOVERY
     return None
+
+
+def _is_unlanded_rebase(rebase_state: RebaseState) -> bool:
+    return (
+        rebase_state.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
+        and rebase_state.fast_forwarded is False
+    )
 
 
 def _is_terminal_failure(phase: str, policy: PipelinePolicy | None) -> bool:
@@ -173,7 +174,9 @@ def decide_phase_transition(
     elif candidate_phase in terminal:
         if _is_terminal_failure(candidate_phase, policy):
             decision = PhaseDecision.REPORT_TERMINAL_FAILURE
-        elif not is_terminal_success_eligible(state, integration_record, rebase_state):
+        elif _is_unlanded_rebase(rebase_state) or not is_terminal_success_eligible(
+            state, integration_record, rebase_state
+        ):
             decision = PhaseDecision.BLOCK_FOR_RECOVERY
         else:
             decision = PhaseDecision.REPORT_TERMINAL_SUCCESS

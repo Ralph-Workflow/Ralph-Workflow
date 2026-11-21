@@ -9,6 +9,7 @@ from ralph.pipeline._pipeline_state_machine import (
     is_terminal_success_eligible,
 )
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
+from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.rebase_state import RebaseState
 
 
@@ -236,6 +237,40 @@ def test_decide_returns_block_for_recovery_when_integrated_without_landing() -> 
         policy,
         integration_record=record,
         rebase_state=RebaseState(),
+    )
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
+
+
+def test_decide_advances_when_the_publication_gate_refused_the_rebased_tree() -> None:
+    rebase_state = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+        publication_block=PublicationBlock.GATE_FAILED,
+    )
+    policy = _policy_with(
+        {"plan": {"on_success": "build"}, "build": {"on_success": "done"}}, terminal=("done",)
+    )
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=None,
+        rebase_state=rebase_state,
+    )
+    assert decision is PhaseDecision.ADVANCE_PHASE
+
+
+def test_decide_keeps_terminal_success_blocked_while_the_gate_holds_the_rebased_tree() -> None:
+    rebase_state = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+        publication_block=PublicationBlock.GATE_FAILED,
+    )
+    policy = _policy_with({"plan": {"on_success": "done"}}, terminal=("done",))
+    decision = decide_phase_transition(
+        _state("plan"),
+        policy,
+        integration_record=None,
+        rebase_state=rebase_state,
     )
     assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
 

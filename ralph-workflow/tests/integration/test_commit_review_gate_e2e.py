@@ -8,21 +8,27 @@ from typing import TYPE_CHECKING
 
 import pytest
 from git import Actor, Repo
+from loguru import logger
 
 from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
 from ralph.config.models import UnifiedConfig
 from ralph.git.proposal_seal import ProposalPreflightError, preflight, rollback, seal_pending
 from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.phases import PhaseContext
 from ralph.phases.commit_review import (
+    COMMIT_REVIEW_ARTIFACT_PATH,
     CommitReviewApproved,
     CommitReviewLoopback,
     CommitReviewRejected,
+    handle_commit_review_phase,
 )
 from ralph.phases.required_artifacts import read_validation_retry_hint, retry_hint_path
 from ralph.pipeline.commit_executor import execute_commit_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import CommitEffect, CommitReviewRejectEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.publication_block import PublicationBlock
+from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
 from ralph.pipeline.runner import execute_effect_with_optional_display, execute_pending_rollback
@@ -153,6 +159,83 @@ def test_commit_review_gate_approve_creates_sha_bound_commit_and_retains_the_pro
     assert repo.head.commit.message.splitlines()[0] == "feat: approved work"
 
     preflight(tmp_path, seal.ref)
+
+
+def test_an_approved_review_reaches_the_commit_while_the_publication_gate_holds_the_run_commits(
+    tmp_path: Path,
+    init_repo: Callable[[Path], Repo],
+) -> None:
+    policy = _policy()
+    init_repo(tmp_path)
+    (tmp_path / "app.py").write_text("print('reviewed change')", encoding="utf-8")
+    auto_seed_default_gitignore(tmp_path)
+    auto_seed_default_git_exclude(tmp_path)
+    workspace = FsWorkspace(tmp_path)
+    context = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=policy,
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    gate_held = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+        publication_block=PublicationBlock.GATE_FAILED,
+        last_reason="publication gate `test -f gate-ok` failed (exit 1) on tree " + "a" * 40,
+    )
+    state = PipelineState(phase="development_commit_review", rebase=gate_held)
+
+    reviews = 0
+    while state.phase == "development_commit_review" and reviews < 3:
+        reviews += 1
+        tree_sha = seal_pending(tmp_path, run_id="run-gate-held", iteration=str(reviews)).tree_sha
+        workspace.write(
+            COMMIT_REVIEW_ARTIFACT_PATH,
+            f"---\ntype: commit_review\nverdict: approve\ntree_sha: {tree_sha}\n---\n",
+        )
+        events = handle_commit_review_phase(
+            InvokeAgentEffect(
+                agent_name="reviewer",
+                phase="development_commit_review",
+                prompt_file="review.txt",
+                run_id="run-gate-held",
+                iteration=str(reviews),
+            ),
+            context,
+        )
+        assert events == [CommitReviewApproved(tree_sha=tree_sha)]
+        state, _ = reduce(state, events[0], policy)
+
+    assert (reviews, state.phase) == (1, "development_commit")
+    assert state.approved_tree_sha == tree_sha
+
+
+def test_a_held_review_transition_names_both_phases_and_the_integration_reason() -> None:
+    unlanded = RebaseState(
+        last_outcome=RebaseOutcomeKind.REBASED,
+        fast_forwarded=False,
+        last_reason="fast-forward of main refused",
+    )
+    held_lines: list[str] = []
+    sink = logger.add(
+        lambda line: held_lines.append(str(line)), level="WARNING", format="{message}"
+    )
+    try:
+        next_state, _ = reduce(
+            PipelineState(phase="development_commit_review", rebase=unlanded),
+            CommitReviewApproved(tree_sha="b" * 40),
+            _policy(),
+        )
+    finally:
+        logger.remove(sink)
+
+    assert next_state.phase == "development_commit_review"
+    held = [line for line in held_lines if "held" in line]
+    assert len(held) == 1
+    assert "development_commit_review -> development_commit" in held[0]
+    assert "fast-forward of main refused" in held[0]
 
 
 def test_commit_review_gate_prunes_the_proposals_outside_the_retention_bound(
