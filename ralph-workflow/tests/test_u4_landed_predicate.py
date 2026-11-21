@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import itertools
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.git.git_run_result import GitRunResult
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline._auto_integrate_rebase_resolve import _rebase_run_result
@@ -29,6 +33,15 @@ from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     RetryLaterOutcome,
 )
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    SpawnOptions,
+    default_sync_process_factory,
+    install_process_manager,
+    reset_process_manager,
+)
+from ralph.testing.fake_process import FakeTimeoutPopen
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_next_strategy_outcome_returns_the_completion_strategy_text": (
@@ -115,6 +128,149 @@ def test_operation_landed_rebased_range_equivalence(tmp_path: Path) -> None:
     assert decision.landed is True
     assert decision.proof == "rebased range equivalence"
     assert decision.observed_head == rebased_head
+
+
+_ARGV_CAP = 256
+
+
+def _seed_history_with_picked_target_commit(root: Path, target_commits: int) -> tuple[str, str]:
+    stream: list[str] = [
+        "commit refs/heads/main\nmark :1\ncommitter T <t@example.com> 1700000000 +0000\n"
+        "data 4\nbase\nM 100644 inline base.txt\ndata 5\nbase\n\n"
+    ]
+    parent = 1
+    for index in range(target_commits):
+        mark = index + 2
+        change = (
+            "M 100644 inline picked.txt\ndata 7\npicked\n" if index == target_commits // 2 else ""
+        )
+        stream.append(
+            f"commit refs/heads/main\nmark :{mark}\n"
+            f"committer U <u@example.com> {1700000001 + index} +0000\n"
+            f"data {len(f'target {index}')}\ntarget {index}\nfrom :{parent}\n{change}\n"
+        )
+        parent = mark
+    stream.append("done\n")
+    result = run_git(
+        ("fast-import", "--quiet", "--done"),
+        cwd=root,
+        label="u4-landed-test",
+        options=GitRunOptions(timeout=30, input_data="".join(stream)),
+    )
+    assert result.returncode == 0, result.stderr
+    base = _value(root, "rev-list", "--max-parents=0", "main")
+    assert _git(root, "reset", "--hard", "main").returncode == 0
+    assert _git(root, "switch", "-c", "feature", base).returncode == 0
+    _commit(root, "picked.txt", "picked\n", "feature picked")
+    feature = _commit(root, "feature.txt", "feature\n", "feature work")
+    return _value(root, "rev-parse", "main"), feature
+
+
+def _argv_capped_git_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    real_git = shutil.which("git")
+    assert real_git is not None
+    shim_dir = tmp_path / "shim"
+    shim_dir.mkdir()
+    shim = shim_dir / "git"
+    shim.write_text(
+        f'#!/bin/sh\n[ "$#" -le {_ARGV_CAP} ] || {{ echo "argv of $# args" >&2; exit 97; }}\n'
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shim_dir}:{Path(real_git).parent}")
+
+
+def test_operation_landed_scales_to_a_target_with_thousands_of_commits_since_the_fork(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _init_repo(root)
+    target_tip, feature = _seed_history_with_picked_target_commit(root, 3000)
+    assert _git(root, "rebase", "main").returncode == 0
+    rebased_head = _value(root, "rev-parse", "HEAD")
+    assert _value(root, "rev-list", "--count", f"{target_tip}..HEAD") == "1"
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=target_tip,
+        resolving_rebase=True,
+    )
+    _argv_capped_git_on_path(tmp_path, monkeypatch)
+
+    decision = operation_landed(root, record)
+
+    assert decision.landed is True, decision.failures
+    assert decision.proof == "rebased range equivalence"
+    assert decision.observed_head == rebased_head
+
+
+def test_operation_landed_ignores_equivalent_patches_older_than_the_fork(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _init_repo(root)
+    _commit(root, "shared.txt", "base\n", "base")
+    _commit(root, "revived.txt", "revived\n", "add revived")
+    assert _git(root, "rm", "-q", "revived.txt").returncode == 0
+    assert _git(root, "commit", "-m", "drop revived").returncode == 0
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "revived.txt", "revived\n", "revive on feature")
+    assert _git(root, "switch", "main").returncode == 0
+    target_tip = _commit(root, "target.txt", "target\n", "target work")
+    assert _git(root, "switch", "feature").returncode == 0
+    assert _git(root, "reset", "--hard", "main").returncode == 0
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=target_tip,
+        resolving_rebase=True,
+    )
+
+    decision = operation_landed(root, record)
+
+    assert decision.landed is False
+
+
+def test_operation_landed_reports_not_landed_when_git_log_times_out(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _init_repo(root)
+    target_tip, feature = _seed_history_with_picked_target_commit(root, 3)
+    assert _git(root, "rebase", "main").returncode == 0
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha=feature,
+        pre_target_sha=target_tip,
+        resolving_rebase=True,
+    )
+    pids = itertools.count(1)
+
+    def log_times_out(command: Sequence[str], opts: SpawnOptions) -> object:
+        if tuple(command[1:2]) == ("log",):
+            return FakeTimeoutPopen(next(pids))
+        return default_sync_process_factory(command, opts)
+
+    reset_process_manager()
+    install_process_manager(
+        ProcessManager(
+            policy=ProcessManagerPolicy(
+                default_grace_period_s=0.0, kill_followup_timeout_s=0.0, log_events=False
+            ),
+            sync_process_factory=log_times_out,
+        )
+    )
+    try:
+        decision = operation_landed(root, record)
+    finally:
+        reset_process_manager()
+
+    assert decision.landed is False
+    assert decision.proof == "none"
 
 
 def test_operation_landed_rejects_unintegrated_feature_head(tmp_path: Path) -> None:

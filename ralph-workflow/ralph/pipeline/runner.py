@@ -27,6 +27,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.executor.process import run_process_async
+from ralph.git.git_call_policy import GIT_CALL_FAILURES
 from ralph.git.operations import create_commit, stage_all
 from ralph.interrupt.asyncio_bridge import install_signal_handlers
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
@@ -1270,7 +1271,7 @@ def _maybe_auto_integrate(
                 display=display,
                 recovery_controller=recovery_controller,
             )
-    except (OSError, RuntimeError, ValueError, KeyError) as auto_integrate_exc:
+    except GIT_CALL_FAILURES as auto_integrate_exc:
         logger.warning(
             "auto_integrate_after_commit raised unexpectedly: {}",
             auto_integrate_exc,
@@ -1413,7 +1414,7 @@ def _integrate_on_phase_transition(
                 display=display,
                 recovery_controller=recovery_controller,
             )
-    except (OSError, RuntimeError, ValueError, KeyError) as transition_exc:
+    except GIT_CALL_FAILURES as transition_exc:
         logger.warning(
             "auto_integrate_on_phase_transition raised unexpectedly: {}",
             transition_exc,

@@ -382,7 +382,7 @@ tests/test_auto_integrate_remote_sync_push.py|3,0,0
 tests/test_auto_integrate_remote_sync_reconcile.py|20,0,0
 tests/test_auto_integrate_resolution.py|2,1,1
 tests/test_auto_integrate_retained_recovery_seam.py|13,0,0
-tests/test_auto_integrate_runner_seam.py|7,0,3
+tests/test_auto_integrate_runner_seam.py|7,0,2
 tests/test_auto_integrate_seams_e2e.py|0,0,4
 tests/test_auto_integrate_skip_reasons.py|8,1,0
 tests/test_auto_integrate_stateless_seam.py|8,0,13

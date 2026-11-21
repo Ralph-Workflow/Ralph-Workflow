@@ -878,7 +878,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_auto_integrate_remote_sync_reconcile.py` | 20 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_resolution.py` | 2 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_retained_recovery_seam.py` | 13 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
-| `tests/test_auto_integrate_runner_seam.py` | 7 | 0 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
+| `tests/test_auto_integrate_runner_seam.py` | 7 | 0 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_seams_e2e.py` | 0 | 0 | 4 | root | private-attribute-assert | assert the public result instead of the private attribute | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_skip_reasons.py` | 8 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |
 | `tests/test_auto_integrate_stateless_seam.py` | 8 | 0 | 13 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: auto-integrate public-seam unit |

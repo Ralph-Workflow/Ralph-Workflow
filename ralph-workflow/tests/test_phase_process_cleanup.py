@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import contextlib
 import itertools
-import subprocess
 import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
 import ralph.process.manager as _mgr
+from ralph.git.git_run_result import GitOutcomeKind
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.process import process_phase_scope
 from ralph.process.manager import (
@@ -24,6 +24,14 @@ from ralph.testing.fake_process import FakePsutil, FakeTimeoutPopen, make_sync_p
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_run_git_timeout_terminates_managed_process": (
+        "run_git now reports a timed-out git call as a failed result with a truncated "
+        "command summary instead of raising TimeoutExpired, whose str() dumped every "
+        "argument and killed the run; the test still pins that the process is terminated"
+    ),
+}
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
@@ -139,20 +147,25 @@ def test_run_git_timeout_terminates_managed_process() -> None:
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=timeout_factory)
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm
+    shas = [f"{index:040x}" for index in range(9000)]
     try:
-        with pytest.raises(subprocess.TimeoutExpired):
-            run_git(
-                ["rev-parse", "HEAD"],
-                cwd=None,
-                label="git:test-timeout",
-                options=GitRunOptions(timeout=0.01),
-            )
+        result = run_git(
+            ["log", "--no-walk", *shas],
+            cwd=None,
+            label="git:test-timeout",
+            options=GitRunOptions(timeout=0.01),
+        )
     finally:
         _mgr._pm_state.instance = original_singleton
 
+    assert result.returncode != 0
+    assert result.outcome_kind is GitOutcomeKind.TIMED_OUT
+    assert result.stderr == (
+        f"'git log --no-walk {shas[0]} (+8999 more)' timed out after 0.01 seconds"
+    )
     assert pm.list_active() == [], (
-        "After run_git TimeoutExpired, the git subprocess must not remain active. "
-        "The except block must call proc.terminate() before re-raising."
+        "After a run_git timeout, the git subprocess must not remain active. "
+        "The timeout path must terminate the process before reporting the failure."
     )
     records = pm.list_records(include_terminal=True)
     assert len(records) == 1

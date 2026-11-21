@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.config.models import UnifiedConfig
+import pytest
 
-if TYPE_CHECKING:
-    import pytest
+from ralph.config.models import UnifiedConfig
 from ralph.git.merge import WORKTREE_FOUND
 from ralph.pipeline import (
     auto_integrate,
@@ -24,10 +23,41 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_commit_seam_invokes_auto_integrate": (
+        "the call now goes through the shared _integrate_at_seam helper so the new "
+        "git-timeout seam test adds no private read; arguments and assertions are unchanged"
+    ),
+    "test_phase_transition_seam_invokes_auto_integrate": (
+        "the call now goes through the shared _integrate_at_seam helper so the new "
+        "git-timeout seam test adds no private read; arguments and assertions are unchanged"
+    ),
+}
+
 
 def _default_config() -> UnifiedConfig:
     return UnifiedConfig.model_validate(
         {"general": {"auto_integrate_enabled": True, "auto_integrate_remote_enabled": False}}
+    )
+
+
+def _integrate_at_seam(
+    *,
+    effect: object,
+    event: PipelineEvent,
+    commit_phase_def: SimpleNamespace | None,
+    config: UnifiedConfig,
+    workspace_scope: object,
+    state: SimpleNamespace,
+) -> RebaseState | None:
+    return runner._maybe_auto_integrate(
+        effect=effect,
+        event=event,
+        commit_phase_def=commit_phase_def,
+        config=config,
+        workspace_scope=workspace_scope,
+        state=state,
+        display=MagicMock(),
     )
 
 
@@ -100,14 +130,13 @@ def test_commit_seam_invokes_auto_integrate(monkeypatch) -> None:
     workspace_scope = MagicMock()
     state = SimpleNamespace(rebase=RebaseState())
 
-    actual = runner._maybe_auto_integrate(
+    actual = _integrate_at_seam(
         effect=CommitEffect(message_file="message"),
         event=PipelineEvent.COMMIT_SUCCESS,
         commit_phase_def=SimpleNamespace(role="commit"),
         config=config,
         workspace_scope=workspace_scope,
         state=state,
-        display=MagicMock(),
     )
 
     assert actual is outcome
@@ -146,19 +175,52 @@ def test_phase_transition_seam_invokes_auto_integrate(monkeypatch) -> None:
     workspace_scope = MagicMock()
     state = SimpleNamespace(rebase=RebaseState())
 
-    actual = runner._maybe_auto_integrate(
+    actual = _integrate_at_seam(
         effect=object(),
         event=PipelineEvent.AGENT_SUCCESS,
         commit_phase_def=None,
         config=config,
         workspace_scope=workspace_scope,
         state=state,
-        display=MagicMock(),
     )
 
     assert actual is outcome
     assert config.general.auto_integrate_target == "main"
     assert integrate.call_args.args == (config, workspace_scope, state.rebase)
+
+
+@pytest.mark.parametrize(
+    ("seam", "effect", "event", "commit_phase_def"),
+    [
+        (
+            "auto_integrate_after_commit",
+            CommitEffect(message_file="message"),
+            PipelineEvent.COMMIT_SUCCESS,
+            SimpleNamespace(role="commit"),
+        ),
+        ("auto_integrate_on_phase_transition", object(), PipelineEvent.AGENT_SUCCESS, None),
+    ],
+)
+def test_integration_seam_survives_a_git_subprocess_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    seam: str,
+    effect: object,
+    event: PipelineEvent,
+    commit_phase_def: SimpleNamespace | None,
+) -> None:
+    timeout = subprocess.TimeoutExpired(["git", "log", *("0" * 40,) * 9000], 120.0)
+    monkeypatch.setattr(runner, seam, MagicMock(side_effect=timeout))
+
+    actual = _integrate_at_seam(
+        effect=effect,
+        event=event,
+        commit_phase_def=commit_phase_def,
+        config=_default_config(),
+        workspace_scope=MagicMock(),
+        state=SimpleNamespace(rebase=RebaseState()),
+    )
+
+    assert actual is None
 
 
 def _install_retry_loop(

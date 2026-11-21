@@ -165,15 +165,17 @@ def _rebased_range_proof(
             f"HEAD is the unintegrated feature commit {facts.head} and has not landed on {record.target}",
         )
     base = target_tip if target_tip and is_ancestor(root, target_tip, facts.head) else onto
-    rebased = _range_commits(root, f"{base}..{facts.head}")
-    original = _range_commits(root, f"{onto}..{feature}")
+    rebased_spec = f"{base}..{facts.head}"
+    original_spec = f"{onto}..{feature}"
+    rebased = _range_commits(root, rebased_spec)
+    original = _range_commits(root, original_spec)
     if not original and not rebased and target_tip and is_ancestor(root, facts.head, target_tip):
         return True, ""
     range_failure = _range_shape_failure(original, rebased)
     if range_failure is not None:
         return False, range_failure
-    original_ids = _patch_ids(root, original)
-    rebased_ids = _patch_ids(root, rebased)
+    original_ids = _patch_ids(root, original_spec)
+    rebased_ids = _patch_ids(root, rebased_spec)
     return _range_equivalence_verdict(
         record,
         original,
@@ -183,6 +185,7 @@ def _rebased_range_proof(
         root,
         target_tip,
         facts,
+        _upstream_equivalent_commits(root, feature, target_tip, original_ids),
     )
 
 
@@ -195,6 +198,7 @@ def _range_equivalence_verdict(
     root: Path,
     target_tip: str,
     facts: _LiveGitFacts,
+    upstream: frozenset[str],
 ) -> tuple[bool, str]:
     pair_failure = _range_pair_failure(
         record,
@@ -205,6 +209,7 @@ def _range_equivalence_verdict(
         root,
         target_tip,
         facts,
+        upstream,
     )
     if pair_failure is None:
         return True, ""
@@ -217,6 +222,7 @@ def _range_equivalence_verdict(
         root,
         target_tip,
         facts,
+        upstream,
     )
     if set_failure is None:
         return True, ""
@@ -351,9 +357,8 @@ def _range_pair_failure(
     root: Path,
     target_tip: str,
     facts: _LiveGitFacts,
+    upstream: frozenset[str],
 ) -> str | None:
-    upstream = _range_commits(root, target_tip)
-    upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
     stop_is_empty = _stop_resolved_to_empty(root, record, facts)
     replay_index = 0
     for index, old in enumerate(original):
@@ -366,7 +371,7 @@ def _range_pair_failure(
             if _is_replay_of(root, old, new):
                 replay_index += 1
                 continue
-        if old_patch is not None and old_patch in upstream_patch_ids:
+        if old in upstream:
             continue
         if old == record.rebase_continue_stop and stop_is_empty:
             continue
@@ -389,16 +394,15 @@ def _range_set_equivalence_failure(
     root: Path,
     target_tip: str,
     facts: _LiveGitFacts,
+    upstream: frozenset[str],
 ) -> str | None:
-    upstream = _range_commits(root, target_tip)
-    upstream_patch_ids = frozenset(_patch_ids(root, upstream).values())
     stop_is_empty = _stop_resolved_to_empty(root, record, facts)
     remaining_rebased = list(rebased)
     rebased_pids = dict(rebased_ids)
 
     for old in original:
         old_pid = original_ids.get(old)
-        if old_pid is not None and old_pid in upstream_patch_ids:
+        if old in upstream:
             continue
         if old == record.rebase_continue_stop and stop_is_empty:
             continue
@@ -490,11 +494,34 @@ def _range_commits(root: Path, spec: str) -> tuple[str, ...]:
     return tuple(line for line in listing.splitlines() if line)
 
 
-def _patch_ids(root: Path, commits: tuple[str, ...]) -> dict[str, str]:
-    if not commits:
-        return {}
-    diff = _read(root, "log", "--no-color", "-p", "--root", "--no-walk", *commits)
-    if diff is None:
+def _upstream_equivalent_commits(
+    root: Path,
+    feature: str,
+    target_tip: str,
+    original_ids: dict[str, str],
+) -> frozenset[str]:
+    listing = _read(
+        root,
+        "log",
+        "--no-color",
+        "--cherry-mark",
+        "--right-only",
+        "--format=%m %H",
+        f"{target_tip}...{feature}",
+    )
+    if listing is None:
+        return frozenset()
+    unmatched = {
+        sha
+        for mark, _, sha in (line.partition(" ") for line in listing.splitlines())
+        if mark != "="
+    }
+    return frozenset(sha for sha in original_ids if sha not in unmatched)
+
+
+def _patch_ids(root: Path, spec: str) -> dict[str, str]:
+    diff = _read(root, "log", "--no-color", "-p", "--root", spec)
+    if not diff:
         return {}
     result = run_git(
         ("patch-id", "--stable"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import subprocess
 import sys
 import threading
 from collections import deque
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 from git import Repo
 from git.exc import GitCommandError
+from loguru import logger
 
 from ralph.git._git_command_queue_lease import (
     _acquire_lease,
@@ -52,14 +54,15 @@ from ralph.git.git_run_result import (
     GitOutcomeKind,
     GitRunResult,
     succeeded_outcome,
+    summarize_command,
     timed_out_outcome,
+    timed_out_result,
     unknown_outcome,
 )
 from ralph.git.subprocess_runner import GitRunOptions
 
 if TYPE_CHECKING:
     import os
-    import subprocess
     from collections.abc import Callable, Mapping, Sequence
 
 
@@ -443,8 +446,26 @@ def route_run_git(
                 queue.record_outcome(queue_kind, outcome=outcome)
             return attempt
 
-    result = run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, effective_options)
+    try:
+        result = run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, effective_options)
+    except subprocess.TimeoutExpired as exc:
+        return _timed_out_git_result(("git", *args), exc.timeout, label, effective_options)
     return replace(result, outcome=classify_git_outcome(returncode=result.returncode))
+
+
+def _timed_out_git_result(
+    cmd: tuple[str, ...],
+    timeout: float,
+    label: str,
+    options: GitRunOptions | None,
+) -> GitRunResult:
+    result = timed_out_result(cmd, timeout)
+    logger.warning("git call {} failed: {}", label, result.stderr)
+    if options is not None and options.check:
+        raise subprocess.CalledProcessError(
+            result.returncode, summarize_command(cmd), result.stdout, result.stderr
+        )
+    return result
 
 
 def _apply_call_class_deadline(
