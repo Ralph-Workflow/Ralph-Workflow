@@ -19,6 +19,8 @@ from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.integration_remote_actions import RemoteOps, default_remote_ops
 from ralph.pipeline.rebase_state import RebaseState
 
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
+
 TARGET = "release"
 REMOTE = "tacos"
 LOCAL_SHA = "local-sha"

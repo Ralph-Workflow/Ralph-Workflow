@@ -268,9 +268,7 @@ def recover_incomplete_integration(
                 recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             )
 
-        early = _read_outcome_or_skip(
-            Path(workspace_scope.root), backend
-        ) or _release_gate_refused_record(Path(workspace_scope.root), backend)
+        early = _read_outcome_or_skip(Path(workspace_scope.root), backend)
         if early is not None:
             return early
         record = _maybe_release_diagnostic(Path(workspace_scope.root), workspace_scope, backend)
@@ -299,19 +297,6 @@ def recover_incomplete_integration(
         ):
             return startup_publication
         return recovered
-
-
-def _release_gate_refused_record(root: Path, backend: FileBackend) -> RebaseState | None:
-    from ralph.pipeline._recovery_fast_forward_landing import release_gate_refused_record
-
-    try:
-        record = _read_record(root, backend=backend)
-        if record is None or record.integrated_feature_sha is None:
-            return None
-        return release_gate_refused_record(root, record)
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("recovery: gate-refusal release check skipped: {}", exc)
-        return None
 
 
 def _recover_incomplete_integration_owned(

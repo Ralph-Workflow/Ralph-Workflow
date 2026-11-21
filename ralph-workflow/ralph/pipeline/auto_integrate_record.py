@@ -689,15 +689,6 @@ def _unlink_record(workspace_root: Path, backend: FileBackend) -> None:
         return
 
 
-def release_refused_publication_record(
-    workspace_root: Path,
-    *,
-    backend: FileBackend = DEFAULT_FILE_BACKEND,
-) -> None:
-    _readable_record_for_unlink(workspace_root, backend)
-    _unlink_record(workspace_root, backend)
-
-
 def clear_record(
     workspace_root: Path,
     *,
@@ -806,7 +797,6 @@ __all__ = [
     "read_record",
     "read_record_outcome",
     "record_path",
-    "release_refused_publication_record",
     "release_stalled_record",
     "set_resolving_rebase",
     "transition_by_name",

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.git.merge import is_ancestor
+from ralph.pipeline import _dirty_landing as dirty_landing
 from ralph.pipeline import _terminal_emitter as terminal_emitter
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
@@ -15,7 +16,6 @@ from ralph.pipeline.auto_integrate_record import (
     START_INTEGRATING,
     IntegrationRecord,
     RecordReadOutcomeDisposition,
-    release_refused_publication_record,
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_after_rejected_push,
@@ -30,11 +30,7 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
-from ralph.pipeline.publication_gate import (
-    blocked_publication,
-    held_publication_reason,
-    publication_gate_refusal,
-)
+from ralph.pipeline.publication_gate import run_advisory_publication_gate
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -95,9 +91,6 @@ def _integrate_once(
 ) -> tuple[RebaseState | None, bool]:
     from ralph.pipeline import auto_integrate as _ai
 
-    unchanged_refusal = _unchanged_gate_refusal(root, target)
-    if unchanged_refusal is not None:
-        return unchanged_refusal, False
     clock_token = install_executors(clock=clock)
     try:
         with _ai.integration_transaction(root) as outcome:
@@ -121,15 +114,6 @@ def _integrate_once(
             )
     finally:
         reset_executors(clock_token)
-
-
-def _unchanged_gate_refusal(root: Path, target: str) -> RebaseState | None:
-    blocked = blocked_publication(root)
-    if blocked is None or blocked.block is None or not is_ancestor(root, target, "HEAD"):
-        return None
-    return _record_skip(reason=held_publication_reason(blocked), target=target).model_copy(
-        update={"publication_block": blocked.block}
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,12 +160,23 @@ def _integrate_once_owned(
         return contained, False
     pre_feature_sha = _ai.get_head_sha(root)
     pre_target_sha = _ai.branch_sha(root, target)
+    dirty_tree = dirty_landing.has_uncommitted_tracked_changes(root)
+    rebase_waits = dirty_tree and not is_ancestor(root, target, pre_feature_sha)
+    if rebase_waits:
+        dirty_landing.log_rebase_wait(root, target)
     retained = _ai.read_record(root)
-    if retained != owned_record or (
-        _ai.read_record_outcome(root).disposition is RecordReadOutcomeDisposition.UNREADABLE
+    if (
+        rebase_waits
+        or retained != owned_record
+        or _ai.read_record_outcome(root).disposition is RecordReadOutcomeDisposition.UNREADABLE
     ):
         return _record_skip(
-            reason="unfinished integration retained for recovery", target=target
+            reason=(
+                dirty_landing.DIRTY_TREE_REASON
+                if rebase_waits
+                else "unfinished integration retained for recovery"
+            ),
+            target=target,
         ), False
     attempt_record = (
         owned_record.with_transition(
@@ -206,16 +201,20 @@ def _integrate_once_owned(
         attempt_record.owning_worktree or str(root),
     )
     owns_resolution = False
-    rebase_result = _ai._run_rebase_or_merge(
-        root,
-        target,
-        conflict_resolver,
-        prefer_merge=prefer_merge,
-        rebase_stop_resolver=rebase_stop_resolver,
-        display=display,
-        conflict_resolution_config=config.conflict_resolution,
-        git_ops=current_git_ops() if current_git_ops() is not default_git_ops() else None,
-        agent_runner=current_agent_runner(),
+    rebase_result = (
+        dirty_landing.fast_forward_only_result()
+        if dirty_tree
+        else _ai._run_rebase_or_merge(
+            root,
+            target,
+            conflict_resolver,
+            prefer_merge=prefer_merge,
+            rebase_stop_resolver=rebase_stop_resolver,
+            display=display,
+            conflict_resolution_config=config.conflict_resolution,
+            git_ops=current_git_ops() if current_git_ops() is not default_git_ops() else None,
+            agent_runner=current_agent_runner(),
+        )
     )
     if rebase_result.short_circuit is not None:
         if not rebase_result.short_circuit.recovery_record_retained:
@@ -246,17 +245,12 @@ def _integrate_once_owned(
         nonlocal reclamation
         reclamation = result
 
-    gate_refusal = publication_gate_refusal(root, feature_sha)
-    raw_ff_outcome: StopResolutionOutcome = (
-        gate_refusal[0]
-        if gate_refusal is not None
-        else _ai._fast_forward_target(
-            root,
-            target,
-            feature_sha,
-            reclaim_target_worktree=reclaim_target_worktree,
-            on_reclaimed=remember_reclamation,
-        )
+    raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
+        root,
+        target,
+        feature_sha,
+        reclaim_target_worktree=reclaim_target_worktree,
+        on_reclaimed=remember_reclamation,
     )
     ff_status = _parse_ff_status(raw_ff_outcome)
     ok, skip_reason = ff_status.ok, ff_status.skip_reason
@@ -265,9 +259,6 @@ def _integrate_once_owned(
     if ok:
         _ai._delete_rebase_backup_ref(root, backup_ref)
         _ai._clear_record(root)
-    elif gate_refusal is not None:
-        _ai._delete_rebase_backup_ref(root, backup_ref)
-        release_refused_publication_record(root)
 
     record = _ai._record_rebase_outcome(
         rebase_outcome=rebase_result.rebase_outcome,
@@ -298,7 +289,6 @@ def _integrate_once_owned(
                 update={
                     "last_reason": skip_reason,
                     "fast_forwarded": False,
-                    "publication_block": gate_refusal[1] if gate_refusal is not None else None,
                 }
             ),
             rebase_result.skip_reason,
@@ -330,5 +320,7 @@ def _integrate_once_owned(
                     display=display,
                 ),
             )
+    if not dirty_tree:
+        run_advisory_publication_gate(root, feature_sha)
     record = with_skip_reason(record, rebase_result.skip_reason)
     return record, False

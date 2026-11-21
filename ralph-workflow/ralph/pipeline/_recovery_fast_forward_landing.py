@@ -8,10 +8,7 @@ from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
 from ralph.pipeline.auto_integrate_context import record_refresh
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
-from ralph.pipeline.auto_integrate_record import (
-    IntegrationRecord,
-    release_refused_publication_record,
-)
+from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_record import clear_record as _clear_record
 from ralph.pipeline.auto_integrate_recovery_terminal import (
     TerminalStateViolationError,
@@ -21,55 +18,12 @@ from ralph.pipeline.auto_integrate_recovery_terminal import (
     delete_rebase_backup_refs as _delete_rebase_backup_refs,
 )
 from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
-from ralph.pipeline.publication_gate import blocked_publication, publication_gate_refusal
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.publication_block import PublicationBlock
-
-
-def _release_gate_refused_record(
-    workspace_root: Path,
-    record: IntegrationRecord,
-    condition: str,
-    block: PublicationBlock,
-    refresh: str | None,
-) -> RebaseState:
-    _delete_rebase_backup_refs(
-        workspace_root,
-        qualified_backup_ref(record.owning_worktree or str(workspace_root), record.pre_feature_sha),
-    )
-    release_refused_publication_record(workspace_root)
-    logger.warning(
-        "recovery: {}; the integration record is released and the commits stay on the "
-        "feature branch until a new tree passes the gate",
-        condition,
-    )
-    return record_refresh(
-        _record_skip(
-            reason=f"recovery: {condition}; waiting for a new tree before landing",
-            target=record.target,
-        ),
-        refresh,
-    ).model_copy(update={"publication_block": block})
-
-
-def release_gate_refused_record(
-    workspace_root: Path, record: IntegrationRecord
-) -> RebaseState | None:
-    blocked = blocked_publication(workspace_root, record.integrated_feature_sha or "HEAD")
-    if blocked is None or blocked.block is None:
-        return None
-    return _release_gate_refused_record(
-        workspace_root,
-        record,
-        f"publication gate `{blocked.command}` already refused tree {blocked.tree_sha}",
-        blocked.block,
-        None,
-    )
 
 
 def _land_and_reconcile(
@@ -79,12 +33,6 @@ def _land_and_reconcile(
     refresh: str | None,
     config: UnifiedConfig | None = None,
 ) -> RebaseState:
-    gate_refusal = publication_gate_refusal(workspace_root, feature_sha)
-    if gate_refusal is not None:
-        refusal, block = gate_refusal
-        return _release_gate_refused_record(
-            workspace_root, record, refusal.external_condition, block, refresh
-        )
     ff_failed = False
     skip_reason = ""
     try:

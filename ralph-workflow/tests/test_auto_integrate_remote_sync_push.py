@@ -12,6 +12,8 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 )
 from ralph.pipeline.rebase_state import RebaseState
 
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
+
 
 def _config(
     *,

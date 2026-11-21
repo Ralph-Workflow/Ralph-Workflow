@@ -11,7 +11,6 @@ from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._rebase_state_validation_error import RebaseStateValidationError
-from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
@@ -53,7 +52,6 @@ class RebaseState(RalphBaseModel):
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     last_target: str | None = None
     fast_forwarded: bool = False
-    publication_block: PublicationBlock | None = None
 
     @property
     def last_action(self) -> str | None:

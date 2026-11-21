@@ -101,7 +101,7 @@ def _check_blocking_decision(
             return PhaseDecision.BLOCK_FOR_RECOVERY
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
     if (
-        (_is_unlanded_rebase(rebase_state) and rebase_state.publication_block is None)
+        _is_unlanded_rebase(rebase_state)
         or rebase_state.integration_unresolved is True
         or rebase_state.recovery_record_retained is True
     ):

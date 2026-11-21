@@ -20,7 +20,6 @@ from ralph.pipeline.events.publication_gate_failed_event import PublicationGateF
 from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.publication_gate_run import PublicationGateRun
 from ralph.pipeline.publication_gate_slots import publication_gate_slot
-from ralph.pipeline.resolution_outcome import WaitingOutcome
 from ralph.project_policy.markers import CANONICAL_DIR, FACT_MARKER
 
 if TYPE_CHECKING:
@@ -162,7 +161,7 @@ class PublicationGateResult:
         )
         return (
             f"Publication gate `{self.command}` {verdict} on tree {self.tree_sha}; the run's "
-            "commits were not published. Fix the failures below so the gate passes.\n"
+            "commits already landed. Fix the failures below so the gate passes.\n"
             f"{summary}\n\nOutput tail:\n{self.output_tail}"
         )
 
@@ -520,7 +519,8 @@ def check_publication_gate(
         _warn_time_only(result)
     elif not result.passed:
         logger.warning(
-            "Publication gate `{}` blocked tree {} (exit {}, timed out: {})",
+            "Publication gate `{}` is red on tree {} (exit {}, timed out: {}); the gate is "
+            "advisory, so the commits land and its failure routes back to development",
             command,
             tree_sha,
             result.exit_code,
@@ -589,7 +589,7 @@ def last_publication_gate_result(root: Path) -> PublicationGateResult | None:
     return _load_record(root)
 
 
-def blocked_publication(
+def red_publication_gate(
     root: Path, feature_sha: str = "HEAD", *, tree_of: TreeLookup | None = None
 ) -> PublicationGateResult | None:
     record = _load_record(root)
@@ -601,61 +601,12 @@ def blocked_publication(
     return record if tree_sha and tree_sha == record.tree_sha else None
 
 
-def held_publication_reason(result: PublicationGateResult) -> str:
-    if result.invocation_error:
-        return (
-            f"publication gate is misconfigured: {result.invocation_error}; the run's commits "
-            "stay unpublished until the verification policy declares a runnable gate command"
-        )
-    verdict = "timed out" if result.timed_out else f"failed (exit {result.exit_code})"
-    return (
-        f"publication gate `{result.command}` already refused tree {result.tree_sha} "
-        f"({verdict}); waiting for a new tree before landing"
-    )
-
-
-def _last_output_line(result: PublicationGateResult) -> str:
-    return next(
-        (line.strip() for line in reversed(result.output_tail.splitlines()) if line.strip()),
-        f"exit {result.exit_code}",
-    )
-
-
-def publication_gate_refusal(
-    root: Path, feature_sha: str
-) -> tuple[WaitingOutcome, PublicationBlock] | None:
-    result = check_publication_gate(root, feature_sha)
-    if result is None or result.block is None:
+def run_advisory_publication_gate(root: Path, feature_sha: str) -> PublicationGateResult | None:
+    try:
+        return check_publication_gate(root, feature_sha)
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Publication gate could not run on {}: {}", feature_sha, exc)
         return None
-    if result.inconclusive:
-        return (
-            WaitingOutcome(
-                external_condition=(
-                    f"publication gate `{result.command}` on tree {result.tree_sha} was "
-                    f"inconclusive ({_last_output_line(result)})"
-                ),
-                resumes_when="the gate re-runs on the next landing",
-            ),
-            result.block,
-        )
-    if result.invocation_error:
-        return (
-            WaitingOutcome(
-                external_condition=f"publication gate is misconfigured: {result.invocation_error}",
-                resumes_when="the verification policy declares a runnable gate command",
-            ),
-            result.block,
-        )
-    verdict = "timed out" if result.timed_out else f"failed (exit {result.exit_code})"
-    return (
-        WaitingOutcome(
-            external_condition=(
-                f"publication gate `{result.command}` {verdict} on tree {result.tree_sha}"
-            ),
-            resumes_when="the publication gate passes on the run's next tree",
-        ),
-        result.block,
-    )
 
 
 def publication_gate_feedback(
@@ -767,16 +718,15 @@ __all__ = [
     "PublicationGateResult",
     "PublicationGateRun",
     "TreeLookup",
-    "blocked_publication",
     "check_publication_gate",
     "declared_publication_gate",
     "gate_failure_signature",
-    "held_publication_reason",
     "last_publication_gate_result",
     "leave_publication_gate_feedback",
     "publication_gate_feedback",
     "publication_gate_loop_phase",
     "publication_gate_record_path",
-    "publication_gate_refusal",
+    "red_publication_gate",
     "resolve_publication_gate",
+    "run_advisory_publication_gate",
 ]

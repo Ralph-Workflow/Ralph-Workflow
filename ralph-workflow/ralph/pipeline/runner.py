@@ -200,7 +200,7 @@ from ralph.pipeline.prompt_prep import (
     publish_cycle_deadline_env,
     withdraw_cycle_deadline_env,
 )
-from ralph.pipeline.publication_gate import publication_gate_feedback
+from ralph.pipeline.publication_gate import publication_gate_feedback, red_publication_gate
 from ralph.pipeline.rebase_state import (
     HISTORY_AWARE_CONFLICT_STRATEGY_INDEX,
     RebaseState,
@@ -1165,7 +1165,7 @@ def _event_after_integration(
         return event
     if outcome.integration_unresolved and not outcome.recovery_record_retained:
         return _integration_conflict_failure(state, outcome)
-    if outcome.publication_block is not None:
+    if outcome.fast_forwarded and red_publication_gate(workspace_scope.root) is not None:
         return (
             publication_gate_feedback(workspace_scope.root, policy_bundle.pipeline, state.phase)
             or event

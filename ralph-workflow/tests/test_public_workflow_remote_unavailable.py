@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ralph.display.auto_integrate_message import (
     OperationDisplayState,
     format_auto_integrate_message,
@@ -12,6 +14,8 @@ from ralph.pipeline._publication_state_machine import PublicationDecision, next_
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
 from ralph.pipeline.rebase_state import RebaseState
+
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
 
 
 class _FakeGeneral:

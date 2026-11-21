@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.git.remote_push import PushResult, PushStatus
 from ralph.pipeline.auto_integrate_catchup import (
@@ -15,6 +17,7 @@ from ralph.pipeline.auto_integrate_ff import (
     RemoteClient,
     retry_pending_remote_publish,
 )
+from ralph.pipeline.auto_integrate_remote_push import PUSH_RETRY_DELAYS_SECONDS
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_PUSHED,
     REMOTE_REMOTE_UNREACHABLE,
@@ -27,6 +30,17 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
+
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_scenario_6_local_landing_completed_remote_unavailable": (
+        "user requirement: a push that fails because the network or remote is down retries with backoff until it lands, so one landing now makes the first push plus every PUSH_RETRY_DELAYS_SECONDS retry"
+    ),
+    "test_scenario_6_local_landing_completed_remote_timeout": (
+        "user requirement: a push that fails because the network or remote is down retries with backoff until it lands, so one landing now makes the first push plus every PUSH_RETRY_DELAYS_SECONDS retry"
+    ),
+}
 
 
 @dataclass
@@ -148,7 +162,7 @@ def test_scenario_6_local_landing_completed_remote_unavailable() -> None:
     assert result.last_remote_sync == REMOTE_REMOTE_UNREACHABLE
     assert result.last_push_status == "unreachable"
     assert result.last_action == "remote_failed"
-    assert len(client.push_calls) == 1
+    assert len(client.push_calls) == 1 + len(PUSH_RETRY_DELAYS_SECONDS)
 
 
 def test_scenario_6_local_landing_completed_remote_timeout() -> None:
@@ -170,7 +184,7 @@ def test_scenario_6_local_landing_completed_remote_timeout() -> None:
     assert result.last_publication_decision == "publish_deferred_remote"
     assert result.last_push_status == "timeout"
     assert result.last_action == "remote_failed"
-    assert len(client.push_calls) == 1
+    assert len(client.push_calls) == 1 + len(PUSH_RETRY_DELAYS_SECONDS)
 
 
 def test_policy_governs_result_when_remote_disabled() -> None:

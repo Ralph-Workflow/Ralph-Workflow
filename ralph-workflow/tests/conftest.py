@@ -857,3 +857,25 @@ def config_with_test_agent() -> UnifiedConfig:
             )
         },
     )
+
+
+class _InstantBackoffClock:
+    def __init__(self) -> None:
+        self.current = 1000.0
+
+    def now(self) -> float:
+        return self.current
+
+    def sleep(self, seconds: float) -> None:
+        self.current += seconds
+
+
+@pytest.fixture
+def instant_push_retries() -> Iterator[None]:
+    from ralph.pipeline.integration_actions import install_executors, reset_executors
+
+    token = install_executors(clock=_InstantBackoffClock())
+    try:
+        yield
+    finally:
+        reset_executors(token)

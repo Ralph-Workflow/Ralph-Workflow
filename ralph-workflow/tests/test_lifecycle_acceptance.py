@@ -32,7 +32,10 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import IntegrationRecordStore
-from ralph.pipeline.auto_integrate_remote_push import next_publication_action
+from ralph.pipeline.auto_integrate_remote_push import (
+    PUSH_RETRY_DELAYS_SECONDS,
+    next_publication_action,
+)
 from ralph.pipeline.auto_integrate_remote_sync import (
     REMOTE_REMOTE_UNREACHABLE,
     RemoteSyncStatus,
@@ -52,7 +55,10 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
 
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
+
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_acceptance_scenario_6_local_landing_complete_remote_unavailable": "user requirement: a push that fails because the network or remote is down retries with backoff until it lands, so one landing now makes the first push plus every PUSH_RETRY_DELAYS_SECONDS retry",
     "test_acceptance_scenario_9_exhausted_retry_does_not_replenish": "operator rule: an agent is either on cooldown or not; an exhausted legacy guard now migrates to counters near the limit instead of a permanent Spent state, so the reloaded agent may run again but its very next unproductive attempt starts an expiring unproductive_limit cooldown, proving the budget was not replenished",
 }
 
@@ -280,7 +286,7 @@ def test_acceptance_scenario_6_local_landing_complete_remote_unavailable() -> No
         == PublicationDecision.PUBLISH_DEFERRED_REMOTE.value
     )
     assert result_unavail.last_remote_sync == REMOTE_REMOTE_UNREACHABLE
-    assert len(fake_remote_unavail.push_calls) == 1
+    assert len(fake_remote_unavail.push_calls) == 1 + len(PUSH_RETRY_DELAYS_SECONDS)
 
     assert result_unavail.fast_forwarded is True
     assert result_unavail.freshness_verdict == "verified"
@@ -682,7 +688,9 @@ def test_lifecycle_l3_and_l5_strategy_transitions_non_harness_proof() -> None:
 
 
 def test_lifecycle_l8_publication_state_machine_non_harness_proof() -> None:
-    from ralph.pipeline.auto_integrate_remote_push import next_publication_action
+    from ralph.pipeline.auto_integrate_remote_push import (
+        next_publication_action,
+    )
     from ralph.pipeline.rebase_state import PublicationDecision
 
     unintegrated_record = IntegrationRecord(

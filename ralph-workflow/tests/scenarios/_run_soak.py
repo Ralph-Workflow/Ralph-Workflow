@@ -577,7 +577,7 @@ def _tracked_changes(root: Path) -> list[str]:
 
 def _reported_cause(state: PipelineState) -> str:
     rebase = state.rebase
-    parts = (state.last_error, rebase.last_reason, rebase.publication_block)
+    parts = (state.last_error, rebase.last_reason)
     return " ".join(str(part) for part in parts if part)
 
 

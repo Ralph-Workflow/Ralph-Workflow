@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.dirty_landing": (
+        "user requirement: committed commits land while the worktree is dirty; the new "
+        "pipeline/_dirty_landing.py probes reuse the reviewed git-transition-status and "
+        "git-symbolic-ref-head labels, so the reviewed label-site digest is refreshed"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.publication_gate_syntax": (
         "the reviewed process-label inventory now includes the publication gate's sh -n "
         "syntax check, so the pinned digest of emitted labels changes"
@@ -119,7 +124,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "2f9bfcd78da3410faca7cee697d887811970cfbdcec389abd0cb5966f3773aec"
+    "236aa244495f77656d48dc32a6285fd7f3d545634bc09325377f82ec0c7fc233"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds publication-gate-syntax (sh -n of the declared gate "
@@ -137,7 +142,9 @@ _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "auto-integrate:update-feature-ref, git-completion-in-place, git-append-only-attributes, "
     "git-rm-resolved, recovery:completed-rebase-*, pending-rebase:land-*, and "
     "integration-preservation:reapply-work-diff*. Retired probes recovery:recorded-identity-status "
-    "and hardening:porcelain-z remain absent. Real recovery and conflict-resolution operations "
+    "and hardening:porcelain-z remain absent. pipeline/_dirty_landing.py reuses "
+    "git-transition-status (status of the run worktree) and git-symbolic-ref-head (rc=1 is "
+    "git's answer for a detached HEAD). Real recovery and conflict-resolution operations "
     "whose nonzero exits are not answers keep the loud default."
 )
 

@@ -12,13 +12,13 @@ from ralph.pipeline.publication_gate import (
     PublicationBlock,
     PublicationGateFailed,
     PublicationGateRun,
-    blocked_publication,
     check_publication_gate,
     declared_publication_gate,
     leave_publication_gate_feedback,
     publication_gate_feedback,
     publication_gate_loop_phase,
     publication_gate_record_path,
+    red_publication_gate,
 )
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
@@ -28,6 +28,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_blocked_tree_is_reported_without_running_or_counting_the_gate.red_publication_gate": (
+        "user requirement: the publication gate is advisory, so blocked_publication is renamed "
+        "red_publication_gate (it now only feeds the development route-back); the same "
+        "assertions run against the renamed function"
+    ),
     "test_repeated_gate_failures_stop_routing_back_once_the_budget_is_spent": (
         "operator directive: the route-back cap counts only route-backs that actually gave "
         "development the feedback; consecutive_failures is diagnostic, so a sixth red "
@@ -320,13 +325,13 @@ def test_the_blocked_tree_is_reported_without_running_or_counting_the_gate(
     gate = _ScriptedGate(2, "red")
     check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_trees(_TREE_A))
 
-    blocked = [blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_A)) for _ in range(10)]
+    blocked = [red_publication_gate(tmp_path, "HEAD", tree_of=_trees(_TREE_A)) for _ in range(10)]
 
     assert all(result is not None and result.tree_sha == _TREE_A for result in blocked)
     assert len(gate.calls) == 1
-    assert blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
+    assert red_publication_gate(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
     check_publication_gate(tmp_path, "HEAD", runner=_ScriptedGate(0), tree_of=_trees(_TREE_B))
-    assert blocked_publication(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
+    assert red_publication_gate(tmp_path, "HEAD", tree_of=_trees(_TREE_B)) is None
     record = json.loads(publication_gate_record_path(tmp_path).read_text(encoding="utf-8"))
     assert record["consecutive_failures"] == 0
 

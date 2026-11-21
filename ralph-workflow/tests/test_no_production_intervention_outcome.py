@@ -15,6 +15,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "auto_integrate_record.py gained the gate-refusal release helpers above the allow-listed "
         "RAISE_DIAGNOSTIC_INTERVENTION site, which moved from line 764 to 783 unchanged"
     ),
+    "auto_integrate_record allow-list line 774": (
+        "user requirement: the gate never refuses a landing, so the gate-refusal release helper "
+        "was deleted and the allow-listed RAISE_DIAGNOSTIC_INTERVENTION site moved from line 783 "
+        "to 774 unchanged"
+    ),
     "status bar allow-list line": "the retained legacy attention key moved from line 139 to 140 when 429c3fa23 added the read_attr import above it; the guarded literal and its justification are unchanged",
 }
 
@@ -84,7 +89,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
         "RAISE_DIAGNOSTIC_INTERVENTION,",
         "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
-    ("pipeline/auto_integrate_record.py", 783): (
+    ("pipeline/auto_integrate_record.py", 774): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
         "__all__ re-export of the retired transition name (parsing surface)",
     ),

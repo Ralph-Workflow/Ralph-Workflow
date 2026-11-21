@@ -40,7 +40,9 @@ class RebasePreconditionError(Exception):
     pass
 
 
-def check_rebase_preconditions(repo_root: Path | str) -> None:
+def check_rebase_preconditions(
+    repo_root: Path | str, *, allow_dirty_worktree: bool = False
+) -> None:
     repo = _open_repo(repo_root)
     try:
         _validate_git_state(repo)
@@ -54,7 +56,8 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
 
         _ensure_git_identity(repo)
         _check_shallow_clone(repo)
-        _ensure_clean_worktree(repo)
+        if not allow_dirty_worktree:
+            _ensure_clean_worktree(repo)
         _check_worktree_conflicts(repo)
         _check_sparse_checkout_state(repo)
     finally:

@@ -460,30 +460,36 @@ feature tip. Planning waits until both committed tips are synchronized.
 An unsuccessful landing raises a critical log and transcript alarm, saves
 recovery state, and retries instead of terminating the pipeline.
 
-Before the fast-forward, the run's rebased commits must pass the project's
-publication gate: the command declared by the project policy fact
+When the feature is ahead of the target and not behind it, the committed
+commits land while the worktree has uncommitted tracked changes: the target is
+fast-forwarded to the feature tip and pushed without a rebase, and the
+uncommitted changes are not touched. When the target has moved ahead, the
+rebase waits for a clean worktree, the integration records a skip, and one
+INFO line per new state says `<n> committed commits wait for a clean worktree
+to rebase onto <target>`. A push that fails because the remote is unreachable
+or times out is retried after 1, 2, 4, 8 and 16 seconds with a WARNING for
+each retry; if it still fails, every following seam pushes again.
+
+The publication gate is advisory and never blocks, delays or holds a landing
+or a push. The gate is the command declared by the project policy fact
 `RALPH-FACT: authoritative_verify_command:` in
 `docs/ralph-workflow-policy/verification-policy.md` (for this repository,
-`make -C ralph-workflow verify`). The gate runs in the run's worktree on the
-rebased tree, bounded at 30 minutes, and its result is recorded in
-`.agent/publication_gate.json` against that tree SHA, so a later rebase or a
-new commit runs it again. A red gate, or a timeout, does not move the target or
-push: the commits stay on the feature branch, the record carries
-`publication_block`, and the run returns to the development loop with the gate
-output as its retry feedback, through the analysis loopback the policy already
-declares. A refused tree is never retried: integration skips the landing until
-the tree changes, and planning continues with the commits unpublished instead of
-waiting for a landing that cannot happen. The failure count grows once per
-evaluated tree, and the run routes back to development at most five times
-before it carries on with its commits unpublished. A project whose policy declares no resolved
-verify command publishes as before. Gate runs from every Ralph Workflow
+`make -C ralph-workflow verify`). After a landing from a clean worktree, it
+runs in the run's worktree on the landed tree, bounded at 30 minutes, and its
+result is recorded in `.agent/publication_gate.json` against that tree SHA, so
+a new tree runs it again. A landing made while the worktree has uncommitted
+changes does not run the gate. A red gate, or a timeout, routes the run back to
+the development loop with the gate output as its retry feedback, through the
+analysis loopback the policy already declares, at most five times per failure.
+A project whose policy declares no resolved verify command publishes the same
+way. Gate runs from every Ralph Workflow
 process on the host share a limiter: a file-lock semaphore in
 `$XDG_RUNTIME_DIR/ralph-workflow/publication-gate-slots` (or
 `$XDG_STATE_HOME/ralph-workflow/publication-gate-slots`, overridable with
 `RALPH_PUBLICATION_GATE_SLOT_DIR`) with `RALPH_PUBLICATION_GATE_SLOTS` slots,
 by default one per 16 CPU cores and at least one. A gate that waits for a slot
-logs once and keeps the landing waiting for at most 30 minutes; without a slot
-it is re-tried on the next landing and never counted as a failure. A failed
+logs once and waits for at most 30 minutes; without a slot it is re-tried after
+the next landing and never counted as a failure. A failed
 gate run is time-only when its output shows a time or budget marker
 (`[DEADLINE REACHED]`, `deadline exceeded`, `budget exhausted`,
 `deadline exhausted`, `duration guard failed`, or `measured <n>ms at or above
@@ -491,14 +497,14 @@ gate run is time-only when its output shows a time or budget marker
 no `failed while running:` line, no `<n> failed` / `<n> failures` / `<n> errors`
 / `<n> offenses` count, and no `ERROR`, `FAIL`, `file:line: error` or
 `error TS<n>` line, where a line that also carries a time marker does not
-count. A time-only result counts as passed with a warning: the landing
-proceeds, one WARNING names the time markers and the tree, the record carries
-`"time_only": true`, and the tree is not re-run. A gate run that is stopped by
-a signal or prints `[verify] CANCELLED` with no time marker is inconclusive: the
-commits stay unpublished, development gets no "fix the failures" route-back,
-and the gate re-runs on the next landing, at most three times per tree. After
-the third inconclusive run the tree lands as time-only, or, when its output
-shows a correctness failure, is refused and routed back like a red gate.
+count. A time-only result counts as passed with one WARNING naming the time
+markers and the tree, the record carries `"time_only": true`, and the tree is
+not re-run. A gate run that is stopped by a signal or prints
+`[verify] CANCELLED` with no time marker is inconclusive: development gets no
+"fix the failures" route-back, and the gate re-runs after the next landing, at
+most three times per tree. After the third inconclusive run the tree counts as
+time-only, or, when its output shows a correctness failure, is routed back like
+a red gate.
 Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 

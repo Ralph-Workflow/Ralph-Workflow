@@ -12,6 +12,7 @@ from ralph.pipeline._auto_integrate_config import (
 from ralph.pipeline._auto_integrate_config import (
     missing_target_reason as _missing_target_reason,
 )
+from ralph.pipeline._dirty_landing import lands_without_worktree, log_rebase_wait
 from ralph.pipeline._planning_obstruction import (
     planning_obstruction_from_readiness,
 )
@@ -72,7 +73,7 @@ def phase_boundary_outcome(
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
     if readiness is None:
         readiness = assess_tree_readiness(root)
-    if not readiness.integration_ready:
+    if not readiness.integration_ready and not lands_without_worktree(root, target, readiness):
         return True, defer_dirty_boundary(
             config, root, target, readiness=readiness, get_head_sha_fn=get_head_sha_fn
         )
@@ -181,6 +182,7 @@ def defer_dirty_boundary(
         )
         if "worktree not clean" not in reason:
             reason = "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+        log_rebase_wait(root, target)
         skip = _record_skip(
             reason=reason,
             target=target,

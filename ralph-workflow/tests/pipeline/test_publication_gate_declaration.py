@@ -13,7 +13,6 @@ from ralph.pipeline.publication_gate import (
     declared_publication_gate,
     leave_publication_gate_feedback,
     publication_gate_feedback,
-    publication_gate_refusal,
 )
 from ralph.policy.loader import cached_default_policy_bundle
 
@@ -21,6 +20,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 pytestmark = pytest.mark.timeout_seconds(10)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_unparseable_declaration_blocks_as_a_policy_error_without_routing_back": (
+        "user requirement: the publication gate never blocks a landing, so the "
+        "publication_gate_refusal waiting outcome is deleted; the misconfigured verdict, the "
+        "single ERROR and the absent route-back stay asserted"
+    ),
+}
 
 _EXPEDITIONS = (
     "RALPH-FACT: authoritative_verify_command: npm exec -- tsx script/verify/orchestrator.ts; "
@@ -82,7 +89,6 @@ def test_an_unparseable_declaration_blocks_as_a_policy_error_without_routing_bac
     try:
         first = check_publication_gate(tmp_path, "HEAD", runner=_NeverRuns(), tree_of=_tree)
         again = check_publication_gate(tmp_path, "HEAD", runner=_NeverRuns(), tree_of=_tree)
-        refusal = publication_gate_refusal(tmp_path, "HEAD")
     finally:
         logger.remove(sink)
 
@@ -96,8 +102,6 @@ def test_an_unparseable_declaration_blocks_as_a_policy_error_without_routing_bac
     assert not (tmp_path / retry_hint_path("development", pipeline_policy=policy)).exists()
     assert len(errors) == 1
     assert f"{policy_file}:3" in errors[0]
-    assert refusal is not None
-    assert "misconfigured" in refusal[0].external_condition
 
 
 @pytest.mark.parametrize(

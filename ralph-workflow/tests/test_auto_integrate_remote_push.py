@@ -3,15 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_ff
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.git import remote_push as _remote_push_module
     from ralph.pipeline.conflict_resolution import RebaseStop
+
+
+pytestmark = pytest.mark.usefixtures("instant_push_retries")
 
 
 def _config(*, enabled: bool) -> UnifiedConfig:

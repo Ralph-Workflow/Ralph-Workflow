@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.errors import GitOperationError
-from ralph.git.merge import branch_sha
+from ralph.git.merge import branch_sha, is_ancestor
 from ralph.git.operations import get_head_sha
 from ralph.git.rebase import (
     RebasePreconditionError,
@@ -748,7 +748,10 @@ def _auto_integrate_check_skip_conditions(
     if target_sha is not None and target_sha == head_sha:
         return _record_skip(reason="no commits beyond target", target=target)
     try:
-        check_rebase_preconditions(root)
+        check_rebase_preconditions(
+            root,
+            allow_dirty_worktree=target_sha is not None and is_ancestor(root, target_sha, head_sha),
+        )
     except RebasePreconditionError as exc:
         return _handle_precondition_failure(root, target, exc)
     return None

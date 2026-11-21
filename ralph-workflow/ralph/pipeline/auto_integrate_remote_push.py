@@ -19,6 +19,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
@@ -49,6 +50,7 @@ def _default_remote_client() -> _DefaultRemoteClient:
 
 
 __all__ = [
+    "PUSH_RETRY_DELAYS_SECONDS",
     "_PushOutcome",
     "_align_target_with_remote",
     "_attempt_reconcile_and_push",
@@ -62,6 +64,10 @@ __all__ = [
 
 
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
+PUSH_RETRY_DELAYS_SECONDS: tuple[float, ...] = (1.0, 2.0, 4.0, 8.0, 16.0)
+_TRANSIENT_PUSH_STATUSES = frozenset(
+    {_remote_push_module.PushStatus.UNREACHABLE, _remote_push_module.PushStatus.TIMEOUT}
+)
 
 
 def _safe_target_sha(repo_root: Path, target: str) -> str | None:
@@ -201,6 +207,35 @@ def push_target_after_landing(
         record=push_record,
         remote_client=remote_client,
     )
+    for retry, delay in enumerate(PUSH_RETRY_DELAYS_SECONDS, start=1):
+        if typed_result is None or typed_result.status not in _TRANSIENT_PUSH_STATUSES:
+            break
+        logger.warning(
+            "auto_integrate: push of '{}' to '{}' failed ({}); retry {} of {} in {:.0f}s",
+            target,
+            chosen_remote,
+            typed_result.detail or typed_result.status.value,
+            retry,
+            len(PUSH_RETRY_DELAYS_SECONDS),
+            delay,
+        )
+        current_clock().sleep(delay)
+        typed_result, decision = push_fn(
+            repo_root,
+            target,
+            remote=chosen_remote,
+            record=push_record,
+            remote_client=remote_client,
+        )
+    if typed_result is not None and typed_result.status in _TRANSIENT_PUSH_STATUSES:
+        logger.warning(
+            "auto_integrate: '{}' is still unpublished on '{}' after {} push retries ({}); "
+            "every following seam pushes again until it lands",
+            target,
+            chosen_remote,
+            len(PUSH_RETRY_DELAYS_SECONDS),
+            typed_result.detail or typed_result.status.value,
+        )
     if typed_result is None:
         return record.set_publication_decision(decision)
     post_decision = _post_push_publication_decision(typed_result)

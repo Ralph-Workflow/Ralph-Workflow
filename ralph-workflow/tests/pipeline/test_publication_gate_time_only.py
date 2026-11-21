@@ -9,12 +9,26 @@ from loguru import logger
 from ralph.pipeline.publication_gate import (
     MAX_INCONCLUSIVE_GATE_RUNS,
     PublicationGateRun,
-    blocked_publication,
     check_publication_gate,
     publication_gate_feedback,
     publication_gate_record_path,
+    red_publication_gate,
 )
 from ralph.policy.loader import cached_default_policy_bundle
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_time_only_gate_failure_lands_with_one_warning.red_publication_gate": (
+        "user requirement: the publication gate is advisory, so blocked_publication is renamed "
+        "red_publication_gate (it now only feeds the development route-back); the same "
+        "assertions run against the renamed function"
+    ),
+    "test_a_deadline_marker_far_before_the_output_tail_is_still_time_only.red_publication_gate": (
+        "user requirement: the publication gate is advisory, so blocked_publication is renamed "
+        "red_publication_gate (it now only feeds the development route-back); the same "
+        "assertions run against the renamed function"
+    ),
+}
+
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
@@ -79,7 +93,7 @@ def test_a_time_only_gate_failure_lands_with_one_warning(
     assert again.time_only is True
     assert gate.calls == 1
     assert _record(tmp_path)["time_only"] is True
-    assert blocked_publication(tmp_path, "HEAD", tree_of=_tree) is None
+    assert red_publication_gate(tmp_path, "HEAD", tree_of=_tree) is None
     assert publication_gate_feedback(tmp_path, policy, "development_commit") is None
     time_warnings = [line for line in warnings if "time-only" in line]
     assert len(time_warnings) == 1
@@ -124,7 +138,7 @@ def test_an_exhausted_inconclusive_budget_lands_as_time_only(tmp_path: Path) -> 
         result = check_publication_gate(tmp_path, "HEAD", runner=gate, tree_of=_tree)
         assert result is not None
         time_only.append(result.time_only and result.block is None)
-        held.append(blocked_publication(tmp_path, "HEAD", tree_of=_tree) is not None)
+        held.append(red_publication_gate(tmp_path, "HEAD", tree_of=_tree) is not None)
 
     assert gate.calls == MAX_INCONCLUSIVE_GATE_RUNS
     assert time_only == [False] * (MAX_INCONCLUSIVE_GATE_RUNS - 1) + [True] * 3
@@ -166,7 +180,7 @@ def test_a_deadline_marker_far_before_the_output_tail_is_still_time_only(
     assert result is not None
     assert result.time_only is True
     assert result.block is None
-    assert blocked_publication(tmp_path, "HEAD", tree_of=_tree) is None
+    assert red_publication_gate(tmp_path, "HEAD", tree_of=_tree) is None
 
 
 def test_a_red_gate_without_failure_lines_routes_back_and_says_so(tmp_path: Path) -> None:

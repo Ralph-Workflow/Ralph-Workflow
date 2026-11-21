@@ -11,9 +11,13 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_run_through_each_publication_gate_outcome_lands_or_says_why": (
-        "operator directive: a deadline-marker gate run with no correctness failure is "
-        "time-only and lands with a warning, so the signal-kill-then-deadline case now lands "
-        "after two gate runs instead of holding the commits after three"
+        "user requirement: the publication gate is advisory and never blocks a landing, so "
+        "an inconclusive or uninvocable gate lands after its one run and the run publishes"
+    ),
+    "test_a_misconfigured_gate_declaration_completes_with_the_commits_held_and_named": (
+        "user requirement: the publication gate never holds commits, so a misconfigured "
+        "declaration lands the run's commits; renamed to "
+        "test_a_misconfigured_gate_declaration_still_publishes_the_run_commits"
     ),
 }
 
@@ -43,10 +47,10 @@ def _break_the_target(soak: SoakRun, _call: AgentCall) -> None:
             "echo '[DEADLINE REACHED] budget of 5s exceeded'; exit 3",
             None,
             1,
-            2,
-            id="signal-kill-then-deadline-marker-lands-time-only",
+            1,
+            id="signal-kill-lands-without-waiting-for-a-rerun",
         ),
-        pytest.param("no-such-soak-gate --all", "never started", 1, 1, id="invocation-error"),
+        pytest.param("no-such-soak-gate --all", None, 1, 1, id="invocation-error"),
     ],
 )
 def test_a_run_through_each_publication_gate_outcome_lands_or_says_why(
@@ -78,15 +82,14 @@ def test_a_run_through_each_publication_gate_outcome_lands_or_says_why(
         assert git(soak.primary, "rev-list", "--count", f"{seeded_target}..{TARGET}") == "1"
 
 
-def test_a_misconfigured_gate_declaration_completes_with_the_commits_held_and_named(
+def test_a_misconfigured_gate_declaration_still_publishes_the_run_commits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     soak = SoakRun(tmp_path, monkeypatch, gate="run the tests (see the wiki")
     soak.seed()
-    seeded_target = soak.target_sha()
 
     outcome = soak.run()
 
-    assert_soak_invariant(soak, outcome, unpublished_cause="misconfigured")
+    assert_soak_invariant(soak, outcome)
     assert outcome.phases.count("development") == 1, outcome.describe()
-    assert soak.target_sha() == seeded_target
+    assert git(soak.root, "rev-parse", "HEAD") == soak.target_sha()

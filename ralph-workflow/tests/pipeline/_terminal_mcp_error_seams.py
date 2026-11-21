@@ -145,10 +145,6 @@ class _TerminalSupervisorFactory:
             "would finish first and __exit__ would leave the stored error unread"
         )
 
-    def attempt_returns_immediately(self, *args: object, **kwargs: object) -> list[str]:
-        del args, kwargs
-        return []
-
     def agent_exits_cleanly(self, *args: object, **kwargs: object) -> list[str]:
         del args, kwargs
         self._await_terminal()

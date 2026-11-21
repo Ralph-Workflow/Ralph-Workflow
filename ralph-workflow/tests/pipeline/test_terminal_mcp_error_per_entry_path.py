@@ -62,6 +62,11 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_terminal_failure_then_distinct_healthy_bridge_succeeds_on_next_attempt.await_terminal": (
+        "the fake agent returned before the supervisor thread reached its terminal tick, so on "
+        "a loaded host attempt 1 was not seen as terminal and attempt 2 reused the dead bridge; "
+        "the agent now waits for the terminal tick like the other terminal-error fakes"
+    ),
     "test_terminal_mcp_error_converts_to_typed_failure_on_every_entry_path": (
         "invoke_resolution_agent reports a typed outcome instead of a boolean; "
         "the conflict-session case asserts the RetryLaterOutcome that carries "
@@ -764,7 +769,7 @@ def test_terminal_failure_then_distinct_healthy_bridge_succeeds_on_next_attempt(
         heartbeat_policy_from_env_fn=_fast_heartbeat,
     )
 
-    _patch_invoke_agent(monkeypatch, factory.attempt_returns_immediately)
+    _patch_invoke_agent(monkeypatch, factory.agent_exits_cleanly)
     captured_events = _patch_execute_agent_effect_capture(monkeypatch)
 
     with _log_capture() as recorder:

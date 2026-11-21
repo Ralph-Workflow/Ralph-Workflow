@@ -9,6 +9,11 @@ from ralph.git.branch_relation import branch_relation
 from ralph.git.rebase.rebase_continuation import rebase_in_progress
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._auto_integrate_once import _integrate_once
+from ralph.pipeline._dirty_landing import (
+    DIRTY_TREE_REASON,
+    lands_without_worktree,
+    log_rebase_wait,
+)
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
@@ -220,7 +225,9 @@ def _integrate_before_planning(
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
     if readiness is None:
         readiness = assess_tree_readiness(root)
-    if readiness.integration_ready and not branch_relation(root, target).needs_catch_up:
+    if (
+        readiness.integration_ready or lands_without_worktree(root, target, readiness)
+    ) and not branch_relation(root, target).needs_catch_up:
         return auto_integrate_after_commit(
             config,
             scope,
@@ -395,6 +402,8 @@ def _record_staged_block(
         if readiness.blocking_reasons
         else "worktree not clean; uncommitted tracked changes deferred catch-up integration"
     )
+    if reason == DIRTY_TREE_REASON:
+        log_rebase_wait(root, target)
     kind = identify_planning_obstruction(reason)
     recorded = record_skip(reason=reason, target=target)
     return recorded.model_copy(update={"last_planning_obstruction": kind.value})
