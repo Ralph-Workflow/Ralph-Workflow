@@ -19,6 +19,7 @@ from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.pipeline.events.publication_gate_failed_event import PublicationGateFailed
 from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.publication_gate_run import PublicationGateRun
+from ralph.pipeline.publication_gate_slots import publication_gate_slot
 from ralph.pipeline.resolution_outcome import WaitingOutcome
 from ralph.project_policy.markers import CANONICAL_DIR, FACT_MARKER
 
@@ -42,9 +43,18 @@ _FAILED_STEP_MARKERS = (
     re.compile(r"failed while running:\s*(.+?)\s*$", re.MULTILINE),
 )
 _CANCELLED_MARKER = re.compile(r"^\s*\[verify\]\s+CANCELLED\b", re.MULTILINE)
+TIME_BUDGET_MARKERS: Final[tuple[str, ...]] = (
+    "[DEADLINE REACHED]",
+    "deadline exceeded",
+    "budget exhausted",
+)
+_TIME_BUDGET_MARKER = re.compile(
+    "|".join(re.escape(marker) for marker in TIME_BUDGET_MARKERS), re.IGNORECASE
+)
 _VOLATILE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 _SHELL_DIAGNOSTIC = re.compile(r"^(?:/bin/)?sh: .*(?:syntax error|not found|unexpected)", re.I)
 _INVOCATION_EXIT_CODES: Final[frozenset[int]] = frozenset({2, 127})
+_NO_SLOT_EXIT_CODE: Final[int] = -1
 _SYNTAX_CHECK_TIMEOUT_SECONDS: Final[float] = 10.0
 _INVOCATION_EXIT_CODE: Final[int] = 2
 _SIGNATURE_FALLBACK_LINES: Final[int] = 5
@@ -71,7 +81,11 @@ class PublicationGateResult:
     def inconclusive(self) -> bool:
         if self.passed or self.timed_out:
             return False
-        return self.exit_code < 0 or _CANCELLED_MARKER.search(self.output_tail) is not None
+        return (
+            self.exit_code < 0
+            or _CANCELLED_MARKER.search(self.output_tail) is not None
+            or _TIME_BUDGET_MARKER.search(self.output_tail) is not None
+        )
 
     @property
     def block(self) -> PublicationBlock | None:
@@ -333,7 +347,22 @@ def check_publication_gate(
     if declaration.command is None:
         return _record_misconfigured_gate(root, declaration, tree_sha, previous)
     logger.info("Running the publication gate `{}` on tree {}", command, tree_sha)
-    run = (runner or _run_gate_command)(command, root, timeout_seconds)
+    if runner is not None:
+        run = runner(command, root, timeout_seconds)
+    else:
+        with publication_gate_slot() as acquired:
+            if not acquired:
+                return replace(
+                    PublicationGateResult(
+                        command=command,
+                        tree_sha=tree_sha,
+                        exit_code=_NO_SLOT_EXIT_CODE,
+                        timed_out=False,
+                        output_tail="no host-wide publication gate slot became free in time",
+                    ),
+                    route_backs=previous.route_backs if previous is not None else 0,
+                )
+            run = _run_gate_command(command, root, timeout_seconds)
     invocation_error = _invocation_error(run)
     if invocation_error:
         logger.error(
@@ -451,6 +480,21 @@ def publication_gate_refusal(
     result = check_publication_gate(root, feature_sha)
     if result is None or result.block is None:
         return None
+    if result.inconclusive:
+        first_line = next(
+            (line.strip() for line in reversed(result.output_tail.splitlines()) if line.strip()),
+            f"exit {result.exit_code}",
+        )
+        return (
+            WaitingOutcome(
+                external_condition=(
+                    f"publication gate `{result.command}` on tree {result.tree_sha} was "
+                    f"inconclusive ({first_line})"
+                ),
+                resumes_when="the gate re-runs on the next landing",
+            ),
+            result.block,
+        )
     if result.invocation_error:
         return (
             WaitingOutcome(
@@ -474,9 +518,12 @@ def publication_gate_refusal(
 def publication_gate_feedback(
     root: Path, policy: PipelinePolicy, commit_phase: str
 ) -> PublicationGateFailed | None:
-    result = _load_record(root)
     loop_phase = publication_gate_loop_phase(policy, commit_phase)
-    if result is None or not result.routes_back_to_development or loop_phase is None:
+    if loop_phase is None:
+        leave_publication_gate_feedback(root, policy)
+        return None
+    result = _load_record(root)
+    if result is None or not result.routes_back_to_development:
         return None
     _save_record(root, replace(result, route_backs=result.route_backs + 1))
     _write_development_feedback(root, policy, loop_phase, result)
@@ -543,7 +590,7 @@ def _is_loop_analysis(policy: PipelinePolicy, phase: str) -> bool:
 
 def publication_gate_loop_phase(policy: PipelinePolicy, commit_phase: str) -> str | None:
     definition = policy.phases.get(commit_phase)
-    if definition is None:
+    if definition is None or definition.role != "commit":
         return None
     downstream = definition.transitions.on_success
     if downstream is not None and _is_loop_analysis(policy, downstream):
@@ -569,6 +616,7 @@ __all__ = [
     "MAX_INCONCLUSIVE_GATE_RUNS",
     "MAX_PUBLICATION_GATE_FAILURES",
     "PUBLICATION_GATE_TIMEOUT_SECONDS",
+    "TIME_BUDGET_MARKERS",
     "GateDeclaration",
     "GateRunner",
     "PublicationBlock",

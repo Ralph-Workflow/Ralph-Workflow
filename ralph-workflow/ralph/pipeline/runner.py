@@ -168,7 +168,12 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
     retained_integration_reason,
 )
-from ralph.pipeline.no_progress_reroute import with_agent_invoked
+from ralph.pipeline.no_progress_reroute import (
+    OVERRIDDEN_SUCCESS_LIMIT,
+    success_overrides_exhausted,
+    with_agent_invoked,
+    with_success_override_recorded,
+)
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
     render_phase_failure_report,
@@ -1166,6 +1171,27 @@ def _event_after_integration(
             or event
         )
     return event
+
+
+def _event_after_integration_within_bound(
+    state: PipelineState,
+    event: Event | CommitReviewEvent,
+    outcome: RebaseState | None,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+) -> tuple[Event | CommitReviewEvent, bool]:
+    integrated = _event_after_integration(state, event, outcome, workspace_scope, policy_bundle)
+    if integrated is event or _coarse_outcome_for_event(event) != "success":
+        return integrated, False
+    if not success_overrides_exhausted(state):
+        return integrated, True
+    logger.warning(
+        "Phase {} succeeded {} times in a row and post-run integration re-entered it each time; "
+        "advancing on its success",
+        state.phase,
+        OVERRIDDEN_SUCCESS_LIMIT,
+    )
+    return event, False
 
 
 def _maybe_auto_integrate(
@@ -2359,7 +2385,7 @@ def _run_pipeline_step(
             display_context=display_context,
             recovery_controller=recovery_controller,
         )
-        event = _event_after_integration(
+        event, _success_overridden = _event_after_integration_within_bound(
             state, event, _auto_integrate_outcome, workspace_scope, policy_bundle
         )
         _phase_outcome = _coarse_outcome_for_event(event)
@@ -2374,7 +2400,7 @@ def _run_pipeline_step(
         _effective_reduce_timing = _merge_routing_timings(
             _reduce_routing_timing, _reduce_development_timing
         )
-        next_state, _ = reducer_reduce(
+        reduced_state, _ = reducer_reduce(
             state,
             event,
             policy_bundle.pipeline,
@@ -2383,7 +2409,7 @@ def _run_pipeline_step(
         )
         next_state = _fold_sampled_timeboxes(
             state,
-            next_state,
+            with_success_override_recorded(state, reduced_state, overridden=_success_overridden),
             cycle_delta=_reduce_delta,
             cycle_now=_reduce_now,
             cycle_sample_box=_cycle_sample_box,

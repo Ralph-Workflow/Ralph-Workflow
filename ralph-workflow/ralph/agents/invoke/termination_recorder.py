@@ -135,6 +135,7 @@ class TerminationRecorder:
     _reported_returncode: int | None = None
     _liveness_observed: bool | None = None
     _subagent_activity_observed: bool | None = None
+    _children_active_at_teardown: tuple[str, ...] = ()
     _elapsed_to_terminal_ms: int | None = None
     _exit_status: str | None = None
     _event_kinds: list[str] = field(default_factory=list)
@@ -178,6 +179,9 @@ class TerminationRecorder:
         if observed is not None and self._subagent_activity_observed is None:
             self._subagent_activity_observed = observed
 
+    def record_children_active_at_teardown(self, children: tuple[str, ...]) -> None:
+        self._children_active_at_teardown = children
+
     def record_elapsed_to_terminal(self, milliseconds: int | None) -> None:
         if milliseconds is not None:
             self._elapsed_to_terminal_ms = milliseconds
@@ -210,6 +214,7 @@ class TerminationRecorder:
             tool_calls=tuple(self._tool_calls),
             liveness_observed=self._liveness_observed,
             subagent_activity_observed=self._subagent_activity_observed,
+            children_active_at_teardown=self._children_active_at_teardown,
             elapsed_to_terminal_ms=self._elapsed_to_terminal_ms,
             exit_status=self._exit_status,
             termination=self.termination(),

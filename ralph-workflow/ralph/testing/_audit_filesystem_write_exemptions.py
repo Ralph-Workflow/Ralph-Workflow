@@ -277,6 +277,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_fdopen_write"),
         ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_fsync"),
         ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_replace"),
+        ("ralph/pipeline/publication_gate_slots.py", "_try_slots", "raw_open_write"),
         ("ralph/telemetry/_user_identity.py", "_write_user_id_file", "raw_unlink"),
         ("ralph/test_suites.py", "_remove_abandoned_shard_roots", "raw_rmtree"),
         ("ralph/test_suites.py", "_run_shards", "raw_write_text"),

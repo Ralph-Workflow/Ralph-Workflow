@@ -258,6 +258,8 @@ class PipelineState(_FrozenPipelineStateModel):
     recovery_epoch: int = 0
     no_progress_reroute_signature: str | None = None
     no_progress_reroute_count: int = 0
+    overridden_success_phase: PipelinePhase | None = None
+    overridden_success_count: int = 0
     interrupted_by_user: bool = False
     git_auth_configured: bool = False
     pr_created: bool = False

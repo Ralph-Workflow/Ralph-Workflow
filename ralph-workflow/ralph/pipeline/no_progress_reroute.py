@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 NO_PROGRESS_REROUTE_LIMIT = 3
+OVERRIDDEN_SUCCESS_LIMIT = 3
 
 
 class RerouteAction(Enum):
@@ -48,6 +49,30 @@ def with_agent_invoked(state: PipelineState) -> PipelineState:
     if state.no_progress_reroute_signature is None and state.no_progress_reroute_count == 0:
         return state
     return state.copy_with(no_progress_reroute_signature=None, no_progress_reroute_count=0)
+
+
+def success_overrides_exhausted(state: PipelineState) -> bool:
+    return (
+        state.overridden_success_phase == state.phase
+        and state.overridden_success_count + 1 >= OVERRIDDEN_SUCCESS_LIMIT
+    )
+
+
+def with_success_override_recorded(
+    state: PipelineState, next_state: PipelineState, *, overridden: bool
+) -> PipelineState:
+    if overridden and next_state.phase == state.phase:
+        count = (
+            state.overridden_success_count + 1
+            if state.overridden_success_phase == state.phase
+            else 1
+        )
+        return next_state.copy_with(
+            overridden_success_phase=state.phase, overridden_success_count=count
+        )
+    if next_state.overridden_success_phase is None and next_state.overridden_success_count == 0:
+        return next_state
+    return next_state.copy_with(overridden_success_phase=None, overridden_success_count=0)
 
 
 def clear_phase_continuation(

@@ -1725,6 +1725,13 @@ ralph.pipeline.no_progress_reroute
    :members:
    :show-inheritance:
 
+ralph.pipeline.publication_gate_slots
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.publication_gate_slots
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.publication_block
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2539,6 +2546,13 @@ ralph.agents.invoke._completion_verdicts
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.invoke._completion_verdicts
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.completion_quiesce
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.completion_quiesce
    :members:
    :show-inheritance:
 

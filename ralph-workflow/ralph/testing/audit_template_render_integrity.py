@@ -94,6 +94,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
     "SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION": ("true",),
     "planning_unit_split_allowed": ("true",),
     "SKILLS_INLINE_CONTENT": ("Use the audit-inline skill instructions.",),
+    "PARTIAL_CHILD_EDITS": ("", "`ses_child_a`, `ses_child_b`"),
     "SOFT_TRIPWIRES": (
         "- oversized binary: assets/hero.png (1.4 MB)",
         "- mass deletion: 42 tracked files deleted (count: 42)\n"

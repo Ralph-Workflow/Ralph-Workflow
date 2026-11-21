@@ -119,6 +119,7 @@ class _AttemptFacts:
     exit_status: str | None = None
     liveness_observed: bool | None = None
     subagent_activity_observed: bool | None = None
+    children_active_at_teardown: tuple[str, ...] = ()
     termination: _TerminationRecord | None = None
     typed_signal: TypedSignal | None = None
     unresolved_count: int | None = None

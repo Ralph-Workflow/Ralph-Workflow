@@ -48,6 +48,9 @@ Rejection is safe and recoverable:
 {% else -%}
 - **Stage 1 soft tripwires**: No soft tripwires triggered.
 {% endif %}
+{% if (PARTIAL_CHILD_EDITS|default('')) -%}
+- **Possibly partial edits**: the authoring agent's child sessions {{ PARTIAL_CHILD_EDITS }} were still working when the attempt was torn down after its declared completion, so their edits may be unfinished. Check those changes for half-applied work before approving.
+{% endif %}
 
 The diff contains tracked changes plus untracked filenames against HEAD. Runtime files are pre-emptively untracked before this prompt; if one still appears, classify it as `delete_file`.
 

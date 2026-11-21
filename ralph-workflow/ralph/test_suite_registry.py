@@ -8,6 +8,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_pending_merge_repair_real_git.py",
     "tests/test_retained_resolution_handoff.py",
     "tests/test_retained_resolution_dispatch.py",
+    "tests/pipeline/test_planning_gate_refusal_advances.py",
     "tests/integration/test_retained_integration_acceptance.py",
     "tests/test_auto_integrate_remote_sync_fast_forward_contract.py",
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py",

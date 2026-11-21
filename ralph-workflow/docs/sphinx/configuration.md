@@ -476,7 +476,19 @@ the tree changes, and planning continues with the commits unpublished instead of
 waiting for a landing that cannot happen. The failure count grows once per
 evaluated tree, and the run routes back to development at most five times
 before it carries on with its commits unpublished. A project whose policy declares no resolved
-verify command publishes as before. Interrupted
+verify command publishes as before. Gate runs from every Ralph Workflow
+process on the host share a limiter: a file-lock semaphore in
+`$XDG_RUNTIME_DIR/ralph-workflow/publication-gate-slots` (or
+`$XDG_STATE_HOME/ralph-workflow/publication-gate-slots`, overridable with
+`RALPH_PUBLICATION_GATE_SLOT_DIR`) with `RALPH_PUBLICATION_GATE_SLOTS` slots,
+by default one per 16 CPU cores and at least one. A gate that waits for a slot
+logs once and keeps the landing waiting for at most 30 minutes; without a slot
+it is re-tried on the next landing and never counted as a failure. A gate run
+that is stopped by a signal, prints `[verify] CANCELLED`, or reports a time
+budget (`[DEADLINE REACHED]`, `deadline exceeded`, `budget exhausted`) is
+inconclusive: the commits stay unpublished, development gets no "fix the
+failures" route-back, and the gate re-runs on the next landing, at most three
+times per tree. Interrupted
 operations retain their durable record and backup refs until recovery succeeds.
 
 An interrupted conflict-resolution record routes back to the configured

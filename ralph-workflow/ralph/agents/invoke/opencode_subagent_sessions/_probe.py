@@ -20,6 +20,7 @@ _MAX_KNOWN_CHILDREN: int = 64
 class OpenCodeSubagentSessionProbe:
     __slots__ = (
         "__weakref__",
+        "_child_last_update",
         "_child_progress_sink",
         "_closed",
         "_known_children",
@@ -64,6 +65,7 @@ class OpenCodeSubagentSessionProbe:
         self._latest_summary: str | None = None
         self._seen: OrderedDict[tuple[str, int], None] = OrderedDict()
         self._known_children: OrderedDict[str, None] = OrderedDict()
+        self._child_last_update: OrderedDict[str, float] = OrderedDict()
         self._closed = False
 
     def poll(self) -> int:
@@ -89,6 +91,10 @@ class OpenCodeSubagentSessionProbe:
             self._remember_seen(key)
             self._since_ms = max(self._since_ms, part.time_updated_ms)
             self._announce_child(part)
+            self._child_last_update[part.child_session_id] = now
+            self._child_last_update.move_to_end(part.child_session_id)
+            while len(self._child_last_update) > _MAX_KNOWN_CHILDREN:
+                self._child_last_update.popitem(last=False)
             summary = summarize_child_part(part)
             self._latest_summary = summary
             self._forward(part.child_session_id, summary)
@@ -96,6 +102,14 @@ class OpenCodeSubagentSessionProbe:
         self._updates_since_status += forwarded
         self._maybe_log_status(now)
         return forwarded
+
+    def recently_active_children(self, *, within_seconds: float) -> tuple[str, ...]:
+        now = self._monotonic()
+        return tuple(
+            child
+            for child, updated_at in self._child_last_update.items()
+            if now - updated_at <= within_seconds
+        )
 
     def close(self) -> None:
         if self._closed:

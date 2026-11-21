@@ -88,6 +88,13 @@ from ralph.agents.invoke.attempt_supervision import (
     SilenceObserved,
     StartupFailureObserved,
 )
+from ralph.agents.invoke.completion_quiesce import (
+    CHILD_ACTIVITY_WINDOW_SECONDS,
+    CompletionQuiesce,
+    CompletionQuiesceDecision,
+    clear_partial_child_edits,
+    record_partial_child_edits,
+)
 from ralph.agents.invoke.opencode_subagent_sessions import (
     OpenCodeSubagentSessionProbe,
     SqliteOpenCodeChildPartSource,
@@ -636,6 +643,7 @@ class ProcessLineReader:
         "_captured_session_id",
         "_clock",
         "_completion_is_terminal",
+        "_completion_quiesce",
         "_config",
         "_connectivity_state_provider",
         "_cpu_baselines",
@@ -747,6 +755,9 @@ class ProcessLineReader:
         self._captured_session_id: str | None = None
         self._opencode_child_part_source = ctx.opencode_child_part_source
         self._opencode_subagent_probe: OpenCodeSubagentSessionProbe | None = None
+        self._completion_quiesce = CompletionQuiesce(
+            window_seconds=ctx.policy.descendant_wait_timeout_seconds
+        )
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
     def _on_process_event(self, event: ProcessEvent) -> None:
@@ -1017,14 +1028,51 @@ class ProcessLineReader:
         finally:
             self._publish_bounded_stderr()
 
-    def _finish_terminal_completion(self) -> bool:
+    def _finish_terminal_completion(self, *, may_wait_for_children: bool = True) -> bool:
         _raise_on_relay_health_error(self, _agent_command_name(self._config))
         if self._completion_is_terminal is None:
             return False
         with contextlib.suppress(Exception):
             if self._completion_is_terminal():
+                if may_wait_for_children and self._children_still_working():
+                    return False
                 self._terminate_completed_process()
                 return True
+        return False
+
+    def _children_still_working(self) -> bool:
+        probe = self._opencode_subagent_probe
+        if probe is None:
+            return False
+        active = probe.recently_active_children(within_seconds=CHILD_ACTIVITY_WINDOW_SECONDS)
+        first_wait = self._completion_quiesce.deadline is None
+        decision = self._completion_quiesce.decide(active, self._clock.monotonic())
+        agent = _agent_command_name(self._config)
+        if decision is CompletionQuiesceDecision.WAIT:
+            if first_wait:
+                logger.info(
+                    "{} declared completion while {} child session(s) are still working ({}); "
+                    "waiting up to {:.0f}s for them before teardown",
+                    agent,
+                    len(active),
+                    ", ".join(active),
+                    self._completion_quiesce.window_seconds,
+                )
+            return True
+        if decision is CompletionQuiesceDecision.TEARDOWN_PARTIAL:
+            logger.warning(
+                "{} child session(s) still working {:.0f}s after {} declared completion ({}); "
+                "tearing down, and the commit review is told the edits may be partial",
+                len(active),
+                self._completion_quiesce.window_seconds,
+                agent,
+                ", ".join(active),
+            )
+            self.termination_recorder.record_children_active_at_teardown(active)
+            if self._workspace_path is not None:
+                record_partial_child_edits(self._workspace_path, agent=agent, children=active)
+        elif self._workspace_path is not None:
+            clear_partial_child_edits(self._workspace_path)
         return False
 
     def _poll_opencode_subagent_probe(self) -> None:
@@ -1362,7 +1410,7 @@ class ProcessLineReader:
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         _raise_on_relay_health_error(self, _agent_command_name(self._config))
         self._strategy.observe_stream_end()
-        if self._finish_terminal_completion():
+        if self._finish_terminal_completion(may_wait_for_children=False):
             return None
         drain_deadline = (
             None

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+from ralph.agents.invoke.completion_quiesce import partial_child_edits
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL
 from ralph.phases._commit_review_catalog import render_delete_decision_rules_markdown
 from ralph.phases.required_artifacts import retry_hint_path
@@ -112,6 +113,9 @@ def render_commit_review_prompt(
         "PROPOSAL_REF": proposal_ref or "",
         "TREE_SHA": tree_sha or "",
         "SOFT_TRIPWIRES": _format_soft_tripwires(soft_tripwires),
+        "PARTIAL_CHILD_EDITS": ", ".join(
+            f"`{child}`" for child in partial_child_edits(workspace_root)
+        ),
         "DELETE_DECISION_RULES": render_delete_decision_rules_markdown(),
         **build_prompt_payload_variables(
             {"DIFF": diff},
