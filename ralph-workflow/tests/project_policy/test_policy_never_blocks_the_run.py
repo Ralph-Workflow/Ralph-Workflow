@@ -20,6 +20,11 @@ if TYPE_CHECKING:
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.workspace.protocol import Workspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_agent_that_cannot_be_launched_still_exits_zero": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
+
 _LoadResult = run_module._LoadResult
 _EXIT_SUCCESS = cli_integration._EXIT_SUCCESS
 _EXIT_PREFLIGHT = cli_integration._EXIT_PREFLIGHT
@@ -56,7 +61,7 @@ def _run(
 
 
 def _agent_that_never_fixes_anything(_ws: Workspace) -> InvokePolicyAgent:
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase, prompt_path
         return False
 
@@ -72,7 +77,7 @@ def test_a_policy_that_cannot_be_made_ready_still_exits_zero() -> None:
 def test_an_agent_that_cannot_be_launched_still_exits_zero() -> None:
 
     def invoke(_ws: Workspace) -> InvokePolicyAgent:
-        def _raise(*, phase: str, prompt_path: str) -> bool:
+        def _raise(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
             del phase, prompt_path
             raise RemediationInvocationError("agent binary not found")
 

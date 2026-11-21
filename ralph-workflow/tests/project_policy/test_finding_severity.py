@@ -16,6 +16,10 @@ from ralph.project_policy.models import PolicyFinding, ReadinessStatus
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.policy_corpus import seed_complete_corpus
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_remediation_prompt_labels_severity": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
 
 def _stack() -> ProjectStack:
     return ProjectStack(primary_language="Python")
@@ -138,7 +142,7 @@ def test_remediation_prompt_labels_severity() -> None:
     )
     captured_prompt: list[str] = []
 
-    def fake_invoke(*, phase: str, prompt_path: str) -> bool:
+    def fake_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase
         captured_prompt.append(ws.read(prompt_path))
         return True

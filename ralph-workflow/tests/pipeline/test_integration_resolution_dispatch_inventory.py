@@ -19,6 +19,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         " the _prepare_pipeline_step_dispatch funnel."
         " The smoke and project-policy routes now reach the attempt runner through"
         " registered_runners, the same registry route the commit route already used."
+        " The project-policy route now reaches registered_runners through run_chain_attempt,"
+        " the shared select, wait, invoke and finalize path in the attempt runner."
     ),
     "test_resolution_routes_are_explicitly_out_of_graph_recovery": (
         "run_rebase_conflict_resolution_pipeline moved to pipeline_entrypoints.py."
@@ -47,7 +49,7 @@ ORDINARY_DISPATCH_ROUTES = (
     (worker_runtime.run_parallel_worker_from_manifest, "assert_non_resolution_dispatch_allowed"),
     (commit_plumbing._run_commit_agent_attempt_with_recovery, "registered_runners"),
     (smoke_plumbing._execute_smoke_turns, "registered_runners"),
-    (cli_integration._make_production_invoke_agent, "registered_runners"),
+    (cli_integration._make_production_invoke_agent, "run_chain_attempt"),
 )
 
 RESOLUTION_ROUTES = (

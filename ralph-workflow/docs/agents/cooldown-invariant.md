@@ -225,7 +225,7 @@ commit review (per-iteration and final), and commit (per-iteration and final).
 | Rebase and auto-integrate recovery (`ralph/pipeline/_pending_merge_repair.py`, `ralph/pipeline/_integration_diagnostic.py`, `ralph/pipeline/_integration_continuation.py`) | fixed | resolution failures resolve through `ralph/pipeline/resolution_outcome_producer.py` into the owner's classification; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Smoke-test plumbing (`ralph/pipeline/plumbing/smoke_plumbing.py`) | already compliant | the attempt outcome reaches the ledger through the shared owner; `tests/recovery/test_cooldown_parity_all_phases.py` |
 | Commit plumbing and the `ralph commit` CLI (`ralph/pipeline/plumbing/commit_plumbing.py`, `ralph/cli/commands/commit.py`) | already compliant | the chain retains one `RecoveryController` across outer retries, so cooldown state survives; `tests/test_commit_retry_cooldown.py` |
-| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | already compliant | a caught launch failure is classified and handled, cooled-down candidates are skipped, and an all-unavailable chain waits through `earliest_available_wait_ms`; `tests/project_policy/test_policy_invocation_cooldown.py` |
+| Project-policy flows (`ralph/project_policy/analysis.py`, `remediation.py`, `pipeline_driver.py`, `cli_integration.py`) | fixed | every attempt runs through `run_chain_attempt` in `ralph/pipeline/attempt_runner.py`, which selects through the owner, waits through `earliest_available_wait_ms`, and finalizes a remediation attempt that resolved no finding as unproductive through its `progress_check`; `tests/project_policy/test_policy_invocation_cooldown.py`, `tests/project_policy/test_policy_remediation_no_progress_cooldown.py` |
 | Canary and dead-agent probes (`ralph/recovery/canary_probe.py`) | fixed | the canary runner is registered through `AgentEntryPoint.CANARY_PROBE` and invokes `run_agent_attempt` with a recovery controller; `tests/recovery/test_canary_probe.py`, `tests/recovery/test_dead_agent_pipeline_matrix.py` |
 
 ## Documented exemptions
@@ -271,6 +271,16 @@ the agent owner by construction. They are exemptions, not gaps.
   `tests/recovery/test_cooldown_only_invariant.py`,
   `tests/recovery/test_unproductive_limit_cooldown_regression.py`, and
   `tests/test_audit_cooldown_only.py`.
+- **Shared attempt path audit.** `ralph/testing/audit_agent_attempt_path.py`
+  runs in `make verify` as the step "agent attempt path audit
+  (audit_agent_attempt_path)". It fails when a module outside a short,
+  reasoned allowlist calls `preferred_agent_index`,
+  `earliest_available_wait_ms` or `earliest_eligible_wait_ms`, when a module
+  outside the registered invoke seams references
+  `ralph.agents.invoke.invoke_agent`, and when an `InvokeAgentEffect` that
+  may complete without an artifact (`requires_completion_evidence` not
+  `True`) is built in a module that passes no `progress_check` to the shared
+  attempt path. New sub-pipelines call `run_chain_attempt`.
 - **Structural audit.** `ralph/testing/audit_agent_failure_single_owner.py`
   runs in `make verify`. Its ownership rules in
   `ralph/testing/_single_owner_rules.py` include:

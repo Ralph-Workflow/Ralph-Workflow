@@ -144,6 +144,7 @@ _INTEGRATION_NO_LEGACY_STEP_LABEL: Final = (
 _INTEGRATION_AGENT_PATH_STEP_LABEL: Final = (
     "integration agent path audit (audit_integration_agent_path)"
 )
+_AGENT_ATTEMPT_PATH_STEP_LABEL: Final = "agent attempt path audit (audit_agent_attempt_path)"
 
 
 if not _KNOWN_TEST_STEP_LABELS:
@@ -217,6 +218,12 @@ if not any(_SKILL_AUTO_COMMIT_STEP_LABEL in label for label, *_rest in _VERIFY_S
     raise RuntimeError(
         "A verify step running 'audit_skill_auto_commit' must be present in "
         "_VERIFY_STEPS (the skill auto-commit contract cannot be silently dropped)"
+    )
+
+if not any(_AGENT_ATTEMPT_PATH_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_agent_attempt_path' must be present in "
+        "_VERIFY_STEPS (the shared agent attempt path contract cannot be silently dropped)"
     )
 
 if not any(_ARTIFACT_SKILL_TYPES_STEP_LABEL in label for label, *_rest in _VERIFY_STEPS):

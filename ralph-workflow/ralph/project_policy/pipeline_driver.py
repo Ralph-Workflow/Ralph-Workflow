@@ -68,6 +68,7 @@ def run_policy_pipeline(
     current = list(findings)
     feedback: AnalysisDecision | None = None
     blessed = False
+    stalled_attempts = 0
 
     try:
         while phase != TERMINAL_DONE:
@@ -76,6 +77,7 @@ def run_policy_pipeline(
                 current_assessment = _assess(
                     workspace, stack, current, _collect_command_outcomes(workspace)
                 )
+                before = current
                 current = remediation.run_remediation_phase(
                     workspace,
                     stack,
@@ -85,6 +87,8 @@ def run_policy_pipeline(
                     emit=emit,
                     assessment=current_assessment,
                 )
+                progressed = remediation.made_progress(before, current)
+                stalled_attempts = 0 if progressed else stalled_attempts + 1
                 feedback = None
                 phase = _route_after_remediation(current, iteration, analysis_cap, emit)
                 if phase == PHASE_REMEDIATION:
@@ -127,7 +131,14 @@ def run_policy_pipeline(
             f"project-policy-readiness: agent could not be launched ({exc})",
         )
 
-    return _finish(workspace, stack, current, blessed=blessed, emit=emit)
+    return _finish(
+        workspace,
+        stack,
+        current,
+        blessed=blessed,
+        emit=emit,
+        stalled_attempts=stalled_attempts,
+    )
 
 
 def _combined_policy_content_hash(
@@ -204,6 +215,16 @@ def _route_after_remediation(
     return on_success
 
 
+def _not_ready_cause(current: list[PolicyFinding], stalled_attempts: int) -> str:
+    if stalled_attempts == 0:
+        return "project-policy-readiness: analysis budget exhausted"
+    attempts = "attempt" if stalled_attempts == 1 else "attempts"
+    return (
+        f"project-policy-readiness: remediation made no progress in "
+        f"{stalled_attempts} {attempts} ({len(current)} findings remain)"
+    )
+
+
 def _finish(
     workspace: Workspace,
     stack: ProjectStack,
@@ -211,6 +232,7 @@ def _finish(
     *,
     blessed: bool,
     emit: EmitFn,
+    stalled_attempts: int,
 ) -> ReadinessResult:
     command_outcomes = _collect_command_outcomes(workspace)
     if not blessed:
@@ -220,7 +242,7 @@ def _finish(
         )
         return _not_ready(
             current,
-            "project-policy-readiness: analysis budget exhausted",
+            _not_ready_cause(current, stalled_attempts),
             command_outcomes=command_outcomes,
         )
 

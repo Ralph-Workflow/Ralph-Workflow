@@ -19,9 +19,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     BUDGET_UNCHARGED_TERMINATION_REASONS,
 )
-from ralph.pipeline.conflict_resolution.chain_candidates import (
-    session_ledger,
-)
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
@@ -489,21 +486,9 @@ def _preferred_conflict_candidate(
     candidates: tuple[str, ...],
     visited: set[int],
 ) -> int | None:
-    from ralph.recovery.controller import RecoveryController
+    from ralph.pipeline.conflict_resolution.session import ensure_session_controller
 
-    unvisited = [name for index, name in enumerate(candidates) if index not in visited]
-    if not unvisited:
-        return None
-    controller = session.recovery_controller
-    if not isinstance(controller, RecoveryController):
-        ledger = session_ledger(session)
-        eligible = [
-            name
-            for name in unvisited
-            if ledger is None or ledger.is_available(PHASE_RESOLUTION, name)
-        ]
-        return candidates.index(eligible[0]) if eligible else None
-    selection = controller.preferred_agent_index(
+    selection = ensure_session_controller(session).preferred_agent_index(
         PHASE_RESOLUTION,
         list(candidates),
         exclude=frozenset(candidates[index] for index in visited),

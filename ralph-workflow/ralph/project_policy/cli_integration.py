@@ -18,7 +18,7 @@ from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
     set_last_captured_session_id,
 )
-from ralph.pipeline.agent_entry_point import AgentEntryPoint, registered_runners
+from ralph.pipeline.agent_entry_point import AgentEntryPoint
 from ralph.pipeline.agent_retry_intent import (
     pop_last_captured_retry_intent,
     set_last_captured_retry_intent,
@@ -28,6 +28,7 @@ from ralph.pipeline.attempt_runner import (
     register_entry_point,
     registered_entry_points,
     run_agent_attempt,
+    run_chain_attempt,
 )
 from ralph.pipeline.attempt_runner_deps import (
     AttemptRunnerDeps,
@@ -301,44 +302,43 @@ def _make_production_invoke_agent(
         probe_trusted_parent=workspace_scope.root,
     )
 
-    def invoke_agent(*, phase: str, prompt_path: str) -> bool:
+    def invoke_agent(
+        *,
+        phase: str,
+        prompt_path: str,
+        progress_check: Callable[[], bool] | None = None,
+    ) -> bool:
         if pipeline_deps is None or load_result.policy_bundle is None:
             return False
-        chain_agents = _resolve_chain_agents(load_result, phase)
-        last_error: Exception | None = None
-        selection = controller.preferred_agent_index(phase, chain_agents)
-        if selection.agent is None:
-            wait_ms = controller.earliest_available_wait_ms(phase, chain_agents)
-            if wait_ms <= 0:
-                return False
-            controller.clock.sleep(wait_ms / 1000.0)
-            controller.prune_expired()
-            selection = controller.preferred_agent_index(phase, chain_agents)
-            if selection.agent is None:
-                return False
-        agent_name = selection.agent
-        effect = InvokeAgentEffect(
-            agent_name=agent_name,
-            phase=phase,
-            prompt_file=prompt_path,
-            drain=phase,
-            chain_name=phase,
-            requires_completion_evidence=(phase == PHASE_ANALYSIS),
+
+        def build_effect(agent_name: str) -> InvokeAgentEffect:
+            return InvokeAgentEffect(
+                agent_name=agent_name,
+                phase=phase,
+                prompt_file=prompt_path,
+                drain=phase,
+                chain_name=phase,
+                requires_completion_evidence=(phase == PHASE_ANALYSIS),
+            )
+
+        policy_config = load_result.config.model_copy(
+            update={
+                "general": load_result.config.general.model_copy(
+                    update={"auto_integrate_enabled": False}
+                )
+            }
         )
         with _capture_pipeline_state():
             try:
-                policy_config = load_result.config.model_copy(
-                    update={
-                        "general": load_result.config.general.model_copy(
-                            update={"auto_integrate_enabled": False}
-                        )
-                    }
-                )
-                result = registered_runners()[AgentEntryPoint.PROJECT_POLICY](
-                    effect=effect,
-                    config=policy_config,
+                result = run_chain_attempt(
+                    AgentEntryPoint.PROJECT_POLICY,
+                    phase=phase,
+                    agents=_resolve_chain_agents(load_result, phase),
                     controller=controller,
+                    build_effect=build_effect,
+                    config=policy_config,
                     deps=attempt_deps,
+                    progress_check=progress_check,
                     state=PipelineState(phase=phase, rebase=RebaseState()),
                     pipeline_deps=pipeline_deps,
                     workspace_scope=workspace_scope,
@@ -348,16 +348,9 @@ def _make_production_invoke_agent(
                     policy_bundle=load_result.policy_bundle,
                 )
             except (AgentInvocationError, OSError, RuntimeError, ValueError, TypeError) as exc:
-                logger.warning(
-                    "Policy {} agent {} could not be launched: {}", phase, agent_name, exc
-                )
-                last_error = exc
-            else:
-                if result.outcome.kind is AttemptOutcomeKind.COMPLETED:
-                    return True
-        if last_error is not None:
-            raise policy_remediation.RemediationInvocationError(str(last_error)) from last_error
-        return False
+                logger.warning("Policy {} agent could not be launched: {}", phase, exc)
+                raise policy_remediation.RemediationInvocationError(str(exc)) from exc
+        return result is not None and result.outcome.kind is AttemptOutcomeKind.COMPLETED
 
     typed: InvokePolicyAgent = invoke_agent
     return typed

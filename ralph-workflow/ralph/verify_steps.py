@@ -139,6 +139,12 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "agent attempt path audit (audit_agent_attempt_path)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_agent_attempt_path"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "repo structure audit (audit_repo_structure)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_repo_structure"),

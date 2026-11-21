@@ -26,6 +26,15 @@ from ralph.project_policy.models import (
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_pipeline_ready_carries_assessment_through_to_result": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_pipeline_wrong_hash_ledger_keeps_implementation_verified_false": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_pipeline_ready_with_no_ledger_keeps_implementation_verified_false": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_pipeline_blocked_with_ledger_reports_structure_incomplete": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_pipeline_handles_malformed_ledger_without_crashing": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_pipeline_with_failing_ledger_keeps_implementation_verified_false": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
 
 def _stack() -> ProjectStack:
     return ProjectStack(primary_language="Python")
@@ -342,7 +351,7 @@ class _Recorder:
         self.ledger = ledger
         self._remediation_calls = 0
 
-    def __call__(self, *, phase: str, prompt_path: str) -> bool:
+    def __call__(self, *, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         if phase == "policy_remediation":
             self._remediation_calls += 1

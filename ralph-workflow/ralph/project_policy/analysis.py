@@ -51,7 +51,13 @@ EmitFn = Callable[[str], None]
 
 
 class InvokePolicyAgent(Protocol):
-    def __call__(self, *, phase: str, prompt_path: str) -> bool: ...
+    def __call__(
+        self,
+        *,
+        phase: str,
+        prompt_path: str,
+        progress_check: Callable[[], bool] | None = None,
+    ) -> bool: ...
 
 
 def _noop_emit(message: str) -> None:

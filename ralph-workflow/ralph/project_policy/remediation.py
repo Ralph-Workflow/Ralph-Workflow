@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -129,19 +130,42 @@ def run_remediation_phase(
     )
     prompt_path = _write_prompt(workspace, prompt_text)
     emit(f"project-policy-readiness: invoking remediation agent ({len(findings)} open findings)")
-    success = bool(invoke_agent(phase=PHASE_REMEDIATION, prompt_path=prompt_path))
+    validated: list[list[PolicyFinding]] = []
 
-    remaining = validators.validate_readiness(workspace, stack)
-    if remaining and success:
-        emit(
-            f"project-policy-readiness: agent reported success but {len(remaining)} findings remain"
+    def resolved_a_finding() -> bool:
+        validated.append(validators.validate_readiness(workspace, stack))
+        return made_progress(findings, validated[-1])
+
+    success = bool(
+        invoke_agent(
+            phase=PHASE_REMEDIATION,
+            prompt_path=prompt_path,
+            progress_check=resolved_a_finding,
         )
-    elif remaining:
+    )
+
+    remaining = validated[-1] if validated else validators.validate_readiness(workspace, stack)
+    if not made_progress(findings, remaining):
+        emit(
+            f"project-policy-readiness: remediation attempt made no progress "
+            f"({len(remaining)} findings remain)"
+        )
+    elif remaining and not success:
         emit(
             f"project-policy-readiness: agent reported failure "
             f"({len(remaining)} findings remaining)"
         )
     return remaining
+
+
+def made_progress(before: list[PolicyFinding], after: list[PolicyFinding]) -> bool:
+    if not after:
+        return True
+    return bool(Counter(map(_finding_key, before)) - Counter(map(_finding_key, after)))
+
+
+def _finding_key(finding: PolicyFinding) -> tuple[str, str, str]:
+    return (finding.requirement_id, finding.path, finding.missing_evidence)
 
 
 def render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
@@ -165,6 +189,7 @@ def _render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
 __all__ = [
     "PROMPT_TEMPLATE_NAME",
     "RemediationInvocationError",
+    "made_progress",
     "render_blocked_report",
     "run_remediation_phase",
 ]

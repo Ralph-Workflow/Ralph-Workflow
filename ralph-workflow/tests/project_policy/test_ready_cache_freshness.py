@@ -10,6 +10,12 @@ from ralph.project_policy import analysis as policy_analysis
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero_agents": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
+
 _LoadResult = run_module._LoadResult
 
 
@@ -86,7 +92,7 @@ def test_direct_ready_route_writes_fresh_cache_and_second_preflight_invokes_zero
 
     second_agent_invocations: list[str] = []
 
-    def counting_invoke(*, phase: str, prompt_path: str) -> bool:
+    def counting_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         second_agent_invocations.append(phase)
         return True
@@ -124,7 +130,7 @@ def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_in
         _seed_claude_md,
     )
 
-    def fix_invoke(*, phase: str, prompt_path: str) -> bool:
+    def fix_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         if phase == PHASE_REMEDIATION:
             _seed_agents_md(ws)
@@ -154,7 +160,7 @@ def test_post_remediation_ready_route_writes_fresh_cache_and_second_preflight_in
 
     second_agent_invocations: list[str] = []
 
-    def counting_invoke(*, phase: str, prompt_path: str) -> bool:
+    def counting_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         second_agent_invocations.append(phase)
         return True

@@ -10,6 +10,13 @@ import pytest
 PACKAGE_ROOT = Path(__file__).parents[2]
 RALPH_ROOT = PACKAGE_ROOT / "ralph"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_spawn_capable_entry_points_sanitize_before_work": (
+        "the new make verify step ralph/testing/audit_agent_attempt_path.py has a __main__ guard "
+        "and spawns nothing, so it joins the audit entries of the guard allowlist"
+    ),
+}
+
 _GUARD_ALLOWLIST: dict[str, str] = {
     "ralph/__main__.py": "delegates to ralph.cli.main.main",
     "ralph/main.py": "delegates to ralph.cli.main.app",
@@ -37,6 +44,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
     **dict.fromkeys(
         (
             "ralph/testing/audit_activity_aware_watchdog.py",
+            "ralph/testing/audit_agent_attempt_path.py",
             "ralph/testing/audit_agent_failure_single_owner.py",
             "ralph/testing/audit_agent_internal_paths.py",
             "ralph/testing/audit_agent_module_state.py",

@@ -5880,6 +5880,13 @@ ralph.testing.audit_integration_agent_path
    :members:
    :show-inheritance:
 
+ralph.testing.audit_agent_attempt_path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_agent_attempt_path
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_banned_constructs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -17,6 +17,13 @@ if TYPE_CHECKING:
     from ralph.project_policy.analysis import InvokePolicyAgent
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_analysis_feedback_reaches_the_prompt": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_launch_failure_propagates_to_the_driver": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_prompt_carries_the_original_findings": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
+
 def _stack() -> ProjectStack:
     return ProjectStack(primary_language="Python")
 
@@ -32,7 +39,7 @@ def _stub_finding() -> PolicyFinding:
 
 def _agent(fix: Callable[[], None] | None = None) -> InvokePolicyAgent:
 
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase, prompt_path
         if fix is not None:
             fix()
@@ -122,7 +129,7 @@ def test_prompt_steers_standard_community_files_to_migrated_marker() -> None:
 def test_launch_failure_propagates_to_the_driver() -> None:
     ws = MemoryWorkspace()
 
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase, prompt_path
         raise remediation.RemediationInvocationError("agent binary not found")
 
@@ -189,7 +196,7 @@ def test_analysis_feedback_reaches_the_prompt() -> None:
     ws = MemoryWorkspace()
     seen: list[str] = []
 
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase
         seen.append(ws.read(prompt_path))
         return True
@@ -244,7 +251,7 @@ def test_prompt_carries_the_original_findings() -> None:
     ws = MemoryWorkspace()
     seen: list[str] = []
 
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase
         seen.append(ws.read(prompt_path))
         return False

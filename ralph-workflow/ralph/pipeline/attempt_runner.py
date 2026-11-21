@@ -39,7 +39,7 @@ from ralph.recovery.recovery_controller_options import (
 from ralph.recovery.restored_cooldowns import restored_cooldowns
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable, Mapping
+    from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.pipeline.attempt_runner_deps import AttemptRunnerDeps, RawAgentInvoke
@@ -215,6 +215,7 @@ def run_agent_attempt(
 ) -> AttemptResult:
     if (effect is None) == (invocation is None):
         raise ValueError("exactly one of effect or invocation is required")
+    progress_check = _progress_check_or_none(execute_kwargs.pop("progress_check", None))
     phase, agent = _attempt_identity(effect, invocation, execute_kwargs)
     if entry_point not in registered_entry_points():
         raise ValueError(f"unregistered agent entry point: {entry_point.value}")
@@ -281,19 +282,13 @@ def run_agent_attempt(
             )
         raise
     repair_shared_config(shared_config, attempt=_attempt_label(entry_point, phase, agent))
-    if isinstance(event, AttemptEnded):
-        carried_facts = event.facts
-        if carried_facts is not None and not carried_facts.artifact_valid:
-            event = PipelineEvent.AGENT_FAILURE
-            attempt_failed = True
-        else:
-            event = PipelineEvent.AGENT_SUCCESS
-            attempt_failed = False
-    else:
-        attempt_failed = _is_agent_failure_event(event)
+    event, attempt_failed, carried_facts = _ended_attempt(event)
     ordinal = max(finalized, default=0)
     if not attempt_failed or not finalized:
         ordinal += 1
+    if not attempt_failed and progress_check is not None and not progress_check():
+        event = PipelineEvent.AGENT_FAILURE
+        attempt_failed = True
     recorded = finalized.get(ordinal)
     if recorded is None:
         finalize(AttemptFinalization(ordinal, attempt_failed, None, None, None, None))
@@ -306,6 +301,67 @@ def run_agent_attempt(
         outcome,
         tuple((key, value[1]) for key, value in sorted(finalized.items())),
     )
+
+
+def _is_progress_check(value: object) -> TypeGuard[Callable[[], bool]]:
+    return callable(value)
+
+
+def _progress_check_or_none(value: object) -> Callable[[], bool] | None:
+    if value is None:
+        return None
+    if not _is_progress_check(value):
+        raise TypeError("progress_check must be callable or None")
+    return value
+
+
+def _ended_attempt(event: object) -> tuple[object, bool, AttemptFacts | None]:
+    if not isinstance(event, AttemptEnded):
+        return event, _is_agent_failure_event(event), None
+    if event.facts is not None and not event.facts.artifact_valid:
+        return PipelineEvent.AGENT_FAILURE, True, event.facts
+    return PipelineEvent.AGENT_SUCCESS, False, event.facts
+
+
+def run_chain_attempt(
+    entry_point: AgentEntryPoint,
+    *,
+    phase: str,
+    agents: Sequence[str],
+    controller: RecoveryController,
+    build_effect: Callable[[str], InvokeAgentEffect],
+    config: UnifiedConfig,
+    deps: AttemptRunnerDeps,
+    progress_check: Callable[[], bool] | None = None,
+    **execute_kwargs: object,
+) -> AttemptResult | None:
+    agent = _select_chain_agent(controller, phase, agents)
+    if agent is None:
+        return None
+    execute_kwargs.setdefault("effect", build_effect(agent))
+    return registered_runners()[entry_point](
+        config=config,
+        controller=controller,
+        deps=deps,
+        progress_check=progress_check,
+        **execute_kwargs,
+    )
+
+
+def _select_chain_agent(
+    controller: RecoveryController,
+    phase: str,
+    agents: Sequence[str],
+) -> str | None:
+    selection = controller.preferred_agent_index(phase, agents)
+    if selection.agent is not None:
+        return selection.agent
+    wait_ms = controller.earliest_available_wait_ms(phase, agents)
+    if wait_ms <= 0:
+        return None
+    controller.clock.sleep(wait_ms / 1000.0)
+    controller.prune_expired()
+    return controller.preferred_agent_index(phase, agents).agent
 
 
 def _attempt_workspace_root(execute_kwargs: Mapping[str, object]) -> Path:
@@ -495,5 +551,6 @@ __all__ = (
     "registered_runners",
     "run_agent_attempt",
     "run_canary_probe",
+    "run_chain_attempt",
     "seamed_dead_agent_probe_runner",
 )

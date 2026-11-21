@@ -22,6 +22,12 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.factory import PipelineDeps
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_remediation_agent_that_fixes_project_proceeds": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_unprepared_project_still_proceeds_to_planning": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
+
 _agent_success_sentinel: PipelineEvent = PipelineEvent.AGENT_SUCCESS
 
 _LoadResult = run_module._LoadResult
@@ -99,7 +105,7 @@ def test_unprepared_project_still_proceeds_to_planning() -> None:
 
     invoke_calls: list[str] = []
 
-    def fake_invoke(*, phase: str, prompt_path: str) -> bool:
+    def fake_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del phase
         invoke_calls.append(prompt_path)
         return True
@@ -141,7 +147,7 @@ def test_remediation_agent_that_fixes_project_proceeds() -> None:
         _seed_claude_md,
     )
 
-    def fake_invoke(*, phase: str, prompt_path: str) -> bool:
+    def fake_invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         if phase == PHASE_REMEDIATION:
             _seed_agents_md(ws)

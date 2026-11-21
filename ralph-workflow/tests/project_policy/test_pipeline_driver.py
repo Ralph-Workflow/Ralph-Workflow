@@ -12,6 +12,11 @@ from ralph.project_policy.pipeline_graph import (
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_launch_crash_in_the_analysis_phase_does_not_escape_the_driver": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+    "test_request_changes_loops_back_and_carries_feedback_forward": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
+}
+
 
 def _finding() -> PolicyFinding:
     return PolicyFinding(
@@ -73,7 +78,7 @@ class _Recorder:
         self.phases: list[str] = []
         self._remediation_calls = 0
 
-    def __call__(self, *, phase: str, prompt_path: str) -> bool:
+    def __call__(self, *, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         self.phases.append(phase)
         if phase == PHASE_REMEDIATION:
@@ -137,7 +142,7 @@ def test_request_changes_loops_back_and_carries_feedback_forward() -> None:
     ws = MemoryWorkspace()
     prompts: list[str] = []
 
-    def agent(*, phase: str, prompt_path: str) -> bool:
+    def agent(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         if phase == PHASE_REMEDIATION:
             seed_complete_corpus(ws)
             prompts.append(ws.read(prompt_path))
@@ -220,7 +225,7 @@ def test_a_launch_crash_in_the_analysis_phase_does_not_escape_the_driver() -> No
     ws = MemoryWorkspace()
     seed_complete_corpus(ws)
 
-    def invoke(*, phase: str, prompt_path: str) -> bool:
+    def invoke(*, phase: str, prompt_path: str, progress_check: object = None) -> bool:
         del prompt_path
         if phase == PHASE_ANALYSIS:
             raise remediation.RemediationInvocationError("agent binary not found")
