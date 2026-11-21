@@ -302,13 +302,17 @@ def _lazy_commit_probe_runner(
     *,
     repo_root: Path | None = None,
 ) -> typing.Callable[[str, str], ProbeResult | None]:
+    cached: typing.Callable[[str, str], ProbeResult | None] | None = None
+
     def probe_runner(phase: str, agent: str) -> ProbeResult | None:
         from ralph.recovery.dead_agent_probe import production_dead_agent_probe_runner
 
-        run = production_dead_agent_probe_runner(config, trusted_parent=repo_root)
-        if run is None:
+        nonlocal cached
+        if cached is None:
+            cached = production_dead_agent_probe_runner(config, trusted_parent=repo_root)
+        if cached is None:
             return None
-        return run(phase, agent)
+        return cached(phase, agent)
 
     return probe_runner
 

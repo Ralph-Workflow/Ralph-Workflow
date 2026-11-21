@@ -38,6 +38,10 @@ from ralph.recovery.canary_probe import (
     ProbeOutcome,
 )
 from ralph.recovery.controller import RecoveryController
+from ralph.recovery.dead_agent_probe import (
+    DEFAULT_MAX_PROBES_PER_RUN,
+    PROBE_REASON_BUDGET_EXHAUSTED,
+)
 from ralph.session_runtime import (
     ManagedAgentSessionDeps,
     ManagedAgentSessionRequest,
@@ -314,6 +318,51 @@ def test_the_commit_probe_runner_pre_trusts_the_scratch_under_the_repo_root(
     scratch = captured[0]
     assert scratch.parent == repo_root / ".agent" / "tmp"
     assert scratch.name.startswith("canary-probe-")
+
+
+def test_the_commit_probe_callback_spends_one_shared_per_run_probe_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    captured: list[Path] = []
+    monkeypatch.setattr("ralph.agents.invoke.invoke_agent", _capture_probe_scratch(captured))
+
+    runner = commit_probe_runner(_config(), repo_root=repo_root)
+    results = [runner(_COMMIT_PHASE, _AGENT_NAME) for _ in range(DEFAULT_MAX_PROBES_PER_RUN + 1)]
+
+    assert len(captured) == DEFAULT_MAX_PROBES_PER_RUN
+    assert all(result is not None for result in results[:DEFAULT_MAX_PROBES_PER_RUN])
+    assert [result.outcome for result in results[:DEFAULT_MAX_PROBES_PER_RUN] if result] == [
+        ProbeOutcome.PASSED
+    ] * DEFAULT_MAX_PROBES_PER_RUN
+    spent = results[-1]
+    assert spent is not None
+    assert spent.outcome is ProbeOutcome.INCONCLUSIVE
+    assert spent.reason == PROBE_REASON_BUDGET_EXHAUSTED
+
+
+def test_the_commit_probe_budget_is_owned_by_the_callback_and_not_shared_globally(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    captured: list[Path] = []
+    monkeypatch.setattr("ralph.agents.invoke.invoke_agent", _capture_probe_scratch(captured))
+
+    first = commit_probe_runner(_config(), repo_root=repo_root)
+    second = commit_probe_runner(_config(), repo_root=repo_root)
+    for _ in range(DEFAULT_MAX_PROBES_PER_RUN):
+        assert first(_COMMIT_PHASE, _AGENT_NAME) is not None
+    assert len(captured) == DEFAULT_MAX_PROBES_PER_RUN
+
+    resumed = second(_COMMIT_PHASE, _AGENT_NAME)
+
+    assert resumed is not None
+    assert resumed.outcome is ProbeOutcome.PASSED
+    assert len(captured) == DEFAULT_MAX_PROBES_PER_RUN + 1
 
 
 def test_the_commit_controller_pre_trusts_the_scratch_under_the_repo_root(
