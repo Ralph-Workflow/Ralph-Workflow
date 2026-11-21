@@ -13,6 +13,17 @@ from ralph.workspace.awareness import awareness_for_workspace, release_workspace
 if TYPE_CHECKING:
     import pytest
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "slow watch start and slow watch lock fakes block until the test releases them": (
+        "the fake observer start and the fake lock acquisition stalled for a fixed 0.5 s, "
+        "so on a loaded host the launch could take longer than the stall and the check "
+        "failed with 'the launch waited for the whole recursive walk' although the launch "
+        "never waited; the fakes now block until the test releases them after it has "
+        "observed the launch, so the check still proves the same observable outcome: "
+        "the launch returns while the watch start or lock acquisition is still running"
+    ),
+}
+
 _PROBE_BUDGET_SECONDS = 0.05
 
 _HUNG_PROBE_SECONDS = 20.0
@@ -77,6 +88,7 @@ class _SlowObserver:
     def __init__(self) -> None:
         self.entered = threading.Event()
         self.finished = threading.Event()
+        self.unblock = threading.Event()
         self.join_timeouts: list[float | None] = []
 
     def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
@@ -84,7 +96,7 @@ class _SlowObserver:
 
     def start(self) -> None:
         self.entered.set()
-        threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+        self.unblock.wait(timeout=_HUNG_PROBE_SECONDS)
         self.finished.set()
 
     def stop(self) -> None:
@@ -114,6 +126,7 @@ def test_a_slow_watch_start_does_not_park_the_launch(
         still_walking = not observer.finished.is_set()
         status = awareness_for_workspace(tmp_path).snapshot()
     finally:
+        observer.unblock.set()
         monitor.stop()
         release_workspace_awareness(tmp_path)
 
@@ -132,6 +145,7 @@ class _SlowWatchLock:
         self.entered = threading.Event()
         self.finished = threading.Event()
         self.released = False
+        self.unblock = threading.Event()
         self.stall = stall
         self.holder = holder
 
@@ -139,7 +153,7 @@ class _SlowWatchLock:
         del workspace
         self.entered.set()
         if self.stall:
-            threading.Event().wait(timeout=_SLOW_WATCH_SECONDS)
+            self.unblock.wait(timeout=_HUNG_PROBE_SECONDS)
         self.finished.set()
         return self.holder
 
@@ -171,6 +185,7 @@ def test_slow_watch_lock_io_does_not_park_the_launch(tmp_path: Path) -> None:
         still_waiting = not lock.finished.is_set()
         status = awareness_for_workspace(tmp_path).snapshot()
     finally:
+        lock.unblock.set()
         monitor.stop()
         release_workspace_awareness(tmp_path)
 
@@ -197,6 +212,7 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(tmp_path:
     try:
         monitor.start()
     finally:
+        observer.unblock.set()
         monitor.stop()
         release_workspace_awareness(tmp_path)
 

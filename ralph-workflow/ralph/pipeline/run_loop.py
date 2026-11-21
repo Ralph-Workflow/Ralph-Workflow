@@ -1243,6 +1243,77 @@ def _reopen_completed_run_with_leftover_work(
     return progress.advance_phase(reopened, entry_phase, policy=pipeline_policy)
 
 
+def _recorded_failed_phase(state: PipelineState, pipeline_policy: PipelinePolicy) -> str | None:
+    failed_phase = state.previous_phase
+    if (
+        failed_phase is None
+        or failed_phase not in pipeline_policy.phases
+        or failed_phase in pipeline_policy.terminal_states()
+    ):
+        return None
+    return failed_phase
+
+
+def _leftover_work_entry_phase(
+    pipeline_policy: PipelinePolicy,
+    workspace_root: Path | None,
+) -> str | None:
+    from ralph.pipeline.effect_router import is_empty_commit_phase
+
+    entry_phase = _completion_entry_phase(pipeline_policy)
+    if (
+        entry_phase is None
+        or workspace_root is None
+        or is_empty_commit_phase(workspace_root) is not False
+    ):
+        return None
+    return entry_phase
+
+
+def _reopen_failed_terminal_run(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    workspace_root: Path | None,
+) -> PipelineState:
+    from ralph.pipeline import progress
+
+    failed_route = pipeline_policy.recovery.failed_route
+    if state.phase != failed_route:
+        return state
+    if state.rollback_ref and not state.rollback_pending:
+        logger.info(
+            "Resumed a run that ended in '{}' after its rollback {} was refused; it stays "
+            "failed for the operator",
+            failed_route,
+            state.rollback_ref,
+        )
+        return state
+    reopened = state.clear_waiting()
+    reopen_phase = _recorded_failed_phase(state, pipeline_policy)
+    if reopen_phase is None:
+        reopen_phase = _leftover_work_entry_phase(pipeline_policy, workspace_root)
+        reopened = reopened.copy_with(approved_tree_sha=None, commit_approval_required=False)
+    if reopen_phase is None:
+        logger.info(
+            "Resumed a run that ended in '{}' with no failed phase recorded and no "
+            "uncommitted work; it stays failed",
+            failed_route,
+        )
+        return state
+    prior_failure = (state.last_error or "").splitlines()
+    logger.warning(
+        "Resumed a run that ended in '{}' after '{}' failed ({}); reopening it at '{}' "
+        "with a fresh recovery budget",
+        failed_route,
+        state.previous_phase,
+        prior_failure[0][:200] if prior_failure else "no error recorded",
+        reopen_phase,
+    )
+    if reopened.recovery_cycle_count >= reopened.recovery_cycle_cap:
+        reopened = reopened.copy_with(recovery_cycle_count=0)
+    return progress.advance_phase(reopened, reopen_phase, policy=pipeline_policy)
+
+
 def _resolve_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
@@ -1265,6 +1336,7 @@ def _resolve_initial_state(
             agents_policy=policy_bundle.agents,
             pipeline_policy=policy_bundle.pipeline,
         )
+        resumed = _reopen_failed_terminal_run(resumed, policy_bundle.pipeline, workspace_root)
         if (
             isinstance(resumed.rollback_pending, bool)
             and resumed.rollback_pending is True

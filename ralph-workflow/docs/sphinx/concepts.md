@@ -227,7 +227,10 @@ The runtime persists its current `PipelineState` after every step as a
 checkpoint at `checkpoint.json` in the workspace root
 (`ralph/pipeline/checkpoint.py`, `run_state_path`). If the run is
 interrupted, `ralph --resume` reads that file and resumes from the last
-saved step. A commit-review rollback keeps its own marker at
+saved step. A checkpoint in the failure-terminal phase resumes at the phase
+that failed, or at the final commit review when no failed phase is recorded
+and the worktree holds uncommitted work, with a fresh commit-recovery budget.
+A commit-review rollback keeps its own marker at
 `.agent/rollback_marker.json`, which is never resumed as run state. A
 `.agent/checkpoint.json` left by an older build is read only when the root
 file is missing; otherwise it is removed with a warning, and a pending
