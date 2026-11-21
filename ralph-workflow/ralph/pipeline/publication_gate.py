@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -42,6 +43,10 @@ _FAILED_STEP_MARKERS = (
 )
 _CANCELLED_MARKER = re.compile(r"^\s*\[verify\]\s+CANCELLED\b", re.MULTILINE)
 _VOLATILE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_SHELL_DIAGNOSTIC = re.compile(r"^(?:/bin/)?sh: .*(?:syntax error|not found|unexpected)", re.I)
+_INVOCATION_EXIT_CODES: Final[frozenset[int]] = frozenset({2, 127})
+_SYNTAX_CHECK_TIMEOUT_SECONDS: Final[float] = 10.0
+_INVOCATION_EXIT_CODE: Final[int] = 2
 _SIGNATURE_FALLBACK_LINES: Final[int] = 5
 
 
@@ -56,6 +61,7 @@ class PublicationGateResult:
     route_backs: int = 0
     failure_signature: str = ""
     inconclusive_runs: int = 0
+    invocation_error: str = ""
 
     @property
     def passed(self) -> bool:
@@ -78,6 +84,7 @@ class PublicationGateResult:
         return (
             not self.passed
             and not self.inconclusive
+            and not self.invocation_error
             and self.route_backs < MAX_PUBLICATION_GATE_FAILURES
         )
 
@@ -115,22 +122,101 @@ def publication_gate_record_path(root: Path) -> Path:
     return root / _RECORD_PATH
 
 
-def declared_publication_gate(root: Path) -> str | None:
+@dataclass(frozen=True)
+class GateDeclaration:
+    value: str
+    source: str
+    command: str | None
+    problem: str = ""
+
+    @property
+    def gate_key(self) -> str:
+        return self.command if self.command is not None else self.value
+
+
+_PARSEABLE_COMMANDS: deque[str] = deque(maxlen=64)
+_UNPARSEABLE_COMMANDS: deque[str] = deque(maxlen=64)
+_WARNED_PROSE: deque[tuple[str, str]] = deque(maxlen=64)
+
+
+def _parses_as_shell(command: str) -> bool:
+    if command in _PARSEABLE_COMMANDS:
+        return True
+    if command in _UNPARSEABLE_COMMANDS:
+        return False
+    try:
+        verdict = (
+            run_process(
+                "sh",
+                ("-n", "-c", command),
+                options=ProcessRunOptions(
+                    timeout=_SYNTAX_CHECK_TIMEOUT_SECONDS, label="publication-gate-syntax"
+                ),
+            ).returncode
+            == 0
+        )
+    except ProcessExecutionError:
+        return False
+    (_PARSEABLE_COMMANDS if verdict else _UNPARSEABLE_COMMANDS).append(command)
+    return verdict
+
+
+def _warn_dropped_prose(source: str, command: str, prose: str) -> None:
+    if (source, prose) in _WARNED_PROSE:
+        return
+    _WARNED_PROSE.append((source, prose))
+    logger.warning(
+        "Publication gate declared at {} mixes a command with prose; running `{}` and dropped {!r}",
+        source,
+        command,
+        prose,
+    )
+
+
+def _resolve_declared_command(value: str, source: str) -> GateDeclaration:
+    quoted = _BACKTICK_COMMAND.search(value)
+    if quoted:
+        return GateDeclaration(value, source, as_str(quoted.group(1), field="gate command").strip())
+    if _parses_as_shell(value):
+        return GateDeclaration(value, source, value)
+    head = value.split(";", 1)[0].strip()
+    if head and head != value and _parses_as_shell(head):
+        _warn_dropped_prose(source, head, value[len(head) :].lstrip("; "))
+        return GateDeclaration(value, source, head)
+    return GateDeclaration(
+        value, source, None, f"`{value}` is not a shell command the gate can run"
+    )
+
+
+def resolve_publication_gate(root: Path) -> GateDeclaration | None:
     policy = root / CANONICAL_DIR / _GATE_POLICY_FILE
     try:
         lines = policy.read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
     prefix = f"{FACT_MARKER} {_GATE_FACT_KEY}:"
-    for line in lines:
+    for number, line in enumerate(lines, start=1):
         if not line.startswith(prefix):
             continue
         value = line[len(prefix) :].strip()
         if not value or value.startswith(_UNRESOLVED_FACT):
             return None
-        quoted = _BACKTICK_COMMAND.search(value)
-        return as_str(quoted.group(1), field="gate command").strip() if quoted else value
+        return _resolve_declared_command(value, f"{policy}:{number}")
     return None
+
+
+def declared_publication_gate(root: Path) -> str | None:
+    declaration = resolve_publication_gate(root)
+    return declaration.gate_key if declaration is not None else None
+
+
+def _invocation_error(run: PublicationGateRun) -> str:
+    if run.timed_out or run.exit_code not in _INVOCATION_EXIT_CODES:
+        return ""
+    lines = [line.strip() for line in run.output.splitlines() if line.strip()]
+    if lines and all(_SHELL_DIAGNOSTIC.search(line) for line in lines):
+        return f"the gate command never started (exit {run.exit_code}): {lines[-1]}"
+    return ""
 
 
 def _run_gate_command(command: str, cwd: Path, timeout_seconds: float) -> PublicationGateRun:
@@ -168,7 +254,12 @@ def _load_record(root: Path) -> PublicationGateResult | None:
         fields = as_mapping(raw, field="publication gate record")
         output_tail = fields["output_tail"]
         signature = fields.get("failure_signature", "")
-        if not isinstance(output_tail, str) or not isinstance(signature, str):
+        invocation_error = fields.get("invocation_error", "")
+        if (
+            not isinstance(output_tail, str)
+            or not isinstance(signature, str)
+            or not isinstance(invocation_error, str)
+        ):
             return None
         return PublicationGateResult(
             command=as_str(fields["command"], field="command"),
@@ -182,6 +273,7 @@ def _load_record(root: Path) -> PublicationGateResult | None:
             route_backs=as_int(fields.get("route_backs", 0), field="route_backs"),
             failure_signature=signature,
             inconclusive_runs=as_int(fields.get("inconclusive_runs", 0), field="inconclusive_runs"),
+            invocation_error=invocation_error,
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -212,6 +304,7 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "route_backs": result.route_backs,
         "failure_signature": result.failure_signature,
         "inconclusive_runs": result.inconclusive_runs,
+        "invocation_error": result.invocation_error,
     }
 
 
@@ -223,9 +316,10 @@ def check_publication_gate(
     runner: GateRunner | None = None,
     tree_of: TreeLookup | None = None,
 ) -> PublicationGateResult | None:
-    command = declared_publication_gate(root)
-    if command is None:
+    declaration = resolve_publication_gate(root)
+    if declaration is None:
         return None
+    command = declaration.gate_key
     tree_sha = (tree_of or _tree_of)(root, feature_sha)
     previous = _load_record(root)
     if (
@@ -236,8 +330,19 @@ def check_publication_gate(
         and (not previous.inconclusive or previous.inconclusive_runs >= MAX_INCONCLUSIVE_GATE_RUNS)
     ):
         return previous
+    if declaration.command is None:
+        return _record_misconfigured_gate(root, declaration, tree_sha, previous)
     logger.info("Running the publication gate `{}` on tree {}", command, tree_sha)
     run = (runner or _run_gate_command)(command, root, timeout_seconds)
+    invocation_error = _invocation_error(run)
+    if invocation_error:
+        logger.error(
+            "Publication gate `{}` declared at {} could not run: {}; this is a policy error, "
+            "not a code failure",
+            command,
+            declaration.source,
+            invocation_error,
+        )
     result = PublicationGateResult(
         command=command,
         tree_sha=tree_sha,
@@ -260,6 +365,7 @@ def check_publication_gate(
         consecutive_failures=failures,
         route_backs=0 if result.passed else route_backs,
         failure_signature=signature,
+        invocation_error=invocation_error,
     )
     if not result.passed:
         logger.warning(
@@ -299,6 +405,32 @@ def _record_inconclusive_run(
     return recorded
 
 
+def _record_misconfigured_gate(
+    root: Path,
+    declaration: GateDeclaration,
+    tree_sha: str,
+    previous: PublicationGateResult | None,
+) -> PublicationGateResult:
+    problem = (
+        f"publication gate declared at {declaration.source} is misconfigured: {declaration.problem}"
+    )
+    if previous is None or previous.invocation_error != problem:
+        logger.error(
+            "{}; the run's commits stay unpublished until the policy declares a runnable command",
+            problem,
+        )
+    result = PublicationGateResult(
+        command=declaration.gate_key,
+        tree_sha=tree_sha,
+        exit_code=_INVOCATION_EXIT_CODE,
+        timed_out=False,
+        output_tail=problem,
+        invocation_error=problem,
+    )
+    _save_record(root, result)
+    return result
+
+
 def last_publication_gate_result(root: Path) -> PublicationGateResult | None:
     return _load_record(root)
 
@@ -319,6 +451,14 @@ def publication_gate_refusal(
     result = check_publication_gate(root, feature_sha)
     if result is None or result.block is None:
         return None
+    if result.invocation_error:
+        return (
+            WaitingOutcome(
+                external_condition=f"publication gate is misconfigured: {result.invocation_error}",
+                resumes_when="the verification policy declares a runnable gate command",
+            ),
+            result.block,
+        )
     verdict = "timed out" if result.timed_out else f"failed (exit {result.exit_code})"
     return (
         WaitingOutcome(
@@ -429,6 +569,7 @@ __all__ = [
     "MAX_INCONCLUSIVE_GATE_RUNS",
     "MAX_PUBLICATION_GATE_FAILURES",
     "PUBLICATION_GATE_TIMEOUT_SECONDS",
+    "GateDeclaration",
     "GateRunner",
     "PublicationBlock",
     "PublicationGateFailed",
@@ -445,4 +586,5 @@ __all__ = [
     "publication_gate_loop_phase",
     "publication_gate_record_path",
     "publication_gate_refusal",
+    "resolve_publication_gate",
 ]

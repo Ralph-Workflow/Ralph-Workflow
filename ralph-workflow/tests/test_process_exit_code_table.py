@@ -80,6 +80,10 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.publication_gate_syntax": (
+        "the reviewed process-label inventory now includes the publication gate's sh -n "
+        "syntax check, so the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.detached_head_branch_tip": (
         "the reviewed process-label inventory now includes the detached-HEAD branch-tip "
         "probe, so the pinned digest of emitted labels changes"
@@ -115,10 +119,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "84df110d0bdd05a1fc63d0e1eaa84d305ad09d66f9726eb98f89dc26f7fd445c"
+    "2f9bfcd78da3410faca7cee697d887811970cfbdcec389abd0cb5966f3773aec"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds git-detached-head-branch-tip (rev-parse --verify of a "
+    "The reviewed inventory adds publication-gate-syntax (sh -n of the declared gate "
+    "command; rc=2 is the shell's answer that the declaration is not a command), "
+    "git-detached-head-branch-tip (rev-parse --verify of a "
     "candidate branch for a detached HEAD; rc=128 is git's answer when that branch does not "
     "exist), shared-config-guard:restore (git config --file on the "
     "shared config after an agent attempt broke core.bare or core.worktree; any nonzero "

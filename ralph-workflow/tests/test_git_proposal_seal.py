@@ -30,6 +30,14 @@ from ralph.pipeline.run_loop import resolve_initial_state
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state.cpu_budget": (
+        "the crash-at-every-step test replays the whole rollback once per step and costs "
+        "0.8-0.9 CPU s alone on main, so it failed the 1 s default budget twice in full "
+        "verify runs under host contention; a 3 s budget keeps the same assertions"
+    ),
+}
+
 _DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 _ROLLBACK_CRASH_STEPS: tuple[str, ...] = (
@@ -301,6 +309,7 @@ def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
     assert oct(added_exec.stat().st_mode)[-3:] == "755"
 
 
+@pytest.mark.timeout_seconds(3)
 def test_a_crash_at_every_rollback_step_resumes_to_the_same_end_state(
     tmp_path: Path,
     setup_repo: Callable[[Path], Repo],
