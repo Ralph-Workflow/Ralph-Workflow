@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ast
+import multiprocessing
+import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -163,6 +166,20 @@ _WHITEBOX_CATEGORIES: tuple[str, ...] = (
 )
 WhiteboxCounts = dict[str, int]
 WhiteboxBaseline = Mapping[str, Mapping[str, int]]
+_AUDIT_FORK_CONTEXT = multiprocessing.get_context("fork")
+_AUDIT_WORKER_CAP = 8
+_AUDIT_PARALLEL_THRESHOLD = 64
+
+
+class _WorkerState:
+    __slots__ = ("baseline", "e2e_stems")
+
+    def __init__(self) -> None:
+        self.baseline: WhiteboxBaseline = {}
+        self.e2e_stems: frozenset[str] = frozenset()
+
+
+_WORKER_STATE = _WorkerState()
 
 
 class TestPolicyViolation:
@@ -218,6 +235,7 @@ class TestPolicyAuditor:
         tree: ast.AST | None = None,
         *,
         monkeypatch_patterns: Collection[str] | None = None,
+        subprocess_e2e_stems: Collection[str] | None = None,
     ) -> None:
         self.file_path = file_path
         self.source_lines = source.splitlines()
@@ -227,9 +245,8 @@ class TestPolicyAuditor:
         parsed_tree = tree if tree is not None else ast.parse(source, filename=file_path)
         patterns = _MONKEYPATCH_PATTERNS if monkeypatch_patterns is None else monkeypatch_patterns
         self.facts = analyze_module(parsed_tree, monkeypatch_patterns=patterns)
-        self._is_subprocess_e2e = (
-            stem in _SUBPROCESS_E2E_FILES or self.facts.has_subprocess_e2e_marker
-        )
+        e2e_stems = _SUBPROCESS_E2E_FILES if subprocess_e2e_stems is None else subprocess_e2e_stems
+        self._is_subprocess_e2e = stem in e2e_stems or self.facts.has_subprocess_e2e_marker
         self._skip_sleep = stem in _SLEEP_ALLOWLIST or self._is_subprocess_e2e
         self._skip_io = stem in _IO_ALLOWLIST or self._is_subprocess_e2e
         self._skip_wall_clock = stem in _WALL_CLOCK_ALLOWLIST or self._is_subprocess_e2e
@@ -576,6 +593,7 @@ def audit_test_file(
     baseline: WhiteboxBaseline | None = None,
     baseline_key: str | None = None,
     inventory: AuditInventory | None = None,
+    subprocess_e2e_stems: Collection[str] | None = None,
 ) -> list[TestPolicyViolation]:
     if not file_path.is_file() or file_path.suffix != ".py":
         return []
@@ -589,7 +607,12 @@ def audit_test_file(
     except (OSError, UnicodeDecodeError, SyntaxError):
         return []
 
-    auditor = TestPolicyAuditor(str(file_path), source, tree)
+    auditor = TestPolicyAuditor(
+        str(file_path),
+        source,
+        tree,
+        subprocess_e2e_stems=subprocess_e2e_stems,
+    )
     effective_baseline = WHITEBOX_BASELINE if baseline is None else baseline
     auditor.violations.extend(
         audit_whitebox_ratchet(
@@ -606,6 +629,55 @@ def audit_test_file(
     return auditor.violations
 
 
+def _init_audit_worker(
+    e2e_stems: frozenset[str],
+    baseline: WhiteboxBaseline,
+) -> None:
+    _WORKER_STATE.baseline = baseline
+    _WORKER_STATE.e2e_stems = e2e_stems
+
+
+def _audit_file_task(
+    task: tuple[str, str],
+) -> tuple[list[tuple[int, str, str]], frozenset[str], dict[str, int]]:
+    file_path_str, baseline_key = task
+    path = Path(file_path_str)
+    inventory = AuditInventory()
+    violations = audit_test_file(
+        path,
+        baseline=_WORKER_STATE.baseline,
+        baseline_key=baseline_key,
+        inventory=inventory,
+        subprocess_e2e_stems=_WORKER_STATE.e2e_stems,
+    )
+    return (
+        [(violation.line, violation.category, violation.detail) for violation in violations],
+        frozenset(inventory.module_markers),
+        dict(inventory.counts.get(baseline_key, {})),
+    )
+
+
+def _audit_files(
+    work: Sequence[tuple[Path, str]],
+    e2e_stems: frozenset[str],
+    baseline: WhiteboxBaseline,
+) -> list[tuple[list[tuple[int, str, str]], frozenset[str], dict[str, int]]]:
+    if not work:
+        return []
+    tasks = [(str(path), key) for path, key in work]
+    if len(tasks) < _AUDIT_PARALLEL_THRESHOLD:
+        _init_audit_worker(e2e_stems, baseline)
+        return [_audit_file_task(task) for task in tasks]
+    workers = min(_AUDIT_WORKER_CAP, os.cpu_count() or 1, len(tasks))
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=_AUDIT_FORK_CONTEXT,
+        initializer=_init_audit_worker,
+        initargs=(e2e_stems, baseline),
+    ) as pool:
+        return list(pool.map(_audit_file_task, tasks, chunksize=32))
+
+
 def audit_tests_directory(
     tests_root: Path,
     *,
@@ -619,6 +691,7 @@ def audit_tests_directory(
     all_violations: list[TestPolicyViolation] = []
     files_checked = 0
 
+    work: list[tuple[Path, str]] = []
     for py_file in _iter_test_files(tests_root):
         if py_file.name in ("test_process_audit.py", "audit_test_policy.py"):
             collector.existing_paths.add(_baseline_key(py_file, tests_root))
@@ -626,14 +699,25 @@ def audit_tests_directory(
         if "/fixtures/" in py_file.as_posix():
             collector.existing_paths.add(_baseline_key(py_file, tests_root))
             continue
-        violations = audit_test_file(
-            py_file,
-            baseline=baseline,
-            baseline_key=_baseline_key(py_file, tests_root),
-            inventory=collector,
-        )
-        if violations:
-            all_violations.extend(violations)
+        work.append((py_file, _baseline_key(py_file, tests_root)))
+
+    e2e_stems = frozenset(_SUBPROCESS_E2E_FILES)
+    effective_baseline = WHITEBOX_BASELINE if baseline is None else baseline
+    results = _audit_files(work, e2e_stems, effective_baseline)
+    for (py_file, key), (raw_violations, markers, counts) in zip(work, results, strict=True):
+        collector.existing_paths.add(key)
+        collector.module_markers = set(markers)
+        if any(count > 0 for count in counts.values()):
+            collector.counts[key] = counts
+        for line, category, detail in raw_violations:
+            all_violations.append(
+                TestPolicyViolation(
+                    file_path=str(py_file),
+                    line=line,
+                    category=category,
+                    detail=detail,
+                )
+            )
         if (
             "smoke" in py_file.stem.lower()
             and py_file.stem not in _SMOKE_NAME_ALLOWLIST
