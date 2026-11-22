@@ -18,6 +18,7 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 from ralph.pipeline.events.publication_gate_failed_event import PublicationGateFailed
+from ralph.pipeline.gate_declaration import GateDeclaration
 from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.publication_gate_run import PublicationGateRun
 from ralph.pipeline.publication_gate_slots import publication_gate_slot
@@ -228,18 +229,6 @@ TreeLookup = Callable[[Path, str], str]
 
 def publication_gate_record_path(root: Path) -> Path:
     return root / _RECORD_PATH
-
-
-@dataclass(frozen=True)
-class GateDeclaration:
-    value: str
-    source: str
-    command: str | None
-    problem: str = ""
-
-    @property
-    def gate_key(self) -> str:
-        return self.command if self.command is not None else self.value
 
 
 _PARSEABLE_COMMANDS: deque[str] = deque(maxlen=64)

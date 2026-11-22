@@ -1767,6 +1767,13 @@ ralph.pipeline.publication_gate
    :members:
    :show-inheritance:
 
+ralph.pipeline.gate_declaration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.gate_declaration
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.publication_gate_run
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2581,6 +2588,13 @@ ralph.agents.invoke.completion_quiesce
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.invoke.completion_quiesce
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.completion_quiesce_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.completion_quiesce_decision
    :members:
    :show-inheritance:
 

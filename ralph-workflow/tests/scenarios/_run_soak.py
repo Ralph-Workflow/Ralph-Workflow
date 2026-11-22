@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import subprocess
-from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +11,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.checked_accessors import as_mapping, as_str
 from ralph.cli.commands import run as run_command
 from ralph.cli.commands.run import RunPipelineRequest, load_resume_state
 from ralph.config.enums import Verbosity
@@ -23,20 +23,18 @@ from ralph.pipeline.auto_integrate_catchup import start_catchup_worker_if_enable
 from ralph.policy.loader import cached_default_policy_bundle
 from ralph.project_policy.markers import OPT_OUT_MARKER
 from ralph.prompts.materialize import materialize_prompt_for_phase
-from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME
 from ralph.workspace.scope import resolve_workspace_scope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests.plan_fixtures import (
-    MINIMAL_PLAN_MARKDOWN,
-    commit_review_markdown,
-    development_result_markdown,
-)
+from tests.scenarios._run_soak_agent_call import AgentCall
+from tests.scenarios._run_soak_interrupt import Interrupt
+from tests.scenarios._run_soak_observer_state import RunObserver
+from tests.scenarios._run_soak_outcome import RunOutcome
+from tests.scenarios._run_soak_scripted_agent import ScriptedAgent
+from tests.scenarios._run_soak_violation import SoakViolation
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
-    from ralph.agents.invoke import InvokeOptions
-    from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
     from ralph.pipeline.state import PipelineState
@@ -63,24 +61,8 @@ _GATE_POLICY = "docs/ralph-workflow-policy/verification-policy.md"
 _GATE_FACT = "RALPH-FACT: authoritative_verify_command:"
 _GIT_TIMEOUT_SECONDS = 60
 _INTERRUPTED_EXIT = 130
-_REPEAT_LIMIT = 5
-_STALL_LIMIT = 40
-_STEP_LIMIT = 300
 _GENERIC_CAUSES = frozenset({"", "unknown error", "unknown failure", "error", "failed"})
 _ENGINE_PATHS = (".agent/", "checkpoint.json")
-_VOLATILE_STATE_KEYS = frozenset(
-    {
-        "metrics",
-        "recovery_epoch",
-        "ledger_snapshot",
-        "agent_cooldowns",
-        "phase_timings",
-        "dev_timebox_consumed_seconds",
-        "dev_timebox_started_at",
-        "cycle_timebox_consumed_seconds",
-        "cycle_timebox_started_at",
-    }
-)
 _CRITERIA = (
     "parallel decomposition",
     "coverage",
@@ -152,230 +134,6 @@ def _commit_message(subject: str) -> str:
     )
 
 
-class SoakViolation(KeyboardInterrupt):
-    pass
-
-
-@dataclass(frozen=True)
-class AgentCall:
-    phase: str
-    nth: int
-    prompt: str
-
-
-@dataclass(frozen=True)
-class Interrupt:
-    kind: str
-    phase: str
-    nth: int = 1
-
-
-@dataclass(frozen=True)
-class _Progress:
-    phase: str
-    cycle: int
-    target_sha: str
-    head_sha: str
-
-
-def _state_signature(state: PipelineState) -> str:
-    payload = state.model_dump(mode="json")
-    return json.dumps(
-        {key: value for key, value in payload.items() if key not in _VOLATILE_STATE_KEYS},
-        sort_keys=True,
-        default=str,
-    )
-
-
-def _cycle(state: PipelineState) -> int:
-    return sum(int(value) for value in state.outer_progress.values())
-
-
-@dataclass
-class RunObserver:
-    soak: SoakRun
-    interrupt_at: Interrupt | None = None
-    steps: int = 0
-    waits: int = 0
-    interrupted_by: str | None = None
-    violation: str | None = None
-    last_state: PipelineState | None = None
-    trail: list[str] = field(default_factory=list)
-    signatures: Counter[tuple[str, str]] = field(default_factory=Counter)
-    phase_entries: Counter[str] = field(default_factory=Counter)
-    progress: _Progress | None = None
-    since_progress: int = 0
-
-    @property
-    def interrupted(self) -> bool:
-        return self.interrupted_by is not None
-
-    @property
-    def persisted_phase(self) -> str | None:
-        if self.last_state is None or self.interrupted_by == "step":
-            return None
-        return str(self.last_state.phase)
-
-    def notify(self, state: PipelineState) -> None:
-        self._raise_if_violated()
-        self.steps += 1
-        phase = str(state.phase)
-        previous = self.last_state
-        self.last_state = state
-        self.phase_entries[phase] += 1
-        self.trail.append(f"step {self.steps}: {phase} {state.last_error or ''}".rstrip())
-        key = (phase, _state_signature(state))
-        self.signatures[key] += 1
-        if self.signatures[key] > _REPEAT_LIMIT:
-            self._violate(
-                f"phase {phase} repeated one state {self.signatures[key]} times without an "
-                "agent invocation or a state change"
-            )
-        if previous is None or str(previous.phase) != phase or _cycle(previous) != _cycle(state):
-            self._record_progress(None)
-        else:
-            self._record_progress(
-                _Progress(
-                    phase,
-                    _cycle(state),
-                    self.soak.target_sha(),
-                    git(self.soak.root, "rev-parse", "HEAD"),
-                )
-            )
-        self._tick(phase)
-        self._maybe_interrupt("step", phase, self.phase_entries[phase])
-
-    def sleep(self, seconds: float) -> None:
-        self._raise_if_violated()
-        self.soak.clock.advance(seconds)
-        self.waits += 1
-        self.trail.append(f"wait {seconds:.1f}s")
-        self._tick(f"wait {seconds:.1f}s")
-        self._maybe_interrupt("sleep", "*", self.waits)
-
-    def agent(self, call: AgentCall) -> None:
-        self._raise_if_violated()
-        self.trail.append(f"agent {call.phase} #{call.nth}")
-        self.signatures.clear()
-        self._maybe_interrupt("agent", call.phase, call.nth)
-
-    def log(self, message: str) -> None:
-        self.trail.append(message.strip())
-
-    def _record_progress(self, progress: _Progress | None) -> None:
-        if progress is None or progress != self.progress:
-            self.progress = progress
-            self.since_progress = 0
-
-    def _maybe_interrupt(self, kind: str, phase: str, nth: int) -> None:
-        if self.interrupt_at != Interrupt(kind, phase, nth):
-            return
-        self.interrupt_at = None
-        self.interrupted_by = kind
-        self.trail.append(f"interrupt during {kind} {phase} #{nth}")
-        raise KeyboardInterrupt
-
-    def _tick(self, label: str) -> None:
-        self.since_progress += 1
-        if self.since_progress > _STALL_LIMIT:
-            self._violate(
-                f"no phase, cycle, commit or landing progress within {_STALL_LIMIT} loop "
-                f"steps (last: {label})"
-            )
-        if self.steps + self.waits > _STEP_LIMIT:
-            self._violate(f"the run exceeded {_STEP_LIMIT} loop steps")
-
-    def _violate(self, message: str) -> None:
-        self.violation = message
-        raise SoakViolation(message)
-
-    def _raise_if_violated(self) -> None:
-        if self.violation is not None:
-            raise SoakViolation(self.violation)
-
-
-@dataclass
-class ScriptedAgent:
-    soak: SoakRun
-    observer: RunObserver
-    calls: Counter[str] = field(default_factory=Counter)
-    phases: list[str] = field(default_factory=list)
-
-    def __call__(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-        _clock: object = None,
-    ) -> Iterator[str]:
-        del config, _clock
-        prompt_path = Path(prompt_file)
-        if prompt_path.name == CANARY_PROMPT_FILENAME:
-            return iter(["ok\n"])
-        phase = (options.phase if options is not None else None) or prompt_path.stem
-        self.calls[phase] += 1
-        self.phases.append(phase)
-        absolute = prompt_path if prompt_path.is_absolute() else self.soak.root / prompt_path
-        prompt = absolute.read_text(encoding="utf-8") if absolute.is_file() else ""
-        call = AgentCall(phase, self.calls[phase], prompt)
-        self.observer.agent(call)
-        hook = self.soak.hooks.get((phase, call.nth))
-        if hook is None or not hook(self.soak, call):
-            self._act(call)
-        return iter([f"{phase} done\n"])
-
-    def _act(self, call: AgentCall) -> None:
-        root = self.soak.root
-        artifacts = root / ".agent" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
-        if call.phase == "planning":
-            (artifacts / "plan.md").write_text(MINIMAL_PLAN_MARKDOWN, encoding="utf-8")
-        elif call.phase == "planning_analysis":
-            (artifacts / "planning_analysis_decision.md").write_text(
-                _PLANNING_DECISION, encoding="utf-8"
-            )
-        elif call.phase == "development_analysis":
-            (artifacts / "development_analysis_decision.md").write_text(
-                _DEVELOPMENT_DECISION, encoding="utf-8"
-            )
-        elif call.phase == "development":
-            (root / WORK_FILE).write_text(f"VALUE = {call.nth}\n", encoding="utf-8")
-            if "Publication gate" in call.prompt:
-                (root / "gate-ok").write_text("fixed\n", encoding="utf-8")
-            (artifacts / "development_result.md").write_text(
-                development_result_markdown("example"), encoding="utf-8"
-            )
-        elif call.phase.endswith("commit_review"):
-            (artifacts / "commit_review.md").write_text(
-                commit_review_markdown((), tree_sha=self.soak.commit_review_tree()),
-                encoding="utf-8",
-            )
-        elif call.phase.endswith("commit"):
-            (artifacts / "commit_message.md").write_text(
-                _commit_message(f"feat: soak change {call.nth}"), encoding="utf-8"
-            )
-        else:
-            self.soak.resolve_conflicts()
-
-
-@dataclass(frozen=True)
-class RunOutcome:
-    exit_code: int | None
-    error: KeyboardInterrupt | None
-    observer: RunObserver
-    phases: tuple[str, ...]
-    final_state: PipelineState | None
-
-    def describe(self) -> str:
-        saved = self.final_state.phase if self.final_state is not None else None
-        tail = "\n".join(self.observer.trail[-40:])
-        return (
-            f"exit={self.exit_code} error={self.error!r} violation={self.observer.violation}\n"
-            f"checkpoint phase={saved} agent phases={list(self.phases)}\nlast trail:\n{tail}"
-        )
-
-
 @dataclass
 class SoakRun:
     base: Path
@@ -444,7 +202,9 @@ class SoakRun:
 
     def commit_review_tree(self) -> str:
         context = self.root / ".agent" / "tmp" / "commit_review_context.json"
-        return str(json.loads(context.read_text(encoding="utf-8"))["tree_sha"])
+        payload: object = json.loads(context.read_text(encoding="utf-8"))
+        mapping = as_mapping(payload, field="commit review context")
+        return as_str(mapping.get("tree_sha"), field="commit review tree")
 
     def resolve_conflicts(self) -> None:
         unmerged = git(self.root, "diff", "--name-only", "--diff-filter=U").splitlines()

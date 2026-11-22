@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
+from ralph.agents.invoke.completion_quiesce_decision import CompletionQuiesceDecision
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import atomic_write_text_if_changed
 
@@ -14,12 +14,6 @@ if TYPE_CHECKING:
 
 PARTIAL_CHILD_EDITS_PATH: Final[str] = ".agent/tmp/partial_child_edits.json"
 CHILD_ACTIVITY_WINDOW_SECONDS: Final[float] = 60.0
-
-
-class CompletionQuiesceDecision(StrEnum):
-    WAIT = "wait"
-    TEARDOWN = "teardown"
-    TEARDOWN_PARTIAL = "teardown_partial"
 
 
 @dataclass

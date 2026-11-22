@@ -13,11 +13,10 @@ if TYPE_CHECKING:
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
 
-ROOT = Path("/workspace")
 CHAIN = ("first", "second")
-DECLARATION = ROOT / ".agent" / "tmp" / "pending_commit_repair_paths.json"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_truthy_invocation_without_a_repair_is_an_unproductive_attempt": "the production handoff validates its target worktree, so the test now supplies the real Git repository fixture required by that public boundary",
     "test_declared_repair_is_a_verified_artifact_and_never_starts_a_cooldown": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_declared_repair_is_a_verified_artifact_and_is_never_benched with an unchanged body"
     ),
@@ -27,6 +26,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_agent_that_raises_cools_down_too": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_agent_that_raises_is_benched_too with an unchanged body"
     ),
+    "test_false_invocation_with_a_verified_artifact_is_not_a_failure": "the production handoff validates its target worktree, so the test now supplies the real Git repository fixture required by that public boundary",
+    "test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt": "the production handoff validates its target worktree, so the test now supplies the real Git repository fixture required by that public boundary",
+    "test_agent_returns_after_its_cooldown": "the production handoff validates its target worktree, so the test now supplies the real Git repository fixture required by that public boundary",
+    "test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldown": "the production handoff validates its target worktree, so the test now supplies the real Git repository fixture required by that public boundary",
     "test_integration_phase_standing_does_not_leak_into_other_phases": (
         "operator rule: an agent is either on cooldown or not; the cooldown is keyed by agent "
         "only, so a resolution unproductive_limit cooldown also applies in development, and "
@@ -65,6 +68,7 @@ def _record() -> IntegrationRecord:
 
 
 def _run(
+    root: Path,
     backend: _RecordBackend,
     controller: RecoveryController,
     invoked: list[str],
@@ -78,13 +82,14 @@ def _run(
         if raises:
             raise RuntimeError("quota: You've hit your usage limit")
         if declares_repair:
-            backend.write_text(DECLARATION, '["src/fixed.py"]')
+            declaration = root / ".agent" / "tmp" / "pending_commit_repair_paths.json"
+            backend.write_text(declaration, '["src/fixed.py"]')
         return succeeds
 
-    raw = backend.read_bytes(record_path(ROOT)) if backend.exists(record_path(ROOT)) else None
+    raw = backend.read_bytes(record_path(root)) if backend.exists(record_path(root)) else None
     record = IntegrationRecord.model_validate_json(raw) if raw is not None else _record()
     return handoff_pending_merge_repair(
-        root=ROOT,
+        root=root,
         record=record,
         failure="pre-commit: formatter executable missing",
         agents=CHAIN,
@@ -100,109 +105,130 @@ def _controller(
     return RecoveryController(options=RecoveryControllerOptions(clock=clock, workspace_probe=probe))
 
 
-def test_truthy_invocation_without_a_repair_is_an_unproductive_attempt() -> None:
+def test_truthy_invocation_without_a_repair_is_an_unproductive_attempt(
+    tmp_git_repo: Path,
+) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
 
     for _ in range(3):
-        _run(backend, controller, invoked, succeeds=True)
-    _run(backend, controller, invoked, succeeds=True)
+        _run(tmp_git_repo, backend, controller, invoked, succeeds=True)
+    _run(tmp_git_repo, backend, controller, invoked, succeeds=True)
 
     assert invoked == ["first", "first", "first", "second"]
 
 
-def test_declared_repair_is_a_verified_artifact_and_never_starts_a_cooldown() -> None:
+def test_declared_repair_is_a_verified_artifact_and_never_starts_a_cooldown(
+    tmp_git_repo: Path,
+) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
 
     for _ in range(12):
-        _run(backend, controller, invoked, declares_repair=True)
+        _run(tmp_git_repo, backend, controller, invoked, declares_repair=True)
 
     assert invoked == ["first"] * 12
 
 
-def test_agent_that_changes_the_workspace_cools_down_only_at_the_total_limit() -> None:
+def test_agent_that_changes_the_workspace_cools_down_only_at_the_total_limit(
+    tmp_git_repo: Path,
+) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock(), probe=_ChangingWorkspaceProbe())
 
     for _ in range(9):
-        _run(backend, controller, invoked)
-    _run(backend, controller, invoked)
+        _run(tmp_git_repo, backend, controller, invoked)
+    _run(tmp_git_repo, backend, controller, invoked)
 
     assert invoked == ["first"] * 9 + ["second"]
 
 
-def test_false_invocation_with_a_verified_artifact_is_not_a_failure() -> None:
+def test_false_invocation_with_a_verified_artifact_is_not_a_failure(
+    tmp_git_repo: Path,
+) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
 
     for _ in range(4):
-        _run(backend, controller, invoked, succeeds=False, declares_repair=True)
+        _run(
+            tmp_git_repo,
+            backend,
+            controller,
+            invoked,
+            succeeds=False,
+            declares_repair=True,
+        )
 
     assert invoked == ["first"] * 4
 
 
-def test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt() -> None:
+def test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt(
+    tmp_git_repo: Path,
+) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
     for _ in range(3):
-        _run(backend, controller, invoked)
+        _run(tmp_git_repo, backend, controller, invoked)
     for _ in range(3):
-        _run(backend, controller, invoked)
-    before = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(ROOT)))
+        _run(tmp_git_repo, backend, controller, invoked)
+    before = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(tmp_git_repo)))
 
     for _ in range(20):
-        assert _run(backend, controller, invoked) is False
+        assert _run(tmp_git_repo, backend, controller, invoked) is False
 
-    after = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(ROOT)))
+    after = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(tmp_git_repo)))
     assert invoked == ["first"] * 3 + ["second"] * 3
     assert after.merge_commit_repair_attempts == before.merge_commit_repair_attempts
     assert after.merge_commit_pending is True
     assert after.merge_commit_tree == "tree"
 
 
-def test_agent_that_raises_cools_down_too() -> None:
+def test_agent_that_raises_cools_down_too(tmp_git_repo: Path) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     controller = _controller(FakeClock())
 
     for _ in range(3):
-        _run(backend, controller, invoked, raises=True)
-    _run(backend, controller, invoked)
+        _run(tmp_git_repo, backend, controller, invoked, raises=True)
+    _run(tmp_git_repo, backend, controller, invoked)
 
     assert invoked == ["first", "first", "first", "second"]
 
 
-def test_agent_returns_after_its_cooldown() -> None:
+def test_agent_returns_after_its_cooldown(tmp_git_repo: Path) -> None:
     backend = _RecordBackend()
     invoked: list[str] = []
     clock = FakeClock()
     controller = _controller(clock)
     for _ in range(3):
-        _run(backend, controller, invoked)
+        _run(tmp_git_repo, backend, controller, invoked)
 
     clock.advance(3600.0)
-    _run(backend, controller, invoked)
+    _run(tmp_git_repo, backend, controller, invoked)
 
     assert invoked == ["first", "first", "first", "first"]
 
 
-def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldown() -> None:
+def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldown(
+    tmp_git_repo: Path,
+) -> None:
     controller = _controller(FakeClock())
     invoked: list[str] = []
 
     for _ in range(12):
-        _run(_RecordBackend(), controller, invoked, declares_repair=True)
+        _run(tmp_git_repo, _RecordBackend(), controller, invoked, declares_repair=True)
 
     assert invoked == ["first"] * 12
 
 
-def test_integration_cooldown_applies_in_every_phase_until_it_expires() -> None:
+def test_integration_cooldown_applies_in_every_phase_until_it_expires(
+    tmp_git_repo: Path,
+) -> None:
     from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
     from ralph.recovery.agent_failure_ledger import Cooldown
 
@@ -211,7 +237,7 @@ def test_integration_cooldown_applies_in_every_phase_until_it_expires() -> None:
     clock = FakeClock()
     controller = _controller(clock)
     for _ in range(3):
-        _run(backend, controller, invoked)
+        _run(tmp_git_repo, backend, controller, invoked)
 
     resolution_status = controller.ledger.status(PHASE_RESOLUTION, "first")
     assert isinstance(resolution_status, Cooldown)

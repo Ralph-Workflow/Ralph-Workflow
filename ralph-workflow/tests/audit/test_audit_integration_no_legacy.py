@@ -13,6 +13,10 @@ from ralph.testing.audit_integration_no_legacy import (
     selftest,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_audit_tree_ignores_generated_and_runtime_directories": "the repository-wide source audit must ignore the canonical Sphinx output tree that the verification workflow generates before invoking the audit",
+}
+
 
 def test_audit_integration_no_legacy_selftest() -> None:
     assert selftest() == 0
@@ -234,7 +238,14 @@ def test_audit_tree_exempts_root_prompt_specification_only(tmp_path: Path) -> No
 
 def test_audit_tree_ignores_generated_and_runtime_directories(tmp_path: Path) -> None:
     _project_layout(tmp_path)
-    for relative in (".venv/lib", "tmp", ".agent/raw", ".pi-subagents", ".mypy_cache"):
+    for relative in (
+        ".venv/lib",
+        "tmp",
+        ".agent/raw",
+        ".pi-subagents",
+        ".mypy_cache",
+        "ralph-workflow/docs/sphinx/_build/html",
+    ):
         directory = tmp_path / relative
         directory.mkdir(parents=True)
         (directory / "planted.md").write_text(f"phase `{_STEM}` is retired\n", encoding="utf-8")

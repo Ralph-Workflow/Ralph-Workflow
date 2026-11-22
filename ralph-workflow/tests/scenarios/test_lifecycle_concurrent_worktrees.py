@@ -28,6 +28,10 @@ pytestmark = [
 ]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_young_lock_the_probe_cannot_clear_ends_the_tick_in_a_bounded_status": (
+        "the scenario creates a Linux non-dumpable process and relies on /proc process "
+        "inspection, so its existing environment guard now matches that Linux-only boundary"
+    ),
     "test_a_stale_lock_on_the_shared_target_is_recovered_and_both_siblings_land": (
         "the stale-lock cell now bounds the same operator lines and failed landings "
         "the concurrent cell bounds, so a recovery that repeats its landing report "
@@ -357,8 +361,8 @@ def test_a_worktree_that_crashed_mid_operation_recovers_its_lock_and_lands(
 
 
 @pytest.mark.skipif(
-    sys.platform != "win32" and os.geteuid() == 0,
-    reason="a root host can disprove every lock holder, so a young lock never stays unproven",
+    not sys.platform.startswith("linux") or os.geteuid() == 0,
+    reason="requires Linux /proc inspection as a non-root user",
 )
 def test_a_young_lock_the_probe_cannot_clear_ends_the_tick_in_a_bounded_status(
     tmp_git_repo: Path,

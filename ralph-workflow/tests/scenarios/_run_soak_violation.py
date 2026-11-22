@@ -1,0 +1,2 @@
+class SoakViolation(KeyboardInterrupt):
+    pass

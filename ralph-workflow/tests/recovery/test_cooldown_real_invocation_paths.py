@@ -52,11 +52,13 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integration_diagnostic_no_activity_real_handoff_cools_and_falls_back": "the production diagnostic verifies Git state through its public boundary, so the black-box test uses an initialized repository fixture",
+    "test_pending_merge_repair_no_activity_real_handoff_cools_and_falls_back": "the production handoff now validates its target worktree, so the black-box test supplies the repository fixture required by that public boundary instead of a nonexistent absolute path",
     "test_conflict_resolution_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
-    "test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back": "the production diagnostic verifies Git state through its public boundary, so the black-box regression uses an initialized repository fixture; the ledger unproductive limit starts an expiring cooldown with reason unproductive_limit",
     "test_ledger_only_cooldown_emits_cooldown_decision_with_duration_and_expiry": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
 }
 
@@ -276,9 +278,10 @@ def test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back(
 
 
 def test_pending_merge_repair_no_activity_real_handoff_cools_and_falls_back(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root = Path("/workspace")
+    root = tmp_git_repo
     backend = _RecordBackend()
     clock = FakeClock()
     controller = _controller(clock)
@@ -350,9 +353,10 @@ def test_pending_merge_repair_no_activity_real_handoff_cools_and_falls_back(
 
 
 def test_integration_diagnostic_no_activity_real_handoff_cools_and_falls_back(
-    tmp_path: Path,
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    root = tmp_git_repo
     backend = _RecordBackend()
     clock = FakeClock()
     controller = _controller(clock)
@@ -367,9 +371,9 @@ def test_integration_diagnostic_no_activity_real_handoff_cools_and_falls_back(
         pre_feature_sha="0" * 40,
         pre_target_sha="1" * 40,
         resolving_rebase=True,
-        owning_worktree=str(tmp_path),
+        owning_worktree=str(root),
     )
-    write_record(tmp_path, record, backend=backend)
+    write_record(root, record, backend=backend)
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
@@ -386,16 +390,16 @@ def test_integration_diagnostic_no_activity_real_handoff_cools_and_falls_back(
         session=session,
         config=config,
         deps=deps,
-        workspace_scope=WorkspaceScope(tmp_path),
+        workspace_scope=WorkspaceScope(root),
         display_context=display_context,
     )
 
     def run_attempts() -> None:
         for _ in range(2):
-            stored = read_record(tmp_path, backend=backend)
+            stored = read_record(root, backend=backend)
             assert stored is not None
             handoff_integration_diagnostic(
-                root=tmp_path,
+                root=root,
                 record=stored,
                 failure="completion proof unavailable",
                 agents=_CHAIN,
@@ -487,8 +491,10 @@ def test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back(
     )
 
 
-def test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back() -> None:
-    root = Path("/workspace")
+def test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back(
+    tmp_git_repo: Path,
+) -> None:
+    root = tmp_git_repo
     backend = _RecordBackend()
     clock = FakeClock()
     controller = _controller(clock)
@@ -537,8 +543,9 @@ def test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back
 
 
 def test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back(
-    tmp_path: Path,
+    tmp_git_repo: Path,
 ) -> None:
+    root = tmp_git_repo
     backend = _RecordBackend()
     clock = FakeClock()
     controller = _controller(clock)
@@ -549,9 +556,9 @@ def test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_ba
         pre_feature_sha="0" * 40,
         pre_target_sha="1" * 40,
         resolving_rebase=True,
-        owning_worktree=str(tmp_path),
+        owning_worktree=str(root),
     )
-    write_record(tmp_path, record, backend=backend)
+    write_record(root, record, backend=backend)
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
@@ -562,10 +569,10 @@ def test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_ba
 
     def run_attempts() -> None:
         for _ in range(4):
-            stored = read_record(tmp_path, backend=backend)
+            stored = read_record(root, backend=backend)
             assert stored is not None
             handoff_integration_diagnostic(
-                root=tmp_path,
+                root=root,
                 record=stored,
                 failure="completion proof unavailable",
                 agents=_CHAIN,

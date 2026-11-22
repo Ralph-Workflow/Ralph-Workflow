@@ -39,6 +39,10 @@ from ralph.recovery.attempt_facts import TerminationIssuer
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_pty_tool_result_payload_after_completion_never_terminates": "the fake now reports process exit after writing so the reader exercises its final-buffer drain contract without Darwin discarding unread PTY output when the slave closes before the reader starts",
+}
+
 _QUOTA_WORDS = "Your account has credits exhausted for this period."
 
 _TOOL_AND_REASONING_LINES = (
@@ -540,7 +544,6 @@ def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Pat
     handle = _PtyHandle(master_fd)
     supervisor = AttemptSupervisor(handle, process_teardown=_NoopTeardown())
     reader = _pty_reader(tmp_path, handle, supervisor)
-    slave_closed = False
     try:
         outcome = supervisor.act(CompletionObserved())
         assert outcome is not None
@@ -549,18 +552,15 @@ def test_pty_tool_result_payload_after_completion_never_terminates(tmp_path: Pat
 
         line = _TOOL_RESULT_QUOTA_LINES[0] + "\n"
         os.write(slave_fd, line.encode("utf-8"))
-        os.close(slave_fd)
-        slave_closed = True
+        handle.returncode = 0
 
         assert list(reader.read_lines()) == [line]
         assert supervisor.recorder.termination() == facts_before
         assert handle.terminate_issuers == terminate_before
 
-        handle.returncode = 0
         assert handle.poll() == 0
     finally:
-        if not slave_closed:
-            os.close(slave_fd)
+        os.close(slave_fd)
         os.close(master_fd)
 
 

@@ -32,6 +32,13 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_resolution_executor_never_raises": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_direct_resolver_call_is_charged_against_the_conflict_budget": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_a_different_conflict_gets_its_own_resolver_budget": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_resolver_runs_when_no_rebase_state_is_threaded": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_the_merge_resolver_is_not_built_for_a_paused_rebase": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
+    "test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver": "the conflict-resolution entry now observes its target before dispatch, so the test supplies the real Git repository fixture required by that public boundary",
     "restored_gated_e6e382c62_version": (
         "4959fb143 rewrote these checks for a conflict-recovery redesign that is reverted; the file retu"
         "rns to the gated e6e382c62 version, which pins the restored behaviour"
@@ -316,9 +323,12 @@ def test_conflict_resolution_runs_even_when_startup_integration_defers(
     assert resolver.call_args.args[0] is ctx
 
 
-def test_conflict_resolution_executor_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_conflict_resolution_executor_never_raises(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
 
     def _boom(*_args: object, **_kwargs: object) -> NoReturn:
         raise RuntimeError("resolver exploded")
@@ -370,6 +380,7 @@ def test_blocked_dispatch_announcement_never_raises(monkeypatch: pytest.MonkeyPa
 
 
 def test_direct_resolver_call_is_charged_against_the_conflict_budget(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.pipeline.rebase_state import RebaseState
@@ -377,7 +388,7 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
 
     built: list[str] = []
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     ledger = AgentFailureLedger(clock=FakeClock(), consecutive_limit=1)
     ctx.controller = RecoveryController(
         options=RecoveryControllerOptions(clock=FakeClock(), ledger=ledger)
@@ -413,10 +424,11 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
 
 
 def test_a_paused_rebase_reaches_a_resolver_instead_of_being_dropped(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
@@ -552,7 +564,10 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
     assert resolved == ["resolver ran"]
 
 
-def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_different_conflict_gets_its_own_resolver_budget(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ralph.pipeline.auto_integrate_conflict_budget import (
         MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
@@ -561,7 +576,7 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.M
 
     built: list[str] = []
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
@@ -598,9 +613,12 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: pytest.M
     assert len(built) == 1
 
 
-def test_resolver_runs_when_no_rebase_state_is_threaded(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolver_runs_when_no_rebase_state_is_threaded(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
@@ -673,10 +691,11 @@ def test_an_unreadable_rebase_state_never_answers_no_rebase(
 
 
 def test_the_merge_resolver_is_not_built_for_a_paused_rebase(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
@@ -694,10 +713,11 @@ def test_the_merge_resolver_is_not_built_for_a_paused_rebase(
 
 
 def test_a_conflicted_index_owned_by_nothing_still_reaches_a_resolver(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ctx = MagicMock()
-    ctx.workspace_scope.root = Path("/workspace")
+    ctx.workspace_scope.root = tmp_git_repo
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )

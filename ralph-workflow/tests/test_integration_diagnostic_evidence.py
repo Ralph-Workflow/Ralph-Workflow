@@ -22,6 +22,10 @@ from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 _GIT_NOT_A_REPOSITORY_RETURNCODE = 128
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap": "the production diagnostic now validates and observes its target worktree before ladder escalation, so the test supplies the real Git repository fixture required by that black-box boundary",
+}
+
 
 def _not_a_git_repository(
     args: tuple[str, ...] | list[str],
@@ -276,10 +280,11 @@ def test_handoff_integration_diagnostic_honors_injected_collector(tmp_path: Path
 
 
 def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap(
+    tmp_git_repo: Path,
     tmp_path: Path,
 ) -> None:
     backend = _RecordBackend()
-    root = Path("/workspace")
+    root = tmp_git_repo
     ledger_path = tmp_path / "attempt-ledger.json"
     ledger = AttemptLedger(root, ledger_path=ledger_path)
     cap = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP

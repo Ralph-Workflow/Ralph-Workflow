@@ -20,6 +20,10 @@ from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 RALPH_TEST_CHANGE_REASONS = {
+    "test_repair_handoff_preserves_snapshot_and_rotates_after_failed_agent": (
+        "the production handoff validates its target worktree, so the test now supplies the "
+        "real Git repository fixture required by that public boundary"
+    ),
     "test_commit_repair_uses_supervised_resolution_session_and_retains_pending_state": (
         "resolver repair now uses the ordinary shared supervision profile instead of the retired "
         "resolver-only activity-only profile"
@@ -33,12 +37,13 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize("agent_fault", [False, True])
 @pytest.mark.parametrize("rebase", [False, True])
 def test_repair_handoff_preserves_snapshot_and_rotates_after_failed_agent(
+    tmp_git_repo: Path,
     agent_fault: bool,
     rebase: bool,
 ) -> None:
     from ralph.pipeline._pending_merge_repair import handoff_pending_merge_repair
 
-    root = Path("/workspace")
+    root = tmp_git_repo
     backend = _RecordBackend()
     record = IntegrationRecord(
         phase="integrating",
@@ -156,6 +161,7 @@ def test_runtime_recovery_waits_when_another_integration_owner_holds_lease(
 
 
 def test_commit_repair_uses_supervised_resolution_session_and_retains_pending_state(
+    tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import ralph.pipeline._pending_repair_edits as repair_edits
@@ -208,7 +214,7 @@ def test_commit_repair_uses_supervised_resolution_session_and_retains_pending_st
     monkeypatch.setattr(repair_edits, "capture_unstaged_work", capture_work)
     monkeypatch.setattr(repair_edits, "capture_commit_controls", capture_controls)
     monkeypatch.setattr(repair_edits, "pending_merge_identity_matches", matches)
-    root = Path("/workspace")
+    root = tmp_git_repo
     assert repair_pending_merge(
         controller=make_resolver_controller(),
         workspace_scope=WorkspaceScope(root),

@@ -91,6 +91,7 @@ _SKIP_DIR_NAMES: frozenset[str] = frozenset(
         ".ruff_cache",
         ".venv",
         ".vscode",
+        "_build",
         "build",
         "dist",
         "node_modules",

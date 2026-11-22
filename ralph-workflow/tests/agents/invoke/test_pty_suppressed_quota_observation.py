@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import pty
 import select
@@ -38,6 +39,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "real agent's exit cannot overtake output it already wrote; the poll-count flip alone "
         "let a starved read thread lose the line under load"
     ),
+    "_DescriptorFedPtyHandle.poll.closed_master": (
+        "a closed PTY master means the fake process has exited; treating EBADF as no unread "
+        "output prevents the background reader from warning during test teardown"
+    ),
     "private quota-path assertions replaced by public read_lines observables": (
         "the suppressed-observation contract is public reader behavior; the "
         "rewrite feeds the PTY descriptor through read_lines() and asserts "
@@ -48,7 +53,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 
 def _master_has_unread_output(master_fd: int) -> bool:
-    readable, _writable, _errored = select.select([master_fd], [], [], 0)
+    try:
+        readable, _writable, _errored = select.select([master_fd], [], [], 0)
+    except OSError as exc:
+        if exc.errno == errno.EBADF:
+            return False
+        raise
     return bool(readable)
 
 
