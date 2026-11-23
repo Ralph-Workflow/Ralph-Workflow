@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
-
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline.state import PipelineState
@@ -81,14 +80,19 @@ def test_successful_baseline_seal_records_the_seal_ref(
 
 
 def test_run_start_rejects_protected_document_dirty_against_head(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    repo = Repo.init(tmp_path)
-    agents_path = tmp_path / "AGENTS.md"
-    agents_path.write_text("# Original instructions\n", encoding="utf-8")
-    repo.index.add(["AGENTS.md"])
-    repo.index.commit("initial")
-    agents_path.write_text("# Stale prior-run instructions\n", encoding="utf-8")
+    monkeypatch.setattr(
+        run_loop,
+        "seal_baseline",
+        _FakeSeal("refs/ralph/baselines/fake-run"),
+    )
+    monkeypatch.setattr(
+        run_loop,
+        "diff_tree",
+        lambda *_args: (SimpleNamespace(path="AGENTS.md"),),
+    )
     policy_dir = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
 
     result = run_loop.resolve_initial_state(
