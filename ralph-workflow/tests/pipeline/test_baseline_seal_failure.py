@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from git import Repo
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
@@ -77,3 +78,31 @@ def test_successful_baseline_seal_records_the_seal_ref(
     result = run_loop._capture_rollback_baseline(state, Path(f"/tmp/{uuid.uuid4().hex}"))
 
     assert result.rollback_baseline_ref == "refs/ralph/baselines/fake-run"
+
+
+def test_run_start_rejects_protected_document_dirty_against_head(
+    tmp_path: Path,
+) -> None:
+    repo = Repo.init(tmp_path)
+    agents_path = tmp_path / "AGENTS.md"
+    agents_path.write_text("# Original instructions\n", encoding="utf-8")
+    repo.index.add(["AGENTS.md"])
+    repo.index.commit("initial")
+    agents_path.write_text("# Stale prior-run instructions\n", encoding="utf-8")
+    policy_dir = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
+
+    result = run_loop.resolve_initial_state(
+        config=UnifiedConfig(),
+        policy_bundle=load_policy(policy_dir),
+        initial_state=None,
+        counter_overrides=None,
+        pipeline_deps=None,
+        pro_hooks=None,
+        state_factory=None,
+        workspace_root=tmp_path,
+    )
+
+    assert result.phase == "failed_terminal"
+    assert result.rollback_baseline_ref is not None
+    assert result.last_error is not None
+    assert "protected document already differs from HEAD: AGENTS.md" in result.last_error

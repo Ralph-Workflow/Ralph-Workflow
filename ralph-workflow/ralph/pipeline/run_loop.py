@@ -9,7 +9,7 @@ import time
 import uuid
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, Literal, cast
 
 from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
@@ -31,11 +31,12 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
-from ralph.git.proposal_seal import baseline_is_restorable, seal_baseline
+from ralph.git.proposal_seal import baseline_is_restorable, diff_tree, seal_baseline
 from ralph.git.proposal_seal_error import ProposalSealError
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
+from ralph.phases._commit_review_tripwires import DEFAULT_PROTECTED_DOCUMENTS
 from ralph.pipeline._auto_integrate_config import configured_last_resort_wait_seconds
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
@@ -1125,6 +1126,20 @@ def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> Pipel
     return state.copy_with(rollback_baseline_ref=seal.ref)
 
 
+def _run_start_protected_document_error(root: Path, baseline_ref: str | None) -> str | None:
+    if baseline_ref is None:
+        return None
+    entries = diff_tree(root, baseline_ref)
+    paths = sorted(
+        entry.path
+        for entry in entries
+        if PurePosixPath(entry.path).name in DEFAULT_PROTECTED_DOCUMENTS
+    )
+    if not paths:
+        return None
+    return "protected document already differs from HEAD: " + ", ".join(paths)
+
+
 def _reseal_unresolvable_baseline(state: PipelineState, root: Path) -> PipelineState:
     baseline_ref = state.rollback_baseline_ref
     if not baseline_ref or state.rollback_pending:
@@ -1352,6 +1367,15 @@ def _resolve_initial_state(
             )
         if workspace_root is not None:
             resumed = _reseal_unresolvable_baseline(resumed, workspace_root)
+            protected_error = _run_start_protected_document_error(
+                workspace_root, resumed.rollback_baseline_ref
+            )
+            if protected_error is not None:
+                return _runner_module.rollback_gate_failure_state(
+                    resumed,
+                    policy_bundle.pipeline,
+                    protected_error,
+                )
             resumed = _reopen_completed_run_with_leftover_work(
                 resumed, policy_bundle.pipeline, workspace_root
             )
@@ -1369,7 +1393,18 @@ def _resolve_initial_state(
         counter_overrides,
     )
     try:
-        return _capture_rollback_baseline(fresh_state, workspace_root)
+        captured = _capture_rollback_baseline(fresh_state, workspace_root)
+        if workspace_root is not None:
+            protected_error = _run_start_protected_document_error(
+                workspace_root, captured.rollback_baseline_ref
+            )
+            if protected_error is not None:
+                return _runner_module.rollback_gate_failure_state(
+                    captured,
+                    policy_bundle.pipeline,
+                    protected_error,
+                )
+        return captured
     except ProposalSealError as exc:
         return _runner_module.rollback_gate_failure_state(
             fresh_state,

@@ -133,6 +133,22 @@ def test_scan_guarded_config_files_scans_recursively(tmp_path: Path) -> None:
     assert unrelated.resolve() not in snapshot
 
 
+def test_default_home_scan_ignores_non_config_directories_with_matching_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_dir = tmp_path / "ralph-workflow-tmp"
+    archive_dir.mkdir()
+    archive = archive_dir / "repo.tar.gz"
+    archive.write_bytes(b"not configuration")
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", tmp_path)
+
+    snapshot = _scan_guarded_config_files([tmp_path])
+
+    assert archive_dir.resolve() not in snapshot
+    assert archive.resolve() not in snapshot
+
+
 def test_real_config_guard_catches_created_file_in_pytester(
     pytester: pytest.Pytester,
     tmp_path: Path,

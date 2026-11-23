@@ -173,6 +173,8 @@ def _scan_guarded_config_files(
                 for match in matches:
                     try:
                         resolved = match.resolve()
+                        if base_dir == REAL_HOME and match.is_dir():
+                            continue
                         if match.is_dir():
                             st = match.stat()
                             snapshot[resolved] = _ConfigPathSnapshot(
