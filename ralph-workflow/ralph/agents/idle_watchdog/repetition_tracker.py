@@ -101,6 +101,9 @@ class RepetitionTracker:
         tool_args: object,
     ) -> None:
         name = tool_name or "unknown"
+        if name == "bg_wait":
+            self.note_progress()
+            return
         args = tool_args if tool_args is not None else {}
         fingerprint = _tool_call_fingerprint(name, args)
         now = self._clock.monotonic()

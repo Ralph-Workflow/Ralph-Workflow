@@ -183,6 +183,15 @@ def test_tripped_returns_true_after_repeated_identical_tool_calls() -> None:
     assert tracker.tripped_tool_dimension()
 
 
+def test_repetition_tracker_regression_bg_wait_does_not_end_active_run() -> None:
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
+    tracker.mark_tool_call("bg_wait", {"all": True, "timeoutMs": 600000})
+    tracker.mark_tool_call("bg_wait", {"all": True, "timeoutMs": 600000})
+    assert not tracker.tripped(), "tmux-10 premature-exit regression"
+    assert not tracker.tripped_tool_dimension()
+
+
 def test_different_tool_call_args_do_not_trip() -> None:
     clock = FakeClock()
     tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
