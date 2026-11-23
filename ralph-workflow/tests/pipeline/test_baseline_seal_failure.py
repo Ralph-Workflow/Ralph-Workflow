@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline.state import PipelineState
