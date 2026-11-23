@@ -340,7 +340,7 @@ def test_the_rejection_reason_and_proposal_ref_reach_the_next_developer_prompt(
     assert f"git checkout {seal.ref} -- ." in rendered
 
 
-def test_commit_review_gate_counter_exhaustion_routes_to_failure(
+def test_commit_review_gate_counter_threshold_requests_complete_rollback(
     tmp_path: Path, init_repo: Callable[[Path], Repo]
 ) -> None:
     policy = _policy()
@@ -360,11 +360,11 @@ def test_commit_review_gate_counter_exhaustion_routes_to_failure(
     )
     next_state, _ = reduce(state, reject_event, policy)
 
-    assert next_state.phase == policy.recovery.failed_route
+    assert next_state.phase == "development"
     assert next_state.commit_review_rejections == 3
-    assert next_state.rollback_pending is False
+    assert next_state.rollback_pending is True
     assert next_state.rollback_ref == seal.ref
-    assert "limit exceeded" in (next_state.last_error or "")
+    assert next_state.last_error is None
 
     preflight(tmp_path, seal.ref)
 
