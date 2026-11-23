@@ -527,6 +527,17 @@ def test_audit_instruction_integrity_skips_probe_ws(tmp_path: Path) -> None:
     assert audit_instruction_integrity(tmp_path) == []
 
 
+def test_audit_instruction_integrity_skips_machine_managed_worktrees(tmp_path: Path) -> None:
+    _write(tmp_path, "wt-01-worker/AGENTS.md", f"Read `{_MISSING_CITED_PATH}`.\n")
+    _write(
+        tmp_path,
+        "worktree-agent-02/AGENTS.md",
+        f"Read `{_MISSING_CITED_PATH}`.\n",
+    )
+
+    assert audit_instruction_integrity(tmp_path) == []
+
+
 def test_nested_agents_md_citing_a_missing_path_is_reported(tmp_path: Path) -> None:
     _write(
         tmp_path,

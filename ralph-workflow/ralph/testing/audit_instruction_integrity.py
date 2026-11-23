@@ -209,6 +209,9 @@ def _audited_relative_paths_uncached(root: Path) -> tuple[Path, ...]:
         relative
         for relative in sorted(Path(entry) for entry in FsWorkspace(root).iter_files(""))
         if not any(part in _SKIP_DIRS for part in relative.parts)
+        and not any(
+            part.startswith(("wt-", "worktree-agent-")) for part in relative.parts
+        )
     )
 
 
