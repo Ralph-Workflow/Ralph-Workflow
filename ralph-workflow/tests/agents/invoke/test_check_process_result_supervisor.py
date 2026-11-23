@@ -116,9 +116,9 @@ def _session_continuation_options(tmp_path: Path) -> CompletionCheckOptions:
         ),
         policy=TimeoutPolicy(
             idle_timeout_seconds=None,
-            descendant_wait_timeout_seconds=2.0,
-            descendant_wait_poll_seconds=0.5,
-            parent_exit_grace_seconds=1.0,
+            descendant_wait_timeout_seconds=0.1,
+            descendant_wait_poll_seconds=0.01,
+            parent_exit_grace_seconds=0.05,
         ),
         evaluate_completion_fn=_no_signals,
     )
