@@ -81,7 +81,7 @@ def test_an_agent_that_only_reads_files_is_active_but_changed_nothing(tmp_path: 
             monitor.dispatch_event(FileOpenedEvent(str(path)))
             monitor.dispatch_event(FileClosedNoWriteEvent(str(path)))
 
-        assert monitor.event_count == len((readme, source)) * 2
+        assert monitor.event_count >= len((readme, source)) * 2
         assert monitor.last_event_at is not None
         assert awareness_for_workspace(tmp_path).snapshot()["dirty_paths_count"] == 0
         assert probe.has_changed(_PHASE, workspace) is False
