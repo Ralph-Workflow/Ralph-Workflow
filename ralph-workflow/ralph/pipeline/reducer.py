@@ -1600,38 +1600,12 @@ def _reduce_commit_review_rejection(
     progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
 
     if new_rejections >= max_rejections or timebox_expired:
-        if timebox_expired:
-            reason = (
-                f"Cycle timebox expired on commit review rejection; "
-                f"the rejected changes remain saved at {event.ref}: {event.reason}"
-            )
-        elif new_rejections > max_rejections:
-            reason = (
-                f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}); "
-                f"the rejected changes remain saved at {event.ref}: {event.reason}"
-            )
-        else:
-            reason = (
-                f"Commit review rejection limit reached ({new_rejections}/{max_rejections}); "
-                f"the rejected changes remain saved at {event.ref}: {event.reason}"
-            )
-        failed_state = progress_state.copy_with(
-            commit_review_rejections=new_rejections,
-            last_error=reason,
-            rollback_pending=False,
-            rollback_ref=event.ref,
-            last_review_rejection_reason=event.reason,
-        )
-        target = (
-            phase_def.transitions.on_failure
-            if phase_def.transitions.on_failure
-            else policy.recovery.failed_route
-        )
-        return _advance_phase(
-            failed_state,
-            target,
-            policy,
-            routing_timing=routing_timing,
+        logger.warning(
+            "Commit review rejected proposal {} after {} consecutive rejection(s){}; "
+            "restoring the complete run-start baseline and retrying development",
+            event.ref,
+            new_rejections,
+            " after the cycle timebox elapsed" if timebox_expired else "",
         )
 
     target_phase = phase_def.transitions.on_reject or "development"
@@ -1641,12 +1615,21 @@ def _reduce_commit_review_rejection(
         rollback_ref=event.ref,
         last_review_rejection_reason=event.reason,
     )
+    rejection_timing = (
+        None
+        if routing_timing is None
+        else RoutingTiming(
+            total_elapsed_seconds=0.0,
+            development_elapsed_seconds=routing_timing.development_elapsed_seconds,
+            current_epoch=routing_timing.current_epoch,
+        )
+    )
     return _route_rejection_through_commit_entry(
         state_for_advance,
         policy,
         phase_def,
         target_phase,
-        routing_timing=routing_timing,
+        routing_timing=rejection_timing,
     )
 
 

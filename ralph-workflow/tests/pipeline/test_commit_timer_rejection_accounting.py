@@ -153,7 +153,7 @@ def test_rejection_accounting_is_identical_to_successful_commit_accounting() -> 
     assert rejected.commit_review_rejections == 1
 
 
-def test_terminal_rejection_accounting_equals_the_successful_commit_accounting() -> None:
+def test_rejection_accounting_equals_the_successful_commit_accounting() -> None:
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     review_phase = _phase_before_cycle_commit(policy)
@@ -191,7 +191,7 @@ def test_terminal_rejection_accounting_equals_the_successful_commit_accounting()
         routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
     )
 
-    assert rejected.phase == policy.recovery.failed_route
+    assert rejected.phase == "development"
     assert _commit_accounting(
         rejected,
         reset_fields=reset_fields,
@@ -206,7 +206,7 @@ def test_terminal_rejection_accounting_equals_the_successful_commit_accounting()
     assert rejected.get_outer_progress(counter_name) == 2
     assert rejected.cycle_timing_start_index == len(timings)
     assert rejected.commit_review_rejections == 2
-    assert rejected.rollback_pending is False
+    assert rejected.rollback_pending is True
     assert rejected.rollback_ref == "refs/ralph/proposals/test-run/5"
     assert effects == []
 
@@ -348,7 +348,7 @@ def test_rejection_route_keeps_the_rollback_marker_and_the_rejection_context() -
     assert rejected.commit.agent_invoked is False
 
 
-def test_rejection_loop_survives_the_resets_and_stops_at_the_default_limit() -> None:
+def test_rejection_loop_survives_resets_and_continues_past_the_old_limit() -> None:
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     lifecycle = policy.lifecycle_phases.get(final_commit)
@@ -389,13 +389,13 @@ def test_rejection_loop_survives_the_resets_and_stops_at_the_default_limit() -> 
         routing_timing=RoutingTiming(total_elapsed_seconds=200.0),
     )
 
-    assert second.phase == policy.recovery.failed_route
+    assert second.phase == reject_target
     assert second.commit_review_rejections == 2
-    assert second.rollback_pending is False
+    assert second.rollback_pending is True
     assert second.rollback_ref == "refs/ralph/proposals/test-run/1"
 
 
-def test_post_timebox_rejection_keeps_the_proposal_ref_without_rollback() -> None:
+def test_post_timebox_rejection_keeps_the_proposal_ref_and_requests_rollback() -> None:
     policy = _policy()
     assert policy.cycle_timebox is not None
     review_phase = _phase_before_dev_commit(policy)
@@ -417,7 +417,7 @@ def test_post_timebox_rejection_keeps_the_proposal_ref_without_rollback() -> Non
         ),
     )
 
-    assert rejected.phase == policy.recovery.failed_route
-    assert rejected.rollback_pending is False
+    assert rejected.phase == "development"
+    assert rejected.rollback_pending is True
     assert rejected.rollback_ref == ref
     assert rejected.commit_review_rejections == 1

@@ -314,7 +314,7 @@ See [Recovery](recovery.md#tool-availability-failures) for the three additive ca
 
 **Symptom:** The run stops in `failed_terminal` during or after a commit review phase (`development_commit_review` or `development_final_commit_review`), reporting that the pending changes were rejected.
 
-**Cause:** Commit review is a damage gate and edit phase against accidental mass deletion or protected-path modification. Consecutive rejections are tracked by the `commit_review_rejections` counter (default: `2`, matching `CommitReviewPolicy.max_rejections`). When rejections reach this limit (or the cycle timebox expires), the pipeline transitions to `failed_terminal` without another workspace reset to avoid looping.
+**Cause:** Commit review is a damage gate and edit phase against accidental mass deletion or protected-path modification. Consecutive rejections are tracked by the `commit_review_rejections` counter (default warning threshold: `2`, matching `CommitReviewPolicy.max_rejections`). Every rejection preserves the rejected proposal ref, restores the complete run-start baseline, and returns to development; reaching the threshold or the cycle timebox only raises the warning severity.
 
 **Recovery:** A rejected run preserves the full rejected tree in a Git proposal ref before resetting the workspace:
 

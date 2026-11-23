@@ -30,5 +30,5 @@ class CommitReviewPolicy(_FrozenPolicyModel):
     max_rejections: int = Field(
         default=2,
         ge=1,
-        description="Maximum consecutive commit review rejections before failing the run.",
+        description="Consecutive commit review rejections before an elevated warning.",
     )

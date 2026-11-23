@@ -749,7 +749,7 @@ The commit review phases (`development_commit_review` and `development_final_com
 
 - **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
 - **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before the commit review gate fails closed to `failed_terminal`. Reaching the bound means the reviewer made no progress on the same pending tree (a missing or invalid artifact), so the gate treats it as a reviewer malfunction and never approves the pending tree.
-- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which the run transitions to `failed_terminal`. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. With the default of `2`, the second consecutive rejection keeps the saved proposal ref and routes to `failed_terminal` without another reset.
+- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which Ralph emits an elevated warning. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. Every rejection preserves the proposal ref, restores the complete run-start baseline, and returns to development.
 
 #### Deterministic tripwire thresholds
 
@@ -761,7 +761,7 @@ Configured under the commit review policy settings (`[commit_review]` in `pipeli
 | `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
 | `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. This is a **soft** finding at Stage 1: it is review evidence, not an automatic rejection. A binary that is still over the limit after the edit step is rejected on the engine's own evidence. |
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
-| `max_rejections` | `2` | The consecutive-rejection count at which the run routes to `failed_terminal`: with the default of `2`, the second consecutive rejection retains its saved proposal ref and does not request another reset. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
+| `max_rejections` | `2` | The consecutive-rejection count at which Ralph emits an elevated warning. Every rejection preserves its proposal ref, restores the complete run-start baseline, and returns to development. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when declared. |
 
 Stage 1 evaluates tracked changes and untracked pending files. A **hard**
 tripwire rejects without an agent: mass deletion beyond the thresholds above,
@@ -790,7 +790,7 @@ the validated edit actions is rejected on the engine's evidence.
 These four behaviours are part of the contract and are not configurable:
 
 - **The rollback uses neither `git stash` nor a saved patch.** The rollback is driven by the sealed proposal ref: the proposal diff identifies the files the proposal added, and `git read-tree --reset -u` restores the tracked files to `HEAD` (or the dirty run-start baseline). Nothing is stashed, and no patch file is written.
-- **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling retain the saved proposal ref and do not request another reset.
+- **A rejection after the cycle timebox expires still returns to `development`.** It preserves the rejected proposal ref and requests a complete rollback to the run-start baseline. Review rejection itself is never a terminal condition.
 - **The deletion bypass is closed.** Only exact deletions listed in the planning-analysis-approved plan may bypass the mass-deletion tripwire. Protected deletions never bypass it, and developer or reviewer input cannot widen the list.
 - **Old phase names are not migrated.** The phase, role, artifact, counter, template, and skill identifiers that commit review replaced are gone, and Ralph Workflow performs no checkpoint migration for them; see [Concepts → Phase rename and checkpoint compatibility](concepts.md#phase-rename-and-checkpoint-compatibility) for the checkpoint consequence. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
 

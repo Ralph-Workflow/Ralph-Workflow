@@ -181,9 +181,7 @@ def test_refused_rollback_stops_the_run_even_while_a_reviewer_is_cooling_down() 
     assert run_loop.failed_route_is_recoverable(refused, controller) is False
 
 
-def test_rejection_at_the_ceiling_rolls_back_and_stays_recoverable() -> None:
-    from ralph.pipeline import run_loop
-
+def test_rejection_at_the_old_ceiling_requests_rollback_and_retries() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(cycle_cap=10, clock=FakeClock(start=0.0))
     )
@@ -196,12 +194,9 @@ def test_rejection_at_the_ceiling_rolls_back_and_stays_recoverable() -> None:
         policy,
         recovery=controller,
     )
-    rolled_back = at_ceiling.copy_with(rollback_pending=False, rollback_ref=None)
-
-    assert at_ceiling.phase == policy.recovery.failed_route
-    assert at_ceiling.rollback_pending is False
+    assert at_ceiling.phase == "development"
+    assert at_ceiling.rollback_pending is True
     assert at_ceiling.rollback_ref == "refs/ralph/proposals/run-1/1"
-    assert run_loop.failed_route_is_recoverable(rolled_back, controller) is True
 
 
 def test_failed_route_stays_recoverable_without_a_kept_rejected_proposal() -> None:

@@ -24,14 +24,12 @@ def _policy() -> PipelinePolicy:
     return load_policy(_DEFAULTS_DIR).pipeline
 
 
-@pytest.mark.parametrize("terminal_condition", ("rejection_limit", "cycle_timebox"))
-def test_wu_a2_terminal_regression_terminal_rejection_retains_saved_proposal_without_rollback(
-    terminal_condition: str,
-) -> None:
+@pytest.mark.parametrize("condition", ("rejection_limit", "cycle_timebox"))
+def test_rejection_always_restores_every_file_and_retries_development(condition: str) -> None:
     policy = _policy()
-    ref = f"refs/ralph/proposals/wu-a2-terminal/{terminal_condition}"
-    if terminal_condition == "rejection_limit":
-        max_rejections = policy.loop_counters["commit_review_rejections"].default_max
+    max_rejections = policy.loop_counters["commit_review_rejections"].default_max
+    ref = f"refs/ralph/proposals/rejection-always-retries/{condition}"
+    if condition == "rejection_limit":
         state = PipelineState(
             phase=_REVIEW_PHASE,
             commit_review_rejections=max_rejections - 1,
@@ -42,7 +40,6 @@ def test_wu_a2_terminal_regression_terminal_rejection_retains_saved_proposal_wit
         state = PipelineState(
             phase=_REVIEW_PHASE,
             cycle_timebox_active=True,
-            commit_review_rejections=0,
         )
         elapsed_seconds = float(policy.cycle_timebox.duration_seconds) + 1.0
 
@@ -53,10 +50,10 @@ def test_wu_a2_terminal_regression_terminal_rejection_retains_saved_proposal_wit
         routing_timing=RoutingTiming(total_elapsed_seconds=elapsed_seconds),
     )
 
-    assert rejected.phase == policy.recovery.failed_route
-    assert rejected.rollback_pending is False
+    assert rejected.phase == "development"
+    assert rejected.rollback_pending is True
     assert rejected.rollback_ref == ref
-    assert ref in (rejected.last_error or "")
+    assert rejected.last_error is None
     assert effects == []
 
 
@@ -78,7 +75,7 @@ def test_wu_a2_terminal_regression_normal_rejection_still_requests_development_r
 
 
 @pytest.mark.parametrize("terminal_condition", ("rejection_limit", "cycle_timebox"))
-def test_terminal_rejection_accounts_the_completed_commit_without_a_second_reset(
+def test_rejection_accounts_the_attempt_then_requests_complete_rollback(
     terminal_condition: str,
 ) -> None:
     policy = _policy()
@@ -117,11 +114,11 @@ def test_terminal_rejection_accounts_the_completed_commit_without_a_second_reset
         routing_timing=RoutingTiming(total_elapsed_seconds=elapsed_seconds),
     )
 
-    assert rejected.phase == policy.recovery.failed_route
+    assert rejected.phase == "development"
     for reset_field in reset_fields:
         assert rejected.get_loop_iteration(reset_field) == 0
     assert rejected.cycle_timing_start_index == state.cycle_timing_start_index
     assert rejected.commit_review_rejections == expected_rejections
-    assert rejected.rollback_pending is False
+    assert rejected.rollback_pending is True
     assert rejected.rollback_ref == ref
     assert effects == []
