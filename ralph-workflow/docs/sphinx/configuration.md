@@ -778,7 +778,7 @@ the validated edit actions is rejected on the engine's evidence.
 #### Transitions and recovery
 
 - **`on_success`**: Advances to the commit phase (`development_commit` or `development_final_commit`).
-- **`on_reject`**: Saves the rejected proposal ref, then resets every pending-commit file to `HEAD` (or the run-start baseline) and returns to `development`. Rejection is a whole-proposal damage disposition, not source review. Rejections at the limit or after the cycle timebox route to `failed_terminal` without another reset.
+- **`on_reject`**: Saves the rejected proposal ref, then resets every pending-commit file to `HEAD` (or the run-start baseline) and returns to `development`. Rejection is a whole-proposal damage disposition, not source review. The rejection count and cycle timebox never turn this recovery path into a terminal failure.
 - **`on_failure`**: Fail-closed transition to `failed_terminal` on reviewer malfunction (invalid artifact, unresolvable HEAD preflight, or unverifiable reason citation). No rollback is performed on malfunction.
 - **Manual recovery**: A rejected iteration's files can be inspected or recovered at any time via:
   ```bash
