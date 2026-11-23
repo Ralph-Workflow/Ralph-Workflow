@@ -776,7 +776,7 @@ class TestPhaseFailureEvent:
         assert "gate failed" in (new_state.last_error or "")
         assert effects == []
 
-    def test_commit_review_rejection_at_the_limit_rolls_back_before_failing(self) -> None:
+    def test_commit_review_rejection_at_the_old_limit_rolls_back_and_retries(self) -> None:
         state = PipelineState(
             phase="development_commit_review",
             commit_review_rejections=1,
@@ -788,11 +788,11 @@ class TestPhaseFailureEvent:
 
         new_state, effects = _reduce(state, event, _commit_review_policy())
 
-        assert new_state.phase == "failed_terminal"
+        assert new_state.phase == "development"
         assert new_state.commit_review_rejections == 2
-        assert new_state.rollback_pending is False
+        assert new_state.rollback_pending is True
         assert new_state.rollback_ref == "refs/ralph/proposals/run-1/1"
-        assert "limit reached" in (new_state.last_error or "")
+        assert new_state.last_error is None
         assert effects == []
 
     def test_commit_review_approval_ends_the_consecutive_rejection_streak(self) -> None:

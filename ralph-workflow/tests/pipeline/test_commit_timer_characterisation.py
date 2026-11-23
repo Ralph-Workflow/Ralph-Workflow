@@ -633,7 +633,7 @@ def test_rollback_reentering_development_restarts_development_timer_from_zero() 
     assert next_state.dev_timebox_started_at_epoch == 8000.0
 
 
-def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal() -> None:
+def test_commit_review_rejection_old_limit_requests_rollback_and_retries() -> None:
     policy = _policy()
     pre_dev_commit = _phase_before_dev_commit(policy)
 
@@ -654,16 +654,14 @@ def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal
         routing_timing=RoutingTiming(total_elapsed_seconds=500.0),
     )
 
-    assert next_state.phase == policy.recovery.failed_route
+    assert next_state.phase == "development"
     assert next_state.commit_review_rejections == 2
-    assert next_state.rollback_pending is False
+    assert next_state.rollback_pending is True
     assert next_state.rollback_ref == "refs/ralph/proposals/run-1/1"
-    assert "limit reached" in (next_state.last_error or "")
+    assert next_state.last_error is None
 
 
-def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_failed_terminal() -> (
-    None
-):
+def test_commit_review_rejection_after_cycle_timebox_expired_rolls_back_and_retries() -> None:
     policy = _policy()
     assert policy.cycle_timebox is not None
     pre_dev_commit = _phase_before_dev_commit(policy)
@@ -689,14 +687,14 @@ def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_fail
         ),
     )
 
-    assert next_state.phase == policy.recovery.failed_route
+    assert next_state.phase == "development"
     assert next_state.commit_review_rejections == 1
-    assert next_state.rollback_pending is False
+    assert next_state.rollback_pending is True
     assert next_state.rollback_ref == "refs/ralph/proposals/run-1/0"
-    assert "expired" in (next_state.last_error or "")
+    assert next_state.last_error is None
 
 
-def test_terminal_rejection_accounts_a_completed_commit() -> None:
+def test_rejection_accounts_a_completed_commit_before_rollback_retry() -> None:
     policy = _policy()
     final_commit = _cycle_commit_entry(policy)
     review_phase = _phase_before_cycle_commit(policy)
@@ -737,7 +735,7 @@ def test_terminal_rejection_accounts_a_completed_commit() -> None:
         routing_timing=RoutingTiming(total_elapsed_seconds=500.0),
     )
 
-    assert next_state.phase == policy.recovery.failed_route
+    assert next_state.phase == "development"
     assert _commit_accounting(
         next_state,
         reset_fields=reset_fields,
@@ -751,7 +749,7 @@ def test_terminal_rejection_accounts_a_completed_commit() -> None:
     assert next_state.get_outer_progress(counter_name) == 2
     assert next_state.cycle_timing_start_index == len(timings)
     assert next_state.commit_review_rejections == 2
-    assert next_state.rollback_pending is False
+    assert next_state.rollback_pending is True
     assert next_state.rollback_ref == "refs/ralph/proposals/run-1/2"
     assert effects == []
 

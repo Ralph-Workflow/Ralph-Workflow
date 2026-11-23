@@ -8,6 +8,7 @@ import sys
 import threading
 from typing import TYPE_CHECKING
 
+import psutil
 import pytest
 
 from ralph.agents.completion_signals import CompletionSignals
@@ -90,16 +91,18 @@ def _spawn_exited_child_with_lingering_descendant(
 
 def _assert_reaped(pid: int) -> None:
     clock = SystemClock()
-    deadline = clock.monotonic() + 10.0
+    deadline = clock.monotonic() + 1.0
     backoff = threading.Event()
     while True:
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, 0)
-            if clock.monotonic() >= deadline:
-                pytest.fail(f"descendant {pid} was not reaped")
-            clock.wait_for_event(backoff, 0.05)
-            continue
-        return
+        try:
+            descendant = psutil.Process(pid)
+            if not descendant.is_running() or descendant.status() == psutil.STATUS_ZOMBIE:
+                return
+        except psutil.NoSuchProcess:
+            return
+        if clock.monotonic() >= deadline:
+            pytest.fail(f"descendant {pid} was not stopped")
+        clock.wait_for_event(backoff, 0.01)
 
 
 def _session_continuation_options(tmp_path: Path) -> CompletionCheckOptions:

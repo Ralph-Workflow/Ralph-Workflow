@@ -295,7 +295,7 @@ Before invoking the review agent, the engine seals pending changes into an isola
 Policy knobs in the `[commit_review]` block of `pipeline.toml`:
 
 - **Proposal retention (`proposal_retention`, default: 10):** Limits how many historical proposal refs are retained before older ones are pruned.
-- **Rejection warning (`max_rejections`, default: 2):** The consecutive-rejection count at which Ralph emits an elevated warning. Every rejection still preserves its proposal ref, restores the complete run-start baseline, and returns to development. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when declared.
+- **Rejection warning (`max_rejections`, default: 2):** The consecutive-rejection count at which Ralph Workflow emits an elevated warning. Every rejection still preserves its proposal ref, restores the complete run-start baseline, and returns to development. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when declared.
 
 #### Plan-based bypass for intentional large deletions
 

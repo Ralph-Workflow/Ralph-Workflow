@@ -749,7 +749,7 @@ The commit review phases (`development_commit_review` and `development_final_com
 
 - **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
 - **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before the commit review gate fails closed to `failed_terminal`. Reaching the bound means the reviewer made no progress on the same pending tree (a missing or invalid artifact), so the gate treats it as a reviewer malfunction and never approves the pending tree.
-- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which Ralph emits an elevated warning. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. Every rejection preserves the proposal ref, restores the complete run-start baseline, and returns to development.
+- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which Ralph Workflow emits an elevated warning. Unlike iteration counters, this counter survives loop resets; an approved review resets it to zero. Every rejection preserves the proposal ref, restores the complete run-start baseline, and returns to development.
 
 #### Deterministic tripwire thresholds
 
@@ -761,7 +761,7 @@ Configured under the commit review policy settings (`[commit_review]` in `pipeli
 | `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
 | `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. This is a **soft** finding at Stage 1: it is review evidence, not an automatic rejection. A binary that is still over the limit after the edit step is rejected on the engine's own evidence. |
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
-| `max_rejections` | `2` | The consecutive-rejection count at which Ralph emits an elevated warning. Every rejection preserves its proposal ref, restores the complete run-start baseline, and returns to development. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when declared. |
+| `max_rejections` | `2` | The consecutive-rejection count at which Ralph Workflow emits an elevated warning. Every rejection preserves its proposal ref, restores the complete run-start baseline, and returns to development. An approved review resets the count. The `[loop_counters.commit_review_rejections]` counter takes precedence when declared. |
 
 Stage 1 evaluates tracked changes and untracked pending files. A **hard**
 tripwire rejects without an agent: mass deletion beyond the thresholds above,
