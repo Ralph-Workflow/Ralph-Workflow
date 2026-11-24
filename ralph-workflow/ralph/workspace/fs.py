@@ -16,7 +16,7 @@ MAX_READ_BYTES: int = 5_000_000
 MAX_READ_LINES_BYTES: int = MAX_READ_BYTES
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 
 def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
@@ -24,6 +24,13 @@ def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
     candidate_str = os.fspath(candidate_path)
     joined = candidate_str if candidate_path.is_absolute() else base_str + os.sep + candidate_str
     return Path(os.path.normpath(joined))
+
+
+def _device_of(path: Path) -> int | None:
+    try:
+        return path.stat(follow_symlinks=False).st_dev
+    except OSError:
+        return None
 
 
 class FsWorkspace:
@@ -339,18 +346,25 @@ class FsWorkspace:
         return [str(p) for p in self._allowed_roots]
 
     def iter_files(self, base: str) -> tuple[str, ...]:
+        return tuple(self.walk_files(base))
+
+    def walk_files(self, base: str) -> Iterator[str]:
         base_abs = self._abs(base)
         if not base_abs.is_dir() or self._is_skipped_traversal_base(base_abs):
-            return ()
-
-        results: list[str] = []
+            return
+        root_dev = _device_of(base_abs)
+        if root_dev is None:
+            return
         for root, dirs, files in os.walk(str(base_abs)):
-            root_path = Path(root)
-            dirs[:] = [d for d in dirs if d not in RECURSIVE_SKIP_DIRECTORY_NAMES]
-            rel_root = root_path.relative_to(self._root)
-            results.extend(str(rel_root / f) for f in files)
-
-        return tuple(results)
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in RECURSIVE_SKIP_DIRECTORY_NAMES
+                and _device_of(Path(root) / d) == root_dev
+            ]
+            rel_root = Path(root).relative_to(self._root)
+            for f in files:
+                yield str(rel_root / f)
 
     def _is_skipped_traversal_base(self, base_abs: Path) -> bool:
         try:

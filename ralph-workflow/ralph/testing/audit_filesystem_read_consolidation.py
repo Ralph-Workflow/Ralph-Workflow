@@ -199,7 +199,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "raw_walk",
         ),
         ("ralph/testing/audit_test_integrity.py", "_read_diff", "raw_path_read_text"),
-        ("ralph/workspace/fs.py", "FsWorkspace.iter_files", "raw_walk"),
+        ("ralph/workspace/fs.py", "FsWorkspace.walk_files", "raw_walk"),
     }
 )
 _RAW_READ_QUALIFIERS: frozenset[str] = frozenset({"os", "os.path", "pathlib"})

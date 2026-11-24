@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -31,7 +32,10 @@ _KILLED_RETURN_CODE = -9
 _ROOT_ONLY_WAIT_CALLS = 2
 
 
-def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
+def test_spawn_pty_records_pid_pgid_and_terminal_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(os, "getpgid", lambda pid: pid)
     factory = _FakePtyFactory()
     pm = ProcessManager(
         policy=_FAST_POLICY,

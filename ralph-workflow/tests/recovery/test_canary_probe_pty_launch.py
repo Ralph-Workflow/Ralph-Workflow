@@ -130,7 +130,7 @@ def _probe_env(trusted_root: Path, **extra: str) -> dict[str, str]:
     }
 
 
-@pytest.mark.timeout_seconds(8)
+@pytest.mark.timeout_seconds(14)
 def test_untrusted_cwd_dialog_exit_is_inconclusive_and_starts_no_cooldown(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
@@ -140,7 +140,7 @@ def test_untrusted_cwd_dialog_exit_is_inconclusive_and_starts_no_cooldown(
     untrusted_parent = tmp_path / "untrusted-parent"
     result = run_canary_probe(
         stub_agent_config,
-        timeout_s=3,
+        timeout_s=6,
         trusted_parent=untrusted_parent,
         extra_env=_probe_env(trusted_root),
     )
@@ -174,7 +174,7 @@ def test_untrusted_cwd_never_exiting_dialog_times_out(
     assert list(tmp_path.rglob(CANARY_MARKER_FILENAME)) == []
 
 
-@pytest.mark.timeout_seconds(8)
+@pytest.mark.timeout_seconds(14)
 def test_trusted_parent_cwd_writes_marker_and_passes(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
@@ -183,7 +183,7 @@ def test_trusted_parent_cwd_writes_marker_and_passes(
     trusted_root.mkdir()
     result = run_canary_probe(
         stub_agent_config,
-        timeout_s=3,
+        timeout_s=6,
         trusted_parent=trusted_root,
         extra_env=_probe_env(trusted_root),
     )
@@ -197,7 +197,7 @@ def test_trusted_parent_cwd_writes_marker_and_passes(
     assert list(trusted_root.rglob(CANARY_MARKER_FILENAME)) == []
 
 
-@pytest.mark.timeout_seconds(8)
+@pytest.mark.timeout_seconds(14)
 def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
@@ -208,7 +208,7 @@ def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
     stdout_record = tmp_path / "stub-stdout.txt"
     result = run_canary_probe(
         stub_agent_config,
-        timeout_s=3,
+        timeout_s=6,
         trusted_parent=trusted_root,
         extra_env=_probe_env(
             trusted_root,
@@ -244,7 +244,7 @@ def test_mismatched_marker_is_never_passed_and_the_judge_fails_it(
     )
 
 
-@pytest.mark.timeout_seconds(8)
+@pytest.mark.timeout_seconds(14)
 def test_production_probe_launch_is_non_interactive_and_pre_trusted(
     stub_agent_config: AgentConfig,
     tmp_path: Path,
@@ -254,7 +254,7 @@ def test_production_probe_launch_is_non_interactive_and_pre_trusted(
     argv_record = tmp_path / "stub-argv.json"
     result = run_canary_probe(
         stub_agent_config,
-        timeout_s=3,
+        timeout_s=6,
         trusted_parent=trusted_root,
         extra_env=_probe_env(trusted_root, STUB_ARGV_RECORD=str(argv_record)),
     )

@@ -195,22 +195,39 @@ class _HasIterFilesBounded(Protocol):
     def iter_files_bounded(self, base: str, *, limit: int) -> Iterable[object]: ...
 
 
+@runtime_checkable
+class _HasWalkFiles(Protocol):
+    def walk_files(self, base: str) -> Iterable[object]: ...
+
+
+_MAX_SCANNED_ENTRIES_PER_SNAPSHOT_FILE = 50
+
+
+def _first_unignored(items: Iterable[object], limit: int) -> list[str]:
+    result: list[str] = []
+    scan_cap = max(limit, 1) * _MAX_SCANNED_ENTRIES_PER_SNAPSHOT_FILE
+    for scanned, item in enumerate(items, start=1):
+        norm = _normalize_workspace_path(str(item))
+        if not _is_ignored_workspace_path(norm):
+            result.append(norm)
+            if len(result) >= limit:
+                break
+        if scanned >= scan_cap:
+            break
+    return sorted(result)
+
+
 def _collect_file_paths(workspace: Workspace, limit: int) -> list[str]:
+    if isinstance(workspace, _HasWalkFiles):
+        with suppress(OSError, RuntimeError, ValueError, AttributeError):
+            return _first_unignored(workspace.walk_files(""), limit)
     if isinstance(workspace, _HasIterFilesBounded):
         with suppress(Exception):
             return sorted(str(p) for p in workspace.iter_files_bounded("", limit=limit))
     with suppress(OSError, RuntimeError, ValueError, AttributeError):
-        result: list[str] = []
-        for item in workspace.iter_files(""):
-            norm = _normalize_workspace_path(str(item))
-            if _is_ignored_workspace_path(norm):
-                continue
-            result.append(norm)
-            if len(result) >= limit:
-                break
-        return sorted(result)
+        return _first_unignored(workspace.iter_files(""), limit)
     try:
-        result = []
+        result: list[str] = []
         for item in workspace.list_dir("."):
             norm = _normalize_workspace_path(str(item))
             if _is_ignored_workspace_path(norm):
