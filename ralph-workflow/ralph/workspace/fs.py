@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 from collections import deque
 from pathlib import Path
-from stat import S_ISDIR
+from stat import S_ISDIR, S_ISREG
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
@@ -24,6 +25,15 @@ def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
     candidate_str = os.fspath(candidate_path)
     joined = candidate_str if candidate_path.is_absolute() else base_str + os.sep + candidate_str
     return Path(os.path.normpath(joined))
+
+
+def _require_regular_file(path: Path) -> None:
+    try:
+        mode = path.stat().st_mode
+    except FileNotFoundError:
+        return
+    if not S_ISREG(mode) and not S_ISDIR(mode):
+        raise OSError(errno.EINVAL, f"not a regular file: {path}")
 
 
 def _device_of(path: Path) -> int | None:
@@ -73,7 +83,9 @@ class FsWorkspace:
         return self._resolve_candidate(path)
 
     def read(self, path: str) -> str:
-        return self._backend.read_text(self._abs(path), encoding="utf-8")
+        abs_path = self._abs(path)
+        _require_regular_file(abs_path)
+        return self._backend.read_text(abs_path, encoding="utf-8")
 
     def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
         abs_path = self._abs(path)
@@ -305,7 +317,7 @@ class FsWorkspace:
                 "mode": st.st_mode,
             }
         return {
-            "type": "file",
+            "type": "file" if S_ISREG(st.st_mode) else "special",
             "size_bytes": st.st_size,
             "created_unix": st.st_ctime,
             "modified_unix": st.st_mtime,

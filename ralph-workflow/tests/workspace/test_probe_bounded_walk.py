@@ -1,10 +1,3 @@
-"""The workspace change probe must stay bounded on pathological trees.
-
-Regression: a Ralph-Site run hung for hours after an idle-watchdog kill because
-``_capture_failure_observation`` walked the whole workspace, which held a live
-host ``/proc`` bind-mounted under ``tmp/guest-image-work/probe/rootfs/proc``.
-"""
-
 from __future__ import annotations
 
 import os
