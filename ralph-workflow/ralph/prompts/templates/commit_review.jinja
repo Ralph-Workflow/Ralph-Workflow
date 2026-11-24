@@ -19,6 +19,8 @@ Commit review is not a source code review, and not a code style, architecture, o
 
 A change to source code is never rejection evidence, however large, off-plan, or wrong it looks: approve it and leave the judgement to `development_analysis`.
 
+An ordinary textual edit to `AGENTS.md`, `PROMPT.md`, or documentation is never rejection evidence. Commit review does not make editorial, factual, policy, or wording judgements: approve it even when you disagree with the wording and leave correctness to `development_analysis`. Only objective destructive replacement evidence supplied by Stage 1—deletion, blank content, binary content, or a symlink—can make one of these files part of a rejection.
+
 When content that does not belong sits beside real work, remove them with `delete_file`, `add_to_gitignore`, or `add_to_git_exclude` and approve the rest.
 
 Reject only when the entire commit is nonsense for this project or is concrete damage it can cite.

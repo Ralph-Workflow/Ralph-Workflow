@@ -128,3 +128,13 @@ def test_prompt_states_approve_in_every_other_case_including_when_in_doubt(
     rendered = _render(tmp_path)
     assert "Approve in every other case" in rendered
     assert "When in doubt, **approve**" in rendered
+
+
+def test_commit_review_regression_editorial_text_is_never_rejection_evidence(
+    tmp_path: Path,
+) -> None:
+    rendered = _render(tmp_path)
+
+    assert "An ordinary textual edit to `AGENTS.md`, `PROMPT.md`, or documentation" in rendered
+    assert "is never rejection evidence" in rendered
+    assert "approve it even when you disagree with the wording" in rendered
