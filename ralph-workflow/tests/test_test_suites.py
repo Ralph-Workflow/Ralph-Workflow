@@ -390,12 +390,13 @@ def test_multiline_values(value: int) -> None:
 
 def test_dynamic_test_file_weight_overrides_map_to_existing_test_files() -> None:
     package_root = Path(__file__).resolve().parents[1]
+    overrides = test_suites_module._DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES
     missing = sorted(
-        relative_path
-        for relative_path in test_suites_module._DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES
-        if not (package_root / relative_path).is_file()
+        relative_path for relative_path in overrides if not (package_root / relative_path).is_file()
     )
     assert missing == []
+    assert overrides["tests/scenarios/test_run_soak_resume_recovery.py"] == 425
+    assert overrides["tests/recovery/test_no_agent_runs_four_times_without_a_cooldown.py"] == 300
 
 
 def test_static_discovery_populates_weight_cache_for_retained_files(

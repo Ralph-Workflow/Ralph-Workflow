@@ -361,7 +361,10 @@ def _sample_loop(
             listener,
         )
         overlap_samples.append(sample)
-        if sample.fd_holders == OVERLAP_MAX_CHILDREN:
+        if (
+            sample.fd_holders == OVERLAP_MAX_CHILDREN
+            and len(sample.tree) == OVERLAP_MAX_TREE_PROCESSES
+        ):
             candidate_overlap_observed.set()
         stop_sampling.wait(0.015)
 
