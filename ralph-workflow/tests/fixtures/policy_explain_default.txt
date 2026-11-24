@@ -5,7 +5,7 @@
 +----------------+
     |
     v
-[loop: counter=planning_analysis_iteration, max=3]
+[loop: counter=planning_analysis_iteration, max=1]
 +-------------------+
 | planning_analysis |
 |   role=analysis   |
@@ -13,7 +13,7 @@
     +--[failed]-----------> planning
     +--[request_changes]--> planning
     <<==[loopback]== returns to 'planning'
-    [LOOPBACK: counter=planning_analysis_iteration, max=3]
+    [LOOPBACK: counter=planning_analysis_iteration, max=1]
     >> RE-ENTRY at planning
     |
     v

@@ -16,7 +16,7 @@ from ralph.policy.loader import (
     load_policy,
 )
 
-PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 3
+PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 1
 
 
 def _copy_default_policy_files(target_dir: Path) -> None:

@@ -9,6 +9,13 @@ from ralph.policy.loader import load_policy
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_an_ungated_analysis_phase_is_unchanged expectation changed from 2 to 1": (
+        "the bundled planning-analysis cap is now one, so the display counter clamps "
+        "a charged pass to the configured final label instead of showing a nonexistent second pass"
+    ),
+}
+
 
 @lru_cache(maxsize=1)
 def _pipeline() -> object:
@@ -38,7 +45,7 @@ def test_each_gated_pass_gets_its_own_label() -> None:
 
 def test_an_ungated_analysis_phase_is_unchanged() -> None:
     assert _label("planning_analysis", charged=0) == 1
-    assert _label("planning_analysis", charged=1) == 2
+    assert _label("planning_analysis", charged=1) == 1
 
 
 def test_the_final_hint_waits_for_the_last_gated_pass() -> None:

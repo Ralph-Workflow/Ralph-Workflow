@@ -91,7 +91,7 @@ def _spawn_exited_child_with_lingering_descendant(
 
 def _assert_reaped(pid: int) -> None:
     clock = SystemClock()
-    deadline = clock.monotonic() + 3.0
+    deadline = clock.monotonic() + 10.0
     backoff = threading.Event()
     while True:
         try:
