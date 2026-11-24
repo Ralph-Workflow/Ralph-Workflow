@@ -301,5 +301,6 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/workspace/fs.py", "FsWorkspace.delete", "raw_rmtree"),
         ("ralph/workspace/fs.py", "FsWorkspace.delete", "raw_unlink"),
         ("ralph/workspace/fs.py", "FsWorkspace.move", "raw_move"),
+        ("ralph/workspace/fs.py", "_open_regular_fd", "raw_open"),
     }
 )

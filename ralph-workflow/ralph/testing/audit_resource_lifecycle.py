@@ -297,6 +297,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/recovery/testing.py", "FakeConnectivityMonitor.__init__", "unbounded_accumulator"),
         ("ralph/skills/upstream.py", "_open_lock_descriptor", "raw_os_fd"),
         ("ralph/telemetry/_user_identity.py", "_identity_lock", "raw_os_fd"),
+        ("ralph/workspace/fs.py", "_open_regular_fd", "raw_os_fd"),
         (
             "ralph/workspace/_cross_process_watch_lock.py",
             "CrossProcessWatchLock",

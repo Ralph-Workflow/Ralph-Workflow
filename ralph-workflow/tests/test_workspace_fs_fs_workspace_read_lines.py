@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -162,16 +163,22 @@ class TestFsWorkspaceReadLines:
         ws = FsWorkspace(tmp_path)
         target = tmp_path / "lines.txt"
         target.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
-        original_open = Path.open
+        original_open = os.open
         content_opens = 0
 
-        def counting_open(candidate: Path, *args: object, **kwargs: object) -> object:
+        def counting_open(
+            candidate: str | os.PathLike[str],
+            flags: int,
+            mode: int = 0o777,
+            *,
+            dir_fd: int | None = None,
+        ) -> int:
             nonlocal content_opens
-            if candidate == target:
+            if Path(candidate) == target:
                 content_opens += 1
-            return original_open(candidate, *args, **kwargs)
+            return original_open(candidate, flags, mode, dir_fd=dir_fd)
 
-        monkeypatch.setattr(Path, "open", counting_open)
+        monkeypatch.setattr(os, "open", counting_open)
 
         content, metadata = ws.read_lines("lines.txt", head=2)
 

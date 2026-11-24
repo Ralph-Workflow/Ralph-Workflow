@@ -18,6 +18,7 @@ MAX_READ_LINES_BYTES: int = MAX_READ_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+    from io import BufferedReader, TextIOWrapper
 
 
 def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
@@ -25,6 +26,32 @@ def _normalize_absolute_path(base: Path, candidate_path: Path) -> Path:
     candidate_str = os.fspath(candidate_path)
     joined = candidate_str if candidate_path.is_absolute() else base_str + os.sep + candidate_str
     return Path(os.path.normpath(joined))
+
+
+def _ensure_regular_mode(mode_bits: int, path: Path) -> None:
+    if S_ISDIR(mode_bits):
+        raise IsADirectoryError(errno.EISDIR, f"Is a directory: {path}")
+    if not S_ISREG(mode_bits):
+        raise OSError(errno.EINVAL, f"not a regular file: {path}")
+
+
+def _open_regular_fd(path: Path) -> int:
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        _ensure_regular_mode(os.fstat(fd).st_mode, path)
+        os.set_blocking(fd, True)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _open_regular(path: Path) -> BufferedReader:
+    return os.fdopen(_open_regular_fd(path), "rb")
+
+
+def _open_regular_text(path: Path) -> TextIOWrapper:
+    return os.fdopen(_open_regular_fd(path), "r", encoding="utf-8")
 
 
 def _require_regular_file(path: Path) -> None:
@@ -90,7 +117,7 @@ class FsWorkspace:
     def snapshot(self, path: str, *, max_bytes: int | None = None) -> WorkspaceSnapshot:
         abs_path = self._abs(path)
         try:
-            with abs_path.open("rb") as fh:
+            with _open_regular(abs_path) as fh:
                 st = os.fstat(fh.fileno())
                 stat = {
                     "type": "file",
@@ -206,7 +233,7 @@ class FsWorkspace:
     def _count_lines(abs_path: Path) -> int:
         total = 0
         last_byte: int | None = None
-        with abs_path.open("rb") as fh:
+        with _open_regular(abs_path) as fh:
             while True:
                 chunk = fh.read(65_536)
                 if not chunk:
@@ -238,7 +265,7 @@ class FsWorkspace:
             selected = []
 
         total_lines = 0
-        with abs_path.open(encoding="utf-8") as fh:
+        with _open_regular_text(abs_path) as fh:
             file_size = os.fstat(fh.fileno()).st_size
             if full_read_ceiling is not None and file_size > full_read_ceiling:
                 raise ValueError(
@@ -289,7 +316,7 @@ class FsWorkspace:
                 f"limit of {ceiling} bytes (path={path!r}). "
                 "Use offset/limit to request a bounded window or raise max_bytes."
             )
-        with abs_path.open("rb") as fh:
+        with _open_regular(abs_path) as fh:
             if offset:
                 fh.seek(offset)
             raw = fh.read(limit) if limit is not None else fh.read()
