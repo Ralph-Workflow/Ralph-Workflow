@@ -86,6 +86,7 @@ _SKIP_DIR_NAMES: frozenset[str] = frozenset(
         ".git",
         ".hypothesis",
         ".mypy_cache",
+        ".omo",
         ".pi-subagents",
         ".pytest_cache",
         ".ruff_cache",
@@ -652,6 +653,8 @@ def _iter_scannable_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
     for rel_str in sorted(ws.iter_files("")):
         rel_path = PurePath(rel_str)
         if any(part in _SKIP_DIR_NAMES for part in rel_path.parts):
+            continue
+        if any(part.startswith(("wt-", "worktree-agent-")) for part in rel_path.parts):
             continue
         yield rel_path.as_posix(), repo_root / rel_str
 

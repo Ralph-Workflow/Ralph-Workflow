@@ -243,11 +243,22 @@ def test_audit_tree_ignores_generated_and_runtime_directories(tmp_path: Path) ->
         "tmp",
         ".agent/raw",
         ".pi-subagents",
+        ".omo/evidence",
         ".mypy_cache",
         "ralph-workflow/docs/sphinx/_build/html",
     ):
         directory = tmp_path / relative
         directory.mkdir(parents=True)
+        (directory / "planted.md").write_text(f"phase `{_STEM}` is retired\n", encoding="utf-8")
+
+    assert not audit_tree(tmp_path)
+
+
+def test_audit_tree_ignores_machine_managed_worktrees(tmp_path: Path) -> None:
+    _project_layout(tmp_path)
+    for relative in ("wt-01-worker", "worktree-agent-02"):
+        directory = tmp_path / relative
+        directory.mkdir()
         (directory / "planted.md").write_text(f"phase `{_STEM}` is retired\n", encoding="utf-8")
 
     assert not audit_tree(tmp_path)
