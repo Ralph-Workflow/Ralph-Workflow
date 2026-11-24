@@ -1381,6 +1381,13 @@ class RecoveryController:
     ) -> int:
         return self._mark_agent_unavailable(phase, agent, reason, verdict=verdict)
 
+    def record_rejected_proposal(self, phase: str, agent: str) -> int:
+        return self.record_confirmed_unavailability(
+            phase,
+            agent,
+            UnavailabilityReason.UNPRODUCTIVE_LIMIT,
+        )
+
     def mark_candidate_unavailable(self, phase: str, agent: str) -> None:
         self._mark_agent_unavailable(phase, agent, UnavailabilityReason.CANDIDATE_UNAVAILABLE)
 

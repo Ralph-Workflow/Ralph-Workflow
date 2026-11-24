@@ -27,6 +27,10 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.workspace.fs import FsWorkspace
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_protected_prompt_and_agents_md": (
+        "ordinary textual edits to protected instructions require commit review rather than a "
+        "deterministic rejection; deletion remains destructive and hard-rejected"
+    ),
     "test_legitimate_small_deletions_and_edits_pass": (
         "ordinary manifest modifications now surface as soft protected_overwrite evidence while "
         "still passing tripwires"
@@ -205,18 +209,41 @@ def test_protected_git_content_deleted_and_modified() -> None:
 
 def test_protected_prompt_and_agents_md() -> None:
     diff = [
-        DiffEntry(path="PROMPT.md", status="M"),
+        DiffEntry(path="PROMPT.md", status="M", content="Keep the run specification current.\n"),
         DiffEntry(path="AGENTS.md", status="D"),
+        DiffEntry(path="nested/AGENTS.md", status="M", content=""),
+        DiffEntry(path="other/AGENTS.md", status="M", new_mode="120000", content="target"),
+        DiffEntry(path="vendor/AGENTS.md", status="M", is_binary=True, content="movie bytes"),
     ]
     report = evaluate_tripwires(diff, 10, TripwireThresholds())
     assert report.passed is False
-    assert len(report.hard) == 2
+    assert len(report.hard) == 4
 
-    prompt_finding = next(f for f in report.hard if f.path == "PROMPT.md")
+    prompt_finding = next(f for f in report.soft if f.path == "PROMPT.md")
     assert prompt_finding.category == "protected_overwrite"
 
     agents_finding = next(f for f in report.hard if f.path == "AGENTS.md")
     assert agents_finding.category == "protected_deletion"
+
+
+def test_commit_review_regression_legitimate_agents_text_edit_is_reviewed_not_hard_rejected() -> (
+    None
+):
+    report = evaluate_tripwires(
+        [
+            DiffEntry(
+                path="AGENTS.md",
+                status="M",
+                content="## Product status\n\nThe implemented bridge is verified.\n",
+            )
+        ],
+        10,
+        TripwireThresholds(),
+    )
+
+    assert report.passed is True
+    assert report.hard == ()
+    assert [finding.category for finding in report.soft] == ["protected_overwrite"]
 
 
 def test_protected_manifest_and_lockfile_deletion() -> None:
@@ -509,7 +536,7 @@ def test_duck_typing_and_dict_compatibility() -> None:
 
 def test_combined_hard_and_soft_findings() -> None:
     diff = [
-        DiffEntry(path="PROMPT.md", status="M"),
+        DiffEntry(path="PROMPT.md", status="M", content=""),
         DiffEntry(path="secrets.yml", status="A"),
     ]
     report = evaluate_tripwires(diff, 10, TripwireThresholds())

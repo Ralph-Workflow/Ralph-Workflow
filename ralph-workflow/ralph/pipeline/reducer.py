@@ -1578,7 +1578,19 @@ def _reduce_commit_review_rejection(
     phase_def: PhaseDefinition,
     *,
     routing_timing: RoutingTiming | None = None,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
+    proposal_phase = phase_def.transitions.on_reject or "development"
+    proposal_chain = state.chain_for_phase(proposal_phase)
+    if recovery is not None and proposal_chain is not None:
+        proposal_author = (
+            proposal_chain.agents[proposal_chain.current_index]
+            if proposal_chain.agents and proposal_chain.current_index < len(proposal_chain.agents)
+            else None
+        )
+        if proposal_author is not None:
+            recovery.record_rejected_proposal(proposal_phase, proposal_author)
+
     new_rejections = state.commit_review_rejections + 1
     loop_counter_cfg = policy.loop_counters.get("commit_review_rejections")
     max_rejections = (
@@ -1608,7 +1620,7 @@ def _reduce_commit_review_rejection(
             " after the cycle timebox elapsed" if timebox_expired else "",
         )
 
-    target_phase = phase_def.transitions.on_reject or "development"
+    target_phase = proposal_phase
     state_for_advance = progress_state.copy_with(
         commit_review_rejections=new_rejections,
         rollback_pending=True,
@@ -1695,6 +1707,7 @@ def _reduce_commit_review_event(
             policy,
             phase_def,
             routing_timing=routing_timing,
+            recovery=recovery,
         )
 
     if isinstance(event, (CommitReviewGateFailed, CommitReviewLoopback)):

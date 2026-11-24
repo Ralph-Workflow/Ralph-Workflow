@@ -6,11 +6,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.phases.commit_review import CommitReviewRejected
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.cycle_timing import RoutingTiming
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import Cooldown
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
@@ -72,6 +76,46 @@ def test_wu_a2_terminal_regression_normal_rejection_still_requests_development_r
     assert rejected.rollback_pending is True
     assert rejected.rollback_ref == ref
     assert effects == []
+
+
+def test_rejection_cools_the_proposal_author_before_retrying_development() -> None:
+    policy = _policy()
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, clock=clock))
+    author = "agy/gemini-4-argon-low"
+    fallback = "pi/minimax/MiniMax-M3"
+    state = PipelineState(
+        phase=_REVIEW_PHASE,
+        previous_phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=[author, fallback],
+                current_index=0,
+            )
+        },
+    )
+
+    rejected, _effects = reduce(
+        state,
+        CommitReviewRejected(
+            reason="Protected document overwritten: AGENTS.md",
+            ref="refs/ralph/proposals/rejected-author/1",
+            hard=True,
+        ),
+        policy,
+        recovery=controller,
+    )
+
+    assert rejected.phase == "development"
+    assert isinstance(controller.agent_eligibility("development", author), Cooldown)
+    selection = controller.preferred_agent_index(
+        "development",
+        [author, fallback],
+        current_index=0,
+    )
+    assert selection.agent == fallback
+    assert rejected.agent_cooldowns is not None
+    assert author in rejected.agent_cooldowns["unavailable_until_epoch_ms"]
 
 
 @pytest.mark.parametrize("terminal_condition", ("rejection_limit", "cycle_timebox"))

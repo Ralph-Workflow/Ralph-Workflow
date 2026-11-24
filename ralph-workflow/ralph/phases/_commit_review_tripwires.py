@@ -520,8 +520,10 @@ def _evaluate_hard_entry(
             path=norm_str,
         )
 
-    if norm.name in DEFAULT_PROTECTED_DOCUMENTS:
-        action = "deleted" if deleted else "overwritten"
+    if norm.name in DEFAULT_PROTECTED_DOCUMENTS and (
+        deleted or _is_destructive_manifest_change(content, new_mode, is_binary=is_binary)
+    ):
+        action = "deleted" if deleted else "overwritten destructively"
         category = "protected_deletion" if deleted else "protected_overwrite"
         return Finding(
             category=category,
@@ -565,6 +567,7 @@ def _evaluate_soft_entry(
     findings: list[Finding] = []
 
     is_manifest = norm.name in DEFAULT_LOCKFILE_BASENAMES or norm.name in DEFAULT_MANIFEST_BASENAMES
+    is_protected_document = norm.name in DEFAULT_PROTECTED_DOCUMENTS
     is_bin = _is_binary_entry(entry, norm)
     new_mode = _get_entry_attr(entry, "new_mode", None)
     if (
@@ -576,6 +579,19 @@ def _evaluate_soft_entry(
             Finding(
                 category="protected_overwrite",
                 message=f"Protected project manifest or lockfile modified: {norm_str}",
+                path=norm_str,
+            )
+        )
+
+    if (
+        not deleted
+        and is_protected_document
+        and not _is_destructive_manifest_change(content, new_mode, is_binary=is_bin)
+    ):
+        findings.append(
+            Finding(
+                category="protected_overwrite",
+                message=f"Protected document modified for commit review: {norm_str}",
                 path=norm_str,
             )
         )

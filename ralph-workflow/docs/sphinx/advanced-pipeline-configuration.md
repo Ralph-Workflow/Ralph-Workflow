@@ -284,7 +284,7 @@ Before invoking the review agent, the engine seals pending changes into an isola
 
 - **Mass deletion threshold (`max_deleted_files`, default: 50):** If the count of deleted tracked files exceeds this limit, the gate triggers a hard rejection.
 - **Mass deletion ratio (`max_deleted_fraction`, default: 0.25):** If the fraction of deleted tracked files exceeds 25% of the repository's total tracked files, the gate triggers a hard rejection.
-- **Protected paths:** Deleting or overwriting `.git` internals or a core prompt (`PROMPT.md`, `AGENTS.md`), deleting a manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`) or lockfile (`uv.lock`, `package-lock.json`, etc.), and deleting a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`) are rejected immediately.
+- **Protected paths:** Deleting or overwriting `.git` internals; deleting a core instruction file (`PROMPT.md`, `AGENTS.md`); replacing a core instruction file with blank, binary, or symlink content; deleting a manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`) or lockfile (`uv.lock`, `package-lock.json`, etc.); and deleting a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`) are rejected immediately. Ordinary textual edits to core instruction files continue to Stage 2 as review evidence.
 
 **Soft findings** never reject on their own; they are handed to the Stage 2 agent as review evidence:
 
