@@ -57,10 +57,35 @@ differently.
    check running only in an undeclared opt-in suite the default gate
    excludes will rot unnoticed: give it a lane, or delete it.
 9. Verification MUST complete in time proportional to the codebase, enforced
-   by the gate itself (fail on exceed), never by convention. Record it as
-   `verification_time_budget`.
-   - **Guide:** roughly **1 second per 1k LOC**.
-   - **HARD CAP: 2 minutes**, whatever the size — a gate slower than that
+   by the gate itself (fail on exceed), never by convention. Record the
+   enforced limit as `verification_time_budget`: the project's MEASURED gate
+   time, never a cap and never a guess.
+   - **Cost floor:** the irreducible toolchain cost of answering at all —
+     interpreter or runtime startup, environment provisioning, and the
+     incremental build and link that a one-line, behaviour-neutral edit to a
+     representative implementation file forces — measured
+     invocation-to-answer on a warm cache with every check deselected.
+     Record it as `verification_cost_floor`, separately for the full gate,
+     the fast path, and the default suite, each with its measuring command,
+     edited file, machine, and date. Test execution, check work, network,
+     sleeps, and anything a check could skip NEVER count toward the floor.
+     A floor that cannot be reproduced from its recorded command is zero.
+     Re-measure it whenever the toolchain, build configuration, or
+     reference machine changes; it shrinks freely and grows only as a
+     reviewed change carrying the new measurement. Reducing a large floor —
+     build caching, precompiled headers, a persistent build daemon,
+     splitting a monolithic link — is owned work under rule 22, not a
+     blocker on unrelated changes.
+   - **Controllable time** is measured time minus the matching cost floor.
+     Every guide and cap in this policy and the testing policy binds
+     controllable time only: a project whose toolchain needs minutes just to
+     rebuild is held to the same discipline as one that starts in a second.
+     A game engine whose one-line edit forces a 4-minute incremental link
+     records a 4-minute floor, and its gate is bound to that floor plus at
+     most 2 minutes.
+   - **Guide:** roughly **1 second of controllable time per 1k LOC**.
+   - **HARD CAP: 2 minutes above the recorded cost floor**, whatever the
+     size — a gate slower than that
      destroys the edit/verify loop humans and agents depend on, so past
      ~120k LOC the cap, not the rate, binds. This cap is far stricter than
      commonly cited industry guidance for a commit build, because an agent
@@ -68,7 +93,8 @@ differently.
      rather than per commit — a five-iteration task reaches ten minutes at
      this cap.
    - **Nesting:** the suite is ONE STEP inside this budget, not a parallel
-     allowance. The testing policy caps the default suite at 60 seconds so
+     allowance. The testing policy caps the default suite at 60 seconds above
+     its cost floor so
      type checking, linting, formatting, and audits fit in the remainder. A
      suite consuming the whole gate budget is a breach even when its own
      limit is satisfied.
@@ -106,11 +132,16 @@ differently.
     everything in its lane; a change is never verified on a selected subset.
 16. Fast-path and full-gate costs MUST be measured invocation-to-answer
     including startup, and the gate MUST emit its observed duration so a
-    regression is a number, not a feeling. Target 10 seconds for the fast
-    path, HARD CAP 30 seconds. Startup alone exceeding the target is a
-    defect to fix, not a reason to widen it; record the measured startup
-    floor when it binds. Added cost and any budget breach require an
-    explicit choice and actionable escalation.
+    regression is a number, not a feeling. Target 10 seconds of
+    controllable time for the fast path, HARD CAP 30 seconds above the fast
+    path's recorded cost floor (rule 9). Record the enforced limit as
+    `fast_path_time_budget`: the measured fast-path time, never the cap; the
+    fast path MUST fail when it exceeds that budget. A project with a
+    negligible floor is held to 10 and 30 seconds outright. A floor above
+    the target is a measured fact to record and an owned reduction under
+    rule 22, never a reason to widen the cap on controllable time. Added
+    cost and any budget breach require an explicit choice and actionable
+    escalation.
 17. Parallelism and caching are the two legitimate levers for holding the
     budget as the project grows, permitted only when they cannot produce a
     FALSE GREEN. Parallelism requires independent, order-insensitive checks.
@@ -134,7 +165,9 @@ differently.
     growth or a hanging step is a hard indicator of a real problem, usually
     architectural — the testing policy's performance rule diagnoses it in
     full. Treat a gate performance regression as seriously as a failing
-    test: fix the design. NEVER raise a budget to make a slow gate fit.
+    test: fix the design. NEVER raise a budget to make a slow gate fit, and
+    never inflate a cost floor to the same end: a floor is re-measured from
+    its recorded command, never estimated.
 22. The full gate remains required before done. Reducing recurring
     full-gate, fast-path, or setup cost is in scope when it fits the run
     budget without displacing the request; otherwise raise it where an owner
@@ -193,7 +226,7 @@ Then delete this comment. -->
 
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
-| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | per-step and per-suite timeouts declared and enforced | deterministic: PROJECT-FACT-UNRESOLVED | when the combined budget is retired by the kernel |
+| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined budget recorded in ``policy-portfolio.toml`` holds | per-step and per-suite timeouts declared and enforced | deterministic: PROJECT-FACT-UNRESOLVED | when the combined budget is retired by the kernel |
 | `verification-budget-ratchet` Verification budget ratchet | Verification owner | the recorded ``verification_time_budget`` shrinks freely; growth is rejected absent a reviewed change | the recorded ``verification_time_budget`` is at or below its prior recorded value; growth is absent a reviewed change | the current ``verification_time_budget`` value per project | deterministic: PROJECT-FACT-UNRESOLVED | when the ratchet is retired by the kernel |
 | No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | no high-churn evidence file is committed to a tracked location | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops generating high-churn evidence |
 | Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | Gate lanes section enumerates each named profile with all five fields present | deterministic: PROJECT-FACT-UNRESOLVED | when every named profile is retired |
@@ -218,9 +251,13 @@ If a fact cannot be resolved yet (project too young, tool not chosen, value
 not knowable), defer it with the RALPH-PENDING form "RALPH-PENDING (assumed
 <date>); review trigger: <trigger>" — it reaches readiness and a dev-cycle
 agent resolves it when its trigger fires.
-Record `verification_time_budget` as the project's OWN measured figure plus
-small headroom, never the 2-minute cap as a default — the ratchet then
-holds that tighter number.
+Record `verification_cost_floor` from a measurement you ran, never an
+estimate: the gate, fast-path, and suite floors, each with its measuring
+command, edited file, machine, and date. A negligible floor is still
+recorded as measured.
+Record `verification_time_budget` and `fast_path_time_budget` as the
+project's OWN measured figures plus small headroom, never a cap as a
+default — the ratchet then holds those tighter numbers.
 The whole-file placeholder scan rejects unresolved-work markers anywhere in
 the file, including inside ordinary prose: the all-caps four-letter "to do"
 marker, the "to be determined" abbreviation, the "fix me" marker, and a
@@ -240,6 +277,8 @@ RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_cost_floor: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: fast_path_time_budget: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: gate_lane_review_cadence_and_owner: PROJECT-FACT-UNRESOLVED
 
@@ -280,7 +319,8 @@ Volatile reports (per-run test logs, mutation-analysis dumps, coverage
 HTML, snapshot diffs) and large generated inventories go to ignored paths
 under `/tmp` or to CI artifacts. Commit only compact, deterministic,
 human-reviewable baselines whose diffs carry meaning: the
-`verification_time_budget` fact, the recorded gate-lane review with its
+`verification_time_budget`, `fast_path_time_budget`, and
+`verification_cost_floor` facts, the recorded gate-lane review with its
 dated evidence, and reviewable gate results. A reviewer who pulls the change
 must see a single small diff against a known baseline, not a thousand-line
 inventory of auto-generated noise.
@@ -289,8 +329,9 @@ An agent MUST NOT:
 
 * Add a "verification" command that does not exercise every default-gate
   check.
-* Lower the recorded `verification_time_budget` below the project's
-  measured figure, narrow the default gate to skip a documented check,
+* Lower the recorded `verification_time_budget` or `fast_path_time_budget`
+  below the project's measured figure, record a `verification_cost_floor`
+  that was not measured or that counts check work, narrow the default gate to skip a documented check,
   or shrink a per-step timeout past the proven floor to make a slow
   or failing run pass. The kernel's no-weakening rule (see
   `execution-kernel.md` §Kernel rules 4) applies in full to every
@@ -386,6 +427,8 @@ Review this policy in the same workflow as any of:
 * A named profile is added, retired, or has its owner or trigger changed.
 * A named profile has not run within its declared staleness horizon.
 * The observed gate duration moves materially, or the budget changes.
+* The toolchain, build configuration, or reference machine changes: re-measure
+  `verification_cost_floor`.
 * The bypass-detection audit changes.
 
 ## Research basis

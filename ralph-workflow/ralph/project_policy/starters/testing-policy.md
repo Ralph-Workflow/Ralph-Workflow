@@ -72,10 +72,15 @@ Suite admission, and fixing the production seam.
    suite is one step among type checking, linting, formatting, and audits,
    so record a POINT VALUE strictly below the project's recorded
    `verification_time_budget` — never a range, never that budget in full.
-   Guide: ~0.5s per 1k LOC, deliberately half the verification policy's
-   whole-gate guide, leaving the remainder for other steps. HARD CAP 60
-   seconds. Past ~120k LOC the cap binds, and it does not move. A recorded
-   gate budget tighter than 120s binds before either number here. These
+   The guide and cap bind CONTROLLABLE time — the suite's measured time minus
+   its cost floor, recorded with the gate's floors in the verification
+   policy's `verification_cost_floor` fact and governed by that policy's
+   rule 9; test execution never counts toward a floor. Guide: ~0.5s of
+   controllable time per 1k LOC, deliberately half the verification
+   policy's whole-gate guide, leaving the remainder for other steps. HARD
+   CAP 60 seconds above the suite's recorded cost floor. Past ~120k LOC the
+   cap binds, and it does not move. A recorded gate budget tighter than 120
+   seconds of controllable time binds before either number here. These
    limits govern the DEFAULT SUITE; named profiles and quarantine carry
    their own budgets.
 10. A timeout is a HARD failure, never a route to green.

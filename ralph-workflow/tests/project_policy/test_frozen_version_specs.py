@@ -5,9 +5,13 @@ import re
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import markers, portfolio, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
+from tests.project_policy.measured_budget_correction import correct_fixed_time_caps
 from tests.project_policy.test_v4_corpus_authentic import build_v4_pack
 
 RALPH_TEST_CHANGE_REASONS = {
+    "test_frozen_v4_pack_with_portfolio_v2_validates_ready": (
+        "the authentic v4 starters carry the fixed 30 s / 60 s / 2 min caps that the measured cost-floor contract now flags in every pack, frozen or not, so the pack is READY only once those rules are corrected and the two measured-budget facts recorded"
+    ),
     "test_frozen_v5_pack_validates_ready": (
         "the v5 pack drops the enforcement-status cell the v6 starter "
         "rule-to-enforcer ladder carries"
@@ -95,6 +99,7 @@ def test_frozen_v4_pack_with_portfolio_v2_validates_ready() -> None:
     )
     v2_content = re.sub(r'enforcement\s*=\s*"[^"]*"\n', "", v2_content)
     ws.write(markers.PORTFOLIO_PATH, v2_content)
+    correct_fixed_time_caps(ws)
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert findings == []
 

@@ -6,6 +6,16 @@ from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import markers, portfolio, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
+from tests.project_policy.measured_budget_correction import (
+    LEGACY_TIME_BUDGET_FINDING_IDS,
+    correct_fixed_time_caps,
+)
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_v4_pack_full_v4_manifest_validates": (
+        "the authentic v4 starters carry the fixed 30 s / 60 s / 2 min caps that the measured cost-floor contract now flags in every pack, frozen or not, so the pack is READY only once those rules are corrected and the two measured-budget facts recorded"
+    ),
+}
 
 V4_CORE_FILES: tuple[str, ...] = markers._V4_CORE_FILES
 
@@ -80,8 +90,15 @@ def test_v4_starter_source_present_in_authentic_snapshot() -> None:
 
 def test_v4_pack_full_v4_manifest_validates() -> None:
     ws = _build_v4_pack()
+    correct_fixed_time_caps(ws)
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert findings == [], f"Complete frozen v4 pack must evaluate to READY; got: {findings}"
+
+
+def test_uncorrected_v4_pack_is_blocked_only_on_its_fixed_time_caps() -> None:
+    ws = _build_v4_pack()
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert sorted(f.requirement_id for f in findings) == sorted(LEGACY_TIME_BUDGET_FINDING_IDS)
 
 
 def test_v4_pack_missing_security_policy_fails() -> None:

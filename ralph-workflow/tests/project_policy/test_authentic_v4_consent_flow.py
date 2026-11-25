@@ -6,6 +6,15 @@ from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import _prompt_ui, _schema_upgrade, markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
+from tests.project_policy.measured_budget_correction import LEGACY_TIME_BUDGET_FINDING_IDS
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_interactive_v4_freeze_rewrite_pins_first_line": (
+        "freezing keeps the v4 text byte-identical, including its fixed 30 s / 60 s / 2 min "
+        "caps, which the measured cost-floor contract now flags in frozen packs too, so a "
+        "frozen authentic v4 pack is blocked on exactly those findings"
+    ),
+}
 
 V4_CORE_FILES = markers.core_files_for_version("v4")
 
@@ -115,7 +124,7 @@ def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:
         )
 
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
-    assert findings == [], f"Frozen v4 pack must validate READY; got: {findings}"
+    assert sorted(f.requirement_id for f in findings) == sorted(LEGACY_TIME_BUDGET_FINDING_IDS)
 
 
 def test_interactive_v4_upgrade_consent_returns_true_no_marker_rewrite() -> None:

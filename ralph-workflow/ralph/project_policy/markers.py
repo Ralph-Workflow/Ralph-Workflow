@@ -11,7 +11,7 @@ POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v6 -->"
 FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
 )
-POLICY_CONTRACT_VERSION: Final[str] = "2026-11-09.1"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-24.1"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
@@ -302,6 +302,7 @@ ID_DOMAIN: Final[str] = "RWP-DOMAIN"
 ID_MIGRATE: Final[str] = "RWP-MIGRATE-UNRECONCILED"
 ID_PORTFOLIO: Final[str] = "RWP-PORTFOLIO"
 ID_INVENTORY: Final[str] = "RWP-INVENTORY"
+ID_TIME_BUDGET: Final[str] = "RWP-TIME-BUDGET"
 
 CLAIM_SCOPE_MISSING_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MISSING"
 CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE"
@@ -509,6 +510,7 @@ __all__ = [
     "ID_PENDING",
     "ID_PLACEHOLDER",
     "ID_PORTFOLIO",
+    "ID_TIME_BUDGET",
     "INAPPLICABLE_MARKER",
     "LANG_MARKER",
     "MANAGED_BLOCK_LINE_BUDGET",

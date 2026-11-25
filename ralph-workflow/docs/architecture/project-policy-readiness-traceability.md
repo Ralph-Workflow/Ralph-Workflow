@@ -139,6 +139,7 @@ python -m pytest tests/project_policy/test_v6_enforcement.py tests/project_polic
   (`deterministic: <id>` or `advisory: <reason>; review: <trigger>`), in
   addition to `detects` and `retirement_trigger`.
 * Instruction-surface hygiene checks in readiness gate (line budgets, hidden/bidi Unicode, citation freshness).
+* Measured time-budget contract in `verification-policy.md` and `testing-policy.md`: every time cap binds only the time above the project's measured cost floor, recorded in the required `verification_cost_floor` and `fast_path_time_budget` facts. Fixed universal cap wording (`HARD CAP` 30 seconds, 60 seconds, or 2 minutes not followed by "above") raises a blocking `RWP-TIME-BUDGET:<file>:fixed-cap` finding in every pack, frozen packs included.
 * Three readiness dimensions on every surface (`structure_complete`, `implementation_verified`, `outcome_evidence_reviewed`).
 
 ## What does NOT ship in v6
