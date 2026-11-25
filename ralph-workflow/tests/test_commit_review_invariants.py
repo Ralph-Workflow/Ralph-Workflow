@@ -617,3 +617,64 @@ def test_tracked_engine_internal_runtime_artifact_is_deleted(tmp_git_repo: Path)
     result = _run(workspace)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
     assert not target.exists()
+
+
+@pytest.mark.parametrize("relative", ["bin/run", "Procfile"])
+def test_head_tracked_extensionless_file_is_never_deleted(
+    tmp_git_repo: Path, relative: str
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    target = tmp_git_repo / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    repo = _repo(tmp_git_repo)
+    repo.index.add([relative])
+    repo.index.commit("track extensionless file")
+    _write_commit_review_artifact(
+        workspace,
+        {"actions": [{"action": "delete_file", "path": relative}]},
+    )
+    result = _run(workspace)
+    assert target.exists()
+    assert len(result) == 1 and isinstance(result[0], CommitReviewLoopback)
+
+
+@pytest.mark.parametrize("directory", ["src", "src/"])
+def test_delete_file_on_a_directory_is_declined_with_a_retry_hint(
+    tmp_git_repo: Path, directory: str
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    source = tmp_git_repo / "src" / "main.rs"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("fn main() {}\n", encoding="utf-8")
+    repo = _repo(tmp_git_repo)
+    repo.index.add(["src/main.rs"])
+    repo.index.commit("track source dir")
+    _write_commit_review_artifact(
+        workspace,
+        {"actions": [{"action": "delete_file", "path": directory}]},
+    )
+    result = _run(workspace)
+    assert source.exists()
+    assert len(result) == 1 and isinstance(result[0], CommitReviewLoopback)
+    assert "were rejected" in result[0].hint
+    assert "failed while applying" not in result[0].hint
+
+
+def test_delete_file_on_an_untracked_directory_is_declined_with_a_retry_hint(
+    tmp_git_repo: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    scratch = tmp_git_repo / "scratch"
+    scratch.mkdir()
+    notes = tmp_git_repo / "scratch" / "notes.tmp"
+    notes.write_text("x\n", encoding="utf-8")
+    _write_commit_review_artifact(
+        workspace,
+        {"actions": [{"action": "delete_file", "path": "scratch"}]},
+    )
+    result = _run(workspace)
+    assert notes.exists()
+    assert len(result) == 1 and isinstance(result[0], CommitReviewLoopback)
+    assert "were rejected" in result[0].hint
+    assert "failed while applying" not in result[0].hint

@@ -168,6 +168,8 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
         return False
     if candidate.is_absolute() or any(part == ".." for part in candidate.parts):
         return False
+    if (repo_root / candidate).is_dir():
+        return False
     return _is_deletable_housekeeping(repo_root, candidate, suffix)
 
 
@@ -202,7 +204,7 @@ def _is_deletable_housekeeping(
         repo_root, str(candidate), markers=_SOURCE_FILE_GENERATED_MARKERS
     ):
         return True
-    return suffix not in _UNSAFE_EXTENSIONS
+    return suffix not in _UNSAFE_EXTENSIONS and not _path_exists_in_head(repo_root, str(candidate))
 
 
 def _attr_or(obj: object, name: str, default: object) -> object:
