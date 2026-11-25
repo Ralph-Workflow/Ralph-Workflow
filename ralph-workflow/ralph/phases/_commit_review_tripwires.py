@@ -474,6 +474,18 @@ def _is_destructive_manifest_change(
     )
 
 
+def removes_whole_package(
+    manifest: PurePosixPath,
+    base_paths: frozenset[str] | None,
+    deleted_paths: set[str],
+) -> bool:
+    if base_paths is None or manifest.parent == PurePosixPath():
+        return False
+    prefix = f"{manifest.parent.as_posix()}/"
+    tracked_under = {path for path in base_paths if path.startswith(prefix)}
+    return bool(tracked_under) and tracked_under <= deleted_paths
+
+
 def _evaluate_manifest_hard_entry(
     norm: PurePosixPath,
     norm_str: str,
@@ -482,8 +494,11 @@ def _evaluate_manifest_hard_entry(
     *,
     deleted: bool,
     is_binary: bool,
+    deletion_sanctioned: bool = False,
 ) -> Finding | None:
     if norm.name not in DEFAULT_LOCKFILE_BASENAMES and norm.name not in DEFAULT_MANIFEST_BASENAMES:
+        return None
+    if deleted and deletion_sanctioned:
         return None
     if deleted:
         return Finding(
@@ -510,6 +525,7 @@ def _evaluate_hard_entry(
     content: object = None,
     new_mode: object = None,
     is_binary: bool = False,
+    deletion_sanctioned: bool = False,
 ) -> Finding | None:
     if _is_git_path(norm):
         action = "deleted" if deleted else "modified or overwritten"
@@ -532,7 +548,13 @@ def _evaluate_hard_entry(
         )
 
     manifest_finding = _evaluate_manifest_hard_entry(
-        norm, norm_str, content, new_mode, deleted=deleted, is_binary=is_binary
+        norm,
+        norm_str,
+        content,
+        new_mode,
+        deleted=deleted,
+        is_binary=is_binary,
+        deletion_sanctioned=deletion_sanctioned,
     )
     if manifest_finding is not None:
         return manifest_finding
@@ -682,6 +704,7 @@ def evaluate_tripwires(
             content=content,
             new_mode=new_mode,
             is_binary=is_binary,
+            deletion_sanctioned=deleted and removes_whole_package(norm, base_paths, deleted_paths),
         )
         if hard_finding is not None:
             hard_findings.append(hard_finding)
