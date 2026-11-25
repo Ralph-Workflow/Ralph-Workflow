@@ -40,6 +40,11 @@ from ralph.recovery.dead_agent_probe import build_dead_agent_probe_runner
 from ralph.workspace.fs import FsWorkspace
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_canary_probe_regression_scratch_reclaimed_on_a_terminal_process_record": (
+        "the log sink is process-global, so a probe thread an earlier test released in its "
+        "cleanup could publish its outcome during this test under load; only messages from "
+        "probe threads that did not exist before this test count"
+    ),
     "test_dead_agent_probe_surfaces_the_probe_reason_for_the_post_mortem": (
         "build_dead_agent_probe_runner widened to return the richer ProbeResult carrier "
         "carrying .outcome and .reason; the assertion asserts result.outcome is ProbeOutcome.INCONCLUSIVE "
@@ -61,6 +66,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator, Mapping
+
+    from loguru import Message
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import UnifiedConfig
@@ -931,8 +938,16 @@ def test_canary_probe_regression_scratch_reclaimed_on_a_terminal_process_record(
     trusted_parent.mkdir()
     gate = threading.Event()
     calls: list[_Call] = []
+    earlier_probe_threads = {
+        thread.ident for thread in threading.enumerate() if thread.name == "ralph-canary-probe"
+    }
     messages: list[str] = []
-    sink_id = logger.add(messages.append, level="INFO", format="{message}")
+
+    def capture(message: Message) -> None:
+        if threading.current_thread().ident not in earlier_probe_threads:
+            messages.append(str(message))
+
+    sink_id = logger.add(capture, level="INFO", format="{message}")
     monkeypatch.setattr(
         "ralph.process.manager.get_process_manager",
         lambda: SimpleNamespace(
