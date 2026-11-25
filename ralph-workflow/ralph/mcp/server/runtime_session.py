@@ -45,6 +45,7 @@ from ralph.mcp.protocol.session import (
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir
+from ralph.mcp.server.session_workspace_root import resolve_session_workspace_root
 from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
 
 
@@ -374,15 +375,7 @@ def _load_session_payload(path: Path) -> dict[str, object]:
 
 
 def _resolve_workspace_root(path: Path) -> Path:
-    resolved_path = Path(path).resolve()
-    if resolved_path.parent.name == ".agent":
-        return resolved_path.parent.parent.resolve()
-    cursor = resolved_path.parent
-    while cursor != cursor.parent:
-        if (cursor / ".agent").is_dir():
-            return cursor.resolve()
-        cursor = cursor.parent
-    return resolved_path.parent.parent.parent.resolve()
+    return resolve_session_workspace_root(path)
 
 
 def session_from_env(
