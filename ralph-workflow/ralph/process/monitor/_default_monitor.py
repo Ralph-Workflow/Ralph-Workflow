@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import psutil
 
@@ -12,7 +12,7 @@ from ._process_monitor import ProcessRole
 from ._role_classifier import _conservative_role_classifier
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from ._discovery_strategy import DiscoveryStrategy
     from ._subagent_output_capture import SubagentOutputCapture
@@ -26,6 +26,15 @@ class _ClassifiedProcess:
     cmdline: list[str] | None
 
 
+class _InspectableProcess(Protocol):
+    @property
+    def pid(self) -> int: ...
+
+    def cmdline(self) -> list[str]: ...
+
+    def children(self, *, recursive: bool = False) -> Sequence[_InspectableProcess]: ...
+
+
 class DefaultProcessMonitor:
     __slots__ = (
         "_discovery_strategy",
@@ -33,6 +42,7 @@ class DefaultProcessMonitor:
         "_last_refresh_at",
         "_now",
         "_poll_interval_seconds",
+        "_process",
         "_processes",
         "_role_classifier",
         "_subagent_pid_source",
@@ -47,8 +57,10 @@ class DefaultProcessMonitor:
         subagent_pid_source: SubagentPidSource | None = None,
         now: Callable[[], float] | None = None,
         poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
+        process: Callable[[int], _InspectableProcess] = psutil.Process,
     ) -> None:
         self._host_pid = host_pid
+        self._process = process
         self._role_classifier = role_classifier or _conservative_role_classifier
         self._discovery_strategy = discovery_strategy
         self._subagent_pid_source = subagent_pid_source
@@ -63,15 +75,15 @@ class DefaultProcessMonitor:
             return
         self._last_refresh_at = now
         try:
-            host = psutil.Process(self._host_pid)
-        except psutil.Error:
+            host = self._process(self._host_pid)
+        except (psutil.Error, OSError, SystemError):
             self._processes = ()
             return
 
         classified: list[_ClassifiedProcess] = []
         try:
             host_cmdline = host.cmdline()
-        except psutil.Error:
+        except (psutil.Error, OSError, SystemError):
             host_cmdline = None
         classified.append(
             _ClassifiedProcess(
@@ -83,7 +95,7 @@ class DefaultProcessMonitor:
 
         try:
             descendants = host.children(recursive=True)
-        except psutil.Error:
+        except (psutil.Error, OSError, SystemError):
             descendants = []
 
         known_subagent_pids: set[int] = set()
@@ -102,7 +114,7 @@ class DefaultProcessMonitor:
                 else:
                     role = self._role_classifier(pid, cmdline)
                 classified.append(_ClassifiedProcess(pid=pid, role=role, cmdline=cmdline))
-            except (psutil.Error, OSError):
+            except (psutil.Error, OSError, SystemError):
                 continue
 
         self._processes = tuple(classified)
