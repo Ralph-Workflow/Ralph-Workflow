@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.auto_merged_paths": (
+        "user requirement: a rebase resolver may repair files both sides changed that git "
+        "merged cleanly but wrongly; the new conflict_resolution/auto_merged_paths.py probes "
+        "add reviewed labels, so the label-site digest is refreshed"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.git_hooks_path": (
         "user requirement: a commit hook rejection routes back to development; the new "
         "git-hooks-path probe in git/operations.py tells a hook rejection from a git error, "
@@ -129,10 +134,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "2b1310d3ecdade1fe4b985d391d657cd6d4cd320efde89ba8f3706deab7865ec"
+    "397a3ab3f8ec169828882d1527ac30c8e06d6626663d9cf089b34f88ffa3191c"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds git-hooks-path (rev-parse --git-path hooks after a "
+    "The reviewed inventory adds git-auto-merged-rev-parse and git-auto-merged-merge-base "
+    "(rev-parse --verify --quiet and merge-base while listing the paths both sides of a "
+    "replayed rebase commit changed; rc=1 is git's answer that the revision or common "
+    "ancestor does not exist), git-auto-merged-diff-tree (a failure is a real error), "
+    "git-hooks-path (rev-parse --git-path hooks after a "
     "failed commit, to tell a commit hook rejection from a git error; rc=128 is git's "
     "answer outside a repository), publication-gate-syntax (sh -n of the declared gate "
     "command; rc=2 is the shell's answer that the declaration is not a command), "

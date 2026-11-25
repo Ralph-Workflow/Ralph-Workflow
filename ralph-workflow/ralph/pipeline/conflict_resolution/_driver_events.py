@@ -249,11 +249,13 @@ def render_round_prompt(
     idx = stop.stop_index if stop is not None else None
     cap = stop.stop_cap if stop is not None else None
     surviving = () if round_index == 1 else session.unresolved_paths
+    auto_merged = stop.auto_merged_files if stop is not None else ()
     if strategy_history:
         return render_fn(
             root=root,
             target=target,
             conflicted_paths=conflicted,
+            auto_merged_paths=auto_merged,
             round_index=round_index,
             round_cap=round_cap,
             surviving_marker_paths=surviving,
@@ -267,6 +269,7 @@ def render_round_prompt(
         root=root,
         target=target,
         conflicted_paths=conflicted,
+        auto_merged_paths=auto_merged,
         round_index=round_index,
         round_cap=round_cap,
         surviving_marker_paths=surviving,

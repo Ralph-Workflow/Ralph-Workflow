@@ -1304,6 +1304,13 @@ ralph.pipeline.rebase_resolution_result
    :show-inheritance:
    :no-index:
 
+ralph.pipeline.conflict_resolution.auto_merged_paths
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.auto_merged_paths
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

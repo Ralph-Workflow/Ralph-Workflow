@@ -109,10 +109,18 @@ _PHASE_REQUIRED_SKILLS = {
         "verification-before-completion",
     ),
 }
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_phase_prompt_names_only_its_installed_universal_skills": (
+        "the conflict-resolution fallback cue no longer demands a clean build of the whole "
+        "tree, because a resolver forbidden to edit a broken auto-merged file could never "
+        "reach one; it now asks for a build and check of the files the resolver may edit"
+    ),
+}
+
 _PHASE_FALLBACK_HINTS = {
     "conflict_resolution.jinja": (
         "Analyze the root intent of conflicting changes on both branches",
-        "Confirm resolved files build and pass checks cleanly",
+        "Build and check the files you may edit before declaring resolution",
     ),
     "developer_iteration.jinja": (
         "Write failing tests before writing implementation code",

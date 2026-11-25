@@ -36,6 +36,7 @@ from ralph.pipeline._retained_resolution_scope import retained_rebase_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.auto_merged_paths import both_sides_changed_paths
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     resolve_completion_in_place,
     try_deterministic_resolution,
@@ -92,8 +93,10 @@ __all__ = [
     "bind_active_rebase_resolution_session",
     "finish_resolved_rebase_stops",
     "record_landed_stop",
+    "resolution_scope",
     "resolution_session_from_config",
     "resolve_rebase_in_progress",
+    "stage_auto_merged_repairs",
 ]
 
 
@@ -113,6 +116,11 @@ class RebaseStop:
     stop_cap: int
     replay_index: int | None = None
     replay_total: int | None = None
+    auto_merged_files: tuple[str, ...] = ()
+
+
+def resolution_scope(stop: RebaseStop) -> frozenset[str]:
+    return frozenset((*stop.conflicted_files, *stop.auto_merged_files))
 
 
 type RebaseStopResolver = Callable[["Path", str, RebaseStop], bool | StopResolutionOutcome]
@@ -558,6 +566,9 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
         )
         return None
     progress = _read_replay_progress(root)
+    auto_merged = tuple(
+        path for path in both_sides_changed_paths(root, sha) if path not in conflicted
+    )
     return RebaseStop(
         sha=sha,
         subject=_rebase_head_subject(root),
@@ -566,6 +577,7 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
         stop_cap=stop_cap,
         replay_index=None if progress is None else progress[0],
         replay_total=None if progress is None else progress[1],
+        auto_merged_files=auto_merged,
     )
 
 
@@ -579,7 +591,7 @@ def _touched_nothing_unexpected(
         return False
     unexpected = sorted(
         path
-        for path in after - before - frozenset(stop.conflicted_files)
+        for path in after - before - resolution_scope(stop)
         if not _is_ralph_workspace_path(path)
     )
     if not unexpected:
@@ -623,10 +635,23 @@ def _is_at_the_first_replay(root: Path) -> bool:
     return position is not None and position[0] == 1
 
 
+def stage_auto_merged_repairs(root: Path, stop: RebaseStop) -> bool:
+    if not stop.auto_merged_files or stage_paths(root, list(stop.auto_merged_files)):
+        return True
+    logger.warning(
+        "conflict_resolution: failed to stage edited auto-merged paths for stop {}: {}",
+        stop.stop_index,
+        stop.auto_merged_files,
+    )
+    return False
+
+
 def _stage_and_prove(root: Path, stop: RebaseStop) -> bool:
     _stage_observed_resolutions(root, stop.conflicted_files)
     observed_before = unmerged_paths(root)
-    if "<unmerged-path-query-failed>" in observed_before:
+    if not stage_auto_merged_repairs(root, stop) or (
+        "<unmerged-path-query-failed>" in observed_before
+    ):
         return False
     requested = set(stop.conflicted_files)
     candidate_pool = observed_before if observed_before else stop.conflicted_files

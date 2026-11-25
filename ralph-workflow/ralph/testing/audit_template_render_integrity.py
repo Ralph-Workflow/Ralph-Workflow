@@ -101,6 +101,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
         "- protected path overwrite: src/secrets.env modified (path: src/secrets.env)",
     ),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),
+    "auto_merged_block": ("- `crates/audio/src/lib.rs`",),
     "analysis_feedback_status": ("failed",),
     "replaying_commit_sha": ("0123456789abcdef",),
     "shipped_skills_mode": ("planning", "development"),

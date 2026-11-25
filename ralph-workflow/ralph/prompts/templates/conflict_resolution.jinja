@@ -44,6 +44,19 @@ and declare completion only in this session under the hard rules below.
 ## Conflicted files
 
 {{ conflicted_block }}
+{% if auto_merged_block|default('') %}
+## Auto-merged files
+
+Both sides changed these files and git merged them WITHOUT conflict markers.
+A clean textual merge can still be wrong: a duplicate definition because each
+side added the same function in a different place, a call to something the
+other side renamed or removed, an import that is now missing or repeated.
+Check each one against the replayed commit's intent on top of `{{ target }}`.
+You may edit them to repair such a merge; Ralph Workflow stages them with the
+conflicted files. Leave them untouched when the merge is already right.
+
+{{ auto_merged_block }}
+{% endif %}
 {{ feedback_block }}
 {% if strategy_history %}## Earlier integration strategies
 
@@ -74,13 +87,13 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 - DO NOT run any git command. Ralph Workflow stages the resolved files and
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
   denied to this session by the exec policy, so attempting it wastes the round.
-- Do not modify ANY file that is not listed under "Conflicted files" above.
+- Do not modify ANY file that is not listed under "Conflicted files"{% if auto_merged_block|default('') %} or
+  "Auto-merged files"{% endif %} above.
   Not a neighbouring module, not a test, not an import, not a formatting nit.
   If the resolved code needs a change elsewhere, leave it: that belongs to a
   later run, not to this one.
-{% if replaying_commit_sha %}- Ralph Workflow re-reads the worktree after you return. An edit to ANY tracked
-  path that is not listed above REJECTS the whole resolution and aborts the
-  rebase, discarding your work on the listed files too.
+{% if replaying_commit_sha %}- Ralph Workflow re-reads the worktree after you return. An edit to ANY other
+  tracked path is reverted before the rebase continues, so it never lands.
 {% endif %}- A leftover conflict marker in ANY listed file REJECTS the whole resolution
   and {% if replaying_commit_sha %}aborts the rebase{% else %}aborts the merge{% endif %}. Ralph Workflow re-scans every listed path
   textually after you return, so for a file that HAS markers your own report is
@@ -91,6 +104,10 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 ## Completion contract
 
 {{ render_conflict_resolution_completion_cue() }}
+A build or check failure that comes from a file outside the files you may edit is
+not yours to repair in this round: name the file and the error in your completion
+summary and declare completion. Do not spend the round trying to reach a clean
+build you are not allowed to reach.
 
 When every listed file is resolved and marker-free, call the
 {{ DECLARE_COMPLETE_TOOL_REFERENCE }} MCP tool with a short

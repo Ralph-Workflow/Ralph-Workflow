@@ -7,6 +7,14 @@ import pytest
 from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.sight import ConflictKind
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_rebase_variant_states_the_unlisted_path_enforcement": (
+        "the rebase loop reverts an unrequested edit and keeps the in-scope resolution "
+        "(it rejects only when the revert itself fails), so the prompt now states that "
+        "enforcement instead of an unconditional rejection"
+    ),
+}
+
 _CONFLICTED = ("src/alpha.py", "docs/beta.md")
 
 
@@ -141,7 +149,7 @@ def test_editing_an_unlisted_path_is_forbidden_outright(tmp_path: Path) -> None:
 def test_the_rebase_variant_states_the_unlisted_path_enforcement(
     tmp_path: Path,
 ) -> None:
-    assert "REJECTS the whole resolution and aborts the\n  rebase" in _render_rebase_stop(tmp_path)
+    assert "tracked path is reverted before the rebase continues" in _render_rebase_stop(tmp_path)
 
 
 def test_the_endpoint_merge_variant_claims_no_unenforced_gate(

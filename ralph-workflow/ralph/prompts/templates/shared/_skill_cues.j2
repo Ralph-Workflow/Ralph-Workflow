@@ -8,9 +8,9 @@ Analyze the root intent of conflicting changes on both branches before editing c
 
 {% macro render_conflict_resolution_completion_cue() -%}
 {% if SKILL_INSTALLED_VERIFICATION_BEFORE_COMPLETION|default('') == "true" %}
-Use verification-before-completion before declaring resolution, so resolved files are confirmed to build and pass checks cleanly.
+Use verification-before-completion on the files you may edit before declaring resolution.
 {% else %}
-Confirm resolved files build and pass checks cleanly before declaring resolution.
+Build and check the files you may edit before declaring resolution.
 {% endif %}
 {%- endmacro %}
 

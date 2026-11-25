@@ -45,6 +45,11 @@ from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, Pr
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_surviving_markers_loop_and_feed_the_paths_back": (
+        "the render seam gained the auto_merged_paths keyword for files both sides changed "
+        "that git merged cleanly; the spy accepts and ignores it, and every assertion about "
+        "surviving markers is unchanged"
+    ),
     "test_resolver_chain_without_a_runnable_candidate_reports_typed_terminal_evidence (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_exhausted_resolver_chain_reports_typed_terminal_evidence with an unchanged body"
     ),
@@ -258,6 +263,7 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
         root: Path,
         target: str,
         conflicted_paths: Sequence[str],
+        auto_merged_paths: Sequence[str] = (),
         round_index: int,
         round_cap: int,
         surviving_marker_paths: Sequence[str],
@@ -267,6 +273,7 @@ def test_surviving_markers_loop_and_feed_the_paths_back(
         stop_cap: int | None = None,
     ) -> Path | None:
         del (
+            auto_merged_paths,
             target,
             conflicted_paths,
             round_index,
