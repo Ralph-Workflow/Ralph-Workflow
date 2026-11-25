@@ -55,7 +55,7 @@ def _consulted_signal_files(workspace: Workspace, paths: tuple[str, ...]) -> lis
 def _directory_signature(workspace: Workspace, path: str) -> str:
     try:
         children = workspace.list_dir(path)
-    except (FileNotFoundError, NotADirectoryError):
+    except OSError:
         children = []
     sentinel = "\n".join(sorted(children))
     return _sha256_hex(f"dir:{path}\n{sentinel}")

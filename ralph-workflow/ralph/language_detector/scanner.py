@@ -87,7 +87,7 @@ def iter_files(workspace: Workspace, root: str = "") -> Iterator[str]:
 
         try:
             entries = workspace.list_dir(current)
-        except FileNotFoundError:
+        except OSError:
             continue
 
         for entry in entries:
@@ -122,7 +122,7 @@ def collect_signature_files(workspace: Workspace, root: str = "") -> dict[str, l
         current, depth = queue.popleft()
         try:
             entries = workspace.list_dir(current)
-        except FileNotFoundError:
+        except OSError:
             continue
 
         for entry in entries:
@@ -185,7 +185,7 @@ def detect_tests(workspace: Workspace, root: str = "", primary_language: str = "
         current = queue.popleft()
         try:
             entries = workspace.list_dir(current)
-        except FileNotFoundError:
+        except OSError:
             continue
 
         for entry in entries:

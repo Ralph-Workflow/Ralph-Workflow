@@ -56,7 +56,7 @@ def _read_signature_contents(
         for path in paths:
             try:
                 contents[path] = workspace.read(path).lower()
-            except FileNotFoundError:
+            except (OSError, UnicodeDecodeError):
                 continue
     return contents
 
