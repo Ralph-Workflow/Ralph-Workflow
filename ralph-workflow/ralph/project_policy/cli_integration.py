@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
-from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke import AgentInvocationError, _clear_session_completion_sentinel
 from ralph.agents.timeout_clock import SystemClock
 from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
@@ -328,6 +328,8 @@ def _make_production_invoke_agent(
                 )
             }
         )
+        if load_result.run_id:
+            _clear_session_completion_sentinel(workspace_scope.root, load_result.run_id)
         with _capture_pipeline_state():
             try:
                 result = run_chain_attempt(
