@@ -7,6 +7,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import psutil
+
 from ralph._install_errors import InstallError
 
 
@@ -63,6 +65,63 @@ def publish_generation(
             _remove_tree(generation)
         raise
     return generation
+
+
+GENERATION_PREFIX = "generation-"
+
+RETAINED_GENERATIONS = 2
+
+
+def running_generation_names() -> frozenset[str]:
+    names: set[str] = set()
+    for process in psutil.process_iter():
+        try:
+            cmdline = process.cmdline()
+        except (psutil.Error, OSError):
+            continue
+        for part in cmdline:
+            names.update(
+                segment for segment in Path(part).parts if segment.startswith(GENERATION_PREFIX)
+            )
+    return frozenset(names)
+
+
+def _modified_at(path: Path) -> float:
+    return path.stat().st_mtime
+
+
+def _generation_dirs(generations: Path) -> list[Path]:
+    try:
+        entries = list(generations.iterdir())
+    except OSError:
+        return []
+    return [
+        path
+        for path in entries
+        if path.name.startswith(GENERATION_PREFIX) and path.is_dir() and not path.is_symlink()
+    ]
+
+
+def prune_generations(
+    generations: Path,
+    *,
+    keep: Path,
+    in_use: Callable[[], frozenset[str]] = running_generation_names,
+    retain: int = RETAINED_GENERATIONS,
+) -> tuple[Path, ...]:
+    candidates = sorted(_generation_dirs(generations), key=_modified_at, reverse=True)
+    retained = {keep.name, *(path.name for path in candidates[:retain])}
+    busy = in_use()
+    removed: list[Path] = []
+    for path in candidates:
+        if path.name in retained or path.name in busy:
+            continue
+        try:
+            _remove_tree(path)
+        except OSError:
+            continue
+        removed.append(path)
+    return tuple(removed)
 
 
 def cleanup_staging(staging: Path) -> None:

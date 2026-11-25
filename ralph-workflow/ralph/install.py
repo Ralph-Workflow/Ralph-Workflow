@@ -42,6 +42,7 @@ from ralph.install_transaction import (
     create_candidate,
     install_lock,
     point_current,
+    prune_generations,
     publish_generation,
 )
 from ralph.process._spawn_env import sanitize_process_environment
@@ -49,6 +50,8 @@ from ralph.process._spawn_env import sanitize_process_environment
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from contextlib import AbstractContextManager
+
+    from ralph.install_generation_pruner import GenerationPruner
 
 STABLE_PACKAGE_NAME = "ralph-workflow"
 _UV_INSTALL_URL = "https://docs.astral.sh/uv/getting-started/installation/"
@@ -126,6 +129,7 @@ def install_dev_checkout(
     candidate_factory: Callable[[Path], Path] = create_candidate,
     publish: GenerationPublisher = publish_generation,
     update_current: Callable[[Path, Path], None] = point_current,
+    prune: GenerationPruner = prune_generations,
 ) -> None:
     if uv_executable is None:
         raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
@@ -161,6 +165,7 @@ def install_dev_checkout(
             )
             update_current(current, generation)
             completed = True
+            pruned = prune(generations, keep=generation)
         finally:
             if not completed:
                 cleanup_staging(staging)
@@ -174,6 +179,8 @@ def install_dev_checkout(
                 replaced=replaced,
             )
         )
+        if pruned:
+            emit(f"Removed {len(pruned)} old snapshot generation(s) no running Ralph Workflow uses")
 
 
 def install_stable_release(
