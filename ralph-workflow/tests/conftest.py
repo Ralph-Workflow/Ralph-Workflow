@@ -79,6 +79,7 @@ _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES
 }
 _AGY_DEFAULT_TEST_PATHS = frozenset(
     {
+        "tests/agents/test_agy_auth_vault.py",
         "tests/agents/test_agy_live_model_listing.py",
         "tests/agents/test_agy_model_resolution.py",
         "tests/agents/test_dynamic_alias_help_lookup.py",

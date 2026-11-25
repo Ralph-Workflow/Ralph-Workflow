@@ -10,6 +10,12 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 
+from ralph.agents.agy_auth_vault import (
+    AGY_CONFIG_RELATIVE_DIR,
+    agy_auth_vault_dir,
+    project_agy_auth,
+    write_back_agy_auth,
+)
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._invoke_options import (
     _PLATFORM_OVERRIDE,
@@ -535,24 +541,6 @@ class ClaudeRuntimeResolver:
         )
 
 
-_AGY_AUTH_ARTIFACTS = (
-    "antigravity-oauth-token",
-    "settings.json",
-    "installation_id",
-)
-
-
-def _project_agy_auth(source_root: Path, destination_root: Path) -> None:
-    for artifact_name in _AGY_AUTH_ARTIFACTS:
-        source = source_root / artifact_name
-        destination = destination_root / artifact_name
-        try:
-            destination_root.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-        except FileNotFoundError:
-            continue
-
-
 class AgyRuntimeResolver:
     def resolve(
         self,
@@ -594,10 +582,18 @@ class AgyRuntimeResolver:
             ),
             prefix="ralph-agy-home-",
         )
-        _project_agy_auth(
-            source_home / ".gemini" / "antigravity-cli",
-            private_home / ".gemini" / "antigravity-cli",
+        auth_vault = agy_auth_vault_dir(_env)
+        project_agy_auth(
+            source_home / AGY_CONFIG_RELATIVE_DIR,
+            private_home / AGY_CONFIG_RELATIVE_DIR,
+            auth_vault,
         )
+        release_private_home = cleanup
+
+        def cleanup_with_write_back() -> None:
+            write_back_agy_auth(private_home / AGY_CONFIG_RELATIVE_DIR, auth_vault)
+            release_private_home()
+
         project_agy_skill_roots(source_home, private_home)
         _redirect_home(runtime_env, _env, source_home, private_home)
 
@@ -605,7 +601,7 @@ class AgyRuntimeResolver:
             agent_env=runtime_env or None,
             server_env=server_env or None,
             mcp_endpoint=endpoint,
-            cleanup=cleanup,
+            cleanup=cleanup_with_write_back,
         )
 
 

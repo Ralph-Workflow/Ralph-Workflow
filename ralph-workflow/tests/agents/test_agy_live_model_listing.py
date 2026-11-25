@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 from loguru import logger
@@ -246,3 +247,28 @@ def test_cached_agy_listing_failure_is_reported_again_without_rerunning_agy() ->
         with pytest.raises(OSError, match="not signed in"):
             probe()
     assert reads.calls == 1
+
+
+def test_agy_listing_runs_in_a_private_auth_home_and_never_the_real_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    real_home = tmp_path / "home"
+    real_agy = real_home / ".gemini" / "antigravity-cli"
+    real_agy.mkdir(parents=True)
+    (real_agy / "antigravity-oauth-token").write_text("signed-in", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(real_home))
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    seen: list[Path] = []
+
+    def run(*_args: object, **kwargs: object) -> _Completed:
+        options = kwargs["options"]
+        env = getattr(options, "env", None) or {}
+        private_home = Path(env["HOME"])
+        seen.append(private_home)
+        token = private_home / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+        assert token.read_text(encoding="utf-8") == "signed-in"
+        return _Completed(("agy", "models"), 0, _LIVE_AGY_MODELS_STDOUT, "")
+
+    assert read_agy_models(run=run) == _LIVE_AGY_MODELS_STDOUT
+    assert seen and seen[0] != real_home
+    assert not seen[0].exists()

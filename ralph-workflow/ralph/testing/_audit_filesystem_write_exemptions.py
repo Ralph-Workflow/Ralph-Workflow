@@ -15,7 +15,6 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "CodexRuntimeResolver.resolve._release",
             "raw_rmtree",
         ),
-        ("ralph/agents/invoke/_runtime_resolvers/__init__.py", "_project_agy_auth", "raw_copy2"),
         ("ralph/cli/commands/cleanup.py", "cleanup", "raw_rmtree"),
         ("ralph/cli/commands/run.py", "_clear_generated_pipeline_state", "raw_rmtree"),
         ("ralph/config/_bootstrap_backup.py", "_migrate_legacy_global_config", "raw_copy2"),

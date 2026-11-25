@@ -2188,6 +2188,13 @@ ralph.agents.agent_entry
    :members:
    :show-inheritance:
 
+ralph.agents.agy_auth_vault
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.agy_auth_vault
+   :members:
+   :show-inheritance:
+
 ralph.agents.clock
 ~~~~~~~~~~~~~~~~~~
 

@@ -42,7 +42,9 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "were tagged smoke by name and never ran in make test, which let a stale built-in "
         "AGY model list ship unnoticed; they join the default suite. The in-process AGY "
         "tool-call extraction tests join too, so the subagent-dispatch fingerprint that "
-        "falsely tripped the repeated-tool-call watchdog stays covered"
+        "falsely tripped the repeated-tool-call watchdog stays covered. The in-process "
+        "AGY auth-vault tests join as well, so the credential projection that keeps AGY "
+        "agents signed in under SSH-started tmux sessions is always verified"
     ),
     "test_test_verify_budget_target_runs_only_real_time_test pins the new suite-timeout variable": (
         "the same target body is still pinned line-for-line; only the suite-timeout "
@@ -135,6 +137,7 @@ def test_default_routing_allowlist_is_exact_and_immutable() -> None:
     assert (
         frozenset(
             {
+                "tests/agents/test_agy_auth_vault.py",
                 "tests/agents/test_agy_live_model_listing.py",
                 "tests/agents/test_agy_model_resolution.py",
                 "tests/agents/test_dynamic_alias_help_lookup.py",

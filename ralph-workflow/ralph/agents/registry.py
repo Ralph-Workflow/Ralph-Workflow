@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import time
 from copy import deepcopy
@@ -10,6 +11,7 @@ from loguru import logger
 from ralph._typed_attrs import read_attr
 from ralph.agents import builtin as builtin_module
 from ralph.agents._codex_alias import resolve_codex_alias
+from ralph.agents.agy_auth_vault import prepare_agy_auth_home
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
@@ -72,6 +74,7 @@ class _AgyModelsRunner(Protocol):
 
 
 def read_agy_models(run: _AgyModelsRunner = run_process) -> str:
+    private_home, release_private_home = prepare_agy_auth_home(os.environ)
     try:
         result = run(
             _AGY_MODELS_COMMAND[0],
@@ -80,10 +83,13 @@ def read_agy_models(run: _AgyModelsRunner = run_process) -> str:
                 capture_output=True,
                 timeout=_AGY_MODELS_TIMEOUT_SECONDS,
                 label="agents:agy-models",
+                env={"HOME": str(private_home)},
             ),
         )
     except (OSError, ProcessExecutionError) as exc:
         raise OSError(f"`agy models` could not run: {exc}") from exc
+    finally:
+        release_private_home()
     if result.returncode == TIMEOUT_EXIT_CODE:
         raise OSError(f"`agy models` did not answer within {_AGY_MODELS_TIMEOUT_SECONDS:g}s")
     if result.returncode != 0:
