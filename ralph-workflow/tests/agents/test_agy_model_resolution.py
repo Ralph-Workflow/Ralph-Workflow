@@ -6,6 +6,11 @@ from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.config.models import UnifiedConfig
 
 RALPH_TEST_CHANGE_REASONS = {
+    "test_agy_model_resolution_regression_reports_agy_error_without_fallback_when_probe_fails": (
+        "a failed `agy models` listing (for example in an SSH-started tmux session where "
+        "AGY agents still authenticate) no longer rejects a well-formed configured "
+        "agy/<model>; the AGY error is still reported and no built-in list is used"
+    ),
     "test_agy_model_resolution_regression_falls_back_when_probe_fails": (
         "Ralph no longer keeps a built-in AGY model list: when `agy models` fails, "
         "every agy/<model> alias is unresolved and the failure is reported as an "
@@ -88,6 +93,8 @@ def test_agy_model_resolution_regression_reports_agy_error_without_fallback_when
     monkeypatch.setattr("ralph.agents.registry._default_agy_models_probe", failing_probe)
 
     registry = AgentRegistry.from_config(UnifiedConfig())
-    assert registry.get("agy/gemini-3.6-flash-low") is None
-    assert registry.get("agy/not-published") is None
+    configured = registry.get("agy/gemini-4-argon-low")
+    assert configured is not None
+    assert configured.model_flag == "--model gemini-4-argon-low"
+    assert registry.get("agy/gemini-4-argon-low:high") is None
     assert agy_alias_help().startswith("AGY error: agy unavailable")

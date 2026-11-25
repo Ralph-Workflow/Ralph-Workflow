@@ -1,21 +1,37 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 
 import pytest
+from loguru import logger
 
 from ralph.agents.registry import (
     AgentRegistry,
     agy_alias_help,
     agy_models_error,
     agy_published_models,
+    make_agy_models_probe,
     read_agy_models,
     set_agy_models_probe,
 )
 from ralph.config.models import UnifiedConfig
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessExecutionError
 from ralph.policy.validation import PolicyValidationError, validate_agent_chains_satisfiable
+
+RALPH_TEST_CHANGE_REASONS = {
+    "test_failed_agy_listing_is_reported_as_an_agy_error_with_no_fallback_models": (
+        "`agy models` can fail where AGY agents still authenticate (an SSH-started "
+        "tmux session uses file-based token storage for the listing), so a failed "
+        "listing no longer rejects a well-formed configured agy/<model>; it is still "
+        "reported as an AGY error and no built-in model list is ever used"
+    ),
+    "test_preflight_reports_an_agy_error_not_unknown_agents_when_agy_cannot_list": (
+        "the preflight now warns with the AGY error and starts the run instead of "
+        "refusing, because refusing stopped runs whose AGY agents work"
+    ),
+}
 
 _LIVE_AGY_MODELS_STDOUT = "\n".join(
     (
@@ -90,7 +106,10 @@ def test_failed_agy_listing_is_reported_as_an_agy_error_with_no_fallback_models(
 ) -> None:
     agy_probe(failure)
     assert agy_published_models() == ()
-    assert _registry().get("agy/gemini-3.8-flash-low") is None
+    configured = _registry().get("agy/gemini-4-argon-low")
+    assert configured is not None
+    assert configured.model_flag == "--model gemini-4-argon-low"
+    assert _registry().get("agy/gemini-4-argon-low:high") is None
     error = agy_models_error()
     assert error is not None
     assert reason in error
@@ -122,18 +141,30 @@ class _Bundle:
     agents: _Agents
 
 
-def test_preflight_reports_an_agy_error_not_unknown_agents_when_agy_cannot_list(
+def test_preflight_warns_with_the_agy_error_and_still_starts_when_agy_cannot_list(
     agy_probe: Callable[[str | Exception], None],
 ) -> None:
     agy_probe(OSError("`agy models` exited 1: not signed in"))
     bundle = _Bundle(_Agents({"planning": _ChainConfig(["agy/gemini-4-argon-low"])}))
-    with pytest.raises(PolicyValidationError) as exc_info:
+    warnings: list[str] = []
+    sink = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
+    try:
         validate_agent_chains_satisfiable(bundle, _registry())
-    message = str(exc_info.value)
-    assert message.startswith("AGY error: `agy models` exited 1: not signed in")
-    assert "chain 'planning' uses 'agy/gemini-4-argon-low'" in message
-    assert "unknown agent" not in message
-    assert "gemini-3.8-flash-low" not in message
+    finally:
+        logger.remove(sink)
+    joined = "".join(warnings)
+    assert "AGY error: `agy models` exited 1: not signed in" in joined
+    assert "agy/gemini-4-argon-low" in joined
+    assert "gemini-3.8-flash-low" not in joined
+
+
+def test_preflight_still_rejects_a_malformed_agy_alias_when_agy_cannot_list(
+    agy_probe: Callable[[str | Exception], None],
+) -> None:
+    agy_probe(OSError("`agy models` exited 1: not signed in"))
+    bundle = _Bundle(_Agents({"planning": _ChainConfig(["agy/gemini-4-argon-low:high"])}))
+    with pytest.raises(PolicyValidationError):
+        validate_agent_chains_satisfiable(bundle, _registry())
 
 
 def test_preflight_accepts_a_chain_model_the_live_listing_publishes(
@@ -176,3 +207,42 @@ def test_read_agy_models_names_why_agy_failed(result: _Completed | Exception, re
     with pytest.raises(OSError, match="`agy models`") as exc_info:
         read_agy_models(run=_runner(result))
     assert reason in str(exc_info.value)
+
+
+class _Reads:
+    def __init__(self, outcome: str | Exception) -> None:
+        self.outcome = outcome
+        self.calls = 0
+
+    def __call__(self) -> str:
+        self.calls += 1
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
+@pytest.mark.parametrize(
+    "outcome", [_LIVE_AGY_MODELS_STDOUT, OSError("`agy models` exited 1: not signed in")]
+)
+def test_agy_model_listing_runs_at_most_once_per_cache_window(outcome: str | Exception) -> None:
+    reads = _Reads(outcome)
+    now = [0.0]
+    probe = make_agy_models_probe(read=reads, clock=lambda: now[0], ttl_seconds=900.0)
+    for _ in range(50):
+        with contextlib.suppress(OSError):
+            probe()
+        now[0] += 10.0
+    assert reads.calls == 1
+    now[0] = 901.0
+    with contextlib.suppress(OSError):
+        probe()
+    assert reads.calls == 2
+
+
+def test_cached_agy_listing_failure_is_reported_again_without_rerunning_agy() -> None:
+    reads = _Reads(OSError("`agy models` exited 1: not signed in"))
+    probe = make_agy_models_probe(read=reads, clock=lambda: 0.0, ttl_seconds=900.0)
+    for _ in range(3):
+        with pytest.raises(OSError, match="not signed in"):
+            probe()
+    assert reads.calls == 1

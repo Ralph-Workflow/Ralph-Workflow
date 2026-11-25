@@ -5,6 +5,8 @@ import shutil
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from loguru import logger
+
 from ralph.agents.agent_install_links import install_url_for
 from ralph.onboarding import (
     STARTER_PROMPT_SENTINEL,
@@ -251,12 +253,37 @@ def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str
     return matrix
 
 
+def _warn_on_agy_listing_error(configured_agy: list[str]) -> None:
+    registry: object = import_module("ralph.agents.registry")
+    if not isinstance(registry, _AgyAliasHelpModule):
+        raise TypeError("ralph.agents.registry lacks agy_alias_help")
+    agy_error = registry.agy_models_error()
+    if agy_error is not None:
+        logger.warning(
+            "AGY error: {}. Using the configured AGY models as written ({}); AGY itself "
+            "rejects an unknown model when the agent runs. Ralph keeps no built-in AGY "
+            "model list.",
+            agy_error,
+            ", ".join(configured_agy),
+        )
+
+
 def validate_agent_chains_satisfiable(
     bundle: PolicyBundle,
     agent_registry: AgentRegistry,
 ) -> None:
     unknown_agents: list[str] = []
     unresolved_agy: list[str] = []
+    configured_agy = sorted(
+        {
+            agent_name
+            for chain_config in bundle.agents.agent_chains.values()
+            for agent_name in chain_config.agents
+            if agent_name.startswith("agy/")
+        }
+    )
+    if configured_agy:
+        _warn_on_agy_listing_error(configured_agy)
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         for agent_name in chain_config.agents:
             agent_config = agent_registry.get(agent_name)

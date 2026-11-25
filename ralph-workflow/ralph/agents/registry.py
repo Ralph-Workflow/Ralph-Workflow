@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import time
 from copy import deepcopy
 from typing import TYPE_CHECKING, Protocol
 
@@ -91,18 +92,34 @@ def read_agy_models(run: _AgyModelsRunner = run_process) -> str:
     return result.stdout
 
 
-def _make_default_agy_models_probe() -> Callable[[], str]:
-    cached_output: list[str] = []
+_AGY_MODELS_CACHE_TTL_SECONDS = 900.0
+
+
+def make_agy_models_probe(
+    *,
+    read: Callable[[], str] = read_agy_models,
+    clock: Callable[[], float] = time.monotonic,
+    ttl_seconds: float = _AGY_MODELS_CACHE_TTL_SECONDS,
+) -> Callable[[], str]:
+    cached: list[tuple[float, str, str | None]] = []
 
     def probe() -> str:
-        if not cached_output:
-            cached_output.append(read_agy_models())
-        return cached_output[0]
+        now = clock()
+        if not cached or now - cached[0][0] >= ttl_seconds:
+            try:
+                outcome: tuple[float, str, str | None] = (now, read(), None)
+            except OSError as exc:
+                outcome = (now, "", str(exc))
+            cached[:] = [outcome]
+        _taken_at, output, error = cached[0]
+        if error is not None:
+            raise OSError(error)
+        return output
 
     return probe
 
 
-_default_agy_models_probe = _make_default_agy_models_probe()
+_default_agy_models_probe = make_agy_models_probe()
 
 _AGY_MODELS_PROBE_OVERRIDE: list[Callable[[], str] | None] = [None]
 
@@ -541,8 +558,10 @@ def _resolve_dynamic_simple_prefixed_agent(
                     model_flag += f" --model {shlex.quote(model)}"
                 return base_config.model_copy(update={"model_flag": model_flag})
     elif name.startswith("agy/") and len(segments) >= _MIN_AGY_SEGMENTS:
+        published, listing_error = _agy_models_listing()
         alias = _parse_agy_alias(
-            name.removeprefix("agy/"), models=frozenset(agy_published_models())
+            name.removeprefix("agy/"),
+            models=None if listing_error is not None else frozenset(published),
         )
         base_config = base_lookup("agy")
         if alias is not None and base_config is not None:
@@ -554,9 +573,13 @@ def _resolve_dynamic_simple_prefixed_agent(
     return None
 
 
-def _parse_agy_alias(alias_value: str, *, models: frozenset[str]) -> tuple[str, str | None] | None:
+def _parse_agy_alias(
+    alias_value: str, *, models: frozenset[str] | None
+) -> tuple[str, str | None] | None:
     model_id, separator, _effort = alias_value.partition(":")
-    if model_id not in models:
+    if not model_id:
+        return None
+    if models is not None and model_id not in models:
         return None
     if not separator:
         return model_id, None

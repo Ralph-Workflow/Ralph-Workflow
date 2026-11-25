@@ -123,7 +123,7 @@ files into that home so the agent can use them; see the
 | **Codex** | `codex` | `codex login` or an OpenAI API key | Unattended `codex exec`; no session resume. |
 | **OpenCode** | `opencode` | Provider-specific keys | Headless subprocess; model selection uses `-m <provider>/<model>`. |
 | **Nanocoder** | `nanocoder` | Local-only TUI, no remote auth | Local-only TUI; a provider is required for model aliases. |
-| **AGY (Google Anti Gravity)** | `agy` | `agy login` with a Google account | PTY transport; `agy/<model>` is checked against the live `agy models` listing (no built-in list), and a failed listing is reported as an AGY error. |
+| **AGY (Google Anti Gravity)** | `agy` | `agy login` with a Google account | PTY transport; `agy/<model>` is checked against the live `agy models` listing (no built-in list); if that listing fails, Ralph Workflow warns with the AGY error and uses the configured model as written. |
 | **Pi** | `pi` | Provider configuration | Headless `pi --mode json <prompt>`. |
 | **Cursor** | `agent` | `CURSOR_API_KEY` or a file-backed login | Headless `--print`; credentials come from file, not the Keychain, unless `AGENT_CLI_CREDENTIAL_STORE=memory` is set explicitly. If no valid Cursor auth file exists, Ralph Workflow copies your existing Cursor IDE login into Cursor's file-backed auth paths. |
 | **Kimi Code** | `kimi` | an interactive `kimi` login wires the `managed:kimi-code` subscription provider | Headless; `-m` needs a fully configured model ID from `~/.kimi-code/config.toml`. |
