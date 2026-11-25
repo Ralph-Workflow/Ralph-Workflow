@@ -91,8 +91,15 @@ def verified_child_session_pgid(pid: int) -> int | None:
     return pgid
 
 
-def register_child_session(pid: int) -> int | None:
-    pgid = verified_child_session_pgid(pid)
+def register_child_session(pid: int, *, known_session_pgid: int | None = None) -> int | None:
+    if known_session_pgid is not None:
+        pgid: int | None = (
+            known_session_pgid
+            if known_session_pgid == pid and _group_is_safe(known_session_pgid)
+            else None
+        )
+    else:
+        pgid = verified_child_session_pgid(pid)
     if pgid is None:
         return None
     with _SESSION_REGISTRY_LOCK:

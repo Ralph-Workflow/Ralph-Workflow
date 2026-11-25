@@ -744,7 +744,7 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        register_child_session(pid)
+        register_child_session(pid, known_session_pgid=pid if effective.start_new_session else None)
 
         record = ProcessRecord(
             pid=pid,
@@ -820,7 +820,7 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        register_child_session(pid)
+        register_child_session(pid, known_session_pgid=pid)
 
         record = ProcessRecord(
             pid=pid,
@@ -892,7 +892,7 @@ class ProcessManager:
         except (ProcessLookupError, OSError):
             pgid = pid
 
-        register_child_session(pid)
+        register_child_session(pid, known_session_pgid=pid if effective.start_new_session else None)
 
         record = ProcessRecord(
             pid=pid,
