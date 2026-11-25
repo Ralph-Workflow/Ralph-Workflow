@@ -26,6 +26,7 @@ from ralph.pipeline._pending_merge_commit import (
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.auto_integrate_record import read_record
+from ralph.pipeline.mechanical_finish import merged_commit_paths, unstaged_resolution_edits
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -96,7 +97,9 @@ def resolve_and_commit_with_reason(
     conflicted = [*unmerged, *staged_markers]
     retained = read_record(root)
     if retained is not None and retained.resolving_merge:
-        conflicted = list(retained_merge_paths(root, tuple(conflicted)))
+        conflicted = list(retained_merge_paths(root, tuple(conflicted))) or list(
+            unstaged_resolution_edits(root, merged_commit_paths(root))
+        )
     elif not conflicted:
         return _stage_verify_and_commit(root, [], target)
     refusal = _merge_scope_refusal(root, target, conflicted)

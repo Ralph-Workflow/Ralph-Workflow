@@ -105,6 +105,7 @@ from ralph.pipeline.conflict_resolution.status import (
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.integration_actions import Clock as IntegrationClock
 from ralph.pipeline.integration_actions import current_clock, install_executors
+from ralph.pipeline.mechanical_finish import merged_commit_paths, unstaged_resolution_edits
 from ralph.pipeline.resolution_outcome import (
     NextStrategyOutcome,
     ResolvedOutcome,
@@ -579,6 +580,7 @@ def _prepare_conflicted_paths(
         stop.conflicted_files
         if stop is not None
         else observer.retained_merge_paths(root, tuple(observer.unmerged_paths(root)))
+        or unstaged_resolution_edits(root, merged_commit_paths(root))
     )
     if _QUERY_FAILED_SENTINEL in conflicted:
         session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH

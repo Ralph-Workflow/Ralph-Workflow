@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.interrupted_resolution": (
+        "user requirement: an interrupted rebase or merge resolution whose finished edits "
+        "are unstaged must go back to the resolver instead of being set aside; the new "
+        "mechanical_finish.py probes add reviewed labels, so the label-site digest is refreshed"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.auto_merged_paths": (
         "user requirement: a rebase resolver may repair files both sides changed that git "
         "merged cleanly but wrongly; the new conflict_resolution/auto_merged_paths.py probes "
@@ -134,10 +139,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "397a3ab3f8ec169828882d1527ac30c8e06d6626663d9cf089b34f88ffa3191c"
+    "a13756e673d1e2d6441d899c05f6d9009cd1bb6da2c2594097145742cb198155"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds git-auto-merged-rev-parse and git-auto-merged-merge-base "
+    "The reviewed inventory adds integration-resolution-rebase-head, "
+    "integration-resolution-merge-head and integration-resolution-merge-base "
+    "(rev-parse --verify --quiet of REBASE_HEAD or MERGE_HEAD and merge-base while "
+    "checking an interrupted resolution for unstaged edits; rc=1 is git's answer that the "
+    "ref or common ancestor does not exist), integration-resolution-replayed-paths, "
+    "integration-resolution-merged-paths and integration-resolution-unstaged-edits (a "
+    "failure is a real error), git-auto-merged-rev-parse and git-auto-merged-merge-base "
     "(rev-parse --verify --quiet and merge-base while listing the paths both sides of a "
     "replayed rebase commit changed; rc=1 is git's answer that the revision or common "
     "ancestor does not exist), git-auto-merged-diff-tree (a failure is a real error), "

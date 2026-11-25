@@ -60,6 +60,7 @@ from ralph.pipeline.conflict_resolution.stray_paths import (
     revert_unrequested_paths,
     worktree_dirty_paths,
 )
+from ralph.pipeline.mechanical_finish import replayed_commit_paths, unstaged_resolution_edits
 from ralph.pipeline.resolution_outcome import (
     ConfigFailureOutcome,
     NextStrategyOutcome,
@@ -92,6 +93,7 @@ __all__ = [
     "active_rebase_resolution_session",
     "bind_active_rebase_resolution_session",
     "finish_resolved_rebase_stops",
+    "interrupted_resolution_paths",
     "record_landed_stop",
     "resolution_scope",
     "resolution_session_from_config",
@@ -117,6 +119,10 @@ class RebaseStop:
     replay_index: int | None = None
     replay_total: int | None = None
     auto_merged_files: tuple[str, ...] = ()
+
+
+def interrupted_resolution_paths(root: Path) -> tuple[str, ...]:
+    return unstaged_resolution_edits(root, replayed_commit_paths(root))
 
 
 def resolution_scope(stop: RebaseStop) -> frozenset[str]:
@@ -559,7 +565,9 @@ def _read_stop(root: Path, stop_index: int, stop_cap: int) -> RebaseStop | None:
             "declining to resolve"
         )
         return None
-    conflicted = retained_rebase_paths(root, sha, observed.paths)
+    conflicted = retained_rebase_paths(root, sha, observed.paths) or interrupted_resolution_paths(
+        root
+    )
     if not conflicted:
         logger.warning(
             "conflict_resolution: rebase is paused with no conflicted path; declining to resolve"
