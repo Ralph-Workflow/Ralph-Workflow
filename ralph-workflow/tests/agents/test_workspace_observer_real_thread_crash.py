@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import importlib
+import sys
 import threading
 import time
 from typing import TYPE_CHECKING
 
 import pytest
-from watchdog.observers import inotify_c
 
 from ralph.agents.invoke import WorkspaceMonitor, WorkspaceWatchSeams
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
@@ -14,7 +15,21 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="the inotify observer exists only on Linux; importing it elsewhere raises",
+    ),
+]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_the_real_inotify_thread_killed_by_the_deleted_directory_race_is_restarted": (
+        "the Linux-only inotify module was imported at module scope, so on macOS its "
+        "UnsupportedLibcError aborted collection of the whole subprocess-e2e suite; the "
+        "import moved into the test and the module skips off Linux, with the same assertions"
+    ),
+}
 
 _WAIT_SECONDS = 5.0
 _POLL_SECONDS = 0.05
@@ -35,6 +50,7 @@ def _wait_until(predicate: Callable[[], bool]) -> bool:
 def test_the_real_inotify_thread_killed_by_the_deleted_directory_race_is_restarted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    inotify_c = importlib.import_module("watchdog.observers.inotify_c")
     crashes: list[int] = []
     original = inotify_c.Inotify.read_events
 

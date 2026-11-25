@@ -12,6 +12,13 @@ from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rung4_condition_self_resumes_on_next_seam_after_it_clears": (
+        "check_rebase_preconditions gained the allow_dirty_worktree keyword; the stand-in "
+        "precondition accepts it so the rung-4 self-resume assertions run again unchanged"
+    ),
+}
+
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 _NO_INTEGRATION_BACKOFF = {"sleep": lambda _seconds: None, "jitter": lambda: 0.0}
@@ -83,7 +90,8 @@ def test_rung4_condition_self_resumes_on_next_seam_after_it_clears(
     base, feature_sha = _diverged_two_commits(tmp_git_repo)
     blocked = True
 
-    def _rung4_precondition(_root: Path) -> None:
+    def _rung4_precondition(_root: Path, *, allow_dirty_worktree: bool = False) -> None:
+        del allow_dirty_worktree
         if blocked:
             raise RebasePreconditionError("shallow clone; run git fetch --unshallow")
 

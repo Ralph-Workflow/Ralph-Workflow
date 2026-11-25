@@ -129,6 +129,7 @@ _ARM_ID = "R3"
 _CATEGORY = "S2"
 _SCORES_PATH = "ralph-workflow/tmp/policy-v6-replay-runs/scores.json"
 _SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+_GNU_TOOLS_THE_RUN_SCRIPT_NEEDS = ("timeout", "setsid")
 _COMMAND_TIMEOUT_SECONDS = 30
 
 _FAKE_CLAUDE_SOURCE = """#!/usr/bin/env bash
@@ -343,6 +344,10 @@ def test_run_script_refuses_a_mismatched_model_id(tmp_path: Path) -> None:
     assert _ledger_rows(package_root) == [], "a refused run must not append a ledger row"
 
 
+@pytest.mark.skipif(
+    any(shutil.which(tool, path=_SYSTEM_PATH) is None for tool in _GNU_TOOLS_THE_RUN_SCRIPT_NEEDS),
+    reason="the replay run script needs GNU timeout and setsid on the system PATH",
+)
 def test_run_script_records_a_valid_row_with_the_cold_scoring_scores_path(
     tmp_path: Path,
 ) -> None:

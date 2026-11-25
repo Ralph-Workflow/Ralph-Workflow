@@ -27,6 +27,13 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_integrate_once_propagates_terminal_violation_on_exception_path": (
+        "check_rebase_preconditions gained the allow_dirty_worktree keyword; the stand-in "
+        "accepts it so the terminal-violation propagation assertions run again unchanged"
+    ),
+}
+
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
@@ -849,7 +856,8 @@ def test_integrate_once_propagates_terminal_violation_on_exception_path(
 
         called = [False]
 
-        def _check_with_marker(_root: Path) -> None:
+        def _check_with_marker(_root: Path, *, allow_dirty_worktree: bool = False) -> None:
+            del allow_dirty_worktree
             if not called[0]:
                 called[0] = True
                 _plant_marker()
