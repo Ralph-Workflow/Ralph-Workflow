@@ -37,7 +37,10 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_default_routing_allowlist_is_exact_and_immutable": (
         "f2ee58d5b added tests/test_private_agent_home_rust_toolchain.py to the conftest "
-        "default-gate Antigravity paths; the pinned set now names that file too"
+        "default-gate Antigravity paths; the pinned set now names that file too. The "
+        "in-process AGY model-resolution and preflight tests (no subprocess, no real agy) "
+        "were tagged smoke by name and never ran in make test, which let a stale built-in "
+        "AGY model list ship unnoticed; they join the default suite"
     ),
     "test_test_verify_budget_target_runs_only_real_time_test pins the new suite-timeout variable": (
         "the same target body is still pinned line-for-line; only the suite-timeout "
@@ -130,7 +133,13 @@ def test_default_routing_allowlist_is_exact_and_immutable() -> None:
     assert (
         frozenset(
             {
+                "tests/agents/test_agy_live_model_listing.py",
+                "tests/agents/test_agy_model_resolution.py",
+                "tests/agents/test_dynamic_alias_help_lookup.py",
+                "tests/recovery/test_preflight_validation.py",
+                "tests/test_agent_registry_agy_model_alias.py",
                 "tests/test_agy_pty_invocation.py",
+                "tests/test_agy_registry_alias_resolution.py",
                 "tests/test_agy_runtime_home_auth.py",
                 "tests/test_private_agent_home_rust_toolchain.py",
             }

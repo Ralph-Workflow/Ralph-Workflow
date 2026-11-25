@@ -5,6 +5,14 @@ import pytest
 from ralph.agents.registry import AgentRegistry, agy_alias_help
 from ralph.config.models import UnifiedConfig
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_agy_model_resolution_regression_falls_back_when_probe_fails": (
+        "Ralph no longer keeps a built-in AGY model list: when `agy models` fails, "
+        "every agy/<model> alias is unresolved and the failure is reported as an "
+        "AGY error instead of silently validating against a stale copied list"
+    ),
+}
+
 
 @pytest.mark.parametrize(
     "alias",
@@ -71,7 +79,7 @@ def test_agy_model_resolution_regression_accepts_model_from_successful_probe(
     assert AgentRegistry.from_config(UnifiedConfig()).get("agy/account-model") is not None
 
 
-def test_agy_model_resolution_regression_falls_back_when_probe_fails(
+def test_agy_model_resolution_regression_reports_agy_error_without_fallback_when_probe_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def failing_probe() -> str:
@@ -80,5 +88,6 @@ def test_agy_model_resolution_regression_falls_back_when_probe_fails(
     monkeypatch.setattr("ralph.agents.registry._default_agy_models_probe", failing_probe)
 
     registry = AgentRegistry.from_config(UnifiedConfig())
-    assert registry.get("agy/gemini-3.6-flash-low") is not None
+    assert registry.get("agy/gemini-3.6-flash-low") is None
     assert registry.get("agy/not-published") is None
+    assert agy_alias_help().startswith("AGY error: agy unavailable")

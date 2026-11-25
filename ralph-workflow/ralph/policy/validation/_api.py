@@ -48,6 +48,8 @@ _UNSET_PHASE = "__unset__"
 class _AgyAliasHelpModule(Protocol):
     def agy_alias_help(self) -> str: ...
 
+    def agy_models_error(self) -> str | None: ...
+
 
 @runtime_checkable
 class _AgentSupport(Protocol):
@@ -254,6 +256,7 @@ def validate_agent_chains_satisfiable(
     agent_registry: AgentRegistry,
 ) -> None:
     unknown_agents: list[str] = []
+    unresolved_agy: list[str] = []
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         for agent_name in chain_config.agents:
             agent_config = agent_registry.get(agent_name)
@@ -261,14 +264,24 @@ def validate_agent_chains_satisfiable(
                 unknown_agents.append(
                     f"chain '{chain_name}' references unknown agent '{agent_name}'"
                 )
+                if agent_name.startswith("agy/"):
+                    unresolved_agy.append(f"chain '{chain_name}' uses '{agent_name}'")
                 continue
 
     if unknown_agents:
         agy_help = ""
-        if any("'agy/" in agent for agent in unknown_agents):
+        if unresolved_agy:
             registry: object = import_module("ralph.agents.registry")
             if not isinstance(registry, _AgyAliasHelpModule):
                 raise TypeError("ralph.agents.registry lacks agy_alias_help")
+            agy_error = registry.agy_models_error()
+            if agy_error is not None:
+                raise PolicyValidationError(
+                    f"AGY error: {agy_error}. These chains cannot be checked until "
+                    "`agy models` answers: "
+                    + "; ".join(unresolved_agy)
+                    + ". Ralph keeps no built-in AGY model list."
+                )
             agy_help = f" {registry.agy_alias_help()}"
         raise PolicyValidationError(
             "Agent chains reference unknown agents (check configuration, not PATH): "

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shlex
 from copy import deepcopy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -22,7 +22,12 @@ from ralph.agents.vision_agent_provisioning import provision_vision_verdict_agen
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
-from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+from ralph.executor.process import (
+    TIMEOUT_EXIT_CODE,
+    ProcessExecutionError,
+    ProcessRunOptions,
+    run_process,
+)
 from ralph.process.monitor import (
     make_agy_subagent_pid_source,
     make_claude_interactive_subagent_pid_source,
@@ -37,9 +42,11 @@ from ralph.process.monitor import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from ralph.config.models import UnifiedConfig
+    from ralph.executor.process import ProcessResult
     from ralph.language_detector.models import ProjectStack
     from ralph.process.monitor import SubagentPidSource
     from ralph.workspace import Workspace
@@ -49,71 +56,87 @@ _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _MIN_AGY_SEGMENTS = 2
 _MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
-_AGY_REASONING_EFFORTS = frozenset({"low", "medium", "high"})
-_AGY_MODELS = frozenset(
-    {
-        "gemini-3.8-flash-high",
-        "gemini-3.8-flash-medium",
-        "gemini-3.8-flash-low",
-        "gemini-3.7-flash-high",
-        "gemini-3.7-flash-medium",
-        "gemini-3.7-flash-low",
-        "gemini-3.6-flash-high",
-        "gemini-3.6-flash-medium",
-        "gemini-3.6-flash-low",
-        "gemini-3.1-pro-high",
-        "gemini-3.1-pro-low",
-        "claude-opus-5-5-low",
-        "claude-opus-5-5-medium",
-        "claude-opus-5-5-high",
-        "claude-sonnet-5-5-low",
-        "claude-sonnet-5-5-medium",
-        "claude-sonnet-5-5-high",
-        "gpt-oss-120b-medium",
-    }
-)
+_AGY_MODELS_COMMAND: tuple[str, ...] = ("agy", "models")
+_AGY_MODELS_TIMEOUT_SECONDS = 30.0
 
 
-if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+class _AgyModelsRunner(Protocol):
+    def __call__(
+        self,
+        command: str,
+        args: Sequence[str] = (),
+        *,
+        options: ProcessRunOptions | None = None,
+    ) -> ProcessResult: ...
+
+
+def read_agy_models(run: _AgyModelsRunner = run_process) -> str:
+    try:
+        result = run(
+            _AGY_MODELS_COMMAND[0],
+            _AGY_MODELS_COMMAND[1:],
+            options=ProcessRunOptions(
+                capture_output=True,
+                timeout=_AGY_MODELS_TIMEOUT_SECONDS,
+                label="agents:agy-models",
+            ),
+        )
+    except (OSError, ProcessExecutionError) as exc:
+        raise OSError(f"`agy models` could not run: {exc}") from exc
+    if result.returncode == TIMEOUT_EXIT_CODE:
+        raise OSError(f"`agy models` did not answer within {_AGY_MODELS_TIMEOUT_SECONDS:g}s")
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no output"
+        raise OSError(f"`agy models` exited {result.returncode}: {detail}")
+    return result.stdout
 
 
 def _make_default_agy_models_probe() -> Callable[[], str]:
-    cached_output: str | None = None
+    cached_output: list[str] = []
 
     def probe() -> str:
-        nonlocal cached_output
-        if cached_output is None:
-            try:
-                result = run_process(
-                    "agy",
-                    ("models",),
-                    options=ProcessRunOptions(
-                        capture_output=True, timeout=5.0, label="agents:agy-models"
-                    ),
-                )
-            except (OSError, ProcessExecutionError):
-                cached_output = ""
-            else:
-                cached_output = result.stdout if result.returncode == 0 else ""
-        return cached_output
+        if not cached_output:
+            cached_output.append(read_agy_models())
+        return cached_output[0]
 
     return probe
 
 
 _default_agy_models_probe = _make_default_agy_models_probe()
 
+_AGY_MODELS_PROBE_OVERRIDE: list[Callable[[], str] | None] = [None]
+
+
+def set_agy_models_probe(probe: Callable[[], str] | None) -> None:
+    _AGY_MODELS_PROBE_OVERRIDE[0] = probe
+
+
+def _agy_models_listing() -> tuple[tuple[str, ...], str | None]:
+    probe = _AGY_MODELS_PROBE_OVERRIDE[0] or _default_agy_models_probe
+    try:
+        output = probe()
+    except (OSError, ProcessExecutionError) as exc:
+        return (), str(exc)
+    models = tuple(
+        sorted(
+            {
+                line.strip().lstrip("- ").split("\t", 1)[0]
+                for line in output.splitlines()
+                if line.strip() and not line.endswith(":")
+            }
+        )
+    )
+    if not models:
+        return (), "`agy models` listed no models"
+    return models, None
+
 
 def agy_published_models() -> tuple[str, ...]:
-    try:
-        observed = tuple(
-            line.strip().lstrip("- ").split("\t", 1)[0]
-            for line in _default_agy_models_probe().splitlines()
-            if line.strip() and not line.endswith(":")
-        )
-    except (OSError, ProcessExecutionError):
-        observed = ()
-    return tuple(sorted(set(observed) or _AGY_MODELS))
+    return _agy_models_listing()[0]
+
+
+def agy_models_error() -> str | None:
+    return _agy_models_listing()[1]
 
 
 def agy_reasoning_efforts() -> tuple[str, ...]:
@@ -121,10 +144,17 @@ def agy_reasoning_efforts() -> tuple[str, ...]:
 
 
 def agy_alias_help() -> str:
+    models, error = _agy_models_listing()
+    if error is not None:
+        return (
+            f"AGY error: {error}. Ralph checks `agy/<model>` agents against the live "
+            "`agy models` listing and keeps no built-in model list; fix the AGY install "
+            "or sign-in and retry."
+        )
     return (
-        f"Available AGY models: {', '.join(agy_published_models())}. "
+        f"Available AGY models: {', '.join(models)}. "
         "Effort suffixes are not supported when a model is given explicitly; "
-        "use the bare published model ID (e.g. agy/gemini-3.8-flash-low)."
+        f"use the bare published model ID (e.g. agy/{models[0]})."
     )
 
 
@@ -524,9 +554,7 @@ def _resolve_dynamic_simple_prefixed_agent(
     return None
 
 
-def _parse_agy_alias(
-    alias_value: str, *, models: frozenset[str] = _AGY_MODELS
-) -> tuple[str, str | None] | None:
+def _parse_agy_alias(alias_value: str, *, models: frozenset[str]) -> tuple[str, str | None] | None:
     model_id, separator, _effort = alias_value.partition(":")
     if model_id not in models:
         return None

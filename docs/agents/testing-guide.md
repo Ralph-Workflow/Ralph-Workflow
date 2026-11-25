@@ -611,7 +611,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/config/test_no_output_at_start_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/config/test_retention_max_age_config.py` | 0 | 0 | 1 | dir:config | private-attribute-assert | assert the public result instead of the private attribute | follow-up: backlog white-box conversion unit |
 | `tests/config/test_workspace_change_weights_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/conftest.py` | 1 | 2 | 14 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/conftest.py` | 1 | 2 | 13 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/display/test_generated_scene_renderer.py` | 0 | 1 | 5 | display | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: display public-seam unit |
 | `tests/display/test_generated_scene_salience.py` | 0 | 1 | 0 | display | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: display public-seam unit |
 | `tests/display/test_operator_display_labels.py` | 0 | 2 | 0 | display | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: display public-seam unit |

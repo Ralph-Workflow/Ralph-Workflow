@@ -79,7 +79,13 @@ _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES
 }
 _AGY_DEFAULT_TEST_PATHS = frozenset(
     {
+        "tests/agents/test_agy_live_model_listing.py",
+        "tests/agents/test_agy_model_resolution.py",
+        "tests/agents/test_dynamic_alias_help_lookup.py",
+        "tests/recovery/test_preflight_validation.py",
+        "tests/test_agent_registry_agy_model_alias.py",
         "tests/test_agy_pty_invocation.py",
+        "tests/test_agy_registry_alias_resolution.py",
         "tests/test_agy_runtime_home_auth.py",
         "tests/test_private_agent_home_rust_toolchain.py",
     }
@@ -162,12 +168,38 @@ def _apply_clear_host_contention_signals() -> None:
     clear_host_contention_signals()
 
 
+_FAKE_AGY_MODELS_STDOUT = "\n".join(
+    (
+        "gemini-4-argon-low\tgemini-4-argon-low",
+        "gemini-4-argon-medium\tgemini-4-argon-medium",
+        "gemini-3.8-flash-high\tgemini-3.8-flash-high",
+        "gemini-3.8-flash-medium\tgemini-3.8-flash-medium",
+        "gemini-3.8-flash-low\tgemini-3.8-flash-low",
+        "gemini-3.7-flash-high\tgemini-3.7-flash-high",
+        "gemini-3.7-flash-medium\tgemini-3.7-flash-medium",
+        "gemini-3.7-flash-low\tgemini-3.7-flash-low",
+        "gemini-3.6-flash-high\tgemini-3.6-flash-high",
+        "gemini-3.6-flash-medium\tgemini-3.6-flash-medium",
+        "gemini-3.6-flash-low\tgemini-3.6-flash-low",
+        "gemini-3.1-pro-high\tgemini-3.1-pro-high",
+        "gemini-3.1-pro-low\tgemini-3.1-pro-low",
+        "claude-opus-5-5-low\tclaude-opus-5-5-low",
+        "claude-opus-5-5-medium\tclaude-opus-5-5-medium",
+        "claude-opus-5-5-high\tclaude-opus-5-5-high",
+        "claude-sonnet-5-5-low\tclaude-sonnet-5-5-low",
+        "claude-sonnet-5-5-medium\tclaude-sonnet-5-5-medium",
+        "claude-sonnet-5-5-high\tclaude-sonnet-5-5-high",
+        "gpt-oss-120b-medium\tgpt-oss-120b-medium",
+    )
+)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     from ralph.agents import registry
 
     original_probe = registry._default_agy_models_probe
-    registry._default_agy_models_probe = lambda: "\n".join(registry._AGY_MODELS)
+    registry._default_agy_models_probe = lambda: _FAKE_AGY_MODELS_STDOUT
     try:
         yield
     finally:
