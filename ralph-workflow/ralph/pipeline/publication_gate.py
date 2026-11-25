@@ -577,8 +577,20 @@ def red_publication_gate(
     return record if tree_sha and tree_sha == record.tree_sha else None
 
 
-def run_advisory_publication_gate(root: Path, feature_sha: str) -> PublicationGateResult | None:
+def commit_tree(root: Path, commit: str) -> str:
+    return _tree_of(root, commit)
+
+
+def run_advisory_publication_gate(
+    root: Path, feature_sha: str, *, published_tree: str = ""
+) -> PublicationGateResult | None:
     try:
+        if published_tree and _tree_of(root, feature_sha) == published_tree:
+            logger.info(
+                "Publication gate skipped: {} adds nothing to the tree its target already published",
+                feature_sha,
+            )
+            return None
         return check_publication_gate(root, feature_sha)
     except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("Publication gate could not run on {}: {}", feature_sha, exc)
@@ -693,6 +705,7 @@ __all__ = [
     "PublicationGateRun",
     "TreeLookup",
     "check_publication_gate",
+    "commit_tree",
     "declared_publication_gate",
     "gate_failure_signature",
     "last_publication_gate_result",

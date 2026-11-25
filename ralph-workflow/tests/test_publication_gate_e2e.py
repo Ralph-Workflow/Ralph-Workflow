@@ -335,3 +335,33 @@ def test_a_failed_push_is_retried_with_backoff_and_then_lands(
     assert client.pushes == 3
     assert list(clock.slept) == [1.0, 2.0]
     assert _run(bare, "rev-parse", target).stdout.strip() == landed
+
+
+@pytest.mark.timeout_seconds(30)
+def test_integrating_commits_the_target_already_holds_does_not_run_the_gate(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    fact, runs = _counting_red_gate(tmp_path)
+    target, feature, _bare = _feature(tmp_git_repo, tmp_path, fact=fact)
+    _commit(feature, "work.txt", "work\n", "this run's commit")
+    _commit(tmp_git_repo, "work.txt", "work\n", "the same change, landed by another path")
+    target_tip = _commit(tmp_git_repo, "other.txt", "other run\n", "another run lands on target")
+
+    outcome = _integrate(feature, target)
+
+    assert outcome.fast_forwarded is True
+    head_tree = _run(feature, "rev-parse", "HEAD^{tree}").stdout.strip()
+    assert head_tree == _run(feature, "rev-parse", f"{target_tip}^{{tree}}").stdout.strip()
+    assert not runs.exists()
+
+
+@pytest.mark.timeout_seconds(30)
+def test_landing_a_new_tree_still_runs_the_gate(tmp_git_repo: Path, tmp_path: Path) -> None:
+    fact, runs = _counting_red_gate(tmp_path)
+    target, feature, _bare = _feature(tmp_git_repo, tmp_path, fact=fact)
+    _commit(tmp_git_repo, "other.txt", "other run\n", "another run lands on target")
+    _commit(feature, "work.txt", "work\n", "this run's own commit")
+
+    _integrate(feature, target)
+
+    assert runs.read_text(encoding="utf-8").count("run") == 1

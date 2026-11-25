@@ -30,7 +30,7 @@ from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
-from ralph.pipeline.publication_gate import run_advisory_publication_gate
+from ralph.pipeline.publication_gate import commit_tree, run_advisory_publication_gate
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -245,6 +245,7 @@ def _integrate_once_owned(
         nonlocal reclamation
         reclamation = result
 
+    published_tree = commit_tree(root, target)
     raw_ff_outcome: StopResolutionOutcome = _ai._fast_forward_target(
         root,
         target,
@@ -321,6 +322,6 @@ def _integrate_once_owned(
                 ),
             )
     if not dirty_tree:
-        run_advisory_publication_gate(root, feature_sha)
+        run_advisory_publication_gate(root, feature_sha, published_tree=published_tree)
     record = with_skip_reason(record, rebase_result.skip_reason)
     return record, False

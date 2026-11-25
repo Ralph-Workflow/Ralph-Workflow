@@ -248,3 +248,17 @@ def test_silent_agent_with_no_busy_child_is_killed_at_the_no_output_deadline() -
     fired_at, _ = _run_silent_agent(busy_until=0.0, horizon=1000.0)
     assert fired_at is not None
     assert fired_at <= 300.0 + 60.0
+
+
+@pytest.mark.parametrize("root_pid", [0, 1])
+def test_probe_never_walks_the_whole_host_process_tree(root_pid: int) -> None:
+    looked_up: list[int] = []
+
+    def process(pid: int) -> _Proc:
+        looked_up.append(pid)
+        return _Proc(pid=pid, created=0.0, kids=[_Proc(pid=2, created=0.0, cpu=99.0)])
+
+    probe = BusyDescendantProbe(process=process, clock=lambda: 100.0)
+
+    assert probe.busy(root_pid) is False
+    assert looked_up == []

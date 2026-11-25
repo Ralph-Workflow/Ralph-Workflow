@@ -542,6 +542,7 @@ def test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back(
     tmp_git_repo: Path,
 ) -> None:

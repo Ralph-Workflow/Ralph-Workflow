@@ -102,6 +102,9 @@ _FACT_FIELDS: tuple[str, ...] = (
 )
 
 
+_UNUSED_PID = 2**31 - 1
+
+
 @dataclass(frozen=True)
 class _Shape:
     name: str
@@ -454,7 +457,7 @@ class _ExitedHandle(ManagedProcess):
 
     @property
     def pid(self) -> int:
-        return 1
+        return _UNUSED_PID
 
     @property
     def returncode(self) -> int | None:

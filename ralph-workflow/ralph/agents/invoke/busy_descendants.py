@@ -25,6 +25,9 @@ _UPGRADABLE_ALIVE_BY: Final[frozenset[AliveBy | None]] = frozenset(
 )
 
 
+_INIT_PID = 1
+
+
 @runtime_checkable
 class _CpuTimes(Protocol):
     user: float
@@ -110,6 +113,8 @@ class BusyDescendantProbe:
         return self._last_busy
 
     def _sample(self, root_pid: int) -> dict[int, _Usage]:
+        if (root_pid or 0) <= _INIT_PID:
+            return {}
         try:
             descendants = self._process(root_pid).children(recursive=True)
         except (psutil.Error, OSError):
