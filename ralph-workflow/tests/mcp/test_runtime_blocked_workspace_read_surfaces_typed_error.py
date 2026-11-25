@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,16 @@ _EXPECTED_STAGE_SEQUENCE: tuple[str, ...] = (
     "upstream_catalog_or_discovery_done",
     "registry_built",
 )
+
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_fifo_in_the_policy_tree_never_blocks_start_mcp_server": (
+        "111d13efb made FsWorkspace skip FIFOs and device nodes instead of blocking on them; "
+        "this test used a FIFO to force a blocked read, so it now asserts the new contract "
+        "that a FIFO never blocks startup; the injected blocking-workspace tests above still "
+        "cover the typed McpServerError for a read that really blocks"
+    ),
+}
 
 
 def _make_session() -> AgentSession:
@@ -67,6 +78,9 @@ def _fail_closed_overrun(
         "blocked-workspace-read path must surface a typed McpServerError, "
         "never terminate the test controller"
     )
+
+
+_FIFO_START_BUDGET_SECONDS = 20.0
 
 
 class _BlockingWorkspace(FsWorkspace):
@@ -140,7 +154,7 @@ def test_build_ralph_tool_registry_bounds_blocking_workspace_read(tmp_path: Path
 
 
 @pytest.mark.subprocess_e2e
-def test_blocked_workspace_read_in_start_mcp_server_raises_typed_error(tmp_path: Path) -> None:
+def test_a_fifo_in_the_policy_tree_never_blocks_start_mcp_server(tmp_path: Path) -> None:
     policy_dir = tmp_path / "docs" / "ralph-workflow-policy"
     policy_dir.mkdir(parents=True)
     policy_fifo = policy_dir / "design-system-policy.md"
@@ -150,14 +164,13 @@ def test_blocked_workspace_read_in_start_mcp_server_raises_typed_error(tmp_path:
     workspace = FsWorkspace(tmp_path)
 
     try:
-        with pytest.raises(McpServerError) as exc_info:
-            lifecycle.start_mcp_server(session, workspace)
-
-        exc = exc_info.value
-        assert exc.last_stage == "registry_built", (
-            f"expected last_stage='registry_built', got {exc.last_stage!r}"
-        )
-        assert exc.elapsed_s is not None, "elapsed_s must not be None"
-        assert exc.elapsed_s > 0, f"elapsed_s must be > 0, got {exc.elapsed_s}"
+        started = time.monotonic()
+        bridge = lifecycle.start_mcp_server(session, workspace)
+        try:
+            assert time.monotonic() - started < _FIFO_START_BUDGET_SECONDS, (
+                "a FIFO under the policy tree must be skipped, never read until it blocks"
+            )
+        finally:
+            lifecycle.shutdown_mcp_server(bridge)
     finally:
         policy_fifo.unlink(missing_ok=True)
