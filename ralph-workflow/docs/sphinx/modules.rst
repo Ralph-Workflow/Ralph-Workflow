@@ -4935,6 +4935,13 @@ ralph.project_policy
 .. automodule:: ralph.project_policy
    :no-members:
 
+ralph.project_policy.guard_inventory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.guard_inventory
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.markers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -198,6 +198,7 @@ def _claim_scope_findings(
                     "claim about the detector's actual observation, or "
                     f"add the phrase {phrase!r} to detected_condition"
                 ),
+                blocking=False,
             )
         )
     return findings
