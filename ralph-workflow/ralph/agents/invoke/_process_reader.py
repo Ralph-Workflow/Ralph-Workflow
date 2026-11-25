@@ -88,6 +88,11 @@ from ralph.agents.invoke.attempt_supervision import (
     SilenceObserved,
     StartupFailureObserved,
 )
+from ralph.agents.invoke.busy_descendants import (
+    BusyDescendantProbe,
+    alive_by_with_busy_descendants,
+    quiet_state_with_busy_descendants,
+)
 from ralph.agents.invoke.completion_quiesce import (
     CHILD_ACTIVITY_WINDOW_SECONDS,
     CompletionQuiesce,
@@ -95,6 +100,7 @@ from ralph.agents.invoke.completion_quiesce import (
     clear_partial_child_edits,
     record_partial_child_edits,
 )
+from ralph.agents.invoke.idle_diagnostic import as_idle_diagnostic
 from ralph.agents.invoke.opencode_subagent_sessions import (
     OpenCodeSubagentSessionProbe,
     SqliteOpenCodeChildPartSource,
@@ -152,7 +158,7 @@ from ._quota_detection import (
 _CURSOR_SSH_MARKERS = ("SSH_CLIENT", "SSH_TTY", "SSH_CONNECTION")
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
+    from collections.abc import Callable, Generator, Iterator, Sequence
     from contextvars import Token
 
     from ralph.agents.activity import AgentActivitySignal
@@ -331,35 +337,8 @@ class _LineIterableStream(Protocol):
     def __iter__(self) -> Iterator[str]: ...
 
 
-def _idle_diagnostic_value(
-    item: object,
-) -> str | int | float | bool | list[object] | None:
-    if isinstance(item, bool):
-        return item
-    if isinstance(item, int):
-        return item
-    if isinstance(item, float):
-        return item
-    if isinstance(item, str):
-        return item
-    if isinstance(item, list):
-        return list(item)
-    return None
-
-
 def _is_nullary_callable(value: object) -> TypeGuard[Callable[[], object]]:
     return callable(value)
-
-
-def _as_idle_diagnostic(
-    value: Mapping[str, object],
-) -> dict[str, str | int | float | bool | list[object]] | None:
-    result: dict[str, str | int | float | bool | list[object]] = {}
-    for key, item in value.items():
-        converted = _idle_diagnostic_value(item)
-        if converted is not None:
-            result[key] = converted
-    return result
 
 
 def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
@@ -606,7 +585,7 @@ def _convert_idle_stream_timeout_to_agent_error(
             session_resume_safe=session_resume_safe,
             resumable_session_id=captured_session_id or expected_session_id,
             diagnostic=(
-                _as_idle_diagnostic(dict(exc.diagnostic)) if exc.diagnostic is not None else None
+                as_idle_diagnostic(dict(exc.diagnostic)) if exc.diagnostic is not None else None
             ),
             runtime_event=(
                 exc.__cause__.runtime_event
@@ -640,6 +619,7 @@ class ProcessLineReader:
     __slots__ = (
         "__weakref__",
         "_agy_cli_log",
+        "_busy_descendants",
         "_captured_session_id",
         "_clock",
         "_completion_is_terminal",
@@ -745,6 +725,7 @@ class ProcessLineReader:
         self._reader_done: list[bool] = [False]
         self._reader_finished = threading.Event()
         self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._busy_descendants = BusyDescendantProbe()
         self._log_growth_state: dict[str, tuple[int, float]] = {}
         self._raw_overflow = get_or_create_raw_overflow_log(
             self._workspace_path or Path.cwd(),
@@ -946,6 +927,7 @@ class ProcessLineReader:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
         elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        alive_by = alive_by_with_busy_descendants(alive_by, self._descendants_busy)
 
         _cpu_idle = self._probe_cpu_idle(scoped_active=scoped_active, alive_by=alive_by)
         _log_stale = self._probe_log_growth(alive_by)
@@ -1174,9 +1156,15 @@ class ProcessLineReader:
             return
         self._attempt_supervisor().act(CompletionObserved())
 
+    def _descendants_busy(self) -> bool:
+        try:
+            return self._busy_descendants.busy(self._handle.pid)
+        except (OSError, RuntimeError, ValueError, AttributeError):
+            return False
+
     def _classify_quiet(self) -> AgentExecutionState:
         try:
-            return self._strategy.classify_quiet(self._handle, self._probe)
+            reported = self._strategy.classify_quiet(self._handle, self._probe)
         except (OSError, RuntimeError, ValueError, AttributeError):
             if self._handle.poll() is not None:
                 logger.opt(exception=True).debug(
@@ -1187,6 +1175,7 @@ class ProcessLineReader:
                 "idle watchdog: classify_quiet raised; defaulting to WAITING_ON_CHILD"
             )
             return AgentExecutionState.WAITING_ON_CHILD
+        return quiet_state_with_busy_descendants(reported, self._descendants_busy)
 
     def _check_fire(
         self, watchdog: IdleWatchdog, verdict: WatchdogVerdict

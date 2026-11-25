@@ -29,7 +29,6 @@ from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
     _agent_process_label,
-    _as_idle_diagnostic,
     _has_meaningful_output_from_reader,
     _is_resumable_fire_reason,
     _subprocess_env,
@@ -48,6 +47,7 @@ from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
     PostExitHangObserved,
 )
+from ralph.agents.invoke.idle_diagnostic import as_idle_diagnostic
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
@@ -227,7 +227,7 @@ def run_pty_and_read_lines(
                         or expected_session_id
                     ),
                     diagnostic=(
-                        _as_idle_diagnostic(exc.diagnostic) if exc.diagnostic is not None else None
+                        as_idle_diagnostic(exc.diagnostic) if exc.diagnostic is not None else None
                     ),
                 ),
             )

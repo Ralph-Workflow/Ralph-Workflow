@@ -99,6 +99,11 @@ from ralph.agents.invoke.attempt_supervision import (
     SilenceObserved,
     TerminalStartupErrorObserved,
 )
+from ralph.agents.invoke.busy_descendants import (
+    BusyDescendantProbe,
+    alive_by_with_busy_descendants,
+    quiet_state_with_busy_descendants,
+)
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
@@ -300,6 +305,7 @@ class PtyLineReader:
         self._last_tool_result_excerpt: str | None = None
         self._reader_done: list[bool] = [False]
         self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._busy_descendants = BusyDescendantProbe()
         self._log_growth_state: dict[str, tuple[int, float]] = {}
         self._raw_overflow: RawOverflowLog | None = None
         self._input_writer_fd = os.dup(handle.master_fd)
@@ -407,7 +413,8 @@ class PtyLineReader:
             case AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS:
                 pass
             case (
-                AliveBy.CPU_IDLE_WHILE_ALIVE
+                AliveBy.OS_DESCENDANT_BUSY
+                | AliveBy.CPU_IDLE_WHILE_ALIVE
                 | AliveBy.LOG_STALE_WHILE_ALIVE
                 | AliveBy.FRESH_PROGRESS
                 | AliveBy.FRESH_HEARTBEAT_ONLY
@@ -519,6 +526,7 @@ class PtyLineReader:
                 logger.debug("corroborator: PTY registry snapshot failed (suppressed)")
         elif scoped_child_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        alive_by = alive_by_with_busy_descendants(alive_by, self._descendants_busy)
 
         _cpu_idle = self._probe_cpu_idle(scoped_active=scoped_child_active, alive_by=alive_by)
         _log_stale = self._probe_log_growth(alive_by)
@@ -918,15 +926,22 @@ class PtyLineReader:
         self._attempt_supervisor().cleanup(ProcessTerminationIssuer.INVOKE_TEARDOWN)
         return True
 
+    def _descendants_busy(self) -> bool:
+        try:
+            return self._busy_descendants.busy(self._handle.pid)
+        except (OSError, RuntimeError, ValueError, AttributeError):
+            return False
+
     def _classify_quiet(self) -> AgentExecutionState:
         try:
-            return self._strategy.classify_quiet(self._handle, self._probe)
+            reported = self._strategy.classify_quiet(self._handle, self._probe)
         except (OSError, RuntimeError, ValueError, AttributeError):
             logger.opt(exception=True).debug(
                 "idle watchdog: classify_quiet raised for PTY runtime; "
                 "defaulting to WAITING_ON_CHILD"
             )
             return AgentExecutionState.WAITING_ON_CHILD
+        return quiet_state_with_busy_descendants(reported, self._descendants_busy)
 
     def _check_fire(
         self,

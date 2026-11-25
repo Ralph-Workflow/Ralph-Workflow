@@ -2584,6 +2584,13 @@ ralph.agents.invoke._completion_verdicts
    :members:
    :show-inheritance:
 
+ralph.agents.invoke.busy_descendants
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.busy_descendants
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke.completion_quiesce
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2595,6 +2602,13 @@ ralph.agents.invoke.completion_quiesce_decision
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.invoke.completion_quiesce_decision
+   :members:
+   :show-inheritance:
+
+ralph.agents.invoke.idle_diagnostic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.idle_diagnostic
    :members:
    :show-inheritance:
 

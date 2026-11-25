@@ -260,6 +260,8 @@ Background child work still active (run=120s, cumulative=240s, ceiling=600s, ali
 
 If you see `alive_by=stale_label_only` or `alive_by=os_descendant_only_stale_progress`, the child has gone quiet and the watchdog will apply the shorter **no-progress ceiling** (default: 600 s) instead of the full ceiling (1800 s). This means a stuck child that is not making progress will be detected and escalated faster.
 
+If you see `alive_by=os_descendant_busy`, a process the agent started (for example a long shell command) is still using CPU even though the agent prints nothing. Ralph Workflow keeps waiting instead of firing the no-output deadline, up to the full ceiling (1800 s); once that process stops using CPU, the normal no-output deadline applies again.
+
 **Fix if child genuinely hangs:** Check the child agent log for errors. The parent will fire `CHILDREN_PERSIST_TOO_LONG` when the applicable ceiling is reached:
 - No-progress ceiling (default 600 s) if child is alive but not making progress
 - Full ceiling (default 1800 s) if child is making genuine progress

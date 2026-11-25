@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog import WatchdogFireReason
     from ralph.agents.invoke._failure_origin import FailureOrigin
+    from ralph.agents.invoke.idle_diagnostic import IdleDiagnosticValue
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class InactivityTimeoutOpts:
     reason: WatchdogFireReason | None = None
     session_resume_safe: bool = False
     resumable_session_id: str | None = None
-    diagnostic: dict[str, str | int | float | bool | list[object]] | None = None
+    diagnostic: dict[str, IdleDiagnosticValue] | None = None
     runtime_event: FailureOrigin | None = None
 
 

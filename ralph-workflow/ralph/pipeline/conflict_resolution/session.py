@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from ralph.agents.invoke.idle_diagnostic import IdleDiagnosticValue
     from ralph.config.gitlink_policy_config import GitlinkPolicyConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -679,7 +680,7 @@ def _record_resolution_exception(session: ResolutionSession | None) -> None:
 
 
 def _log_resolution_termination(exc: Exception, unresolved_paths: tuple[str, ...]) -> None:
-    fields: dict[str, str | int | float | bool | list[object]]
+    fields: dict[str, IdleDiagnosticValue]
     if isinstance(exc, AgentInactivityTimeoutError):
         reason_value = (
             exc.reason.value

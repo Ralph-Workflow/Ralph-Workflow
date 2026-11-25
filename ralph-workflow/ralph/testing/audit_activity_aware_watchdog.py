@@ -104,13 +104,17 @@ _SUBAGENT_COUNTING_SEAM_ACCEPTED: tuple[str, ...] = (
     "live_subagent_count",
 )
 _SUBAGENT_COUNTING_SEAM_REJECTED: str = "descendant_snapshot"
+_BUSY_DESCENDANT_SEAM_CALLS: tuple[tuple[str, str], ...] = (
+    ("_classify_quiet", "quiet_state_with_busy_descendants"),
+    ("_corroborate", "alive_by_with_busy_descendants"),
+)
 
 
 def _file_needs_parse(rel_path: str, source: str) -> bool:
     if _IDLE_WATCHDOG_MARKER in source or _DEFAULT_MONITOR_MARKER in source:
         return True
     if rel_path in _SUBAGENT_COUNTING_SEAM_FILES:
-        return _SUBAGENT_COUNTING_SEAM_FUNCTION in source
+        return any(func in source for func, _call in _BUSY_DESCENDANT_SEAM_CALLS)
     if rel_path.startswith("agents/invoke/"):
         return any(marker in source for marker in _INVOKE_ONLY_MARKERS)
     return False
@@ -427,6 +431,21 @@ class _ModuleVisitor(ast.NodeVisitor):
             line = forbidden_descent_references[0]
             self._add("subagent_counting_seam", line)
 
+    def check_busy_descendant_seam(self) -> None:
+        if self.rel_path not in _SUBAGENT_COUNTING_SEAM_FILES:
+            return
+        tree = self._tree if self._tree is not None else ast.parse(self.source)
+        functions = {
+            node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        }
+        for func_name, required_call in _BUSY_DESCENDANT_SEAM_CALLS:
+            func = functions.get(func_name)
+            if func is None:
+                continue
+            calls = {_func_call_name(node) for node in ast.walk(func) if isinstance(node, ast.Call)}
+            if required_call not in calls:
+                self._add("busy_descendant_seam", func.lineno)
+
 
 def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:
     try:
@@ -502,6 +521,7 @@ def audit_activity_aware_watchdog(package_root: Path) -> list[ActivityAwareWatch
         if rel_path.startswith("agents/invoke/"):
             visitor.finalize_invoke_file()
         visitor.check_subagent_counting_seam()
+        visitor.check_busy_descendant_seam()
         all_violations.extend(visitor.violations)
 
     _AUDIT_FINGERPRINT_CACHE[cache_key] = all_violations
