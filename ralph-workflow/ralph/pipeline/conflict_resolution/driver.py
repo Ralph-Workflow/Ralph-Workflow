@@ -30,6 +30,7 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
     _evaluate_round_attempt,
     _paths_still_unresolved,
     _run_one_round,
+    paths_still_unresolved,
 )
 from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -297,6 +298,7 @@ __all__ = [
     "invoke_resolution_agent",
     "out_of_reach_escalation_message",
     "out_of_reach_reasons",
+    "paths_still_unresolved",
     "paths_with_conflict_markers",
     "render_conflict_prompt",
     "retained_merge_paths",

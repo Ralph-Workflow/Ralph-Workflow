@@ -62,6 +62,7 @@ __all__ = [
     "_record_invoker_outcome",
     "_revive_cooling_candidates",
     "_run_one_round",
+    "paths_still_unresolved",
 ]
 
 
@@ -135,8 +136,10 @@ def _paths_still_unresolved(
         path
         for path in conflicted
         if path not in marked
-        and observer.path_exists(root / path)
-        and not observer.is_effectively_empty(root / path)
+        and (
+            (observer.path_exists(root / path) and not observer.is_effectively_empty(root / path))
+            or (path in decisions and not observer.path_exists(root / path))
+        )
     ]
     if stageable:
         stage_paths(root, tuple(stageable))
@@ -496,3 +499,6 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     return None
+
+
+paths_still_unresolved = _paths_still_unresolved
