@@ -298,12 +298,26 @@ def is_repo_clean(repo_root: Path | str) -> bool:
         _close_repo(repo)
 
 
+def _is_untracked_nested_repository(repo_root: Path, porcelain_line: str) -> bool:
+    if not porcelain_line.startswith("?? "):
+        return False
+    relative = porcelain_line[3:].strip().strip('"').rstrip("/")
+    return bool(relative) and (repo_root / relative / ".git").exists()
+
+
 def has_uncommitted_changes(repo_root: Path | str) -> bool:
     repo_root_path = Path(repo_root)
     try:
-        result = run_git(("status", "--porcelain"), cwd=repo_root_path, label="git-status")
+        result = run_git(
+            ("status", "--porcelain", "--ignore-submodules=dirty"),
+            cwd=repo_root_path,
+            label="git-status",
+        )
         if result.returncode == 0:
-            return bool(result.stdout.splitlines())
+            return any(
+                not _is_untracked_nested_repository(repo_root_path, line)
+                for line in result.stdout.splitlines()
+            )
     except OSError:
         pass
 

@@ -46,6 +46,45 @@ def _open_repo(repo_root: Path | str) -> Repo:
     return Repo(Path(repo_root).resolve())
 
 
+_GITLINK_MODE = "160000"
+
+
+def declared_submodule_paths(repo: Repo, root_path: Path) -> frozenset[str]:
+    gitmodules = root_path / ".gitmodules"
+    if not gitmodules.is_file():
+        return frozenset()
+    try:
+        listing = route_git_method(
+            repo,
+            "config",
+            ("--file", str(gitmodules), "--get-regexp", r"^submodule\..*\.path$"),
+        )
+    except GitCommandError:
+        return frozenset()
+    return frozenset(
+        line.split(" ", 1)[1].strip() for line in str(listing).splitlines() if " " in line
+    )
+
+
+def drop_undeclared_gitlinks(repo: Repo, root_path: Path) -> tuple[str, ...]:
+    staged = str(route_git_method(repo, "ls_files", ("-s",)))
+    declared = declared_submodule_paths(repo, root_path)
+    nested = [
+        line.split("\t", 1)[1]
+        for line in staged.splitlines()
+        if line.startswith(f"{_GITLINK_MODE} ") and "\t" in line
+    ]
+    dropped = tuple(path for path in nested if path not in declared)
+    for path in dropped:
+        logger.warning(
+            "Leaving nested git repository {} out of the proposal: it is not a declared "
+            "submodule, so committing it would record a scratch checkout as a gitlink",
+            path,
+        )
+        route_git_method(repo, "rm", ("--cached", "-f", "-q", "--ignore-unmatch", "--", path))
+    return dropped
+
+
 def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Seal:
     root_path = Path(repo_root).resolve()
     with _open_repo(root_path) as repo:
@@ -69,6 +108,7 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
                     route_git_method(
                         repo, "rm", ("-r", "--cached", "--ignore-unmatch", "--", ".agent")
                     )
+                    drop_undeclared_gitlinks(repo, root_path)
                     tree_sha_obj = route_git_method(repo, "write_tree")
                     tree_sha = str(tree_sha_obj).strip()
             except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
@@ -133,6 +173,7 @@ def seal_baseline(repo_root: Path | str, run_id: str, *, force: bool = False) ->
                     route_git_method(
                         repo, "rm", ("-r", "--cached", "--ignore-unmatch", "--", ".agent")
                     )
+                    drop_undeclared_gitlinks(repo, root_path)
                     tree_sha_obj = route_git_method(repo, "write_tree")
                     tree_sha = str(tree_sha_obj).strip()
             except (GitCommandError, OSError, RuntimeError, ValueError) as exc:
