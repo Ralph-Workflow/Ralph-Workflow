@@ -30,7 +30,7 @@ from ralph.agents.invoke.attempt_supervision import (
 )
 from ralph.agents.parsers.content_channel import ContentChannel
 from ralph.agents.parsers.line_channel import line_channel
-from ralph.agents.timeout_clock import FakeClock
+from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.manager import ProcessTerminationIssuer
@@ -146,7 +146,7 @@ def _reader(tmp_path: Path, handle: _Handle) -> ProcessLineReader:
             policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
             workspace_path=tmp_path,
         ),
-        FakeClock(start=0.0),
+        SystemClock(),
     )
 
 
@@ -490,9 +490,7 @@ def _pty_reader(
         workspace_path=tmp_path,
         policy=TimeoutPolicy(idle_timeout_seconds=300.0, process_monitor_enabled=False),
     )
-    return PtyLineReader(
-        handle, "claude", ctx, FakeClock(start=0.0), extras=None, supervisor=supervisor
-    )
+    return PtyLineReader(handle, "claude", ctx, SystemClock(), extras=None, supervisor=supervisor)
 
 
 def test_pty_provider_error_event_terminates_the_session(tmp_path: Path) -> None:

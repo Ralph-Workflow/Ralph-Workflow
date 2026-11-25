@@ -9,7 +9,7 @@ from watchdog.events import (
     FileOpenedEvent,
 )
 
-from ralph.agents.invoke import WorkspaceMonitor
+from ralph.agents.invoke import WorkspaceMonitor, WorkspaceWatchSeams
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
@@ -18,6 +18,23 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _PHASE = "planning_analysis"
+
+
+class _InertObserver:
+    def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
+        del event_handler, path, kwargs
+
+    def start(self) -> None:
+        return
+
+    def stop(self) -> None:
+        return
+
+    def join(self, timeout: float | None = None) -> None:
+        del timeout
+
+    def is_alive(self) -> bool:
+        return False
 
 
 def _workspace(tmp_path: Path) -> tuple[Path, Path]:
@@ -73,7 +90,7 @@ def test_an_agent_that_only_reads_files_is_active_but_changed_nothing(tmp_path: 
     readme, source = _workspace(tmp_path)
     workspace = FsWorkspace(tmp_path)
     probe = DefaultWorkspaceChangeProbe()
-    monitor = WorkspaceMonitor(tmp_path)
+    monitor = WorkspaceMonitor(tmp_path, seams=WorkspaceWatchSeams(observer_factory=_InertObserver))
     monitor.start()
     try:
         probe.observe_before(_PHASE, workspace)
