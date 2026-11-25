@@ -130,6 +130,9 @@ def _unwrap_stream_event_envelope(obj: dict[str, object]) -> dict[str, object]:
             merged: dict[str, object] = dict(tool_info)
             merged.setdefault("tool_name", step_update.get("tool_name", merged.get("name")))
             return merged
+        subagent_info = step_update.get("subagent_info")
+        if isinstance(subagent_info, dict):
+            return {"tool_name": step_update.get("tool_name"), "parameters": subagent_info}
         return cast("dict[str, object]", step_update)
     return obj
 

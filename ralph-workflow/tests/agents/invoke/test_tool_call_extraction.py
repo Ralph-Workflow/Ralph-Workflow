@@ -4,7 +4,9 @@ import json
 
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.execution_state import strategy_for_transport
+from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
 from ralph.agents.invoke._tool_call_extraction import extract_tool_call_from_activity_signal
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 
 
@@ -331,3 +333,66 @@ class TestToolCallExtraction:
         tool_name, tool_args = result
         assert tool_name == "list_dir"
         assert tool_args == {}
+
+
+def _agy_subagent_dispatch(step_index: int, role: str, prompt: str) -> str:
+    return json.dumps(
+        {
+            "event": "step_update",
+            "step_update": {
+                "conversation_id": "f60d560b",
+                "step_index": step_index,
+                "state": "ACTIVE",
+                "step_type": "subagent",
+                "tool_name": "invoke_subagent",
+                "subagent_info": {
+                    "subagents": [{"type_name": "general", "role": role, "initial_prompt": prompt}]
+                },
+            },
+        }
+    )
+
+
+def test_agy_subagent_dispatch_carries_its_subagent_brief_as_arguments() -> None:
+    result = extract_tool_call_from_activity_signal(
+        _agy_subagent_dispatch(55, "Unit U1 Implementer", "Delete the script registry")
+    )
+
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "invoke_subagent"
+    assert "Unit U1 Implementer" in json.dumps(tool_args)
+    assert "Delete the script registry" in json.dumps(tool_args)
+
+
+def _tracker_after(calls: list[tuple[str, dict[str, object]]]) -> RepetitionTracker:
+    tracker = RepetitionTracker(
+        FakeClock(start=0.0),
+        consecutive_threshold=5,
+        window_count=8,
+        window_seconds=600.0,
+    )
+    for tool_name, tool_args in calls:
+        tracker.mark_tool_call(tool_name, tool_args)
+    return tracker
+
+
+def test_fanning_out_distinct_agy_subagents_is_not_a_repeated_tool_call() -> None:
+    calls = [
+        extract_tool_call_from_activity_signal(
+            _agy_subagent_dispatch(54 + index, f"Unit U{index} Implementer", f"work unit {index}")
+        )
+        for index in range(1, 9)
+    ]
+
+    assert all(call is not None for call in calls)
+    assert _tracker_after([call for call in calls if call is not None]).tripped() is False
+
+
+def test_dispatching_the_same_agy_subagent_brief_repeatedly_still_trips() -> None:
+    call = extract_tool_call_from_activity_signal(
+        _agy_subagent_dispatch(54, "Unit U1 Implementer", "Delete the script registry")
+    )
+
+    assert call is not None
+    assert _tracker_after([call] * 8).tripped() is True

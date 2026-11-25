@@ -82,6 +82,7 @@ _AGY_DEFAULT_TEST_PATHS = frozenset(
         "tests/agents/test_agy_live_model_listing.py",
         "tests/agents/test_agy_model_resolution.py",
         "tests/agents/test_dynamic_alias_help_lookup.py",
+        "tests/agents/invoke/test_tool_call_extraction.py",
         "tests/recovery/test_preflight_validation.py",
         "tests/test_agent_registry_agy_model_alias.py",
         "tests/test_agy_pty_invocation.py",
