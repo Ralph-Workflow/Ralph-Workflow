@@ -79,7 +79,13 @@ Suite admission, and fixing the production seam.
    controllable time per 1k LOC, deliberately half the verification
    policy's whole-gate guide, leaving the remainder for other steps. HARD
    CAP 60 seconds above the suite's recorded cost floor. Past ~120k LOC the
-   cap binds, and it does not move. A recorded gate budget tighter than 120
+   cap binds, and it does not move. A suite over the cap MUST first be
+   optimized as far as the run allows (rules 7, 11, 14, 15, and 17 and the
+   verification policy's rule 9); only the residual is recorded: its
+   measured time, with no headroom, as `suite_time_budget`, and its excess
+   in the verification policy's `verification_budget_overage`, on that
+   policy's rule 9 terms — the suite can never get slower, the excess only
+   shrinks, and new suite cost is offset while it remains. A recorded gate budget tighter than 120
    seconds of controllable time binds before either number here. These
    limits govern the DEFAULT SUITE; named profiles and quarantine carry
    their own budgets.

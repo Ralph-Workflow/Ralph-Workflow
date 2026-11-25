@@ -31,7 +31,9 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         "",
     ]
     facts = [
-        line.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+        line.replace("PROJECT-FACT-UNRESOLVED", "verified-value").replace(
+            "verification_budget_overage: verified-value", "verification_budget_overage: none"
+        )
         for line in starters.read_starter(filename).splitlines()
         if line.startswith(markers.FACT_MARKER)
     ]

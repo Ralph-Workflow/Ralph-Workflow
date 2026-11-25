@@ -121,6 +121,9 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    content = content.replace(
+        "verification_budget_overage: verified-value", "verification_budget_overage: none"
+    )
     content = re.sub(
         r"^(RALPH-FACT: design_capture_command:).*$",
         r"\1 make visual-capture",

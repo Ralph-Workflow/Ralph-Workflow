@@ -20,6 +20,9 @@ def _filled_in_body(name: str) -> str:
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    content = content.replace(
+        "verification_budget_overage: verified-value", "verification_budget_overage: none"
+    )
     return content
 
 

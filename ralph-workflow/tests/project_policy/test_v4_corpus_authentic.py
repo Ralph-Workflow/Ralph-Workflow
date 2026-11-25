@@ -29,6 +29,9 @@ def _clean_policy_prose(body: str) -> str:
     body = body.replace("REPLACE-ME", "verified-token")
     body = body.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = body.replace(
+        "verification_budget_overage: verified-value", "verification_budget_overage: none"
+    )
     return body
 
 

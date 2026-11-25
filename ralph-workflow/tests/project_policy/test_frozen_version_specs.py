@@ -126,6 +126,9 @@ def _clean_v5_starter_prose(body: str) -> str:
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
     body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = body.replace(
+        "verification_budget_overage: verified-value", "verification_budget_overage: none"
+    )
     body = re.sub(
         r"<!-- ralph-policy-schema:\s*v\d+\s*-->", "<!-- ralph-policy-schema: freeze v5 -->", body
     )

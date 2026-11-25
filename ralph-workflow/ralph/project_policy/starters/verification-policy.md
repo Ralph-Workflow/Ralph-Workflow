@@ -103,6 +103,28 @@ differently.
      NOT relax toward the guide OR the cap — both are ceilings, never
      entitlements. Record the project's measured figure, never the cap.
      <!-- ralph-control: verification-budget-ratchet -->
+   - **Optimize first:** when the project's measured controllable time
+     exceeds a cap in this policy or the testing policy — a multi-million-line
+     codebase whose full gate takes 40 minutes above its floor — the agent
+     MUST first apply every reduction achievable within the run: run
+     independent checks in parallel, cache with complete keys so only work a
+     change can affect re-runs (rule 17), remove duplicate checks, and repair
+     the slowest checks and the missing seams behind them. Leaving an
+     achievable reduction undone is a violation, never a deferral.
+   - **Over a cap after optimizing:** record the measured figure, with no
+     headroom, as the enforced budget, so the gate fails the moment the
+     project gets slower. Record the residual excess in
+     `verification_budget_overage` in exactly this form, every field
+     non-empty:
+     `excess: <gate, fast-path, and suite seconds over each cap>; owner: <person or team>; plan: <reductions applied and reductions remaining>; review: <YYYY-MM-DD>`.
+     Readiness rejects any other form, and blocks once the review date has
+     passed: at review the agent optimizes again, re-measures, and records an
+     excess no higher than before with a new date. The budget and the excess
+     only shrink; every new default-lane cost MUST be offset by a recorded
+     removal or speed-up while the overage remains; narrowing the gate,
+     moving a check out of the default lane, or deselecting work to reach a
+     cap stays forbidden. The overage blocks no unrelated change. A project
+     within every cap records `none`.
 10. A run is judged on **time to a correct, verified change**; speed never permits partial proof.
 11. Prevent an extra pass first; within a pass, the cost of proving the change is the largest term; where they conflict, avoid the extra pass.
 12. The four commitments are: **fast path first**, **a slow gate is a defect**, **do not leave the loop slower**, and **checks answer consistently**. Non-compliance is a defect: fix it within the requested run when that fits its budget, or raise it to an owner who can act. A change is never done on a partial check.
@@ -136,7 +158,9 @@ differently.
     controllable time for the fast path, HARD CAP 30 seconds above the fast
     path's recorded cost floor (rule 9). Record the enforced limit as
     `fast_path_time_budget`: the measured fast-path time, never the cap; the
-    fast path MUST fail when it exceeds that budget. A project with a
+    fast path MUST fail when it exceeds that budget. A fast path already
+    over the cap records its excess in `verification_budget_overage` on
+    rule 9's terms. A project with a
     negligible floor is held to 10 and 30 seconds outright. A floor above
     the target is a measured fact to record and an owned reduction under
     rule 22, never a reason to widen the cap on controllable time. Added
@@ -257,7 +281,11 @@ command, edited file, machine, and date. A negligible floor is still
 recorded as measured.
 Record `verification_time_budget` and `fast_path_time_budget` as the
 project's OWN measured figures plus small headroom, never a cap as a
-default — the ratchet then holds those tighter numbers.
+default — the ratchet then holds those tighter numbers. A figure over its
+cap after every achievable optimization is recorded with no headroom, and
+its excess goes in `verification_budget_overage` in rule 9's
+`excess: …; owner: …; plan: …; review: YYYY-MM-DD` form; record `none`
+when every figure is within its cap.
 The whole-file placeholder scan rejects unresolved-work markers anywhere in
 the file, including inside ordinary prose: the all-caps four-letter "to do"
 marker, the "to be determined" abbreviation, the "fix me" marker, and a
@@ -279,6 +307,7 @@ RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_cost_floor: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: fast_path_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_budget_overage: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: gate_lane_review_cadence_and_owner: PROJECT-FACT-UNRESOLVED
 
@@ -330,7 +359,9 @@ An agent MUST NOT:
 * Add a "verification" command that does not exercise every default-gate
   check.
 * Lower the recorded `verification_time_budget` or `fast_path_time_budget`
-  below the project's measured figure, record a `verification_cost_floor`
+  below the project's measured figure, grow `verification_budget_overage`,
+  record an overage without its measured figure, owner, and reduction plan,
+  record a `verification_cost_floor`
   that was not measured or that counts check work, narrow the default gate to skip a documented check,
   or shrink a per-step timeout past the proven floor to make a slow
   or failing run pass. The kernel's no-weakening rule (see

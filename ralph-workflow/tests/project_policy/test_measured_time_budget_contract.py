@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
-from ralph.project_policy import markers, preflight, starters, validators
+from ralph.project_policy import (
+    markers,
+    preflight,
+    set_research_freshness_clock,
+    starters,
+    validators,
+)
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
@@ -37,7 +45,10 @@ def test_complete_corpus_satisfies_the_measured_budget_contract() -> None:
     assert _ids(_ready_workspace()) == []
 
 
-@pytest.mark.parametrize("fact_key", ["verification_cost_floor", "fast_path_time_budget"])
+@pytest.mark.parametrize(
+    "fact_key",
+    ["verification_cost_floor", "fast_path_time_budget", "verification_budget_overage"],
+)
 def test_verification_policy_without_a_measured_budget_fact_is_not_ready(fact_key: str) -> None:
     ws = _ready_workspace()
     path = _policy_path(_VERIFICATION)
@@ -106,6 +117,7 @@ def test_fixed_cap_finding_names_the_replacement_contract() -> None:
     assert "HARD CAP 30 seconds" in finding.missing_evidence
     assert "verification_cost_floor" in finding.required_outcome
     assert "fast_path_time_budget" in finding.required_outcome
+    assert "verification_budget_overage" in finding.required_outcome
 
 
 @pytest.mark.parametrize(
@@ -146,3 +158,73 @@ def test_preflight_sends_a_ready_project_with_fixed_caps_to_remediation() -> Non
     assert f"{markers.ID_TIME_BUDGET}:{_VERIFICATION}:fixed-cap" in [
         f.requirement_id for f in result.findings
     ]
+
+
+def _with_overage(value: str) -> MemoryWorkspace:
+    ws = _ready_workspace()
+    path = _policy_path(_VERIFICATION)
+    prefix = f"{markers.FACT_MARKER} verification_budget_overage:"
+    lines = [
+        f"{prefix} {value}" if line.startswith(prefix) else line
+        for line in ws.read(path).splitlines()
+    ]
+    ws.write(path, "\n".join(lines))
+    return ws
+
+
+def _ids_on(ws: MemoryWorkspace, today: date) -> list[str]:
+    set_research_freshness_clock(lambda: today)
+    try:
+        return _time_budget_ids(ws)
+    finally:
+        set_research_freshness_clock(None)
+
+
+_RECORD = (
+    "excess: gate +2280s, fast path 0s, suite +840s; owner: build team; "
+    "plan: sharded the suite 8 ways, remaining: complete-key test cache; review: {review}"
+)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "none",
+        "none — every figure is within its cap (measured 2026-11-24)",
+        _RECORD.format(review="2026-12-31"),
+        _RECORD.format(review="2026-11-24"),
+        "RALPH-PENDING (assumed 2026-11-24); review trigger: when the first gate lands",
+    ],
+)
+def test_well_formed_budget_overage_is_accepted(value: str) -> None:
+    assert _ids_on(_with_overage(value), date(2026, 11, 24)) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "verified-value",
+        "the gate is a bit slow but we will look at it",
+        "excess: gate +2280s; owner: build team; plan: shard; review: soon",
+        "excess: gate +2280s; owner:  ; plan: shard; review: 2026-12-31",
+        "excess: gate +2280s; owner: build team; plan: shard; review: 2026-13-01",
+        "excess: gate +2280s; plan: shard; review: 2026-12-31",
+    ],
+)
+def test_malformed_budget_overage_blocks_readiness(value: str) -> None:
+    assert _ids_on(_with_overage(value), date(2026, 11, 24)) == [
+        f"{markers.ID_TIME_BUDGET}:{_VERIFICATION}:overage-malformed"
+    ]
+
+
+def test_budget_overage_past_its_review_date_blocks_readiness() -> None:
+    ws = _with_overage(_RECORD.format(review="2026-11-23"))
+    assert _ids_on(ws, date(2026, 11, 24)) == [
+        f"{markers.ID_TIME_BUDGET}:{_VERIFICATION}:overage-review-overdue"
+    ]
+
+
+def test_budget_overage_is_only_checked_in_the_verification_policy() -> None:
+    ws = _ready_workspace()
+    _append(ws, _TESTING, "RALPH-FACT: verification_budget_overage: the suite is slow")
+    assert _ids_on(ws, date(2026, 11, 24)) == []
