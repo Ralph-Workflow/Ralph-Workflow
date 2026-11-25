@@ -136,6 +136,13 @@ ralph.onboarding
    :members:
    :show-inheritance:
 
+ralph.install_generation_pruner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.install_generation_pruner
+   :members:
+   :show-inheritance:
+
 ralph.install
 ~~~~~~~~~~~~~
 
@@ -3115,6 +3122,13 @@ ralph.mcp.server.runtime_session
    :members:
    :show-inheritance:
 
+ralph.mcp.server.session_workspace_root
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.server.session_workspace_root
+   :members:
+   :show-inheritance:
+
 ralph.mcp.server.exec_sse_streaming
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -4090,6 +4104,20 @@ ralph.recovery.events
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.events
+   :members:
+   :show-inheritance:
+
+ralph.recovery.storage_pressure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.storage_pressure
+   :members:
+   :show-inheritance:
+
+ralph.recovery.volume_shortfall
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.volume_shortfall
    :members:
    :show-inheritance:
 

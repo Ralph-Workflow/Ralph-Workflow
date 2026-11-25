@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import functools
 import sys
 import threading
 import time
@@ -115,6 +116,7 @@ from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, 
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
+from ralph.recovery.storage_pressure import StorageGuard, run_step_with_storage_guard
 from ralph.timeout_defaults import (
     AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
     AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
@@ -238,6 +240,7 @@ class LoopContext:
     conflict_work_bound_escalation_notified: bool = False
     hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
     retained_hold_backoff: NoProgressHoldBackoff = field(default_factory=NoProgressHoldBackoff)
+    storage_guard: StorageGuard | None = None
 
 
 _LoopContext = LoopContext
@@ -253,6 +256,13 @@ def _retry_hooks(ctx: LoopContext) -> RetryDiagnosticHooks:
 def _context_hooks(ctx: LoopContext) -> object:
     try:
         return ctx.hooks
+    except AttributeError:
+        return None
+
+
+def _storage_guard(ctx: LoopContext) -> StorageGuard | None:
+    try:
+        return ctx.storage_guard
     except AttributeError:
         return None
 
@@ -2519,6 +2529,15 @@ def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineSt
     return routed
 
 
+def commit_route_was_rejected(previous: PipelineState, result: PipelineState) -> bool:
+    return (
+        result.rollback_pending is True
+        and isinstance(result.rollback_ref, str)
+        and bool(result.rollback_ref)
+        and result.rollback_ref != previous.rollback_ref
+    )
+
+
 def _resume_planning_after_commit(
     state: PipelineState | int,
     ctx: LoopContext,
@@ -2536,6 +2555,17 @@ def _resume_planning_after_commit(
         return _wait_for_integration_retry(previous, ctx, backend=backend)
     definition = ctx.policy_bundle.pipeline.phases.get(str(state.phase))
     if definition is not None and definition.role in {"commit_review", "commit"}:
+        return state
+    if commit_route_was_rejected(previous, state):
+        logger.warning(
+            "Commit review rejected the pending work that blocks planning synchronization "
+            "({}); continuing in '{}' so an agent can fix it instead of waiting on a tree "
+            "that cannot become clean",
+            state.last_review_rejection_reason or "no reason recorded",
+            state.phase,
+        )
+        state = state.copy_with(integration_commit_resume_phase=None)
+        _save_recovered_rebase_checkpoint(state, ctx)
         return state
     state = advance_phase(state, resume, policy=ctx.policy_bundle.pipeline).copy_with(
         integration_commit_resume_phase=None,
@@ -3912,7 +3942,8 @@ def _run_inner_loop_after_startup(
         iter_pipeline_deps = _iteration_pipeline_deps(ctx, _live_connectivity, _live_is_waiting)
         runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
         planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
-        step_result = runner_step(
+        dispatch_step = functools.partial(
+            runner_step,
             state=state,
             policy_bundle=ctx.policy_bundle,
             workspace_scope=ctx.workspace_scope,
@@ -3929,6 +3960,18 @@ def _run_inner_loop_after_startup(
             pipeline_deps=iter_pipeline_deps,
             _cycle_sample_box=cycle_sample_box,
             _development_sample_box=development_sample_box,
+        )
+        storage_guard = _storage_guard(ctx)
+        step_result = (
+            dispatch_step()
+            if storage_guard is None
+            else dispatch_with_storage_guard(
+                dispatch_step,
+                phase=str(state.phase),
+                guard=storage_guard,
+                controller=ctx.controller,
+                failed_route=ctx.policy_bundle.pipeline.recovery.failed_route,
+            )
         )
         if planning_baseline is not None and not isinstance(step_result, int):
             with suppress(Exception):
@@ -3962,6 +4005,34 @@ def _run_inner_loop_after_startup(
             with suppress(Exception):
                 cast("_PhaseAwareDisplay", ctx.active_display).begin_phase(state.phase)
     return state, prev_phase, None
+
+
+def dispatch_with_storage_guard(
+    dispatch: Callable[[], PipelineState | int],
+    *,
+    phase: str,
+    guard: StorageGuard | None,
+    controller: RecoveryController,
+    failed_route: str,
+) -> PipelineState | int:
+    if guard is None:
+        return dispatch()
+    cooled_before = controller.cooled_down_agents()
+
+    def _is_failure(result: PipelineState | int) -> bool:
+        if isinstance(result, int):
+            return result != 0
+        return str(result.phase) == failed_route
+
+    def _lift_low_space_cooldowns() -> None:
+        controller.lift_cooldowns(phase, controller.cooled_down_agents() - cooled_before)
+
+    return run_step_with_storage_guard(
+        dispatch,
+        guard=guard,
+        is_failure=_is_failure,
+        on_low_space_outcome=_lift_low_space_cooldowns,
+    )
 
 
 def _emit_post_loop_result(
@@ -4636,6 +4707,11 @@ def run(
             else start_catchup_worker_if_enabled(config, workspace_scope.root)
         ),
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
+        storage_guard=(
+            pipeline_deps.storage_guard_factory(workspace_scope.root)
+            if pipeline_deps is not None and pipeline_deps.storage_guard_factory is not None
+            else None
+        ),
     )
     return _execute_with_cleanup(
         state,

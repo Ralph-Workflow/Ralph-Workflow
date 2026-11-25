@@ -12,6 +12,7 @@ from ralph.pro_support.hooks import apply_pro_hooks_to_core
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.master_prompt import materialize_master_prompt
 from ralph.prompts.materialize import materialize_prompt_for_phase
+from ralph.recovery.storage_pressure import default_storage_guard
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityState
     from ralph.recovery.controller import RecoveryController
+    from ralph.recovery.storage_pressure import StorageGuard
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -234,6 +236,7 @@ class PipelineDeps:
     is_waiting_state_provider: Callable[[], bool] | None = None
     process_teardown: Callable[[], None] | None = None
     connectivity_monitor: ConnectivityMonitorLike | None = None
+    storage_guard_factory: Callable[[Path], StorageGuard] | None = None
     catchup_worker_factory: (
         Callable[[UnifiedConfig, Path], AutoIntegrateCatchupWorker | None] | None
     ) = None
@@ -281,6 +284,7 @@ class PipelineDeps:
         is_waiting_state_provider: Callable[[], bool] | None = None,
         process_teardown: Callable[[], None] | None = None,
         connectivity_monitor: ConnectivityMonitorLike | None = None,
+        storage_guard_factory: Callable[[Path], StorageGuard] | None = None,
         catchup_worker_factory: (
             Callable[[UnifiedConfig, Path], AutoIntegrateCatchupWorker | None] | None
         ) = None,
@@ -402,6 +406,7 @@ class PipelineDeps:
         object.__setattr__(self, "is_waiting_state_provider", is_waiting_state_provider)
         object.__setattr__(self, "process_teardown", process_teardown)
         object.__setattr__(self, "connectivity_monitor", connectivity_monitor)
+        object.__setattr__(self, "storage_guard_factory", storage_guard_factory)
         object.__setattr__(self, "catchup_worker_factory", catchup_worker_factory)
         object.__setattr__(self, "startup_rebase_resolver", startup_rebase_resolver)
         object.__setattr__(self, "auto_integrate_resolver", auto_integrate_resolver)
@@ -525,6 +530,7 @@ def build_default_pipeline_deps(
         core=core,
         policy_bundle=policy_bundle,
         recovery_sleep=recovery_sleep,
+        storage_guard_factory=default_storage_guard,
     )
     if pro_hooks is None:
         return deps

@@ -375,7 +375,7 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
@@ -1858,6 +1858,21 @@ class RecoveryController:
         self._last_selection_state.pop(phase, None)
         if agent is not None:
             self._unavailability_tracker.reset_backoff(phase, agent)
+
+    def cooled_down_agents(self) -> frozenset[str]:
+        timeouts = cast(
+            "dict[str, int]", self._unavailability_tracker.snapshot()["unavailable_timeouts"]
+        )
+        return frozenset(timeouts)
+
+    def lift_cooldowns(self, phase: str, agents: Iterable[str]) -> None:
+        for agent in agents:
+            logger.bind(recovery=True).info(
+                "Lifting cooldown for {} in phase={}: it failed while disk space was low",
+                agent,
+                phase,
+            )
+            self.reset_backoff(phase, agent)
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         if not candidates:
