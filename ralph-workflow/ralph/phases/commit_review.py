@@ -551,6 +551,13 @@ def run_commit_review_stage1_preflight(
         logger.warning("auto_seed_default_git_exclude failed: {}", exc)
 
     try:
+        from ralph.project_policy import pin_measurement_facts
+
+        pin_measurement_facts(repo_root)
+    except (OSError, RuntimeError, ValueError, KeyError) as exc:
+        logger.warning("measured-figure pin failed: {}", exc)
+
+    try:
         seal = seal_pending(repo_root, run_id, iteration)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.error("{}: failed to seal proposal tree: {}", phase_name, exc)

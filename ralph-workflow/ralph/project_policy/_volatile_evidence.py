@@ -151,6 +151,11 @@ _MEASUREMENT_FACT_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 
+def measurement_fact_key(line: str) -> str | None:
+    match = _MEASUREMENT_FACT_RE.match(line.strip())
+    return match.group("key") if match else None
+
+
 def refreshed_measurement_facts(diff_text: str) -> list[str]:
     removed: set[tuple[str, str]] = set()
     added: list[tuple[str, str]] = []

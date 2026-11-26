@@ -9,6 +9,7 @@ from ralph.project_policy import (
     remediation,
     validators,
 )
+from ralph.project_policy._measurement_pin import pin_measurement_facts
 from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
 from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
 from ralph.project_policy._volatile_evidence import (
@@ -43,6 +44,7 @@ __all__ = [
     "maybe_resolve_schema_upgrade",
     "models",
     "parse_portfolio_toml",
+    "pin_measurement_facts",
     "refreshed_measurement_facts",
     "remediation",
     "run_policy_readiness_preflight",
