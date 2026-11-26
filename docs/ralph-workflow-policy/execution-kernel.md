@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v6 -->
+<!-- ralph-policy-schema: v7 -->
 <!-- ralph-policy-id: execution-kernel.md -->
 
 # Execution Kernel
@@ -24,11 +24,11 @@ Every policy file starts with these two markers as the literal first
 non-blank lines:
 
 ```
-<!-- ralph-policy-schema: v6 -->
+<!-- ralph-policy-schema: v7 -->
 <!-- ralph-policy-id: <filename.md> -->
 ```
 
-The current schema marker is `<!-- ralph-policy-schema: v6 -->`. Both
+The current schema marker is `<!-- ralph-policy-schema: v7 -->`. Both
 markers MUST appear verbatim before any heading or content.
 
 ## Precedence and selective applicability

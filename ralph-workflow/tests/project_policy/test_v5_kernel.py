@@ -5,11 +5,17 @@ import pytest
 from ralph.project_policy import _guard_inventory, markers, portfolio, starters
 from ralph.workspace.memory import MemoryWorkspace
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_kernel_starter_is_registered_in_v5_manifest": (
+        "schema v7 ships the time-budget model where the gate fails only past its cap above the measured floor, so pinned v6 markers move to v7"
+    ),
+}
+
 
 def test_kernel_starter_is_registered_in_v5_manifest() -> None:
     assert "execution-kernel.md" in markers.CORE_POLICY_FILES
     assert "execution-kernel.md" in starters.STARTER_NAMES
-    assert markers.SCHEMA_VERSION == "v6"
+    assert markers.SCHEMA_VERSION == "v7"
 
 
 def test_kernel_starter_carries_v5_marker_and_id() -> None:

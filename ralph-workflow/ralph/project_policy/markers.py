@@ -6,12 +6,12 @@ from typing import Final
 
 from ralph.project_policy._required_headings import REQUIRED_HEADINGS
 
-SCHEMA_VERSION: Final[str] = "v6"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v6 -->"
+SCHEMA_VERSION: Final[str] = "v7"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v7 -->"
 FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
 )
-POLICY_CONTRACT_VERSION: Final[str] = "2026-11-25.1"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-25.2"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
@@ -383,6 +383,14 @@ VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
     ),
     "v6": PolicyVersionSpec(
         version="v6",
+        core_manifest=CORE_POLICY_FILES,
+        guard_inventory_header=GUARD_INVENTORY_HEADER,
+        portfolio_schema_version=("v3",),
+        allowed_frozen=True,
+        requires_ban_table_coverage=True,
+    ),
+    "v7": PolicyVersionSpec(
+        version="v7",
         core_manifest=CORE_POLICY_FILES,
         guard_inventory_header=GUARD_INVENTORY_HEADER,
         portfolio_schema_version=("v3",),

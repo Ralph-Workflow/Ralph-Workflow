@@ -31,8 +31,8 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     ),
     "test_fresh_starters_follow_fill_model_no_ralph_audit_ids": "the execution-kernel starter restores the advisory Premise-check retry line guard row and keeps the model-family advisory row, so the advisory starter guard set names both",
     "test_all_bundled_starters_comply_with_v6_schema_and_seven_columns": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
-    "test_fresh_cli_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
-    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger",
+    "test_fresh_cli_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger; schema v7 ships the time-budget model where the gate fails only past its cap above the measured floor, so pinned v6 markers move to v7",
+    "test_fresh_real_filesystem_init_seeds_v6_policy_pack": "the execution-kernel starter ships a second advisory guard row for the model-family analysis recommendation, with a review trigger; schema v7 ships the time-budget model where the gate fails only past its cap above the measured floor, so pinned v6 markers move to v7",
 }
 
 ADVISORY_STARTER_GUARDS: frozenset[str] = frozenset(
@@ -230,7 +230,7 @@ def test_fresh_cli_init_seeds_v6_policy_pack(
         policy_file = policy_dir / name
         assert policy_file.is_file(), f"Expected {name} to exist on disk after ralph --init"
         text = policy_file.read_text(encoding="utf-8")
-        assert text.startswith("<!-- ralph-policy-schema: v6 -->")
+        assert text.startswith(markers.POLICY_SCHEMA_MARKER)
         rows = _parse_guard_inventory_table(text)
         assert rows, f"Expected guard inventory rows in {name}"
         for r in rows:
@@ -276,7 +276,7 @@ def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None
         policy_file = policy_dir / name
         assert policy_file.is_file(), f"Expected {name} to exist on disk"
         text = policy_file.read_text(encoding="utf-8")
-        assert text.startswith("<!-- ralph-policy-schema: v6 -->")
+        assert text.startswith(markers.POLICY_SCHEMA_MARKER)
         rows = _parse_guard_inventory_table(text)
         assert rows, f"Expected guard inventory rows in {name}"
         for r in rows:

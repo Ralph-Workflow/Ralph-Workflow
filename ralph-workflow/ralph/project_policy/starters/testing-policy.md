@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v6 -->
+<!-- ralph-policy-schema: v7 -->
 <!-- ralph-policy-id: testing-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -70,8 +70,11 @@ Suite admission, and fixing the production seam.
    Convention and reviewer vigilance do not count.
 9. The suite budget is DRAWN FROM the gate budget, not parallel to it. The
    suite is one step among type checking, linting, formatting, and audits,
-   so record a POINT VALUE strictly below the project's recorded
-   `verification_time_budget` — never a range, never that budget in full.
+   so record its MEASURED time as a POINT VALUE strictly below the project's
+   recorded `verification_time_budget` — never a range, never that budget in
+   full. The runner-enforced limit of rule 8 is the suite's HARD CAP below,
+   never that measurement, on the verification policy's rule 9 shared-host
+   terms.
    The guide and cap bind CONTROLLABLE time — the suite's measured time minus
    its cost floor, recorded with the gate's floors in the verification
    policy's `verification_cost_floor` fact and governed by that policy's
@@ -82,23 +85,23 @@ Suite admission, and fixing the production seam.
    cap binds, and it does not move. A suite over the cap MUST first be
    optimized as far as the run allows (rules 7, 11, 14, 15, and 17 and the
    verification policy's rule 9); only the residual is recorded: its
-   measured time, with no headroom, as `suite_time_budget`, and its excess
-   in the verification policy's `verification_budget_overage`, on that
-   policy's rule 9 terms — the suite can never get slower, the excess only
-   shrinks, and new suite cost is offset while it remains. A recorded gate budget tighter than 120
-   seconds of controllable time binds before either number here. These
+   measured time as `suite_time_budget`, enforced with the verification
+   policy's 25% shared-host allowance, and its excess in that policy's
+   `verification_budget_overage`, on its rule 9 terms — the suite can never
+   get slower, the excess only shrinks, and new suite cost is offset while
+   it remains. The whole gate's own cap still bounds the suite. These
    limits govern the DEFAULT SUITE; named profiles and quarantine carry
    their own budgets.
 10. A timeout is a HARD failure, never a route to green.
     - Per-test: raising it is almost always wrong. Repair the test, usually
       by mocking its I/O (rule 7).
-    - Suite: may SHRINK freely. It grows only as a reviewed change tracking
-      more genuinely-fast tests that satisfies rule 16, and only once
-      measured runtime crosses 80% of the current budget with every test
-      still fast. A suite under budget MUST NOT relax toward the guide or
-      cap: both are ceilings, never entitlements. The suite budget is
-      ratcheted at the recorded `suite_time_budget`; the budget MUST NOT
-      grow absent a reviewed change.
+    - Suite: the enforced limit is the cap of rule 9. The recorded
+      `suite_time_budget` measurement may SHRINK freely and grows only as a
+      reviewed change tracking more genuinely-fast tests that satisfies rule
+      16, re-measured on a warm, otherwise idle run. A suite under its cap
+      MUST NOT relax toward the guide or cap: both are ceilings, never
+      entitlements. The suite measurement is ratcheted at the recorded
+      `suite_time_budget`; it MUST NOT grow absent a reviewed change.
       <!-- ralph-control: suite-budget-ratchet -->
 11. A PERFORMANCE failure is a HARD failure, at least as serious as a
     functional one: a functional failure is one broken behavior, a slow or
@@ -107,7 +110,11 @@ Suite admission, and fixing the production seam.
     cannot run without real I/O, subprocesses, sleeps, network, or agents,
     which is the signature of tests bound to internals instead of driving
     the system as a black box. Add the seam. Do NOT raise the timeout,
-    split the suite to dodge the budget, or skip/xfail to get green.
+    split the suite to dodge the budget, or skip/xfail to get green. A
+    performance failure is one that reproduces: a suite that crosses its
+    limit only while other work shares the host gets the single re-run of
+    the verification policy's rule 9 and is not a performance failure when
+    that re-run passes. Never re-run repeatedly waiting for a quiet host.
 12. Every bug fix to behaviour in the automated lane MUST add a regression
     test that fails on the bug and passes on the fix; the name SHOULD encode
     the regression. A fix routed to another lane records its regression
@@ -651,7 +658,7 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v6 -->`
+* Schema version: `<!-- ralph-policy-schema: v7 -->`
 
 ## Visual design evidence
 

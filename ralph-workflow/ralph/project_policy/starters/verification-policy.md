@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v6 -->
+<!-- ralph-policy-schema: v7 -->
 <!-- ralph-policy-id: verification-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -57,9 +57,12 @@ differently.
    check running only in an undeclared opt-in suite the default gate
    excludes will rot unnoticed: give it a lane, or delete it.
 9. Verification MUST complete in time proportional to the codebase, enforced
-   by the gate itself (fail on exceed), never by convention. Record the
-   enforced limit as `verification_time_budget`: the project's MEASURED gate
-   time, never a cap and never a guess.
+   by the gate itself, never by convention. The gate FAILS only when its
+   controllable time exceeds the cap below, never because a run came in
+   slower than the last measurement. Record the project's MEASURED gate time
+   as `verification_time_budget`: the measurement, never the cap and never a
+   guess. It is the figure each re-measurement is compared against, not a
+   limit the gate fails on.
    - **Cost floor:** the irreducible toolchain cost of answering at all —
      interpreter or runtime startup, environment provisioning, and the
      incremental build and link that a one-line, behaviour-neutral edit to a
@@ -85,23 +88,38 @@ differently.
      most 2 minutes.
    - **Guide:** roughly **1 second of controllable time per 1k LOC**.
    - **HARD CAP: 2 minutes above the recorded cost floor**, whatever the
-     size — a gate slower than that
+     size, and this cap is the limit the gate enforces — a gate slower than that
      destroys the edit/verify loop humans and agents depend on, so past
      ~120k LOC the cap, not the rate, binds. This cap is far stricter than
      commonly cited industry guidance for a commit build, because an agent
      BLOCKS on this gate many times per task, paying the cost per iteration
      rather than per commit — a five-iteration task reaches ten minutes at
      this cap.
+   - **Shared hosts:** the gate enforces the cap, never the measurement, so a
+     run slowed by other work on the same host (parallel agent runs, a busy
+     CI runner) stays inside it. A gate that only passes on a quiet host
+     enforces the wrong number and breaks rule 12's "checks answer
+     consistently". A run whose checks all pass but whose time crosses a
+     limit gets exactly ONE re-run: inside the limit on that re-run, the gate
+     passed; past it again, the slowness is real and is a defect to optimize.
+     NEVER re-run repeatedly waiting for a quiet host, and never treat a
+     single contended overrun as an architecture failure.
    - **Nesting:** the suite is ONE STEP inside this budget, not a parallel
      allowance. The testing policy caps the default suite at 60 seconds above
      its cost floor so
      type checking, linting, formatting, and audits fit in the remainder. A
      suite consuming the whole gate budget is a breach even when its own
      limit is satisfied.
-   - **Ratchet:** the budget may shrink freely; it grows only as a reviewed
-     change tracking genuinely-fast new checks. A project under budget MUST
-     NOT relax toward the guide OR the cap — both are ceilings, never
-     entitlements. Record the project's measured figure, never the cap.
+   - **Re-measurement:** re-measure on a warm, otherwise idle reference run
+     whenever the toolchain or the gate changes and at each review; a new
+     measurement above the recorded one is a regression to optimize under
+     rule 12's "do not leave the loop slower". Growth is caught by
+     re-measuring, never by failing every run a busy host slows. A project
+     under its cap MUST NOT relax toward the guide OR the cap — both are
+     ceilings, never entitlements.
+   - **Ratchet:** the recorded measurement may shrink freely; it grows only
+     as a reviewed change tracking genuinely-fast new checks. Record the
+     project's measured figure, never the cap.
      <!-- ralph-control: verification-budget-ratchet -->
    - **Optimize first:** when the project's measured controllable time
      exceeds a cap in this policy or the testing policy — a multi-million-line
@@ -111,9 +129,10 @@ differently.
      change can affect re-runs (rule 17), remove duplicate checks, and repair
      the slowest checks and the missing seams behind them. Leaving an
      achievable reduction undone is a violation, never a deferral.
-   - **Over a cap after optimizing:** record the measured figure, with no
-     headroom, as the enforced budget, so the gate fails the moment the
-     project gets slower. Record the residual excess in
+   - **Over a cap after optimizing:** record the measured figure as the
+     budget, and enforce it plus a 25% shared-host allowance, so the gate
+     fails when the project really gets slower but never because the host
+     was busy. Record the residual excess in
      `verification_budget_overage` in exactly this form, every field
      non-empty:
      `excess: <gate, fast-path, and suite seconds over each cap>; owner: <person or team>; plan: <reductions applied and reductions remaining>; review: <YYYY-MM-DD>`.
@@ -156,12 +175,13 @@ differently.
     including startup, and the gate MUST emit its observed duration so a
     regression is a number, not a feeling. Target 10 seconds of
     controllable time for the fast path, HARD CAP 30 seconds above the fast
-    path's recorded cost floor (rule 9). Record the enforced limit as
-    `fast_path_time_budget`: the measured fast-path time, never the cap; the
-    fast path MUST fail when it exceeds that budget. A fast path already
-    over the cap records its excess in `verification_budget_overage` on
-    rule 9's terms. A project with a
-    negligible floor is held to 10 and 30 seconds outright. A floor above
+    path's recorded cost floor (rule 9). The fast path FAILS only when it
+    exceeds that cap, on rule 9's shared-host terms. Record the measured
+    fast-path time as `fast_path_time_budget`: the measurement each
+    re-measurement is compared against, never the cap. A fast path already over the cap records its
+    excess in `verification_budget_overage` and enforces its measured figure
+    plus rule 9's 25% shared-host allowance. The cap is always measured above
+    the recorded floor, never as a flat wall-clock figure. A floor above
     the target is a measured fact to record and an owned reduction under
     rule 22, never a reason to widen the cap on controllable time. Added
     cost and any budget breach require an explicit choice and actionable
@@ -281,10 +301,14 @@ estimate: the gate, fast-path, and suite floors, each with its measuring
 command, edited file, machine, and date. A negligible floor is still
 recorded as measured.
 Record `verification_time_budget` and `fast_path_time_budget` as the
-project's OWN measured figures plus small headroom, never a cap as a
-default — the ratchet then holds those tighter numbers. A figure over its
-cap after every achievable optimization is recorded with no headroom, and
-its excess goes in `verification_budget_overage` in rule 9's
+project's OWN measured figures from a warm, otherwise idle run, never a cap
+and never with added headroom — re-measurements are compared against those
+numbers. Wire the
+gate to fail only past each cap above the recorded floor (rule 9), never at
+the measured figure, so a busy host cannot fail it. A figure over its cap
+after every achievable optimization is recorded as measured and enforced
+with rule 9's 25% shared-host allowance, and its excess goes in
+`verification_budget_overage` in rule 9's
 `excess: …; owner: …; plan: …; review: YYYY-MM-DD` form; record `none`
 when every figure is within its cap.
 The whole-file placeholder scan rejects unresolved-work markers anywhere in
@@ -528,4 +552,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v6 -->`
+* Schema version: `<!-- ralph-policy-schema: v7 -->`
