@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_failing_capture_restore_does_not_block_the_run": (
+        "a remediation round now fails over within the round to the next available chain agent, through run_chain_attempt, which owns retry and cooldown failover for every caller, instead of spending a whole round on each unproductive attempt; failover now reaches the chain's owner cooldown, so the test injects the same FakeClock its sibling cooldown tests use instead of sleeping 60 real seconds; every assertion is unchanged"
+    ),
     "test_an_agent_that_cannot_be_launched_still_exits_zero": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
 }
 
@@ -181,6 +185,7 @@ def test_a_failing_capture_restore_does_not_block_the_run(
         set_last_captured_session_id("policy-session-id-leaked")
         return PipelineEvent.AGENT_SUCCESS
 
+    monkeypatch.setattr(cli_integration, "SystemClock", FakeClock)
     monkeypatch.setattr(
         cli_integration,
         "set_last_captured_session_id",

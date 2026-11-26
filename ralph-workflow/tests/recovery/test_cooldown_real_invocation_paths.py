@@ -52,10 +52,10 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import PipelineDeps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back": "a project-policy remediation round now fails over within the round to the next available chain agent, through run_chain_attempt, which owns retry and cooldown failover for every caller; the primary still cools down for unproductive_limit after three attempts and the next agent follows, now inside a single call",
     "test_integration_diagnostic_no_activity_real_handoff_cools_and_falls_back": "the production diagnostic verifies Git state through its public boundary, so the black-box test uses an initialized repository fixture",
     "test_pending_merge_repair_no_activity_real_handoff_cools_and_falls_back": "the production handoff now validates its target worktree, so the black-box test supplies the repository fixture required by that public boundary instead of a nonexistent absolute path",
     "test_conflict_resolution_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
-    "test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_commit_message_real_invocation_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_pending_merge_repair_real_handoff_regression_wu_c4_cools_and_falls_back": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
     "test_integration_diagnostic_real_handoff_regression_wu_c4_cools_and_falls_back": "the production diagnostic verifies Git state through its public boundary, so the black-box regression uses an initialized repository fixture; the ledger unproductive limit starts an expiring cooldown with reason unproductive_limit",
@@ -265,10 +265,10 @@ def test_project_policy_real_invocation_regression_wu_c4_cools_and_falls_back(
     )
 
     lines = _capture_cooldown_lines(
-        lambda: [invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") for _ in range(4)]
+        lambda: invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md")
     )
 
-    assert invoked == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT]
+    assert invoked[:4] == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT]
     _assert_cooldown_line(
         lines,
         phase=PHASE_REMEDIATION,

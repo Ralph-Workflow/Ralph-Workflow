@@ -23,7 +23,15 @@ from ralph.workspace.scope import WorkspaceScope
 from tests.project_policy.policy_corpus import policy_invocation_bundle
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candidate": "operator rule: an agent is either on cooldown or not; the ledger unproductive limit now starts an expiring cooldown with reason unproductive_limit, so the expected cooldown_decision reason is unproductive_limit",
+    "test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candidate": (
+        "run_chain_attempt now owns retry and cooldown failover for every caller, like the "
+        "regular pipeline: one call gives each chain agent its full consecutive-failure cycle, "
+        "so the primary still cools for unproductive_limit and the next agent follows inside "
+        "a single call, with no cooldown wait"
+    ),
+    "test_real_policy_invoker_waits_for_owner_cooldown_across_rounds": (
+        "a remediation round now fails over within the round to the next available chain agent, through run_chain_attempt, which owns retry and cooldown failover for every caller, instead of spending a whole round on each unproductive attempt; the lone agent's three failures now land in the first round, and the next round still waits out the 60 s owner cooldown before succeeding"
+    ),
 }
 
 _PRIMARY = "primary-agent"
@@ -103,8 +111,9 @@ def test_real_policy_invoker_waits_for_owner_cooldown_across_rounds(
         display_context,
     )
 
-    for _round in range(3):
-        assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is False
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is False
+    assert invocations == ["test-agent"] * 3
+    assert clock.monotonic() == 0.0
     assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
 
     assert invocations == ["test-agent"] * 4
@@ -137,13 +146,12 @@ def test_real_policy_analysis_invoker_cools_failed_agent_and_selects_next_candid
     )
 
     def run_rounds() -> None:
-        for _round in range(4):
-            assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is False
+        assert invoke(phase=PHASE_ANALYSIS, prompt_path="prompt.md") is False
 
     lines = _capture_cooldown_lines(run_rounds)
     duration_ms = int(AgentFailureLedger(clock=clock).base_cooldown_seconds * 1000)
 
-    assert invocations == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT]
+    assert invocations == [_PRIMARY, _PRIMARY, _PRIMARY, _NEXT, _NEXT, _NEXT]
     assert clock.monotonic() == 0.0
     matching = [
         line

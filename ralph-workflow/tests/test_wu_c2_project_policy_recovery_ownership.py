@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 
     from ralph.project_policy.analysis import InvokePolicyAgent
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_wu_c2_project_policy_regression_fallback_is_controller_selected_without_local_skip_state": (
+        "a project-policy remediation round now fails over within the round to the next "
+        "available chain agent; the fallback to the second agent happens inside one call, and "
+        "every selection is still the controller's over the full chain with no local skip state"
+    ),
+}
+
 
 class _Controller:
     def __init__(self) -> None:
@@ -91,10 +99,10 @@ def test_wu_c2_project_policy_regression_fallback_is_controller_selected_without
 
     invoke = _make_invoke_agent(monkeypatch, tmp_path, controller, run_attempt, "wu-c2")
 
-    assert invoke(phase=PHASE_REMEDIATION, prompt_path=str(tmp_path / "PROMPT.md")) is False
     assert invoke(phase=PHASE_REMEDIATION, prompt_path=str(tmp_path / "PROMPT.md")) is True
     assert launched == ["first", "second"]
-    assert controller.selection_calls == [("first", "second"), ("first", "second")]
+    assert controller.selection_calls
+    assert all(call == ("first", "second") for call in controller.selection_calls)
 
 
 class _WaitClock:

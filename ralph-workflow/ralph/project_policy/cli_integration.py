@@ -324,29 +324,36 @@ def _make_production_invoke_agent(
         )
         if load_result.run_id:
             _clear_session_completion_sentinel(workspace_scope.root, load_result.run_id)
-        with _capture_pipeline_state():
-            try:
-                result = run_chain_attempt(
-                    AgentEntryPoint.PROJECT_POLICY,
-                    phase=phase,
-                    agents=_resolve_chain_agents(load_result, phase),
-                    controller=controller,
-                    build_effect=build_effect,
-                    config=policy_config,
-                    deps=attempt_deps,
-                    progress_check=progress_check,
-                    state=PipelineState(phase=phase, rebase=RebaseState()),
-                    pipeline_deps=pipeline_deps,
-                    workspace_scope=workspace_scope,
-                    display=display,
-                    display_context=display_context,
-                    run_id=load_result.run_id,
-                    policy_bundle=load_result.policy_bundle,
-                )
-            except (AgentInvocationError, OSError, RuntimeError, ValueError, TypeError) as exc:
-                logger.warning("Policy {} agent could not be launched: {}", phase, exc)
-                raise policy_remediation.RemediationInvocationError(str(exc)) from exc
-        return result is not None and result.outcome.kind is AttemptOutcomeKind.COMPLETED
+        chain_agents = _resolve_chain_agents(load_result, phase)
+
+        def attempt_once() -> bool | None:
+            with _capture_pipeline_state():
+                try:
+                    result = run_chain_attempt(
+                        AgentEntryPoint.PROJECT_POLICY,
+                        phase=phase,
+                        agents=chain_agents,
+                        controller=controller,
+                        build_effect=build_effect,
+                        config=policy_config,
+                        deps=attempt_deps,
+                        progress_check=progress_check,
+                        state=PipelineState(phase=phase, rebase=RebaseState()),
+                        pipeline_deps=pipeline_deps,
+                        workspace_scope=workspace_scope,
+                        display=display,
+                        display_context=display_context,
+                        run_id=load_result.run_id,
+                        policy_bundle=load_result.policy_bundle,
+                    )
+                except (AgentInvocationError, OSError, RuntimeError, ValueError, TypeError) as exc:
+                    logger.warning("Policy {} agent could not be launched: {}", phase, exc)
+                    raise policy_remediation.RemediationInvocationError(str(exc)) from exc
+            if result is None:
+                return None
+            return result.outcome.kind is AttemptOutcomeKind.COMPLETED
+
+        return attempt_once() is True
 
     typed: InvokePolicyAgent = invoke_agent
     return typed

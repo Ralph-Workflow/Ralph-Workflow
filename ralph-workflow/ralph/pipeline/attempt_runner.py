@@ -22,8 +22,9 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.agent_config_fingerprint import agent_config_fingerprint
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import DEFAULT_CONSECUTIVE_LIMIT, AgentFailureLedger
 from ralph.recovery.attempt_facts import AttemptFacts
+from ralph.recovery.attempt_outcome_kind import AttemptOutcomeKind
 from ralph.recovery.canary_probe import run_canary_probe
 from ralph.recovery.controller_factory import RecoveryController, build_recovery_controller
 from ralph.recovery.dead_agent_probe import (
@@ -335,17 +336,23 @@ def run_chain_attempt(
     progress_check: Callable[[], bool] | None = None,
     **execute_kwargs: object,
 ) -> AttemptResult | None:
-    agent = _select_chain_agent(controller, phase, agents)
-    if agent is None:
-        return None
-    execute_kwargs.setdefault("effect", build_effect(agent))
-    return registered_runners()[entry_point](
-        config=config,
-        controller=controller,
-        deps=deps,
-        progress_check=progress_check,
-        **execute_kwargs,
-    )
+    result: AttemptResult | None = None
+    for _launch in range(max(1, len(agents)) * DEFAULT_CONSECUTIVE_LIMIT):
+        agent = _select_chain_agent(controller, phase, agents)
+        if agent is None:
+            return result
+        launch_kwargs = dict(execute_kwargs)
+        launch_kwargs.setdefault("effect", build_effect(agent))
+        result = registered_runners()[entry_point](
+            config=config,
+            controller=controller,
+            deps=deps,
+            progress_check=progress_check,
+            **launch_kwargs,
+        )
+        if result.outcome.kind is AttemptOutcomeKind.COMPLETED:
+            return result
+    return result
 
 
 def _select_chain_agent(

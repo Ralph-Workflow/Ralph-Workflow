@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ARTIFACTLESS_ATTEMPT_EXEMPTIONS",
     "ARTIFACTLESS_ATTEMPT_RULE",
+    "CHAIN_RETRY_RULE",
     "RAW_AGENT_INVOKE_RULE",
     "RAW_AGENT_INVOKE_SEAMS",
     "SELECTION_CALLS",
@@ -29,6 +30,8 @@ SHARED_ATTEMPT_PATH: Final = "ralph/pipeline/attempt_runner.py"
 SELECTION_RULE: Final = "agent_selection_outside_shared_attempt_path"
 RAW_AGENT_INVOKE_RULE: Final = "raw_agent_invoke_outside_shared_attempt_path"
 ARTIFACTLESS_ATTEMPT_RULE: Final = "artifactless_attempt_without_progress_check"
+CHAIN_RETRY_RULE: Final = "chain_attempt_retry_outside_shared_attempt_path"
+_CHAIN_ATTEMPT_NAME: Final = "run_chain_attempt"
 
 SELECTION_CALLS: Final[frozenset[str]] = frozenset(
     {"preferred_agent_index", "earliest_available_wait_ms", "earliest_eligible_wait_ms"}
@@ -69,7 +72,12 @@ _RAW_INVOKE_NAME: Final = "invoke_agent"
 _EFFECT_CLASS: Final = "InvokeAgentEffect"
 _EVIDENCE_KEYWORD: Final = "requires_completion_evidence"
 _PROGRESS_KEYWORD: Final = "progress_check"
-_TRIGGER_TOKENS: Final[tuple[str, ...]] = (*SELECTION_CALLS, _RAW_INVOKE_NAME, _EVIDENCE_KEYWORD)
+_TRIGGER_TOKENS: Final[tuple[str, ...]] = (
+    *SELECTION_CALLS,
+    _RAW_INVOKE_NAME,
+    _EVIDENCE_KEYWORD,
+    _CHAIN_ATTEMPT_NAME,
+)
 
 
 @dataclass(frozen=True)
@@ -120,6 +128,52 @@ def _selection_violations(rel_path: str, tree: ast.Module) -> Iterator[Violation
                     f"'{name}' selects or waits for an agent outside the shared attempt path; "
                     f"call run_chain_attempt in {SHARED_ATTEMPT_PATH}",
                 )
+
+
+def _called_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Call):
+            func = inner.func
+            if isinstance(func, ast.Name):
+                names.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                names.add(func.attr)
+    return names
+
+
+def _chain_attempt_callers(tree: ast.Module) -> set[str]:
+    reaching = {_CHAIN_ATTEMPT_NAME}
+    functions = [
+        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for function in functions:
+            if function.name not in reaching and _called_names(function) & reaching:
+                reaching.add(function.name)
+                changed = True
+    return reaching
+
+
+def _chain_retry_violations(rel_path: str, tree: ast.Module) -> Iterator[Violation]:
+    if rel_path == SHARED_ATTEMPT_PATH:
+        return
+    reaching = _chain_attempt_callers(tree)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+            continue
+        looped = _called_names(node) & reaching
+        if looped:
+            yield Violation(
+                rel_path,
+                node.lineno,
+                CHAIN_RETRY_RULE,
+                f"a loop re-runs {sorted(looped)[0]!r}, which reaches {_CHAIN_ATTEMPT_NAME}; "
+                f"retry, cooldown failover and give-up belong to {_CHAIN_ATTEMPT_NAME} in "
+                f"{SHARED_ATTEMPT_PATH}, so call it once and use its result",
+            )
 
 
 def _raw_invoke_violations(rel_path: str, tree: ast.Module) -> Iterator[Violation]:
@@ -185,6 +239,7 @@ def audit_modules(modules: Mapping[str, str]) -> list[Violation]:
         violations.extend(_selection_violations(rel_path, tree))
         violations.extend(_raw_invoke_violations(rel_path, tree))
         violations.extend(_artifactless_violations(rel_path, tree))
+        violations.extend(_chain_retry_violations(rel_path, tree))
     return violations
 
 
@@ -258,6 +313,17 @@ def selftest() -> int:
             "def build(a, phase):\n"
             "    return InvokeAgentEffect(agent_name=a, requires_completion_evidence=phase == 'x')\n",
             ARTIFACTLESS_ATTEMPT_RULE,
+        ),
+        (
+            "ralph/project_policy/planted.py",
+            "def go(**kw):\n    for _ in range(4):\n        run_chain_attempt(**kw)\n",
+            CHAIN_RETRY_RULE,
+        ),
+        (
+            "ralph/project_policy/planted.py",
+            "def once(**kw):\n    return run_chain_attempt(**kw)\n"
+            "def go(**kw):\n    while not once(**kw):\n        pass\n",
+            CHAIN_RETRY_RULE,
         ),
     ]
     for rel_path, source, expected in planted:

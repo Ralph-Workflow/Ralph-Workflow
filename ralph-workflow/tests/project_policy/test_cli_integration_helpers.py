@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_production_closure_falls_back_across_chain_agents": (
-        "project-policy invocation runs one shared-owner-selected attempt per call; the "
-        "owner cools the failing agent at its consecutive limit and later calls fall over "
-        "to the next chain agent"
+        "a remediation round now fails over within the round to the next available chain agent, through run_chain_attempt, which owns retry and cooldown failover for every caller, instead of spending a whole round on each unproductive attempt; the fallback to codex after dev-agent cools down now happens inside the first call, with the same agent order"
     ),
     "test_a_crashing_first_agent_falls_back_to_the_next_in_the_chain": (
         "project-policy invocation runs one shared-owner-selected attempt per call; the "
@@ -219,8 +217,7 @@ def test_production_closure_falls_back_across_chain_agents(
         None,
         make_display_context(),
     )
-    results = [invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") for _call in range(4)]
-    assert results == [False, False, False, True]
+    assert invoke(phase=PHASE_REMEDIATION, prompt_path="prompt.md") is True
     assert invoked_agents == ["dev-agent", "dev-agent", "dev-agent", "codex"]
 
 
