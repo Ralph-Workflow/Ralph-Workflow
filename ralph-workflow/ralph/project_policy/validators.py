@@ -37,12 +37,17 @@ from ralph.project_policy._scanners import (
 )
 from ralph.project_policy._schema_content import check_retired_schema_wording
 from ralph.project_policy._time_budget_contract import check_fixed_time_caps
-from ralph.project_policy._volatile_evidence import check_volatile_evidence_citations
+from ralph.project_policy._volatile_evidence import (
+    check_added_volatile_citations,
+    check_volatile_evidence_citations,
+)
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import parse_portfolio_toml
 from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.language_detector.models import ProjectStack
     from ralph.workspace.protocol import Workspace
 
@@ -718,6 +723,24 @@ def _detect_frozen_version(workspace: Workspace) -> str | None:
     return highest
 
 
+_WORKING_TREE_DIFF: list[Callable[[], str] | None] = [None]
+
+
+def set_working_tree_diff_provider(provider: Callable[[], str] | None) -> None:
+    _WORKING_TREE_DIFF[0] = provider
+
+
+def _check_working_tree_additions() -> list[PolicyFinding]:
+    provider = _WORKING_TREE_DIFF[0]
+    if provider is None:
+        return []
+    try:
+        diff = provider()
+    except (OSError, RuntimeError, ValueError):
+        return []
+    return check_added_volatile_citations(diff)
+
+
 def _check_extra_policy_file_evidence(
     workspace: Workspace, core_files: frozenset[str]
 ) -> list[PolicyFinding]:
@@ -763,6 +786,7 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
         )
 
     findings.extend(_check_extra_policy_file_evidence(workspace, frozenset(core_manifest)))
+    findings.extend(_check_working_tree_additions())
     findings.extend(_check_per_language_coverage(workspace, stack))
     ban_spec = markers.VERSION_SPECS.get(frozen_version) if frozen_version is not None else None
     if ban_spec is None or ban_spec.requires_ban_table_coverage:

@@ -217,3 +217,65 @@ def test_remediation_is_told_to_change_a_check_that_demands_citations_never_to_r
     assert "replace that check's oracle" in prompt
     assert "never restore the citations" in prompt
     assert "never check out, revert or restore a policy file to make a gate pass" in prompt
+
+
+_REPOINT_DIFF = """diff --git a/script/verify/profiles.ts b/script/verify/profiles.ts
+--- a/script/verify/profiles.ts
++++ b/script/verify/profiles.ts
+@@ -10 +10 @@
+-      "RESTS ON: tmp/verify-stages.ndjson:17122 - stage heavy-1, " +
++      "RESTS ON: tmp/verify-stages.ndjson:22969 - stage heavy-1, " +
+"""
+
+_REMOVAL_DIFF = """diff --git a/script/verify/profiles.ts b/script/verify/profiles.ts
+--- a/script/verify/profiles.ts
++++ b/script/verify/profiles.ts
+@@ -10 +10 @@
+-      "RESTS ON: tmp/verify-stages.ndjson:17122 - stage heavy-1, " +
++      "RESTS ON: the stage's newest local ledger row, derived at run time, " +
+"""
+
+
+def _with_diff(diff: str) -> list[PolicyFinding]:
+    validators.set_working_tree_diff_provider(lambda: diff)
+    try:
+        return _volatile(_ready_workspace())
+    finally:
+        validators.set_working_tree_diff_provider(None)
+
+
+def test_a_working_tree_change_that_re_points_a_citation_in_any_file_blocks_readiness() -> None:
+    findings = _with_diff(_REPOINT_DIFF)
+
+    assert [f.requirement_id for f in findings] == [
+        f"{markers.ID_VOLATILE_EVIDENCE}:script/verify/profiles.ts"
+    ]
+    assert findings[0].blocking is True
+    assert "tmp/verify-stages.ndjson:22969" in findings[0].required_outcome
+    assert "re-point" in findings[0].required_outcome
+
+
+def test_a_working_tree_change_that_removes_citations_is_not_a_finding() -> None:
+    assert _with_diff(_REMOVAL_DIFF) == []
+
+
+def test_without_a_diff_source_only_policy_files_are_checked() -> None:
+    assert _volatile(_ready_workspace()) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/project_policy/test_volatile_evidence_citations.py",
+        "test/scripts/verify_profile_ledger_verdicts_test.ts",
+        "spec/lib/ledger_spec.rb",
+        "src/__tests__/ledger.test.ts",
+    ],
+)
+def test_test_fixtures_that_quote_citations_are_not_findings(path: str) -> None:
+    diff = (
+        f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1 @@\n"
+        '+    "tmp/verify-stages.ndjson:23261",\n'
+    )
+
+    assert _with_diff(diff) == []

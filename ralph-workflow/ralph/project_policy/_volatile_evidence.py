@@ -109,3 +109,38 @@ def volatile_citations_in_added_lines(diff_text: str) -> list[str]:
         if len(found) >= _MAX_REPORTED_DIFF_CITATIONS:
             return found[:_MAX_REPORTED_DIFF_CITATIONS]
     return found
+
+
+_TEST_DIRS: Final[frozenset[str]] = frozenset({"test", "tests", "spec", "__tests__"})
+_TEST_NAME_RE: Final[re.Pattern[str]] = re.compile(
+    r"(^test_.*|.*_test\.[^.]+$|.*_spec\.[^.]+$|.*\.test\.[^.]+$|.*\.spec\.[^.]+$)"
+)
+
+
+def _is_test_path(path: str) -> bool:
+    parts = path.split("/")
+    return bool(_TEST_DIRS.intersection(parts[:-1])) or bool(_TEST_NAME_RE.match(parts[-1]))
+
+
+def check_added_volatile_citations(diff_text: str) -> list[PolicyFinding]:
+    by_file: dict[str, list[str]] = {}
+    for entry in volatile_citations_in_added_lines(diff_text):
+        path, _sep, citation = entry.partition(": ")
+        if path.startswith(markers.CANONICAL_DIR) or _is_test_path(path):
+            continue
+        by_file.setdefault(path, []).append(citation)
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_VOLATILE_EVIDENCE}:{path}",
+            path=path,
+            missing_evidence=(
+                f"the uncommitted change adds {len(citations)} citation(s) of worktree-local "
+                "or append-only evidence"
+            ),
+            required_outcome=(
+                f"{_REQUIRED_OUTCOME}; added here: {', '.join(citations[:_SHOWN_CITATIONS])}. "
+                "If a check demands such a citation, change the check to derive it at run time"
+            ),
+        )
+        for path, citations in sorted(by_file.items())
+    ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -11,6 +12,7 @@ from ralph.agents.invoke import AgentInvocationError, _clear_session_completion_
 from ralph.agents.timeout_clock import SystemClock
 from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.language_detector import get_project_stack
 from ralph.pipeline._runner_session import (
@@ -46,6 +48,7 @@ from ralph.project_policy import finalization as policy_finalization
 from ralph.project_policy import markers as policy_markers
 from ralph.project_policy import models as policy_models
 from ralph.project_policy import remediation as policy_remediation
+from ralph.project_policy import validators as policy_validators
 from ralph.project_policy.pipeline_driver import run_policy_pipeline
 from ralph.project_policy.pipeline_graph import (
     DEFAULT_ANALYSIS_CAP,
@@ -609,6 +612,15 @@ def run_project_policy_readiness(
         )
 
 
+def _working_tree_diff(root: Path) -> str:
+    result = run_process(
+        "git",
+        ("diff", "-U0", "--no-color", "--no-ext-diff", "HEAD"),
+        options=ProcessRunOptions(cwd=root),
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
 def _guarded_policy_readiness(
     *,
     load_result: _LoadResult,
@@ -623,6 +635,10 @@ def _guarded_policy_readiness(
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
 ) -> int:
+    scope = load_result.workspace_scope
+    if scope is not None:
+        root = Path(scope.root)
+        policy_validators.set_working_tree_diff_provider(lambda: _working_tree_diff(root))
     try:
         return _run_policy_readiness(
             load_result=load_result,
@@ -650,6 +666,8 @@ def _guarded_policy_readiness(
             f"({type(exc).__name__}: {exc}). Continuing to the development run.",
         )
         return _exit_code_for_not_ready(mode)
+    finally:
+        policy_validators.set_working_tree_diff_provider(None)
 
 
 def _emit_and_push_readiness_assessment(
