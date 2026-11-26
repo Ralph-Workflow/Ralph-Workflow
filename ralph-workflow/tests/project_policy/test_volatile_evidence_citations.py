@@ -182,3 +182,18 @@ def test_a_policy_copy_without_the_durable_evidence_rule_is_told_to_adopt_it() -
     assert findings[0].blocking is True
     assert "never cite" in findings[0].required_outcome
     assert "durable source" in findings[0].required_outcome
+
+
+def test_a_volatile_citation_in_a_project_added_policy_file_blocks_readiness() -> None:
+    ws = _ready_workspace()
+    ws.write(
+        f"{markers.CANONICAL_DIR}portfolio-admission.md",
+        "# Portfolio admission\n\nBypass evidence: tmp/wt02-bypass-detection-20261123.log\n",
+    )
+
+    findings = _volatile(ws)
+
+    assert [f.requirement_id for f in findings] == [
+        f"{markers.ID_VOLATILE_EVIDENCE}:portfolio-admission.md"
+    ]
+    assert findings[0].blocking is True

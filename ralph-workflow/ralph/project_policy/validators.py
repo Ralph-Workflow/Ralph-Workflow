@@ -716,6 +716,23 @@ def _detect_frozen_version(workspace: Workspace) -> str | None:
     return highest
 
 
+def _check_extra_policy_file_evidence(
+    workspace: Workspace, core_files: frozenset[str]
+) -> list[PolicyFinding]:
+    try:
+        entries = workspace.list_dir(markers.CANONICAL_DIR.rstrip("/"))
+    except (OSError, ValueError):
+        return []
+    findings: list[PolicyFinding] = []
+    for entry in sorted(entries):
+        filename = entry.rsplit("/", 1)[-1]
+        if not filename.endswith(".md") or filename in core_files:
+            continue
+        path = f"{markers.CANONICAL_DIR}{filename}"
+        findings.extend(check_volatile_evidence_citations(workspace.read(path), path, filename))
+    return findings
+
+
 def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[PolicyFinding]:
     findings: list[PolicyFinding] = []
     findings.extend(_check_agents_md(workspace))
@@ -743,6 +760,7 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
             )
         )
 
+    findings.extend(_check_extra_policy_file_evidence(workspace, frozenset(core_manifest)))
     findings.extend(_check_per_language_coverage(workspace, stack))
     ban_spec = markers.VERSION_SPECS.get(frozen_version) if frozen_version is not None else None
     if ban_spec is None or ban_spec.requires_ban_table_coverage:
