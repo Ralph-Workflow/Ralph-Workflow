@@ -14,6 +14,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_session_mcp_plan_grants_read_and_exec_but_no_diff_for_development_analysis": (
+        "user requirement: analysis reviews the code as it is; the developer's work is already "
+        "committed and the worktree is clean, so a diff never exists reliably; the analysis "
+        "drain class no longer grants git.diff_read or git.status_read"
+    ),
+    "test_session_mcp_plan_grants_read_and_exec_but_no_diff_for_review_analysis": (
+        "user requirement: review analysis reads the code as it stands, never a diff; the "
+        "analysis drain class no longer grants git.diff_read or git.status_read"
+    ),
+}
+
+
 @pytest.fixture
 def isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     home = tmp_path / "home"
@@ -172,7 +185,7 @@ enabled = true
     assert "web.visit" not in plan.capabilities
 
 
-def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
+def test_session_mcp_plan_grants_read_and_exec_but_no_diff_for_development_analysis(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
@@ -186,15 +199,15 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
     )
 
     assert "workspace.read" in plan.capabilities
-    assert "git.status_read" in plan.capabilities
-    assert "git.diff_read" in plan.capabilities
+    assert "git.status_read" not in plan.capabilities
+    assert "git.diff_read" not in plan.capabilities
     assert "artifact.submit" in plan.capabilities
     assert "process.exec_bounded" in plan.capabilities
     assert "run.report_progress" in plan.capabilities
     assert "workspace.write_tracked" not in plan.capabilities
 
 
-def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
+def test_session_mcp_plan_grants_read_and_exec_but_no_diff_for_review_analysis(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
@@ -208,8 +221,8 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
     )
 
     assert "workspace.read" in plan.capabilities
-    assert "git.status_read" in plan.capabilities
-    assert "git.diff_read" in plan.capabilities
+    assert "git.status_read" not in plan.capabilities
+    assert "git.diff_read" not in plan.capabilities
     assert "artifact.submit" in plan.capabilities
     assert "process.exec_bounded" in plan.capabilities
     assert "run.report_progress" in plan.capabilities

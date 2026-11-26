@@ -36,6 +36,19 @@ def _render_verifier(template_name: str) -> str:
     )
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rendered_verifiers_put_the_evidence_first_contract_before_final_submission": (
+        "the development analysis instruction now reads 'inspect the code as it stands' because "
+        "the work is already committed and the worktree is clean; the ordering assertion is "
+        "unchanged"
+    ),
+    "test_development_analysis_prescribes_concrete_verification_fanout": (
+        "the intro anchor moved from 'inspect the current worktree' to 'inspect the code as it "
+        "stands'; the fan-out ordering assertions are unchanged"
+    ),
+}
+
+
 @pytest.mark.parametrize(
     "template_name",
     ("planning_analysis", "development_analysis", "policy_remediation_analysis"),
@@ -87,7 +100,7 @@ def test_rendered_verifiers_put_the_evidence_first_contract_before_final_submiss
 ) -> None:
     rendered = _render_verifier(template_name)
     if template_name == "development_analysis":
-        contract_marker = "inspect the current worktree"
+        contract_marker = "inspect the code as it stands"
         assert "## Criteria and verdicts" not in rendered
     else:
         contract_marker = "## Criteria and verdicts"
@@ -204,7 +217,7 @@ def test_development_analysis_prescribes_concrete_verification_fanout() -> None:
     ):
         assert forbidden not in source, forbidden
 
-    intro = source.index("inspect the current worktree")
+    intro = source.index("inspect the code as it stands")
     decision = source.index("## Decision artifact")
     fanout = source.lower().index("reproduce", intro)
     assert intro < fanout < decision

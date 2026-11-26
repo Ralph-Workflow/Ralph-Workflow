@@ -42,6 +42,10 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
 }
 
+_CLASS_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
+    "analysis": frozenset({"git.diff_read", "git.status_read"}),
+}
+
 _DRAIN_CAPABILITY_DENIALS: dict[str, frozenset[str]] = {
     "policy_remediation": frozenset({"artifact.submit", "artifact.plan_read"}),
 }
@@ -375,9 +379,10 @@ def _base_capabilities_for_resolved_class(
     extras: set[str] = set(_CAPABILITY_PRESETS.get(cls_value, frozenset()))
     if planning_drain:
         extras.add("artifact.plan_write")
+    denied = _CLASS_CAPABILITY_DENIALS.get(cls_value, frozenset())
     if cls_value in _CAPABILITY_PRESETS:
-        return set(_BASE_CAPABILITIES | extras)
-    return set(_BASE_CAPABILITIES | _DEVELOPMENT_EXTRA | extras)
+        return set((_BASE_CAPABILITIES | extras) - denied)
+    return set((_BASE_CAPABILITIES | _DEVELOPMENT_EXTRA | extras) - denied)
 
 
 __all__ = [

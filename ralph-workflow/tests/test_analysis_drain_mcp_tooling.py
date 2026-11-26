@@ -19,16 +19,22 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_analysis_drain_tool_registry_exposes_read_exec_and_artifact_tools": (
+        "user requirement: analysis reviews the code as it is; the developer's work is "
+        "already committed and the worktree is clean, so a diff never exists reliably; the "
+        "analysis drain class no longer grants git diff/status/log/show and the git tools "
+        "moved from the required set to the forbidden set"
+    ),
+}
+
+
 _ANALYSIS_REQUIRED_TOOLS = {
     "read_file",
     "list_directory",
     "list_directory_recursive",
     "directory_tree",
     "search_files",
-    "git_diff",
-    "git_status",
-    "git_log",
-    "git_show",
     "exec",
     "ralph_submit_md_artifact",
     "ralph_get_md_draft",
@@ -37,6 +43,10 @@ _ANALYSIS_REQUIRED_TOOLS = {
 
 _ANALYSIS_FORBIDDEN_TOOLS = {
     "write_file",
+    "git_diff",
+    "git_status",
+    "git_log",
+    "git_show",
 }
 
 _PLANNING_REQUIRED_TOOLS = {

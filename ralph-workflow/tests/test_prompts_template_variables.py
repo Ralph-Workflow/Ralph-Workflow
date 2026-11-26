@@ -12,6 +12,23 @@ from ralph.prompts.template_variables import capability_template_variables
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_specialized_analysis_drain_grants_read_and_exec_defaults": (
+        "user requirement: analysis reviews the code as it is, never a diff; the analysis drain "
+        "class no longer grants git diff/status, so git_diff, git_status, git_log and git_show "
+        "moved from required to forbidden"
+    ),
+    "test_review_analysis_drain_grants_read_and_exec_defaults": (
+        "user requirement: review analysis reads the code as it stands; the git diff tools are "
+        "no longer granted and are now asserted absent"
+    ),
+    "test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling": (
+        "user requirement: the rendered analysis prompt must not grant git.diff_read; the "
+        "assertion now requires its absence instead of its presence"
+    ),
+}
+
+
 def test_template_variables_apply_to_template() -> None:
     caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.DEVELOPMENT)
     vars_map = template_variables.capability_template_variables(caps, flags)
@@ -67,15 +84,13 @@ def test_specialized_analysis_drain_grants_read_and_exec_defaults() -> None:
         "list_directory_recursive",
         "directory_tree",
         "search_files",
-        "git_diff",
-        "git_status",
-        "git_log",
-        "git_show",
         "exec",
         "ralph_submit_md_artifact",
         "declare_complete",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
+    for diff_tool in ("git_diff", "git_status", "git_log", "git_show"):
+        assert diff_tool not in tool_list, f"analysis must not offer {diff_tool}"
     assert "ralph_get_md_draft" in tool_list
 
 
@@ -94,15 +109,13 @@ def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
         "list_directory_recursive",
         "directory_tree",
         "search_files",
-        "git_diff",
-        "git_status",
-        "git_log",
-        "git_show",
         "exec",
         "ralph_submit_md_artifact",
         "declare_complete",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
+    for diff_tool in ("git_diff", "git_status", "git_log", "git_show"):
+        assert diff_tool not in tool_list, f"analysis must not offer {diff_tool}"
     assert "ralph_get_md_draft" in tool_list
 
 
@@ -163,5 +176,6 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     assert "write_file" not in rendered
     assert ".agent/tmp/" not in rendered
 
-    for cap in ("process.exec_bounded", "workspace.read", "git.diff_read", "artifact.submit"):
+    for cap in ("process.exec_bounded", "workspace.read", "artifact.submit"):
         assert cap in rendered, f"missing capability {cap} in rendered {template_name}"
+    assert "git.diff_read" not in rendered, f"{template_name} must not grant a diff capability"
