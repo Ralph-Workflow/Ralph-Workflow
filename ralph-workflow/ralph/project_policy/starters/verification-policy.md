@@ -104,6 +104,8 @@ differently.
      passed; past it again, the slowness is real and is a defect to optimize.
      NEVER re-run repeatedly waiting for a quiet host, and never treat a
      single contended overrun as an architecture failure.
+     Moving a gate's enforced limit from its recorded measurement to the cap
+     is not budget growth: the recorded measurement does not change.
    - **Nesting:** the suite is ONE STEP inside this budget, not a parallel
      allowance. The testing policy caps the default suite at 60 seconds above
      its cost floor so

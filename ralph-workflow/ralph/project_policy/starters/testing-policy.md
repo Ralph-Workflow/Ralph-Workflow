@@ -76,7 +76,8 @@ Suite admission, and fixing the production seam.
    recorded `verification_time_budget` — never a range, never that budget in
    full. The runner-enforced limit of rule 8 is the suite's HARD CAP below,
    never that measurement, on the verification policy's rule 9 shared-host
-   terms.
+   terms. Moving the runner limit from the measurement to that cap is not
+   budget growth: the recorded `suite_time_budget` does not change.
    The guide and cap bind CONTROLLABLE time — the suite's measured time minus
    its cost floor, recorded with the gate's floors in the verification
    policy's `verification_cost_floor` fact and governed by that policy's

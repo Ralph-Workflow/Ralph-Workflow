@@ -129,6 +129,7 @@ def run_remediation_phase(
         findings, analysis_feedback, workspace=workspace, assessment=assessment
     )
     prompt_path = _write_prompt(workspace, prompt_text)
+    schema_lines_before = _schema_lines(workspace)
     emit(f"project-policy-readiness: invoking remediation agent ({len(findings)} open findings)")
     validated: list[list[PolicyFinding]] = []
 
@@ -143,6 +144,14 @@ def run_remediation_phase(
             progress_check=resolved_a_finding,
         )
     )
+    undone = _undo_agent_freezes(workspace, schema_lines_before)
+    if undone:
+        validated.clear()
+        emit(
+            "project-policy-readiness: restored the schema marker of "
+            f"{len(undone)} file(s) the remediation agent froze ({', '.join(undone)}); "
+            "only the operator may freeze a policy file"
+        )
 
     remaining = validated[-1] if validated else validators.validate_readiness(workspace, stack)
     if not made_progress(findings, remaining):
@@ -156,6 +165,37 @@ def run_remediation_phase(
             f"({len(remaining)} findings remaining)"
         )
     return remaining
+
+
+def _policy_paths(workspace: Workspace) -> list[str]:
+    names = (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
+    return [
+        f"{markers.CANONICAL_DIR}{name}"
+        for name in names
+        if workspace.exists(f"{markers.CANONICAL_DIR}{name}")
+    ]
+
+
+def _first_line(content: str) -> str:
+    return next((line for line in content.splitlines() if line.strip()), "")
+
+
+def _schema_lines(workspace: Workspace) -> dict[str, str]:
+    return {path: _first_line(workspace.read(path)) for path in _policy_paths(workspace)}
+
+
+def _undo_agent_freezes(workspace: Workspace, before: dict[str, str]) -> list[str]:
+    undone: list[str] = []
+    for path, original in before.items():
+        if markers.frozen_policy_version(original) is not None or not workspace.exists(path):
+            continue
+        content = workspace.read(path)
+        current = _first_line(content)
+        if markers.frozen_policy_version(current) is None:
+            continue
+        workspace.write(path, content.replace(current, original, 1))
+        undone.append(path)
+    return undone
 
 
 def made_progress(before: list[PolicyFinding], after: list[PolicyFinding]) -> bool:
@@ -186,10 +226,13 @@ def _render_blocked_report(findings: list[PolicyFinding]) -> list[str]:
     ]
 
 
+render_remediation_prompt = _render_prompt
+
 __all__ = [
     "PROMPT_TEMPLATE_NAME",
     "RemediationInvocationError",
     "made_progress",
     "render_blocked_report",
+    "render_remediation_prompt",
     "run_remediation_phase",
 ]

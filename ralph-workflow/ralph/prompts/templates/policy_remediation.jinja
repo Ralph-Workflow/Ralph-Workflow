@@ -45,6 +45,8 @@ For gate plumbing, follow `{{ gate_script_policy_path }}`. Use installed tools a
 
 Approved tools: {{ approved_tools }}. The first token of each command must be an approved tool.
 
+Never write a `freeze` schema marker: freezing is the operator's choice, and Ralph Workflow restores any marker you freeze. Upgrade every outdated file to the current schema.
+
 ## Marker forms
 
 The readiness validator reads these byte-exact forms:
