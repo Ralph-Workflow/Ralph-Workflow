@@ -5012,6 +5012,13 @@ ralph.project_policy.preflight
    :members:
    :show-inheritance:
 
+ralph.project_policy.readiness_catchup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.readiness_catchup
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.remediation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

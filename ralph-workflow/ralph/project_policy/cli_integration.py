@@ -54,6 +54,7 @@ from ralph.project_policy.pipeline_graph import (
 )
 from ralph.project_policy.policy_mode import PolicyMode
 from ralph.project_policy.preflight import run_policy_readiness_preflight
+from ralph.project_policy.readiness_catchup import CatchupFactory, catchup_during_readiness
 from ralph.project_policy.reset import reset_policy_state
 from ralph.project_policy.status_bar import (
     push_readiness_assessment_status_bar,
@@ -586,6 +587,37 @@ def run_project_policy_readiness(
     is_tty: Callable[[], bool] | None = None,
     working_tree_snapshot: WorkingTreeSnapshot = _snapshot_working_tree,
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
+    catchup_factory: CatchupFactory | None = None,
+) -> int:
+    with catchup_during_readiness(load_result.config, load_result.workspace_scope, catchup_factory):
+        return _guarded_policy_readiness(
+            load_result=load_result,
+            display_context=display_context,
+            display=display,
+            mode=mode,
+            workspace_factory=workspace_factory,
+            emit_factory=emit_factory,
+            invoke_remediation_agent_factory=invoke_remediation_agent_factory,
+            select_factory=select_factory,
+            is_tty=is_tty,
+            working_tree_snapshot=working_tree_snapshot,
+            commit_policy_updates=commit_policy_updates,
+        )
+
+
+def _guarded_policy_readiness(
+    *,
+    load_result: _LoadResult,
+    display_context: DisplayContext,
+    display: ParallelDisplay | None,
+    mode: PolicyMode,
+    workspace_factory: Callable[[], Workspace] | None,
+    emit_factory: Callable[[str], None] | None,
+    invoke_remediation_agent_factory: Callable[[Workspace], InvokePolicyAgent] | None,
+    select_factory: _prompt_ui.SelectFn | None,
+    is_tty: Callable[[], bool] | None,
+    working_tree_snapshot: WorkingTreeSnapshot,
+    commit_policy_updates: PolicyCommit,
 ) -> int:
     try:
         return _run_policy_readiness(
