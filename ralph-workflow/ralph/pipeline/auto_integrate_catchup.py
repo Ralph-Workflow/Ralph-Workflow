@@ -31,6 +31,7 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
+from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_agent_phase import (
     AgentPhaseActivity,
     process_agent_phases,
@@ -87,6 +88,9 @@ CATCHUP_REMOTE_SKIPPED = "remote-skipped"
 CATCHUP_FAST_FORWARDED = "fast-forwarded"
 
 CATCHUP_DEFERRED_AGENT_PHASE = "deferred: an agent phase is active in this checkout"
+CATCHUP_DEFERRED_LOCAL_EDITS = (
+    "deferred: uncommitted edits overlap the incoming commit; retrying next tick"
+)
 CATCHUP_DEFERRED_GIT_OPERATION = (
     "deferred: a git operation in this checkout belongs to the run, not to catch-up"
 )
@@ -111,6 +115,7 @@ _CATCHUP_SETTLED_OUTCOMES = (
     CATCHUP_UP_TO_DATE,
     CATCHUP_DIRTY,
     CATCHUP_REFUSED_AGENT_ACTIVE,
+    CATCHUP_DEFERRED_LOCAL_EDITS,
     CATCHUP_DEFERRED_AGENT_PHASE,
 )
 
@@ -756,7 +761,7 @@ def _fast_forward_if_strictly_behind(
             return _lease_failure(lease_verdict)
         refusal = _mutation_refusal(
             root, target, current, remote=remote, agent_active=phases.is_active(root)
-        )
+        ) or _overlap_refusal(root, observation)
         if refusal:
             return refusal
         lock_reason = _recover_stale_locks(root)
@@ -781,6 +786,51 @@ def _fast_forward_if_strictly_behind(
             clock=effective_clock,
             jitter=jitter,
         )
+
+
+def _overlap_refusal(root: Path, observation: _CatchupObservation) -> str:
+    overlap = local_edits_overlapping_incoming(
+        root, observation.current_sha, observation.target_sha
+    )
+    if not overlap:
+        return ""
+    logger.debug(
+        "auto_integrate catch-up tick deferred: {} ({}); {}",
+        CATCHUP_DEFERRED_LOCAL_EDITS,
+        ", ".join(overlap[:5]),
+        observation.summary,
+    )
+    return CATCHUP_DEFERRED_LOCAL_EDITS
+
+
+def _git_paths(root: Path, args: tuple[str, ...], label: str) -> frozenset[str] | None:
+    try:
+        result = run_git(args, cwd=root, label=label)
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return frozenset(path for path in result.stdout.split("\0") if path)
+
+
+def local_edits_overlapping_incoming(
+    root: Path, current_sha: str, target_sha: str
+) -> tuple[str, ...]:
+    incoming = _git_paths(
+        root,
+        ("diff", "--name-only", "-z", current_sha, target_sha),
+        "catchup-incoming-paths",
+    )
+    unstaged = _git_paths(root, ("diff", "--name-only", "-z"), "catchup-unstaged-paths")
+    staged = _git_paths(root, ("diff", "--cached", "--name-only", "-z"), "catchup-staged-paths")
+    untracked = _git_paths(
+        root,
+        ("ls-files", "--others", "--exclude-standard", "-z"),
+        "catchup-untracked-paths",
+    )
+    if incoming is None or unstaged is None or staged is None or untracked is None:
+        return ()
+    return tuple(sorted(incoming & (unstaged | staged | untracked)))
 
 
 def _execute_fast_forward(
@@ -1085,6 +1135,7 @@ __all__ = [
     "CATCHUP_DEFEDITELY_FAILED",
     "CATCHUP_DEFERRED_AGENT_PHASE",
     "CATCHUP_DEFERRED_GIT_OPERATION",
+    "CATCHUP_DEFERRED_LOCAL_EDITS",
     "CATCHUP_DIRTY",
     "CATCHUP_DISABLED",
     "CATCHUP_DIVERGED",
@@ -1112,6 +1163,7 @@ __all__ = [
     "AutoIntegrateCatchupWorker",
     "CatchupLedgerFailureBudget",
     "attempt_catchup_fast_forward",
+    "local_edits_overlapping_incoming",
     "process_agent_phases",
     "resolve_integration_target",
     "start_catchup_worker_if_enabled",

@@ -9,6 +9,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.git_command_queue import route_git_method
 from ralph.pipeline.auto_integrate_catchup import (
     CATCHUP_DEFERRED_GIT_OPERATION,
+    CATCHUP_DEFERRED_LOCAL_EDITS,
     CATCHUP_FAST_FORWARDED,
     AgentPhaseActivity,
     attempt_catchup_fast_forward,
@@ -18,6 +19,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_uncommitted_edits_the_fast_forward_would_overwrite_are_never_touched": (
+        "strengthened, not weakened: the check moved from 'outcome is not fast-forwarded' to "
+        "the exact CATCHUP_DEFERRED_LOCAL_EDITS outcome, because an overlap with uncommitted "
+        "edits is now a retry-next-tick deferral instead of a charged failure that quarantines; "
+        "the head and the edit are still asserted untouched"
+    ),
+}
 
 _ACTOR = Actor("Ralph Test", "test@ralph.internal")
 
@@ -99,9 +109,41 @@ def test_uncommitted_edits_the_fast_forward_would_overwrite_are_never_touched(
 
     outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
 
-    assert outcome != CATCHUP_FAST_FORWARDED
+    assert outcome == CATCHUP_DEFERRED_LOCAL_EDITS
     assert _head(feature_repo) == before
     assert (feature / "app.txt").read_text(encoding="utf-8") == "agent edit in progress\n"
+
+
+def test_an_overlap_is_retried_every_tick_and_never_quarantined(tmp_path: Path) -> None:
+    feature, feature_repo, newest = _feature_behind_main(tmp_path)
+    (feature / "app.txt").write_text("agent edit in progress\n", encoding="utf-8")
+    phases = AgentPhaseActivity()
+
+    outcomes = [
+        attempt_catchup_fast_forward(_config(), feature, agent_phases=phases) for _ in range(8)
+    ]
+    route_git_method(feature_repo, "checkout", ("--", "app.txt"))
+    landed = attempt_catchup_fast_forward(_config(), feature, agent_phases=phases)
+
+    assert set(outcomes) == {CATCHUP_DEFERRED_LOCAL_EDITS}
+    assert landed == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newest
+
+
+def test_an_untracked_file_the_incoming_commit_adds_defers_instead_of_failing(
+    tmp_path: Path,
+) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    root = feature.parent / "project"
+    (root / "added.txt").write_text("from main\n", encoding="utf-8")
+    newer = _commit(Repo(root), "main adds a file")
+    (feature / "added.txt").write_text("agent's own untracked file\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_DEFERRED_LOCAL_EDITS
+    assert _head(feature_repo) != newer
+    assert (feature / "added.txt").read_text(encoding="utf-8") == "agent's own untracked file\n"
 
 
 def test_a_git_operation_in_progress_is_the_one_thing_that_defers_it(tmp_path: Path) -> None:
