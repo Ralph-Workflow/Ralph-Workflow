@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from ralph.language_detector.models import ProjectStack
@@ -26,9 +27,14 @@ def stack() -> ProjectStack:
     return ProjectStack(primary_language="Python", secondary_languages=[], frameworks=[])
 
 
+def fill_unresolved_facts(text: str) -> str:
+    filled = text.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    return re.sub(r"(_enforced_limit): verified-value", r"\1: 180 seconds", filled)
+
+
 def complete_policy_body(filename: str) -> str:
     facts = [
-        line.replace("PROJECT-FACT-UNRESOLVED", "verified-value").replace(
+        fill_unresolved_facts(line).replace(
             "verification_budget_overage: verified-value", "verification_budget_overage: none"
         )
         for line in starters.read_starter(filename).splitlines()
@@ -152,6 +158,7 @@ def seed_complete_corpus(workspace: Workspace, *, portfolio: str | None = None) 
 
 __all__ = [
     "complete_policy_body",
+    "fill_unresolved_facts",
     "policy_invocation_bundle",
     "remediation_required_result",
     "seed_complete_corpus",

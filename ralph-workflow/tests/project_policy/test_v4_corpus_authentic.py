@@ -10,6 +10,7 @@ from tests.project_policy.measured_budget_correction import (
     LEGACY_TIME_BUDGET_FINDING_IDS,
     correct_fixed_time_caps,
 )
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_v4_pack_full_v4_manifest_validates": (
@@ -28,7 +29,7 @@ def _clean_policy_prose(body: str) -> str:
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
     body = body.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
-    body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = fill_unresolved_facts(body)
     body = body.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )

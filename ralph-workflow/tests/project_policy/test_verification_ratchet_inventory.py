@@ -6,6 +6,7 @@ from ralph.project_policy import markers
 from ralph.project_policy._guard_inventory import _check_guard_inventory, _parse_guard_inventory
 from ralph.project_policy.starters import read_starter
 from ralph.project_policy.validators import _validate_existing_policy_file
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 _R3_ID = "verification-budget-ratchet"
 
@@ -18,7 +19,7 @@ def _filled_in_body(name: str) -> str:
             content = content[:start] + content[end:].lstrip("\n")
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
-    content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    content = fill_unresolved_facts(content)
     content = content.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )

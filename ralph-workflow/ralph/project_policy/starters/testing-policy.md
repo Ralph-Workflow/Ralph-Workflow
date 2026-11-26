@@ -436,6 +436,7 @@ RALPH-FACT: secondary_test_frameworks: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: test_isolation_strategy: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: io_mocking_approach: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: suite_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: suite_enforced_limit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: per_test_timeout: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: timeout_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: parallel_execution_mechanism: PROJECT-FACT-UNRESOLVED

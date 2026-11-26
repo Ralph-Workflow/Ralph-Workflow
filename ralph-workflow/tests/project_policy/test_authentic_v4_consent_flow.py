@@ -7,6 +7,7 @@ from ralph.project_policy import _prompt_ui, _schema_upgrade, markers, validator
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
 from tests.project_policy.measured_budget_correction import LEGACY_TIME_BUDGET_FINDING_IDS
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_interactive_v4_freeze_rewrite_pins_first_line": (
@@ -46,7 +47,7 @@ def _clean_policy_prose(body: str) -> str:
     body = body.replace("<date>", "2026-07-13")
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
-    body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = fill_unresolved_facts(body)
     body = body.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )

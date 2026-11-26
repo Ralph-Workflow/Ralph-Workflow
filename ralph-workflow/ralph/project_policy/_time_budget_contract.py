@@ -25,6 +25,19 @@ _TIMEOUT_LINE_RE: Final[re.Pattern[str]] = re.compile(
     re.MULTILINE,
 )
 
+_ENFORCED_LIMIT_FLOORS: Final[dict[str, dict[str, float]]] = {
+    "verification-policy.md": {
+        "verification_enforced_limit": 120.0,
+        "fast_path_enforced_limit": 30.0,
+    },
+    "testing-policy.md": {"suite_enforced_limit": 60.0},
+}
+
+_DURATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>minutes?|mins?|m|seconds?|secs?|s)\b",
+    re.IGNORECASE,
+)
+
 _NO_TIMEOUT_RE: Final[re.Pattern[str]] = re.compile(
     r"(?:none|n/?a|not (?:configured|installed|enforced)|absent|missing)\b",
     re.IGNORECASE,
@@ -151,10 +164,57 @@ def _overage_findings(content: str, path: str) -> list[PolicyFinding]:
     return []
 
 
+def _fact_value(content: str, key: str) -> str | None:
+    pattern = re.compile(
+        rf"{re.escape(markers.FACT_MARKER)}\s*{key}:\s*(?P<value>.*)$", re.MULTILINE
+    )
+    match = pattern.search(content)
+    return str(match.group("value")).strip() if match is not None else None
+
+
+def _seconds(value: str) -> float | None:
+    match = _DURATION_RE.search(value)
+    if match is None:
+        return None
+    amount = float(str(match.group("amount")))
+    unit = str(match.group("unit")).lower()
+    return amount * 60.0 if unit.startswith("m") else amount
+
+
+def _enforced_limit_findings(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    findings: list[PolicyFinding] = []
+    for key, cap in _ENFORCED_LIMIT_FLOORS.get(filename, {}).items():
+        value = _fact_value(content, key)
+        if value is None or any(token in value for token in markers.PLACEHOLDER_TOKENS):
+            continue
+        seconds = _seconds(value)
+        if seconds is not None and seconds >= cap:
+            continue
+        findings.append(
+            PolicyFinding(
+                requirement_id=f"{markers.ID_TIME_BUDGET}:{filename}:{key}-below-cap",
+                path=path,
+                missing_evidence=(
+                    f"`{key}` is {value!r}; the gate must fail only past its cap above the "
+                    f"recorded cost floor (at least {cap:.0f} s), never at the measured time, "
+                    "or every busy-host run fails"
+                ),
+                required_outcome=(
+                    f"set the limit the gate enforces to the recorded cost floor plus the cap "
+                    f"({cap:.0f} s) and record it in `{key}` in seconds; the measured time "
+                    "stays recorded unchanged in its own fact (verification-policy.md rule 9)"
+                ),
+            )
+        )
+    return findings
+
+
 def _timeout_enforcement_findings(content: str, path: str) -> list[PolicyFinding]:
     for match in _TIMEOUT_LINE_RE.finditer(content):
         value = str(match.group("value")).strip()
-        if _is_deferred_or_placeholder(value) or not _NO_TIMEOUT_RE.match(value):
+        if any(token in value for token in markers.PLACEHOLDER_TOKENS):
+            continue
+        if not (value.startswith("RALPH-PENDING") or _NO_TIMEOUT_RE.match(value)):
             continue
         return [
             PolicyFinding(
@@ -186,6 +246,7 @@ def check_fixed_time_caps(content: str, path: str, filename: str) -> list[Policy
         findings.extend(_overage_findings(content, path))
     if filename == _TESTING_POLICY:
         findings.extend(_timeout_enforcement_findings(content, path))
+    findings.extend(_enforced_limit_findings(content, path, filename))
     return findings
 
 

@@ -5,6 +5,7 @@ import re
 import pytest
 
 from ralph.project_policy import remediation, starters
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 _REMEDIATION_ERA_PHRASES: tuple[str, ...] = (
     "REPLACE every starter placeholder",
@@ -120,7 +121,7 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
             content = content[:start] + content[end:].lstrip("\n")
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
-    content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    content = fill_unresolved_facts(content)
     content = content.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )

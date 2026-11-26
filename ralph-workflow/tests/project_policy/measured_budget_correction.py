@@ -17,6 +17,9 @@ LEGACY_TIME_BUDGET_FINDING_IDS: tuple[str, ...] = (
     f"{markers.ID_TIME_BUDGET}:testing-policy.md:fixed-cap",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-durable_evidence_rule",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-fast_path_time_budget",
+    f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-fast_path_enforced_limit",
+    f"{markers.ID_PLACEHOLDER}:testing-policy.md:fact-suite_enforced_limit",
+    f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-verification_enforced_limit",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-verification_budget_overage",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-verification_cost_floor",
     f"{markers.ID_TIME_BUDGET}:verification-policy.md:fixed-cap",
@@ -36,8 +39,12 @@ def correct_fixed_time_caps(workspace: Workspace) -> None:
                 "\nRALPH-FACT: verification_cost_floor: verified-value"
                 "\nRALPH-FACT: fast_path_time_budget: verified-value"
                 "\nRALPH-FACT: verification_budget_overage: none"
-                "\nRALPH-FACT: durable_evidence_rule: verified-value\n"
+                "\nRALPH-FACT: durable_evidence_rule: verified-value"
+                "\nRALPH-FACT: verification_enforced_limit: 180 seconds"
+                "\nRALPH-FACT: fast_path_enforced_limit: 40 seconds\n"
             )
+        if filename == "testing-policy.md":
+            content += "\nRALPH-FACT: suite_enforced_limit: 90 seconds\n"
         workspace.write(path, content)
 
 

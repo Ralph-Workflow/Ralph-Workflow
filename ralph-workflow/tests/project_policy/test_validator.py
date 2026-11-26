@@ -7,6 +7,7 @@ import pytest
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import _content_checks, markers, starters, validators
 from ralph.workspace.memory import MemoryWorkspace
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 
 def _stack_with(
@@ -31,7 +32,7 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         "",
     ]
     facts = [
-        line.replace("PROJECT-FACT-UNRESOLVED", "verified-value").replace(
+        fill_unresolved_facts(line).replace(
             "verification_budget_overage: verified-value", "verification_budget_overage: none"
         )
         for line in starters.read_starter(filename).splitlines()

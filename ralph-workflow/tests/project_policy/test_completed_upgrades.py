@@ -17,6 +17,7 @@ from ralph.project_policy import (
 )
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
+from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 
 class _Selector:
@@ -51,7 +52,7 @@ def _clean_v4_starter_prose(body: str) -> str:
     body = body.replace("<date>", "2026-07-13")
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
-    body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = fill_unresolved_facts(body)
     body = body.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )
@@ -84,7 +85,7 @@ def _clean_v5_starter_prose(body: str) -> str:
     body = body.replace("<date>", "2026-07-13")
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
-    body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = fill_unresolved_facts(body)
     body = body.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )
@@ -134,7 +135,7 @@ def _clean_v6_starter_prose(body: str) -> str:
     body = body.replace("<date>", "2026-07-13")
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
-    body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    body = fill_unresolved_facts(body)
     body = body.replace(
         "verification_budget_overage: verified-value", "verification_budget_overage: none"
     )

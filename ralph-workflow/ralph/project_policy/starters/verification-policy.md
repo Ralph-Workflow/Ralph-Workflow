@@ -307,7 +307,10 @@ project's OWN measured figures from a warm, otherwise idle run, never a cap
 and never with added headroom — re-measurements are compared against those
 numbers. Wire the
 gate to fail only past each cap above the recorded floor (rule 9), never at
-the measured figure, so a busy host cannot fail it. A figure over its cap
+the measured figure, so a busy host cannot fail it. Record the limit the
+gate and the fast path actually enforce, in seconds, as
+`verification_enforced_limit` and `fast_path_enforced_limit`: the recorded
+floor plus the cap (at least 120 s and 30 s). A figure over its cap
 after every achievable optimization is recorded as measured and enforced
 with rule 9's 25% shared-host allowance, and its excess goes in
 `verification_budget_overage` in rule 9's
@@ -334,6 +337,8 @@ RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_cost_floor: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: fast_path_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: verification_enforced_limit: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: fast_path_enforced_limit: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: durable_evidence_rule: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_budget_overage: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
