@@ -15,6 +15,15 @@ from ralph.process.session_orphan_reaper import reap_session_orphans
 if TYPE_CHECKING:
     from pathlib import Path
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_real_setsid_detached_child_of_the_session_is_reaped": (
+        "macOS returns an empty environment for SIP-protected system binaries such as "
+        "/bin/sleep, so the reaper cannot see the session marker on that child and the test "
+        "failed on every macOS run; the detached child is now a Python sleep, still a real "
+        "process started in a new session, and every reaping assertion is unchanged"
+    ),
+}
+
 _OWNER = 4242
 _SESSION = "development-aaaa1111"
 
@@ -113,7 +122,8 @@ def test_a_real_setsid_detached_child_of_the_session_is_reaped() -> None:
             sys.executable,
             "-c",
             "import subprocess,sys;"
-            "p=subprocess.Popen(['sleep','300'],start_new_session=True,"
+            "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(300)'],"
+            "start_new_session=True,"
             "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);"
             "print(p.pid)",
         ],

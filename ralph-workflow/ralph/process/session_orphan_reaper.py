@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import psutil
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -55,6 +56,27 @@ def _parent_of(proc_root: Path, pid: int) -> int | None:
     return int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else None
 
 
+def _psutil_process_table(
+    session_id: str, owner_pid: int
+) -> tuple[dict[int, int | None], list[int]]:
+    parents: dict[int, int | None] = {}
+    roots: list[int] = []
+    wanted_owner = str(owner_pid)
+    for process in psutil.process_iter():
+        try:
+            pid = process.pid
+            parents[pid] = process.ppid()
+            environment = process.environ()
+        except (psutil.Error, OSError):
+            continue
+        if (
+            environment.get("MCP_SESSION_ID") == session_id
+            and environment.get("RALPH_MCP_OWNER_PID") == wanted_owner
+        ):
+            roots.append(pid)
+    return parents, roots
+
+
 def _with_descendants(roots: Iterable[int], parents: dict[int, int | None]) -> set[int]:
     children: dict[int, list[int]] = {}
     for pid, parent in parents.items():
@@ -92,11 +114,14 @@ def reap_session_orphans(
 ) -> int:
     if not session_id:
         return 0
-    session = _SESSION_ENV + session_id.encode()
-    owner = _OWNER_ENV + str(owner_pid).encode()
-    pids = _pids(proc_root)
-    parents = {pid: _parent_of(proc_root, pid) for pid in pids}
-    roots = [pid for pid in pids if _carries_session(proc_root, pid, session, owner)]
+    if proc_root.is_dir():
+        session = _SESSION_ENV + session_id.encode()
+        owner = _OWNER_ENV + str(owner_pid).encode()
+        pids = _pids(proc_root)
+        parents = {pid: _parent_of(proc_root, pid) for pid in pids}
+        roots = [pid for pid in pids if _carries_session(proc_root, pid, session, owner)]
+    else:
+        parents, roots = _psutil_process_table(session_id, owner_pid)
     targets = _with_descendants(roots, parents) - _protected(parents)
     if not targets:
         return 0
