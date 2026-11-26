@@ -3902,6 +3902,13 @@ ralph.git.wrapper
    :members:
    :show-inheritance:
 
+ralph.git.ignored_paths
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.ignored_paths
+   :members:
+   :show-inheritance:
+
 ralph.git.lock_recovery
 ~~~~~~~~~~~~~~~~~~~~~~~
 

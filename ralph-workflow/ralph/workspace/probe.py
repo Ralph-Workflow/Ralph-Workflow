@@ -5,6 +5,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ralph.git.ignored_paths import gitignored_paths
 from ralph.workspace.awareness import _awareness_by_workspace, _awareness_lock
 
 if TYPE_CHECKING:
@@ -278,11 +279,22 @@ def _versioned(workspace: Workspace) -> dict[str, str]:
     return {} if ver is None else {_VERSION_KEY: ver}
 
 
+def _git_ignored(workspace: Workspace, paths: list[str]) -> frozenset[str]:
+    if not isinstance(workspace, _HasRoot):
+        return frozenset()
+    root = workspace.root
+    if not isinstance(root, (Path, str)):
+        return frozenset()
+    return gitignored_paths(root, paths)
+
+
 def _walk_snapshot(workspace: Workspace, *, max_files: int) -> dict[str, str]:
     snapshot = _versioned(workspace)
     count = 0
-    for p in _collect_file_paths(workspace, limit=max_files):
-        if _is_ignored_workspace_path(p):
+    paths = _collect_file_paths(workspace, limit=max_files)
+    ignored = _git_ignored(workspace, paths)
+    for p in paths:
+        if _is_ignored_workspace_path(p) or p in ignored:
             continue
         fp = _fingerprint_file(workspace, p)
         if fp is not None:
