@@ -70,6 +70,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
             "ClaudeSubagentTranscriptTails.__init__",
             "unbounded_accumulator",
         ),
+        ("ralph/agents/watch_capacity.py", "<module>", "unbounded_accumulator"),
         ("ralph/agents/invoke/_workspace.py", "WorkspaceMonitor", "unbounded_accumulator"),
         ("ralph/agents/invoke/_workspace.py", "WorkspaceMonitor.__init__", "unbounded_accumulator"),
         (

@@ -166,6 +166,7 @@ def test_install_dev_checkout_reports_what_it_installed_and_what_it_replaced() -
             candidate,
         )[1],
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
         read_identity=lambda _snapshot: previous,
         emit=emitted.append,
     )
@@ -208,6 +209,7 @@ def test_install_dev_checkout_reads_the_previous_identity_before_overwriting_it(
             candidate,
         )[1],
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
         read_identity=fake_read_identity,
         emit=lambda _line: None,
     )
@@ -249,6 +251,7 @@ def test_install_dev_checkout_stamps_the_source_checkout_path() -> None:
             candidate,
         )[1],
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
         read_identity=lambda _snapshot: None,
         emit=lambda _line: None,
     )

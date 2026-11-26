@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import platform
 import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Protocol
@@ -16,8 +18,16 @@ _WATCH_LIMIT_PATH = Path("/proc/sys/fs/inotify/max_user_watches")
 
 _PROC_PATH = Path("/proc")
 
+PREDICTION_REUSE_SECONDS = 600.0
+
+_MAX_REMEMBERED_WORKSPACES = 64
+
+_PREDICTIONS: OrderedDict[str, tuple[float, bool]] = OrderedDict()
+_PREDICTION_LOCK = threading.Lock()
+
 __all__ = [
     "CAPACITY_PROBE_BUDGET_SECONDS",
+    "PREDICTION_REUSE_SECONDS",
     "DirectoryCounter",
     "call_within_budget",
     "watch_capacity_is_predicted",
@@ -59,12 +69,16 @@ def _read_inotify_watch_user_total() -> int | None:
     return None
 
 
-def _count_watchable_directories(workspace: Path, cap: int) -> int | None:
+def _count_watchable_directories(
+    workspace: Path, cap: int, deadline: float | None = None
+) -> int | None:
     directory_count = 0
     try:
         for _root, directories, _files in os.walk(workspace):
             directory_count += 1
             if directory_count >= cap:
+                return None
+            if deadline is not None and time.monotonic() >= deadline:
                 return None
             directories.sort()
     except OSError:
@@ -109,13 +123,32 @@ def watch_capacity_is_predicted(
     live_watch_total: int | None,
     budget_seconds: float = CAPACITY_PROBE_BUDGET_SECONDS,
 ) -> bool:
-    return call_within_budget(
-        lambda: _predict_watch_capacity(
-            workspace, host_budget, directory_counter, live_watch_total
-        ),
+    measures_host = host_budget is None and directory_counter is None and live_watch_total is None
+    key = str(workspace.absolute())
+    now = time.monotonic()
+    if measures_host:
+        with _PREDICTION_LOCK:
+            cached = _PREDICTIONS.get(key)
+        if cached is not None and now - cached[0] < PREDICTION_REUSE_SECONDS:
+            return cached[1]
+    deadline = now + budget_seconds
+
+    def bounded_counter(workspace: Path, *, cap: int) -> int | None:
+        return _count_watchable_directories(workspace, cap, deadline)
+
+    counter: DirectoryCounter = directory_counter or bounded_counter
+    verdict = call_within_budget(
+        lambda: _predict_watch_capacity(workspace, host_budget, counter, live_watch_total),
         fallback=True,
         budget_seconds=budget_seconds,
     )
+    if measures_host:
+        with _PREDICTION_LOCK:
+            _PREDICTIONS[key] = (now, verdict)
+            _PREDICTIONS.move_to_end(key)
+            while len(_PREDICTIONS) > _MAX_REMEMBERED_WORKSPACES:
+                _PREDICTIONS.popitem(last=False)
+    return verdict
 
 
 def _predict_watch_capacity(

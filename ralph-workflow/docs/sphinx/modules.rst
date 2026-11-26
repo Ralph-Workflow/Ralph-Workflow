@@ -4280,6 +4280,13 @@ ralph.process.teardown
    :members:
    :show-inheritance:
 
+ralph.process.session_orphan_reaper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.session_orphan_reaper
+   :members:
+   :show-inheritance:
+
 ralph.process.killable_process_like
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

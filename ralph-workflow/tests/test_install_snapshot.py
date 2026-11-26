@@ -38,6 +38,7 @@ def test_install_dev_checkout_stamps_snapshot_provenance() -> None:
         preflight=lambda _uv: None,
         run_version=lambda _uv, _snapshot: "0.9.27-dev",
         lock=lambda _path: nullcontext(),
+        prune=lambda _generations, *, keep: (),
         candidate_factory=lambda staging: staging / "candidate",
         publish=lambda candidate, _generations, *, publish_launcher: (
             publish_launcher(candidate),

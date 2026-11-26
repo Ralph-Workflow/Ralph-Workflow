@@ -35,6 +35,7 @@ def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
             candidate,
         )[1],
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
     )
     assert commands == [
         (("/usr/local/bin/uv", "lock", "--check"), Path("/install/.staging/candidate")),
@@ -82,6 +83,7 @@ def test_install_dev_checkout_regression_checks_the_same_dev_extra_selection() -
             candidate,
         )[1],
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
     )
 
     assert commands[-2:] == [
@@ -169,6 +171,7 @@ def test_install_dev_checkout_never_deletes_published_generations() -> None:
         candidate_factory=lambda staging: staging / "candidate",
         publish=publish,
         update_current=lambda _current, _generation: None,
+        prune=lambda _generations, *, keep: (),
         read_identity=lambda _snapshot: None,
         emit=lambda _line: None,
     )

@@ -130,6 +130,7 @@ from ralph.process.manager import (
     SpawnOptions,
     get_process_manager,
 )
+from ralph.process.session_orphan_reaper import reap_session_orphans
 from ralph.workspace.fs import FsWorkspace
 
 MCP_SESSION_ID_ENV = "MCP_SESSION_ID"
@@ -733,6 +734,9 @@ class RestartAwareMcpBridge:
             with contextlib.suppress(OSError):
                 listening_socket.close()
             self._listening_socket = None
+        if self._session_id:
+            with contextlib.suppress(OSError, RuntimeError, ValueError):
+                reap_session_orphans(self._session_id, owner_pid=os.getpid())
 
     def _cooldown_after_failure(self) -> None:
         seconds = self._restart_policy.cooldown_seconds
