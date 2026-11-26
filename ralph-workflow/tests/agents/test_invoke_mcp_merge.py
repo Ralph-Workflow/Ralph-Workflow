@@ -657,3 +657,44 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
     finally:
         if runtime_safe.cleanup is not None:
             runtime_safe.cleanup()
+
+
+def test_every_agent_attempt_runs_inside_its_own_reaped_process_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_env: list[dict[str, str]] = []
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    for _attempt in range(2):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=None,
+                    extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                ),
+            )
+        )
+
+    scopes = [env.get("RALPH_PROCESS_SCOPE", "") for env in seen_env]
+    assert len(scopes) == 2
+    assert all(scope.startswith("agent-") for scope in scopes)
+    assert scopes[0] != scopes[1]

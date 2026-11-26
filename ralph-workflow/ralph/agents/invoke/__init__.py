@@ -168,6 +168,7 @@ from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
+from ralph.process.session_orphan_reaper import reaped_process_scope
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
@@ -501,8 +502,10 @@ def invoke_agent(
         unsafe_mode=base_opts.unsafe_mode,
     )
     monitor: WorkspaceMonitor | None = None
+    process_scope = reaped_process_scope("agent", owner_pid=os.getpid())
+    scope_env = process_scope.__enter__()
     try:
-        runtime_env = runtime.agent_env
+        runtime_env = {**(runtime.agent_env or {}), **scope_env}
         if _agent_transport(config) == AgentTransport.CURSOR:
             cursor_config_home = Path(runtime_env["XDG_CONFIG_HOME"]) if runtime_env else None
             cursor_home = Path(runtime_env["HOME"]) if runtime_env else None
@@ -627,6 +630,7 @@ def invoke_agent(
         if runtime.cleanup is not None:
             runtime.cleanup()
         _stop_workspace_monitor(monitor)
+        process_scope.__exit__(None, None, None)
 
 
 def _fail_for_missing_credentials(

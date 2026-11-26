@@ -13,7 +13,12 @@ import pytest
 
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server.lifecycle import StandaloneMcpProcess
-from ralph.process.session_orphan_reaper import reap_session_orphans
+from ralph.process.session_orphan_reaper import (
+    PROCESS_SCOPE_ENV,
+    reap_scope_orphans,
+    reap_session_orphans,
+    reaped_process_scope,
+)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_real_setsid_detached_child_of_the_session_is_reaped": (
@@ -251,3 +256,58 @@ def test_a_bridge_whose_server_fails_to_stop_still_reaps_its_session() -> None:
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.kill(detached, signal.SIGKILL)
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_a_detached_process_of_a_reaped_scope_dies_when_the_scope_exits() -> None:
+    with reaped_process_scope("agent", owner_pid=os.getpid()) as scope_env:
+        launcher = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import subprocess;"
+                "p=subprocess.Popen(['sleep','300'],start_new_session=True,"
+                "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);"
+                "print(p.pid)",
+            ],
+            env={**os.environ, **scope_env},
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        detached = int(launcher.stdout.strip())
+        assert scope_env[PROCESS_SCOPE_ENV].startswith("agent-")
+    try:
+        pause = threading.Event()
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline and Path(f"/proc/{detached}").exists():
+            pause.wait(0.05)
+        assert not Path(f"/proc/{detached}").exists(), "the scope's detached child survived"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(detached, signal.SIGKILL)
+
+
+def test_a_scope_reap_never_reads_processes_that_predate_the_scope(tmp_path: Path) -> None:
+    scope_env = {"RALPH_PROCESS_SCOPE": "agent-aaaa", "PATH": "/bin"}
+    _proc(tmp_path, 100, 1, scope_env)
+    _proc(tmp_path, 200, 1, scope_env)
+    padding = " ".join("0" for _ in range(17))
+    (tmp_path / "100" / "stat").write_text(f"100 (old) S 1 {padding} 500 0\n", encoding="utf-8")
+    (tmp_path / "200" / "stat").write_text(f"200 (new) S 1 {padding} 900 0\n", encoding="utf-8")
+    sent: list[tuple[int, int]] = []
+
+    reaped = reap_scope_orphans(
+        "agent-aaaa",
+        owner_pid=_OWNER,
+        proc_root=tmp_path,
+        signal_fn=lambda pid, sig: sent.append((pid, sig)),
+        alive_fn=lambda _pid: False,
+        sleep=lambda _s: None,
+        started_after_ticks=700,
+    )
+
+    assert reaped == 1
+    assert sent == [(200, signal.SIGTERM)]

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import signal
 import time
+import uuid
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,15 +12,21 @@ import psutil
 from loguru import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Iterator
 
-__all__ = ["PROCESS_SCOPE_ENV", "reap_scope_orphans", "reap_session_orphans"]
+__all__ = [
+    "PROCESS_SCOPE_ENV",
+    "reap_scope_orphans",
+    "reap_session_orphans",
+    "reaped_process_scope",
+]
 
 _SESSION_ENV = b"MCP_SESSION_ID="
 PROCESS_SCOPE_ENV = "RALPH_PROCESS_SCOPE"
 _SCOPE_ENV = PROCESS_SCOPE_ENV.encode() + b"="
 _OWNER_ENV = b"RALPH_MCP_OWNER_PID="
 _POLL_SECONDS = 0.1
+_START_TIME_FIELD = 19
 
 
 def _default_alive(pid: int) -> bool:
@@ -49,13 +57,33 @@ def _carries_session(proc_root: Path, pid: int, session: bytes, owner: bytes) ->
     return not owners or owner in owners
 
 
-def _parent_of(proc_root: Path, pid: int) -> int | None:
+def _stat_fields(proc_root: Path, pid: int) -> list[str]:
     try:
         stat = (proc_root / str(pid) / "stat").read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
-    fields = stat.rpartition(")")[2].split()
+        return []
+    return stat.rpartition(")")[2].split()
+
+
+def _parent_of(proc_root: Path, pid: int) -> int | None:
+    fields = _stat_fields(proc_root, pid)
     return int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else None
+
+
+def _started_at(fields: list[str]) -> int | None:
+    return (
+        int(fields[_START_TIME_FIELD])
+        if len(fields) > _START_TIME_FIELD and fields[_START_TIME_FIELD].isdigit()
+        else None
+    )
+
+
+def boot_ticks_now(proc_root: Path = Path("/proc")) -> int | None:
+    try:
+        uptime = float((proc_root / "uptime").read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    return int(uptime * os.sysconf("SC_CLK_TCK"))
 
 
 def _psutil_process_table(
@@ -135,6 +163,7 @@ def reap_scope_orphans(
     alive_fn: Callable[[int], bool] = _default_alive,
     sleep: Callable[[float], None] = time.sleep,
     grace_seconds: float = 5.0,
+    started_after_ticks: int | None = None,
 ) -> int:
     return _reap(
         _SCOPE_ENV,
@@ -145,7 +174,15 @@ def reap_scope_orphans(
         alive_fn=alive_fn,
         sleep=sleep,
         grace_seconds=grace_seconds,
+        started_after_ticks=started_after_ticks,
     )
+
+
+def _may_belong_to_scope(fields: list[str], started_after_ticks: int | None) -> bool:
+    if started_after_ticks is None:
+        return True
+    started = _started_at(fields)
+    return started is None or started >= started_after_ticks
 
 
 def _reap(
@@ -158,6 +195,7 @@ def _reap(
     alive_fn: Callable[[int], bool] = _default_alive,
     sleep: Callable[[float], None] = time.sleep,
     grace_seconds: float = 5.0,
+    started_after_ticks: int | None = None,
 ) -> int:
     if not session_id:
         return 0
@@ -165,8 +203,17 @@ def _reap(
         session = marker + session_id.encode()
         owner = _OWNER_ENV + str(owner_pid).encode()
         pids = _pids(proc_root)
-        parents = {pid: _parent_of(proc_root, pid) for pid in pids}
-        roots = [pid for pid in pids if _carries_session(proc_root, pid, session, owner)]
+        stats = {pid: _stat_fields(proc_root, pid) for pid in pids}
+        parents = {
+            pid: int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else None
+            for pid, fields in stats.items()
+        }
+        roots = [
+            pid
+            for pid in pids
+            if _may_belong_to_scope(stats[pid], started_after_ticks)
+            and _carries_session(proc_root, pid, session, owner)
+        ]
     else:
         parents, roots = _psutil_process_table(
             marker.decode().removesuffix("="), session_id, owner_pid
@@ -197,3 +244,15 @@ def _reap(
         len(survivors),
     )
     return len(targets)
+
+
+@contextmanager
+def reaped_process_scope(prefix: str, *, owner_pid: int) -> Iterator[dict[str, str]]:
+    scope = f"{prefix}-{uuid.uuid4().hex[:12]}"
+    opened_at = boot_ticks_now()
+    started_after = opened_at - 1 if opened_at is not None else None
+    try:
+        yield {PROCESS_SCOPE_ENV: scope}
+    finally:
+        with suppress(OSError, RuntimeError, ValueError):
+            reap_scope_orphans(scope, owner_pid=owner_pid, started_after_ticks=started_after)
