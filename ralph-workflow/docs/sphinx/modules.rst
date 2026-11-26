@@ -2612,6 +2612,13 @@ ralph.agents.invoke._completion_verdicts
    :members:
    :show-inheritance:
 
+ralph.agents.invoke.agent_temp_dir
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.agent_temp_dir
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke.agent_search_env
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

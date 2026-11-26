@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+from contextlib import AbstractContextManager
 from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
@@ -116,6 +117,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
     _normalize_workspace_change_weights,
 )
 from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
+from ralph.agents.invoke.agent_temp_dir import private_agent_tmpdir
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.spec import AgentSpec
@@ -484,6 +486,23 @@ def _run_pty_execution(
     return (yield from run_pty_and_read_lines(cmd, ctx, PtyExtras()))
 
 
+def _enter_private_agent_tmpdir() -> tuple[AbstractContextManager[Path], str]:
+    scope = private_agent_tmpdir()
+    return scope, str(scope.__enter__())
+
+
+def _agent_runtime_env(
+    agent_env: dict[str, str] | None, scope_env: dict[str, str], agent_tmp: str
+) -> dict[str, str]:
+    return {
+        **(agent_env or {}),
+        **scope_env,
+        "TMPDIR": agent_tmp,
+        "TMP": agent_tmp,
+        "TEMP": agent_tmp,
+    }
+
+
 def invoke_agent(
     config: AgentConfig,
     prompt_file: str,
@@ -504,8 +523,9 @@ def invoke_agent(
     monitor: WorkspaceMonitor | None = None
     process_scope = reaped_process_scope("agent", owner_pid=os.getpid())
     scope_env = process_scope.__enter__()
+    agent_tmp_scope, agent_tmp = _enter_private_agent_tmpdir()
     try:
-        runtime_env = {**(runtime.agent_env or {}), **scope_env}
+        runtime_env = _agent_runtime_env(runtime.agent_env, scope_env, agent_tmp)
         if _agent_transport(config) == AgentTransport.CURSOR:
             cursor_config_home = Path(runtime_env["XDG_CONFIG_HOME"]) if runtime_env else None
             cursor_home = Path(runtime_env["HOME"]) if runtime_env else None
@@ -631,6 +651,7 @@ def invoke_agent(
             runtime.cleanup()
         _stop_workspace_monitor(monitor)
         process_scope.__exit__(None, None, None)
+        agent_tmp_scope.__exit__(None, None, None)
 
 
 def _fail_for_missing_credentials(
