@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
 from ralph.agents.timeout_clock import FakeClock
 
@@ -345,3 +347,25 @@ def test_note_progress_preserves_bounded_window_evidence() -> None:
     tracker.note_progress()
     assert len(tracker._events) == tracker.event_buffer_maxlen
     assert tracker.event_buffer_maxlen == 256
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_args"),
+    [
+        ("exec_wait", {"job_id": "job_RHoES7", "wait_ms": 45000}),
+        ("mcp__ralph__exec_wait", {"job_id": "job_RHoES7", "wait_ms": 45000}),
+        (
+            "call_mcp_tool",
+            {"ServerName": "ralph", "ToolName": "exec_wait", "Arguments": {"job_id": "job_1"}},
+        ),
+    ],
+)
+def test_polling_a_running_exec_job_is_waiting_not_a_repeated_call_loop(
+    tool_name: str, tool_args: dict[str, object]
+) -> None:
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
+    for _ in range(5):
+        tracker.mark_tool_call(tool_name, tool_args)
+
+    assert not tracker.tripped()

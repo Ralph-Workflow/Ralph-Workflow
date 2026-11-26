@@ -38,3 +38,17 @@ def test_a_failed_run_still_cleans_up(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="agent crashed"):
         crash_inside_the_run()
     assert not seen[0].exists()
+
+
+def test_a_long_system_temp_dir_still_leaves_room_for_unix_socket_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tempfile
+
+    long_root = tmp_path / ("nested-" * 8) / "shard-6-tmp" / "rpt-kkslbquc"
+    long_root.mkdir(parents=True)
+    monkeypatch.setattr(tempfile, "tempdir", str(long_root))
+
+    with private_agent_tmpdir() as tmpdir:
+        socket_path = tmpdir / "dotnet-diagnostic-99999-1795723291-socket"
+        assert len(str(socket_path)) < 104

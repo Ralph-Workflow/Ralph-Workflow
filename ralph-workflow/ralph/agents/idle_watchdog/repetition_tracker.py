@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -28,6 +28,24 @@ _LONG_HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 _LONG_INT = re.compile(r"\d{7,}")
 _WHITESPACE = re.compile(r"\s+")
 _DIAGNOSTIC_PREVIEW_CHARS = 512
+
+
+_WAIT_TOOLS: Final[frozenset[str]] = frozenset({"bg_wait", "exec_wait"})
+
+
+def _base_tool_name(name: str) -> str:
+    for separator in ("__", ".", "/"):
+        name = name.rsplit(separator, 1)[-1]
+    return name
+
+
+def _is_wait_tool(name: str, tool_args: object) -> bool:
+    if _base_tool_name(name) in _WAIT_TOOLS:
+        return True
+    if _base_tool_name(name) == "call_mcp_tool" and isinstance(tool_args, dict):
+        inner = cast("dict[str, object]", tool_args).get("ToolName")
+        return isinstance(inner, str) and _base_tool_name(inner) in _WAIT_TOOLS
+    return False
 
 
 def _tool_call_fingerprint(tool_name: str, tool_args: object) -> str:
@@ -101,7 +119,7 @@ class RepetitionTracker:
         tool_args: object,
     ) -> None:
         name = tool_name or "unknown"
-        if name == "bg_wait":
+        if _is_wait_tool(name, tool_args):
             self.note_progress()
             return
         args = tool_args if tool_args is not None else {}

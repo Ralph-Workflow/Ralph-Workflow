@@ -15,13 +15,20 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _DARWIN_SHORT_TEMP_ROOT: Final[Path] = Path("/private/tmp")
+_POSIX_SHORT_TEMP_ROOT: Final[Path] = Path("/") / "tmp"
+_MAX_ROOT_LENGTH: Final[int] = 32
 _PREFIX: Final[str] = "ra"
 
 
 def _default_root() -> Path:
     if sys.platform == "darwin" and DEFAULT_FILE_BACKEND.exists(_DARWIN_SHORT_TEMP_ROOT):
         return _DARWIN_SHORT_TEMP_ROOT
-    return Path(tempfile.gettempdir())
+    system_root = Path(tempfile.gettempdir())
+    if len(str(system_root)) > _MAX_ROOT_LENGTH and DEFAULT_FILE_BACKEND.exists(
+        _POSIX_SHORT_TEMP_ROOT
+    ):
+        return _POSIX_SHORT_TEMP_ROOT
+    return system_root
 
 
 @contextmanager
