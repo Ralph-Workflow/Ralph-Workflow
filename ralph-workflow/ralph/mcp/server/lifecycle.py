@@ -692,6 +692,14 @@ class RestartAwareMcpBridge:
         return self._inner.endpoint
 
     def shutdown(self) -> None:
+        try:
+            self._shutdown_servers()
+        finally:
+            if self._session_id:
+                with contextlib.suppress(OSError, RuntimeError, ValueError):
+                    reap_session_orphans(self._session_id, owner_pid=os.getpid())
+
+    def _shutdown_servers(self) -> None:
         if self._activity_relay is not None:
             self._activity_relay.close()
         with self._lock:
@@ -734,9 +742,6 @@ class RestartAwareMcpBridge:
             with contextlib.suppress(OSError):
                 listening_socket.close()
             self._listening_socket = None
-        if self._session_id:
-            with contextlib.suppress(OSError, RuntimeError, ValueError):
-                reap_session_orphans(self._session_id, owner_pid=os.getpid())
 
     def _cooldown_after_failure(self) -> None:
         seconds = self._restart_policy.cooldown_seconds

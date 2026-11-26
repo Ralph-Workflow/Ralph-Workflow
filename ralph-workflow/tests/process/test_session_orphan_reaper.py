@@ -5,15 +5,15 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
+from ralph.mcp.server import lifecycle
+from ralph.mcp.server.lifecycle import StandaloneMcpProcess
 from ralph.process.session_orphan_reaper import reap_session_orphans
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_a_real_setsid_detached_child_of_the_session_is_reaped": (
@@ -189,3 +189,65 @@ def test_a_real_ownerless_session_child_is_reaped_without_procfs() -> None:
     finally:
         if child.poll() is None:
             child.kill()
+
+
+class _ExitedProcess:
+    pid = 2**31 - 1
+
+    def poll(self) -> int | None:
+        return 0
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        del timeout
+        return 0
+
+
+class _ServerThatFailsToStop(StandaloneMcpProcess):
+    def shutdown(self) -> None:
+        raise RuntimeError("Process 1 (pgid 1) [force_kill]: still alive")
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(20)
+def test_a_bridge_whose_server_fails_to_stop_still_reaps_its_session() -> None:
+    env = {**os.environ, **_session_env(session="development-cccc3333", owner=os.getpid())}
+    launcher = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import subprocess;"
+            "p=subprocess.Popen(['sleep','300'],start_new_session=True,"
+            "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);"
+            "print(p.pid)",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    detached = int(launcher.stdout.strip())
+    inner = _ServerThatFailsToStop(
+        endpoint="http://127.0.0.1:9500/mcp",
+        process=_ExitedProcess(),
+        session_file=Path("/nonexistent/session.json"),
+    )
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: inner,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=0, cooldown_seconds=0.0),
+        run_id="test-run",
+        session_id="development-cccc3333",
+    )
+    try:
+        with pytest.raises(RuntimeError, match="still alive"):
+            bridge.shutdown()
+
+        pause = threading.Event()
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline and Path(f"/proc/{detached}").exists():
+            pause.wait(0.05)
+        assert not Path(f"/proc/{detached}").exists(), "the session's detached child survived"
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(detached, signal.SIGKILL)

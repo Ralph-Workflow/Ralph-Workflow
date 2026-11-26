@@ -537,9 +537,9 @@ that the saturation cap is supposed to prevent.
 The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:1969` and `:1987` invoke
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:1978` and `:1996` invoke
   `_spawn_mcp_process(...)`, which is defined at
-  `ralph/mcp/server/lifecycle.py:2214-2229`
+  `ralph/mcp/server/lifecycle.py:2223-2238`
   and runs
 
   ```python
@@ -551,8 +551,8 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-   (`ralph/mcp/server/lifecycle.py:2297-2308`; the `"ralph.mcp.server"` module name is at
-   `:2301`). The MCP server runs as a separate child
+   (`ralph/mcp/server/lifecycle.py:2302-2313`; the `"ralph.mcp.server"` module name is at
+   `:2306`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:58-63`),
   which calls `_terminate_server_process(process, grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`
@@ -805,7 +805,7 @@ stale, and the fastest drift check is a re-read of:
   (Cause 5b)
 - `ralph-workflow/ralph/mcp/server/runtime.py:625-649`
   (`exit_when_owner_exits`) and `:652-663` (`main`) — the Cause 5c seam
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:1969` and `:1987` (the
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:1978` and `:1996` (the
   two `_spawn_mcp_process` call sites), `:2214-2229` (its definition) and
   `:2293-2304` (the `sys.executable -m ralph.mcp.server` argv list)
 - `ralph-workflow/ralph/mcp/server/_standalone_mcp_process.py:15` and
