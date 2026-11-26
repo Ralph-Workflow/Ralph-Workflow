@@ -154,3 +154,46 @@ def test_a_workspace_that_lives_under_a_tmp_directory_still_records_source_edits
     finally:
         monitor.stop()
         release_workspace_awareness(root)
+
+
+def test_a_watcher_over_its_inotify_budget_is_stopped_for_live_reads(tmp_path: Path) -> None:
+    created: list[_FakeObserver] = []
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        seams=WorkspaceWatchSeams(
+            observer_factory=lambda: _FakeObserver(created),
+            supervise_in_background=False,
+            watch_count_probe=lambda: 10**6,
+        ),
+    )
+    monitor.start()
+    try:
+        WorkspaceMonitor.supervise_observers_once()
+
+        assert created[0].stopped
+        assert monitor.awareness_status["mode"] == "live_fallback"
+        assert len(created) == 1
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+
+def test_a_watcher_within_its_inotify_budget_keeps_running(tmp_path: Path) -> None:
+    created: list[_FakeObserver] = []
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        seams=WorkspaceWatchSeams(
+            observer_factory=lambda: _FakeObserver(created),
+            supervise_in_background=False,
+            watch_count_probe=lambda: 10,
+        ),
+    )
+    monitor.start()
+    try:
+        WorkspaceMonitor.supervise_observers_once()
+
+        assert not created[0].stopped
+        assert monitor.awareness_status["mode"] != "live_fallback"
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)

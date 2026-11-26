@@ -30,6 +30,7 @@ __all__ = [
     "PREDICTION_REUSE_SECONDS",
     "DirectoryCounter",
     "call_within_budget",
+    "process_inotify_watch_count",
     "watch_capacity_is_predicted",
 ]
 
@@ -169,3 +170,22 @@ def _predict_watch_capacity(
     counted_directories = counter(workspace, cap=budget + 1)
     workspace_dir_count = budget + 1 if counted_directories is None else counted_directories
     return wd_total + workspace_dir_count >= budget
+
+
+def process_inotify_watch_count(proc_self: Path = _PROC_PATH / "self") -> int | None:
+    if not _is_linux_host():
+        return None
+    total = 0
+    try:
+        descriptors = list((proc_self / "fd").iterdir())
+    except OSError:
+        return None
+    for descriptor in descriptors:
+        try:
+            if str(descriptor.readlink()) != "anon_inode:inotify":
+                continue
+            info = (proc_self / "fdinfo" / descriptor.name).read_text()
+        except OSError:
+            continue
+        total += sum(1 for line in info.splitlines() if line.startswith("inotify "))
+    return total

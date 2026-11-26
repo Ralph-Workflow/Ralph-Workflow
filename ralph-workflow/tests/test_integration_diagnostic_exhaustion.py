@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import ralph.pipeline._integration_diagnostic as diagnostic
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
@@ -21,6 +23,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 
+@pytest.mark.timeout_seconds(5)
 def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap(
     tmp_git_repo: Path,
     tmp_path: Path,

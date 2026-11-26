@@ -40,6 +40,7 @@ from ralph.agents.watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
     DirectoryCounter,
     call_within_budget,
+    process_inotify_watch_count,
     watch_capacity_is_predicted,
 )
 from ralph.workspace._cross_process_watch_lock import (
@@ -67,6 +68,11 @@ STOP_OBSERVER_BUDGET_SECONDS = 5.0
 
 _MAX_WORKSPACE_CHANGED_FILES = 512
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
+
+
+PROCESS_WATCH_BUDGET = 50_000
+
+WATCH_BUDGET_CHECK_SECONDS = 10.0
 
 
 class WorkspaceMonitor:
@@ -100,6 +106,7 @@ class WorkspaceMonitor:
     _observer_supervisor: ClassVar[threading.Thread | None] = None
     _supervisor_pacing: ClassVar[threading.Event] = threading.Event()
     _shared_lock: ClassVar[threading.Lock] = threading.Lock()
+    _last_watch_budget_check: ClassVar[float] = 0.0
 
     @classmethod
     def shared_watch_snapshot(cls) -> list[tuple[str, tuple[WorkspaceMonitor, ...]]]:
@@ -646,7 +653,56 @@ class WorkspaceMonitor:
             ]
         for key, shared in crashed:
             cls._restart_crashed_watch(key, shared)
+        cls._enforce_watch_budget()
         return len(crashed)
+
+    @classmethod
+    def _enforce_watch_budget(cls) -> int:
+        with cls._shared_lock:
+            watches = list(cls._shared_watches.items())
+        if not watches:
+            return 0
+        probe = next(
+            (
+                monitor._seams.watch_count_probe
+                for _key, shared in watches
+                for monitor in tuple(shared.monitors)
+                if monitor._seams.watch_count_probe is not None
+            ),
+            None,
+        )
+        if probe is None:
+            now = time.monotonic()
+            if now - cls._last_watch_budget_check < WATCH_BUDGET_CHECK_SECONDS:
+                return 0
+            cls._last_watch_budget_check = now
+            probe = process_inotify_watch_count
+        count = probe()
+        if count is None or count <= PROCESS_WATCH_BUDGET:
+            return 0
+        logger.warning(
+            "Workspace watchers hold {} inotify watches (budget {}); stopping them and using "
+            "live reads for the rest of the run",
+            count,
+            PROCESS_WATCH_BUDGET,
+        )
+        for key, shared in watches:
+            with cls._shared_lock:
+                if cls._shared_watches.get(key) is not shared:
+                    continue
+                cls._shared_watches.pop(key, None)
+            with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
+                shared.observer.stop()
+            monitors = tuple(shared.monitors)
+            if monitors:
+                monitors[0]._release_cross_process_watch_lock()
+            for monitor in monitors:
+                monitor._started = False
+                monitor._shared_key = None
+                monitor._observer = None
+                monitor._handler = None
+                monitor._activate_live_fallback("watch_budget_exceeded")
+        return len(watches)
 
     @classmethod
     def _restart_crashed_watch(cls, key: str, shared: _SharedWorkspaceWatch) -> None:

@@ -44,6 +44,7 @@ class WorkspaceWatchSeams:
     stop_observer_budget_seconds: float | None = None
     observer_restart_sleep: Callable[[float], None] | None = None
     supervise_in_background: bool = True
+    watch_count_probe: Callable[[], int | None] | None = None
 
 
 class _SharedWorkspaceWatch:
