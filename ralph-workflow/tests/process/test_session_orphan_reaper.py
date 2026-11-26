@@ -140,3 +140,21 @@ def test_a_real_setsid_detached_child_of_the_session_is_reaped() -> None:
     finally:
         with contextlib.suppress(ProcessLookupError):
             os.kill(detached, signal.SIGKILL)
+
+
+def test_reaps_session_processes_that_carry_no_owner_pid(tmp_path: Path) -> None:
+    _proc(tmp_path, 100, 1, {"MCP_SESSION_ID": _SESSION, "PATH": "/bin"})
+    _proc(tmp_path, 200, 1, {"MCP_SESSION_ID": _SESSION, "RALPH_MCP_OWNER_PID": "9999"})
+    sent: list[tuple[int, int]] = []
+
+    reaped = reap_session_orphans(
+        _SESSION,
+        owner_pid=_OWNER,
+        proc_root=tmp_path,
+        signal_fn=lambda pid, sig: sent.append((pid, sig)),
+        alive_fn=lambda _pid: False,
+        sleep=lambda _s: None,
+    )
+
+    assert reaped == 1
+    assert sent == [(100, signal.SIGTERM)]

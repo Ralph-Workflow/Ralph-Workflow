@@ -40,7 +40,10 @@ def _carries_session(proc_root: Path, pid: int, session: bytes, owner: bytes) ->
         variables = (proc_root / str(pid) / "environ").read_bytes().split(b"\0")
     except OSError:
         return False
-    return session in variables and owner in variables
+    if session not in variables:
+        return False
+    owners = [variable for variable in variables if variable.startswith(_OWNER_ENV)]
+    return not owners or owner in owners
 
 
 def _parent_of(proc_root: Path, pid: int) -> int | None:
