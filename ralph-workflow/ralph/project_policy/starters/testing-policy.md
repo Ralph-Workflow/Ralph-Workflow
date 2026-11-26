@@ -64,7 +64,9 @@ Suite admission, and fixing the production seam.
    hardcoding returns, and either over asserting how a collaborator was
    called.
 8. Every suite MUST enforce a runner-level time limit — per-test and/or
-   whole-suite — that FAILS the gate when exceeded. A suite with no enforced
+   whole-suite — that TERMINATES the run when exceeded and FAILS the gate. A
+   wrapper that only compares elapsed time after the command exits never
+   stops a hung or crash-looping test and does not count. A suite with no enforced
    limit is itself a violation, not a slow-but-tolerable suite: agents block
    on this pipeline, so one unbounded test hangs a run indefinitely.
    Convention and reviewer vigilance do not count.
