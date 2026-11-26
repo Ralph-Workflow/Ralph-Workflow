@@ -199,9 +199,12 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
                 path=path,
                 missing_evidence=missing_evidence,
                 required_outcome=(
-                    "choose whether to upgrade this policy to the bundled schema "
-                    "or freeze its current schema in place, then add the selected "
-                    "schema marker at the top of the file"
+                    f"upgrade this policy to {markers.SCHEMA_VERSION}: rewrite its rules into "
+                    "the bundled starter's current structure and meaning, carrying the "
+                    "project's own rules and facts across, then set the "
+                    f"`{markers.POLICY_SCHEMA_MARKER}` marker; never change only the marker, "
+                    "never freeze the file and never lower its schema (the user already chose "
+                    "the upgrade; freezing is applied by Ralph Workflow itself)"
                 ),
             )
         )

@@ -287,6 +287,7 @@ MIGRATED_MARKER_TEMPLATE: Final[str] = (
 MIGRATED_MARKER_PREFIX: Final[str] = "<!-- ralph-workflow-policy:migrated ->"
 
 CACHE_REL_PATH: Final[str] = ".agent/tmp/policy_readiness_cache.json"
+SCHEMA_CHOICE_REL_PATH: Final[str] = ".agent/policy_schema_choice.json"
 
 ID_CORE_MISSING: Final[str] = "RWP-CORE"
 ID_CMD_UNUSABLE: Final[str] = "RWP-CMD"
@@ -304,6 +305,25 @@ ID_PORTFOLIO: Final[str] = "RWP-PORTFOLIO"
 ID_INVENTORY: Final[str] = "RWP-INVENTORY"
 ID_TIME_BUDGET: Final[str] = "RWP-TIME-BUDGET"
 ID_VOLATILE_EVIDENCE: Final[str] = "RWP-VOLATILE-EVIDENCE"
+ID_SCHEMA_CONTENT: Final[str] = "RWP-SCHEMA-CONTENT"
+RETIRED_SCHEMA_WORDING: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "v7": {
+        "verification-policy.md": (
+            "fail on exceed",
+            "with no headroom, as the enforced budget",
+            "so the gate fails the moment the project gets slower",
+            "the fast path must fail when it exceeds that budget",
+        ),
+        "testing-policy.md": ("with no headroom, as `suite_time_budget`",),
+    },
+}
+RETIRED_SCHEMA_RULE: Final[dict[str, str]] = {
+    "v7": (
+        "under v7 a time-budgeted gate fails only past the cap, never because a run came in "
+        "slower than the recorded measurement; the measurement is what re-measurement is "
+        "compared against, and a contended overrun gets exactly one re-run"
+    ),
+}
 
 CLAIM_SCOPE_MISSING_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MISSING"
 CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE"
@@ -519,6 +539,7 @@ __all__ = [
     "ID_PENDING",
     "ID_PLACEHOLDER",
     "ID_PORTFOLIO",
+    "ID_SCHEMA_CONTENT",
     "ID_TIME_BUDGET",
     "ID_VOLATILE_EVIDENCE",
     "INAPPLICABLE_MARKER",
@@ -550,7 +571,10 @@ __all__ = [
     "REQUIRED_HEADINGS",
     "RESEARCH_FRESHNESS_FINDING_ID",
     "RESEARCH_FRESHNESS_MAX_DAYS",
+    "RETIRED_SCHEMA_RULE",
+    "RETIRED_SCHEMA_WORDING",
     "REVIEW_MARKER",
+    "SCHEMA_CHOICE_REL_PATH",
     "SCHEMA_VERSION",
     "SIGNIFICANT_HEADING_PREFIX",
     "SIGNIFICANT_NONEMPTY_LINE_THRESHOLD",

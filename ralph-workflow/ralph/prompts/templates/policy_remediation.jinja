@@ -24,6 +24,7 @@ FAILURE RESOLUTION MANDATE: Inspect the cited failure, determine whether and how
 Resolve every finding with repository evidence. Preserve established stricter rules and policy intent. Record applicable unfinished work as a dated deferral with a concrete review trigger.
 
 Policy evidence must be durable: replace every citation of a worktree-local or append-only record (`tmp/`, `.agent/`, a log, an `*.ndjson` ledger) by line, count, or excerpt with the stage name and a dated, durable source; never re-point or recount it, and never keep a receipt that exists in only one checkout.
+If a project test or check fails because it requires those citations, replace that check's oracle with a run-time derivation from the local record (testing-policy.md rule 29 names this case), editing that check as part of this remediation; never restore the citations to satisfy it, and never check out, revert or restore a policy file to make a gate pass. A gate that stays red for that reason is reported as a residual blocker, not fixed by undoing the policy.
 
 ## Work from evidence
 

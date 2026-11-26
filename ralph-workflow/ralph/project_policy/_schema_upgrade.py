@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -120,6 +121,23 @@ def _maybe_resolve_schema_upgrade(
         return False
     if not outdated:
         return True
+    return _resolve_outdated(workspace, emit, outdated, select=select, is_tty=is_tty)
+
+
+def _resolve_outdated(
+    workspace: Workspace,
+    emit: EmitFn,
+    outdated: Sequence[tuple[str, str, int]],
+    *,
+    select: _prompt_ui.SelectFn | None,
+    is_tty: Callable[[], bool] | None,
+) -> bool:
+    if _upgrade_recorded(workspace):
+        emit(
+            f"Policy schema upgrade to {policy_markers.SCHEMA_VERSION} was already chosen for "
+            f"{len(outdated)} file(s); the readiness agent carries it out."
+        )
+        return True
     tty_check = is_tty if is_tty is not None else _prompt_ui.default_is_tty
     if not tty_check():
         emit(
@@ -159,11 +177,54 @@ def _maybe_resolve_schema_upgrade(
         if choice == _CHOICE_EXPLAIN:
             emit(_SCHEMA_EXPLAIN)
             continue
-        if choice == _CHOICE_UPGRADE:
-            return True
-        _freeze_policy_files(workspace, emit, outdated)
-        return True
+        return _apply_choice(workspace, emit, outdated, choice)
     return True
+
+
+def _apply_choice(
+    workspace: Workspace,
+    emit: EmitFn,
+    outdated: Sequence[tuple[str, str, int]],
+    choice: str,
+) -> bool:
+    if choice == _CHOICE_UPGRADE:
+        _record_upgrade(workspace)
+        return True
+    if choice == _prompt_ui.NO_ANSWER:
+        emit(
+            "No answer to the policy schema choice in time; this run continues "
+            "without upgrading or freezing, and the next start asks again."
+        )
+        return False
+    _freeze_policy_files(workspace, emit, outdated)
+    return True
+
+
+def _upgrade_recorded(workspace: Workspace) -> bool:
+    if not workspace.exists(policy_markers.SCHEMA_CHOICE_REL_PATH):
+        return False
+    try:
+        payload: object = json.loads(workspace.read(policy_markers.SCHEMA_CHOICE_REL_PATH))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    record = cast("dict[str, object]", payload)
+    return (
+        record.get("choice") == _CHOICE_UPGRADE
+        and record.get("schema") == policy_markers.SCHEMA_VERSION
+    )
+
+
+def _upgrade_record() -> dict[str, str]:
+    return {"choice": _CHOICE_UPGRADE, "schema": policy_markers.SCHEMA_VERSION}
+
+
+def _record_upgrade(workspace: Workspace) -> None:
+    workspace.write(
+        policy_markers.SCHEMA_CHOICE_REL_PATH,
+        json.dumps(_upgrade_record()),
+    )
 
 
 def _ask(

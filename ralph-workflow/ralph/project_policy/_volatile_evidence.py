@@ -45,7 +45,9 @@ _REQUIRED_OUTCOME: Final[str] = (
     "instead of committing it. Those records differ in every checkout and go stale on the "
     "next run, so never re-point or recount a citation; a check whose oracle compares "
     "committed text with a worktree-local record tests no product behaviour and is replaced "
-    "by the run-time derivation (Ralph's bundled verification starter, High-churn evidence)"
+    "by the run-time derivation (Ralph's bundled verification starter, High-churn evidence); "
+    "if a project check fails once the citations are gone, change that check, never restore "
+    "the citations or revert this file to make the gate pass"
 )
 
 

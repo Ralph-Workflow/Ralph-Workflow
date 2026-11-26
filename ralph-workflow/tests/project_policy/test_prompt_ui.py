@@ -57,3 +57,45 @@ def test_select_returns_the_chosen_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_prompt_ui, "_load_questionary", _Questionary)
 
     assert _prompt_ui.select("Q?", _CHOICES, "adopt") == "keep"
+
+
+def test_an_unanswered_prompt_expires_to_no_answer_instead_of_waiting_forever() -> None:
+    delays: list[float] = []
+
+    class _Loop:
+        def call_later(self, delay: float, callback: object) -> None:
+            delays.append(delay)
+            assert callable(callback)
+            callback()
+
+    class _Application:
+        def __init__(self) -> None:
+            self.pre_run_callables: list[object] = []
+            self.loop = _Loop()
+            self.future = None
+            self.exited = False
+
+        def exit(self, *, result: object = None) -> None:
+            assert result is None
+            self.exited = True
+
+    class _Unanswered:
+        def __init__(self) -> None:
+            self.application = _Application()
+
+        def ask(self) -> None:
+            for run in self.application.pre_run_callables:
+                assert callable(run)
+                run()
+            assert self.application.exited
+
+    class _Questionary:
+        Choice = staticmethod(lambda **kwargs: kwargs)
+
+        def select(self, *args: object, **kwargs: object) -> _Unanswered:
+            return _Unanswered()
+
+    answer = _prompt_ui.select("Q?", _CHOICES, "adopt", questionary_module=_Questionary)
+
+    assert answer == _prompt_ui.NO_ANSWER
+    assert delays == [_prompt_ui.UNANSWERED_PROMPT_SECONDS]

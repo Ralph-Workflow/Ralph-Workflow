@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.project_policy import markers, remediation, validators
+from ralph.project_policy import markers, preflight, remediation, validators
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.policy_corpus import seed_complete_corpus, stack
 
@@ -197,3 +197,23 @@ def test_a_volatile_citation_in_a_project_added_policy_file_blocks_readiness() -
         f"{markers.ID_VOLATILE_EVIDENCE}:portfolio-admission.md"
     ]
     assert findings[0].blocking is True
+
+
+def test_remediation_is_told_to_change_a_check_that_demands_citations_never_to_restore_them() -> (
+    None
+):
+    ws = _ready_workspace()
+    _append(ws, _VERIFICATION, "Last pass: tmp/verify-stages.ndjson:22969.")
+    findings = _volatile(ws)
+
+    remediation.run_remediation_phase(
+        ws,
+        stack(),
+        findings,
+        invoke_agent=lambda *, phase, prompt_path, progress_check=None: True,
+    )
+    prompt = " ".join(ws.read(preflight.REMEDIATION_PROMPT_REL_PATH).split())
+
+    assert "replace that check's oracle" in prompt
+    assert "never restore the citations" in prompt
+    assert "never check out, revert or restore a policy file to make a gate pass" in prompt
