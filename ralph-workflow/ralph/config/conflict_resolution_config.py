@@ -12,6 +12,15 @@ class ConflictResolutionConfig(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
 
     inactivity_timeout_seconds: float = Field(default=900.0, gt=0.0)
+    round_wall_clock_seconds: float = Field(
+        default=1800.0,
+        gt=0.0,
+        description=(
+            "Wall-clock ceiling for one conflict-resolution round. Activity cannot "
+            "reset it, so a resolver that keeps reading without resolving is cut and "
+            "the next round starts from the tree it left."
+        ),
+    )
     status_interval_seconds: float = Field(default=30.0, gt=0.0)
     max_rounds_per_stop: int = Field(
         default=3,
@@ -50,7 +59,9 @@ class ConflictResolutionConfig(RalphBaseModel):
                 )
         return data
 
-    @field_validator("inactivity_timeout_seconds", "status_interval_seconds")
+    @field_validator(
+        "inactivity_timeout_seconds", "status_interval_seconds", "round_wall_clock_seconds"
+    )
     @classmethod
     def _validate_finite_duration(cls, value: float | None) -> float | None:
         if value is not None and not math.isfinite(value):

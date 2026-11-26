@@ -77,6 +77,7 @@ __all__ = [
     "finalize_resolution_attempt_failure",
     "invoke_resolution_agent",
     "resolution_chain_agents",
+    "resolution_round_config",
     "session_ledger",
 ]
 
@@ -396,8 +397,20 @@ def _conflict_config_with_inactivity(
     conflict_limits = config.conflict_resolution.model_copy(
         update={"inactivity_timeout_seconds": effective_timeout}
     )
-    general = config.general.model_copy(update={"agent_idle_timeout_seconds": effective_timeout})
+    round_ceiling = config.conflict_resolution.round_wall_clock_seconds
+    session_ceiling = config.general.agent_max_session_seconds
+    general = config.general.model_copy(
+        update={
+            "agent_idle_timeout_seconds": min(effective_timeout, round_ceiling),
+            "agent_max_session_seconds": (
+                round_ceiling if session_ceiling is None else min(session_ceiling, round_ceiling)
+            ),
+        }
+    )
     return config.model_copy(update={"conflict_resolution": conflict_limits, "general": general})
+
+
+resolution_round_config = _conflict_config_with_inactivity
 
 
 def invoke_resolution_agent(
