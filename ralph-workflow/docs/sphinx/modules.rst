@@ -2394,6 +2394,13 @@ ralph.agents.idle_watchdog
 .. automodule:: ralph.agents.idle_watchdog
    :no-members:
 
+ralph.agents.idle_watchdog.command_tools
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.idle_watchdog.command_tools
+   :members:
+   :show-inheritance:
+
 ralph.agents.idle_watchdog.corroboration_snapshot
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

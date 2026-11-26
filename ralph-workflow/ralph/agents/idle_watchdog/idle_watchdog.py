@@ -9,12 +9,14 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog._evidence_tier import (
     ChannelEvidenceSummary,
     ChannelName,
     EvidenceSummary,
 )
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
+from ralph.agents.idle_watchdog.command_tools import runs_a_command
 from ralph.process.child_liveness import AliveBy
 
 from ._active_branch import (
@@ -99,7 +101,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from ralph.agents.clock import Clock
-    from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.idle_watchdog._stuck_classifier import StuckKind
     from ralph.process.monitor import ProcessMonitor, SubagentOutputCapture
 
@@ -179,6 +180,7 @@ class IdleWatchdog:
     _suspicion_announced_for_run: bool = field(default=False, init=False)
     _last_tool_result_at: float | None = field(default=None, init=False)
     _awaiting_post_tool_result_progression: bool = field(default=False, init=False)
+    _tool_call_open: bool = field(default=False, init=False)
     _mcp_tool_call_count: int = field(default=0, init=False)
     _last_mcp_tool_call_at: float | None = field(default=None, init=False)
     _subagent_progress_count: int = field(default=0, init=False)
@@ -246,6 +248,7 @@ class IdleWatchdog:
         self._suspicion_announced_for_run = False
         self._last_tool_result_at: float | None = None
         self._awaiting_post_tool_result_progression = False
+        self._tool_call_open = False
         self._mcp_tool_call_count = 0
         self._last_mcp_tool_call_at: float | None = None
         self._subagent_progress_count = 0
@@ -663,10 +666,12 @@ class IdleWatchdog:
     def record_tool_result_activity(self, *, is_harness_echo: bool = False) -> None:
         activity_record_tool_result_activity(self, is_harness_echo=is_harness_echo)
 
-    def record_mcp_tool_call(self, now: float | None = None) -> None:
+    def record_mcp_tool_call(self, now: float | None = None, *, tool_name: str = "") -> None:
         timestamp = now if now is not None else self._clock.monotonic()
         self._mcp_tool_call_count += 1
         self._last_mcp_tool_call_at = timestamp
+        if runs_a_command(tool_name):
+            self._tool_call_open = True
 
     def record_subagent_work(
         self, now: float | None = None, *, description: str | None = None
@@ -1042,4 +1047,10 @@ class IdleWatchdog:
         idle_elapsed: float,
         classify_quiet: Callable[[], AgentExecutionState],
     ) -> WatchdogVerdict:
-        return evaluate_final_verdict(self, now, idle_elapsed, classify_quiet)
+        def classify_with_open_tool_call() -> AgentExecutionState:
+            state = classify_quiet()
+            if state is AgentExecutionState.ACTIVE and self._tool_call_open:
+                return AgentExecutionState.WAITING_ON_CHILD
+            return state
+
+        return evaluate_final_verdict(self, now, idle_elapsed, classify_with_open_tool_call)

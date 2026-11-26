@@ -1515,8 +1515,8 @@ class PtyLineReader:
         Token[Callable[[str], None] | None],
         Callable[[str], None],
     ]:
-        def _mcp_sink(_tool_name: str) -> None:
-            watchdog.record_mcp_tool_call()
+        def _mcp_sink(tool_name: str) -> None:
+            watchdog.record_mcp_tool_call(tool_name=tool_name)
 
         def _subagent_sink(line: str) -> None:
             watchdog.record_subagent_work(description=line)

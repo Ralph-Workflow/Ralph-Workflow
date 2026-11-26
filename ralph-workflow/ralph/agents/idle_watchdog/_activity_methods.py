@@ -78,6 +78,7 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._suspicion_announced_for_run = False
     self._last_tool_result_at = None
     self._awaiting_post_tool_result_progression = False
+    self._tool_call_open = False
     self._mcp_tool_call_count = 0
     self._last_mcp_tool_call_at = None
     self._subagent_progress_count = 0
@@ -193,6 +194,7 @@ def record_tool_call_activity(
 
 def record_tool_result_activity(self: IdleWatchdog, *, is_harness_echo: bool = False) -> None:
     now = self._clock.monotonic()
+    self._tool_call_open = False
     self._accumulate_waiting_run(now)
     if not is_harness_echo:
         self._reset_idle_baseline()
