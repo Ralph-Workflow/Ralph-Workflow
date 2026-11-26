@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.absorbed_local_copies": (
+        "user requirement: agents always work on the newest code; catch-up absorbs uncommitted "
+        "copies that already match the incoming commit instead of staying behind forever, and "
+        "its new probes add reviewed labels, so the label-site digest is refreshed"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.interrupted_resolution": (
         "user requirement: an interrupted rebase or merge resolution whose finished edits "
         "are unstaged must go back to the resolver instead of being set aside; the new "
@@ -139,10 +144,14 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "a13756e673d1e2d6441d899c05f6d9009cd1bb6da2c2594097145742cb198155"
+    "b061805d58693963713df5dcc6550b6307a13d8249db144ae559eac77d019c8a"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds integration-resolution-rebase-head, "
+    "The reviewed inventory adds catchup-blob-of (rev-parse --verify --quiet of a path at a "
+    "commit while deciding whether an uncommitted copy already matches the incoming version; "
+    "rc=1 is git's answer that the path does not exist there), catchup-hash-object, "
+    "catchup-absorb-local-copy, catchup-restore-local-copy and catchup-unstage-local-copy (a "
+    "failure is a real error), integration-resolution-rebase-head, "
     "integration-resolution-merge-head and integration-resolution-merge-base "
     "(rev-parse --verify --quiet of REBASE_HEAD or MERGE_HEAD and merge-base while "
     "checking an interrupted resolution for unstaged edits; rc=1 is git's answer that the "

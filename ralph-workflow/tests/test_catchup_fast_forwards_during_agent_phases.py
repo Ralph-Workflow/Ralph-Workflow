@@ -163,3 +163,64 @@ def test_a_git_operation_in_progress_is_the_one_thing_that_defers_it(tmp_path: P
 
     assert outcome == CATCHUP_DEFERRED_GIT_OPERATION
     assert _head(feature_repo) == before
+
+
+def test_a_dirty_copy_already_matching_the_incoming_version_is_absorbed(tmp_path: Path) -> None:
+    feature, feature_repo, newest = _feature_behind_main(tmp_path)
+    (feature / "app.txt").write_text("v2\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newest
+    assert (feature / "app.txt").read_text(encoding="utf-8") == "v2\n"
+    status = str(route_git_method(feature_repo, "status", ("--porcelain", "--", "app.txt")))
+    assert status.strip() == ""
+
+
+def test_one_genuinely_different_overlap_still_defers_and_touches_nothing(
+    tmp_path: Path,
+) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    root = feature.parent / "project"
+    (root / "notes.txt").write_text("main notes\n", encoding="utf-8")
+    _commit(Repo(root), "main edits notes too")
+    before = _head(feature_repo)
+    (feature / "app.txt").write_text("v2\n", encoding="utf-8")
+    (feature / "notes.txt").write_text("agent's own notes\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_DEFERRED_LOCAL_EDITS
+    assert _head(feature_repo) == before
+    assert (feature / "app.txt").read_text(encoding="utf-8") == "v2\n"
+    assert (feature / "notes.txt").read_text(encoding="utf-8") == "agent's own notes\n"
+
+
+def test_an_untracked_copy_of_an_incoming_new_file_is_absorbed(tmp_path: Path) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    root = feature.parent / "project"
+    (root / "added.txt").write_text("from main\n", encoding="utf-8")
+    newer = _commit(Repo(root), "main adds a file")
+    (feature / "added.txt").write_text("from main\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newer
+    assert (feature / "added.txt").read_text(encoding="utf-8") == "from main\n"
+
+
+def test_a_staged_version_different_from_both_sides_is_never_absorbed(tmp_path: Path) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    before = _head(feature_repo)
+    (feature / "app.txt").write_text("staged agent work\n", encoding="utf-8")
+    route_git_method(feature_repo, "add", ("app.txt",))
+    (feature / "app.txt").write_text("v2\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_DEFERRED_LOCAL_EDITS
+    assert _head(feature_repo) == before
+    staged = str(route_git_method(feature_repo, "show", (":app.txt",)))
+    assert staged.strip() == "staged agent work"

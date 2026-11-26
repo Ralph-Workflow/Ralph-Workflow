@@ -63,7 +63,7 @@ from ralph.pipeline.integration_observation import InProgressKind, read_in_progr
 from ralph.pipeline.integration_owner import RecordFactOutcome
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
 
     from git import Head
 
@@ -789,8 +789,14 @@ def _fast_forward_if_strictly_behind(
 
 
 def _overlap_refusal(root: Path, observation: _CatchupObservation) -> str:
-    overlap = local_edits_overlapping_incoming(
-        root, observation.current_sha, observation.target_sha
+    overlap = tuple(
+        path
+        for path in local_edits_overlapping_incoming(
+            root, observation.current_sha, observation.target_sha
+        )
+        if not _already_matches_incoming(
+            root, path, observation.current_sha, observation.target_sha
+        )
     )
     if not overlap:
         return ""
@@ -801,6 +807,62 @@ def _overlap_refusal(root: Path, observation: _CatchupObservation) -> str:
         observation.summary,
     )
     return CATCHUP_DEFERRED_LOCAL_EDITS
+
+
+def _blob(root: Path, spec: str) -> str | None:
+    try:
+        result = run_git(
+            ("rev-parse", "--verify", "--quiet", spec), cwd=root, label="catchup-blob-of"
+        )
+    except OSError:
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
+
+
+def _worktree_blob(root: Path, path: str) -> str | None:
+    if not (root / path).is_file():
+        return None
+    try:
+        result = run_git(("hash-object", "--", path), cwd=root, label="catchup-hash-object")
+    except OSError:
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
+
+
+def _already_matches_incoming(root: Path, path: str, current_sha: str, target_sha: str) -> bool:
+    incoming = _blob(root, f"{target_sha}:{path}")
+    if _worktree_blob(root, path) != incoming:
+        return False
+    staged = _blob(root, f":{path}")
+    return staged in {incoming, _blob(root, f"{current_sha}:{path}")}
+
+
+def absorb_local_copies_of_incoming(
+    root: Path, current_sha: str, target_sha: str
+) -> tuple[str, ...]:
+    overlap = local_edits_overlapping_incoming(root, current_sha, target_sha)
+    absorbed = tuple(
+        path for path in overlap if _already_matches_incoming(root, path, current_sha, target_sha)
+    )
+    for path in absorbed:
+        if _blob(root, f"{current_sha}:{path}") is None:
+            (root / path).unlink(missing_ok=True)
+            continue
+        run_git(("checkout", current_sha, "--", path), cwd=root, label="catchup-absorb-local-copy")
+    return absorbed
+
+
+def restore_absorbed_copies(root: Path, target_sha: str, absorbed: Sequence[str]) -> None:
+    for path in absorbed:
+        restored = run_git(
+            ("checkout", target_sha, "--", path),
+            cwd=root,
+            label="catchup-restore-local-copy",
+        )
+        if restored.returncode == 0:
+            run_git(("reset", "-q", "--", path), cwd=root, label="catchup-unstage-local-copy")
 
 
 def _git_paths(root: Path, args: tuple[str, ...], label: str) -> frozenset[str] | None:
@@ -841,6 +903,9 @@ def _execute_fast_forward(
     clock: Clock,
     jitter: Callable[[], float] | None,
 ) -> str:
+    absorbed = absorb_local_copies_of_incoming(
+        root, observation.current_sha, observation.target_sha
+    )
     try:
         merged = fast_forward_via_worktree(root, observation.target_sha)
     except (
@@ -851,13 +916,21 @@ def _execute_fast_forward(
         ValueError,
         KeyError,
     ) as exc:
+        restore_absorbed_copies(root, observation.target_sha, absorbed)
         kind = _classify_git_exception(exc)
         if kind != GitOutcomeKind.FAILED:
             _backoff_after_failure(clock, attempt_count, jitter=jitter)
         return _failure_reason(kind, observation.summary)
     kind = _classify_fast_forward_result(merged)
     if kind == GitOutcomeKind.SUCCEEDED:
+        if absorbed:
+            logger.info(
+                "auto_integrate catch-up: absorbed {} uncommitted file(s) that already matched "
+                "the incoming commit",
+                len(absorbed),
+            )
         return CATCHUP_FAST_FORWARDED
+    restore_absorbed_copies(root, observation.target_sha, absorbed)
     return _failure_reason(kind, observation.summary)
 
 
@@ -1162,9 +1235,11 @@ __all__ = [
     "AgentPhaseActivity",
     "AutoIntegrateCatchupWorker",
     "CatchupLedgerFailureBudget",
+    "absorb_local_copies_of_incoming",
     "attempt_catchup_fast_forward",
     "local_edits_overlapping_incoming",
     "process_agent_phases",
     "resolve_integration_target",
+    "restore_absorbed_copies",
     "start_catchup_worker_if_enabled",
 ]

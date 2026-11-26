@@ -22,6 +22,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "auto-integrate:stale-snapshot-head-tree": frozenset({128}),
     "auto-integrate:stale-snapshot-nested-head": frozenset({128}),
     "check-merge-head": frozenset({1}),
+    "catchup-blob-of": frozenset({1}),
     "git-auto-merged-merge-base": frozenset({1}),
     "integration-resolution-merge-base": frozenset({1}),
     "integration-resolution-merge-head": frozenset({1}),
