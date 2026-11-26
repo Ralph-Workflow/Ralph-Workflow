@@ -38,6 +38,7 @@ from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _prompt_ui
+from ralph.project_policy import _remediation_writes as remediation_writes
 from ralph.project_policy import _schema_upgrade as policy_schema_upgrade
 from ralph.project_policy import agents_md as policy_agents_md
 from ralph.project_policy import evidence as policy_evidence
@@ -513,6 +514,7 @@ def _dispatch_preflight_result(
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
 
         def _on_remediation_attempt(attempt: int) -> None:
+            remediation_writes.record_remediation_writes(workspace, pre_run_dirty)
             push_remediation_status_bar(
                 active_display,
                 workspace_scope,
@@ -538,6 +540,7 @@ def _dispatch_preflight_result(
                 emit=emit,
                 on_remediation_attempt=_on_remediation_attempt,
             )
+    remediation_writes.record_remediation_writes(workspace, pre_run_dirty)
     if final.is_ready():
         _emit_and_push_readiness_assessment(
             emit,
@@ -555,6 +558,7 @@ def _dispatch_preflight_result(
             assessment=final.assessment,
             command_outcomes=final.command_outcomes,
         )
+        commit_policy_updates(workspace_scope, pre_run_dirty)
         return _EXIT_SUCCESS
     commit_policy_updates(workspace_scope, pre_run_dirty)
     _emit_and_push_readiness_assessment(
@@ -726,10 +730,11 @@ def _run_policy_readiness(
     if workspace_scope is None:
         return _EXIT_SUCCESS
 
-    pre_run_dirty = working_tree_snapshot(workspace_scope)
-
     emit = _build_emit(display_context, emit_factory)
     workspace = _build_workspace(load_result, workspace_factory)
+    pre_run_dirty = remediation_writes.without_ralph_authored(
+        workspace, working_tree_snapshot(workspace_scope)
+    )
 
     if mode.resets_policy():
         changed = reset_policy_state(workspace)
@@ -767,6 +772,7 @@ def _run_policy_readiness(
             pre_run_dirty,
             commit_policy_updates=commit_policy_updates,
         )
+        commit_policy_updates(workspace_scope, pre_run_dirty)
         return _EXIT_SUCCESS
 
     return _dispatch_preflight_result(

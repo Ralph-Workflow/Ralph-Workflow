@@ -288,6 +288,7 @@ MIGRATED_MARKER_PREFIX: Final[str] = "<!-- ralph-workflow-policy:migrated ->"
 
 CACHE_REL_PATH: Final[str] = ".agent/tmp/policy_readiness_cache.json"
 SCHEMA_CHOICE_REL_PATH: Final[str] = ".agent/policy_schema_choice.json"
+POLICY_REMEDIATION_WRITES_REL_PATH: Final[str] = ".agent/policy_remediation_writes.json"
 
 ID_CORE_MISSING: Final[str] = "RWP-CORE"
 ID_CMD_UNUSABLE: Final[str] = "RWP-CMD"
@@ -561,6 +562,7 @@ __all__ = [
     "PLACEHOLDER_TOKENS",
     "POLICY_CONTRACT_VERSION",
     "POLICY_ID_PREFIX",
+    "POLICY_REMEDIATION_WRITES_REL_PATH",
     "POLICY_SCHEMA_MARKER",
     "PORTFOLIO_PATH",
     "PORTFOLIO_SCHEMA_VERSION",
