@@ -168,3 +168,24 @@ def test_reaps_session_processes_that_carry_no_owner_pid(tmp_path: Path) -> None
 
     assert reaped == 1
     assert sent == [(100, signal.SIGTERM)]
+
+
+def test_a_real_ownerless_session_child_is_reaped_without_procfs() -> None:
+    env = {key: value for key, value in os.environ.items() if key != "RALPH_MCP_OWNER_PID"}
+    env["MCP_SESSION_ID"] = _SESSION
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(300)"],
+        env=env,
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        reaped = reap_session_orphans(_SESSION, owner_pid=os.getpid(), grace_seconds=3.0)
+
+        assert reaped >= 1
+        assert child.wait(timeout=5.0) is not None
+    finally:
+        if child.poll() is None:
+            child.kill()

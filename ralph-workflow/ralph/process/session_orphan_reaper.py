@@ -71,7 +71,7 @@ def _psutil_process_table(
             continue
         if (
             environment.get("MCP_SESSION_ID") == session_id
-            and environment.get("RALPH_MCP_OWNER_PID") == wanted_owner
+            and environment.get("RALPH_MCP_OWNER_PID", wanted_owner) == wanted_owner
         ):
             roots.append(pid)
     return parents, roots
