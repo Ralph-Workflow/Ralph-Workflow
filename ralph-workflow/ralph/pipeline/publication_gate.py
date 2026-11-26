@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -30,6 +31,8 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 PUBLICATION_GATE_TIMEOUT_SECONDS: Final[float] = 1800.0
+MIN_PUBLICATION_GATE_TIMEOUT_SECONDS: Final[float] = 300.0
+PASS_TIME_TIMEOUT_MULTIPLIER: Final[float] = 10.0
 MAX_PUBLICATION_GATE_FAILURES: Final[int] = 5
 MAX_INCONCLUSIVE_GATE_RUNS: Final[int] = 3
 _GATE_FACT_KEY: Final[str] = "authoritative_verify_command"
@@ -108,6 +111,7 @@ class PublicationGateResult:
     inconclusive_runs: int = 0
     invocation_error: str = ""
     failure_digest: str = ""
+    pass_seconds: float = 0.0
 
     @property
     def failure_evidence(self) -> str:
@@ -163,9 +167,17 @@ class PublicationGateResult:
             else f"No failure lines were found in the gate output (exit {self.exit_code}); "
             "read the output tail for the cause."
         )
+        hang_hint = (
+            " A gate that runs this far past its own last passing time almost always means "
+            "a test is hung or crash-looping: find the step that never finished in the "
+            "output tail, fix it, and give the suite a runner-level timeout that kills a "
+            "hung test (testing-policy.md rule 8)."
+            if self.timed_out
+            else ""
+        )
         return (
             f"Publication gate `{self.command}` {verdict} on tree {self.tree_sha}; the run's "
-            "commits already landed. Fix the failures below so the gate passes.\n"
+            f"commits already landed. Fix the failures below so the gate passes.{hang_hint}\n"
             f"{summary}\n\nOutput tail:\n{self.output_tail}"
         )
 
@@ -319,6 +331,12 @@ def _invocation_error(run: PublicationGateRun) -> str:
 
 
 def _run_gate_command(command: str, cwd: Path, timeout_seconds: float) -> PublicationGateRun:
+    started = time.monotonic()
+    run = _run_gate_process(command, cwd, timeout_seconds)
+    return replace(run, elapsed_seconds=time.monotonic() - started)
+
+
+def _run_gate_process(command: str, cwd: Path, timeout_seconds: float) -> PublicationGateRun:
     with reaped_process_scope("gate", owner_pid=os.getpid()) as scope_env:
         try:
             result = run_process(
@@ -379,6 +397,7 @@ def _load_record(root: Path) -> PublicationGateResult | None:
             inconclusive_runs=as_int(fields.get("inconclusive_runs", 0), field="inconclusive_runs"),
             invocation_error=invocation_error,
             failure_digest=digest,
+            pass_seconds=_as_seconds(fields.get("pass_seconds", 0.0)),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -412,14 +431,28 @@ def _record_payload(result: PublicationGateResult) -> dict[str, object]:
         "invocation_error": result.invocation_error,
         "failure_digest": result.failure_digest,
         "time_only": result.time_only,
+        "pass_seconds": result.pass_seconds,
     }
+
+
+def _as_seconds(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    return max(0.0, float(value))
+
+
+def gate_timeout_seconds(previous: PublicationGateResult | None) -> float:
+    if previous is None or previous.pass_seconds <= 0:
+        return PUBLICATION_GATE_TIMEOUT_SECONDS
+    scaled = previous.pass_seconds * PASS_TIME_TIMEOUT_MULTIPLIER
+    return min(PUBLICATION_GATE_TIMEOUT_SECONDS, max(MIN_PUBLICATION_GATE_TIMEOUT_SECONDS, scaled))
 
 
 def check_publication_gate(
     root: Path,
     feature_sha: str,
     *,
-    timeout_seconds: float = PUBLICATION_GATE_TIMEOUT_SECONDS,
+    timeout_seconds: float | None = None,
     runner: GateRunner | None = None,
     tree_of: TreeLookup | None = None,
 ) -> PublicationGateResult | None:
@@ -439,7 +472,14 @@ def check_publication_gate(
         return previous
     if declaration.command is None:
         return _record_misconfigured_gate(root, declaration, tree_sha, previous)
-    logger.info("Running the publication gate `{}` on tree {}", command, tree_sha)
+    if timeout_seconds is None:
+        timeout_seconds = gate_timeout_seconds(previous)
+    logger.info(
+        "Running the publication gate `{}` on tree {} (stopped after {:.0f}s)",
+        command,
+        tree_sha,
+        timeout_seconds,
+    )
     if runner is not None:
         run = runner(command, root, timeout_seconds)
     else:
@@ -472,6 +512,14 @@ def check_publication_gate(
         timed_out=run.timed_out,
         output_tail=run.output[-_OUTPUT_TAIL_CHARS:],
         failure_digest=_failure_digest(run.output),
+    )
+    result = replace(
+        result,
+        pass_seconds=(
+            run.elapsed_seconds
+            if result.passed and run.elapsed_seconds > 0
+            else (previous.pass_seconds if previous is not None else 0.0)
+        ),
     )
     if result.inconclusive:
         return _record_inconclusive_run(root, result, previous)
@@ -700,6 +748,8 @@ def publication_gate_loop_phase(policy: PipelinePolicy, commit_phase: str) -> st
 __all__ = [
     "MAX_INCONCLUSIVE_GATE_RUNS",
     "MAX_PUBLICATION_GATE_FAILURES",
+    "MIN_PUBLICATION_GATE_TIMEOUT_SECONDS",
+    "PASS_TIME_TIMEOUT_MULTIPLIER",
     "PUBLICATION_GATE_TIMEOUT_SECONDS",
     "TIME_BUDGET_MARKERS",
     "GateDeclaration",
@@ -713,6 +763,7 @@ __all__ = [
     "commit_tree",
     "declared_publication_gate",
     "gate_failure_signature",
+    "gate_timeout_seconds",
     "last_publication_gate_result",
     "leave_publication_gate_feedback",
     "publication_gate_feedback",
