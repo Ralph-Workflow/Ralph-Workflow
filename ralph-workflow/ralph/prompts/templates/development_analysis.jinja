@@ -34,6 +34,10 @@ A red check caused only by committed text citing worktree-local or append-only e
 
 Volatile evidence added this cycle (objective, scanned from the cycle diff): {{ VOLATILE_EVIDENCE_CITATIONS }}. Each is a citation of a worktree-local or append-only record committed into the repository. Unless the request explicitly asks for that citation, choose `request_changes` and direct the developer to replace it with durable text (the stage name and a dated, durable source) and to derive any verdict from the local ledger at run time.
 {% endif %}
+{% if REFRESHED_MEASUREMENTS is defined and REFRESHED_MEASUREMENTS %}
+
+Budget measurements re-recorded this cycle (objective, scanned from the cycle diff): {{ REFRESHED_MEASUREMENTS }}. A recorded measurement changes only when the toolchain or the gate changed, or at a dated review on a quiet reference run; run-to-run timing variance is not a change. Unless this cycle changed the gate or its toolchain, choose `request_changes` and direct the developer to restore the previous figure instead of re-recording one run's timing.
+{% endif %}
 
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion.
 

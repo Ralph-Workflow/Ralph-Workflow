@@ -144,3 +144,31 @@ def check_added_volatile_citations(diff_text: str) -> list[PolicyFinding]:
         )
         for path, citations in sorted(by_file.items())
     ]
+
+
+_MEASUREMENT_FACT_RE: Final[re.Pattern[str]] = re.compile(
+    r"^RALPH-FACT:\s*(?P<key>[a-z0-9_]*(?:budget|cost_floor|overage|breach)[a-z0-9_]*)\s*:"
+)
+
+
+def refreshed_measurement_facts(diff_text: str) -> list[str]:
+    removed: set[tuple[str, str]] = set()
+    added: list[tuple[str, str]] = []
+    current_file = ""
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            target = line[4:].strip()
+            current_file = target[2:] if target.startswith("b/") else target
+            continue
+        if line.startswith(("---", "+++")) or not current_file:
+            continue
+        sign, body = line[:1], line[1:]
+        match = _MEASUREMENT_FACT_RE.match(body.strip())
+        if match is None:
+            continue
+        if sign == "-":
+            removed.add((current_file, match.group("key")))
+        elif sign == "+":
+            added.append((current_file, match.group("key")))
+    refreshed = [entry for entry in added if entry in removed]
+    return sorted({f"{path}: {key}" for path, key in refreshed})

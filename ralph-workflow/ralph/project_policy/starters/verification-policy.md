@@ -118,7 +118,9 @@ differently.
      rule 12's "do not leave the loop slower". Growth is caught by
      re-measuring, never by failing every run a busy host slows. A project
      under its cap MUST NOT relax toward the guide OR the cap — both are
-     ceilings, never entitlements.
+     ceilings, never entitlements. One run's timing is never a reason to
+     re-record a figure: a commit whose only change is a refreshed
+     measurement is churn. Record figures in whole seconds.
    - **Ratchet:** the recorded measurement may shrink freely; it grows only
      as a reviewed change tracking genuinely-fast new checks. Record the
      project's measured figure, never the cap.

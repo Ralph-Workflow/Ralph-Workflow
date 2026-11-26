@@ -11,7 +11,10 @@ from ralph.project_policy import (
 )
 from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
 from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
-from ralph.project_policy._volatile_evidence import volatile_citations_in_added_lines
+from ralph.project_policy._volatile_evidence import (
+    refreshed_measurement_facts,
+    volatile_citations_in_added_lines,
+)
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
 from ralph.project_policy.preflight import (
@@ -40,6 +43,7 @@ __all__ = [
     "maybe_resolve_schema_upgrade",
     "models",
     "parse_portfolio_toml",
+    "refreshed_measurement_facts",
     "remediation",
     "run_policy_readiness_preflight",
     "seed_project_policy_starters",
