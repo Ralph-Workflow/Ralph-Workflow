@@ -240,6 +240,11 @@ Suite admission, and fixing the production seam.
     test" never means weakening an assertion so a later change can retire it
     as vacuous. Lawful grounds are enumerated in Test optimization and
     retirement; the sole exemption is a quarantine expiry under rule 27.
+    A check whose only oracle compares committed text with a worktree-local
+    or append-only record (a `tmp/` or `.agent/` file, a log, an `*.ndjson`
+    ledger) tests no product behaviour: it is REPLACED by deriving the same
+    verdict from that record at run time (`verification-policy.md`,
+    High-churn evidence), never kept green by re-citing the record.
 
 ## Suite admission
 

@@ -44,6 +44,7 @@ from ralph.pipeline.phase_entry_cleaner import (
 from ralph.policy.models import ROLE_REVIEW
 from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
+from ralph.project_policy._volatile_evidence import volatile_citations_in_added_lines
 from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
@@ -743,6 +744,8 @@ def _render_template_based_prompt(
     }
     variables.update({k: v for k, v in path_vars.items() if v})
     variables["ANALYSIS_FEEDBACK_STATUS"] = analysis_feedback_status
+    if template_name.endswith("development_analysis.jinja"):
+        variables["VOLATILE_EVIDENCE_CITATIONS"] = _cycle_volatile_citations(workspace_root)
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
@@ -1343,6 +1346,16 @@ def _git_diff(workspace_root: Path) -> str:
     if baseline_sha:
         return _git_output(workspace_root, "diff", baseline_sha)
     return _git_output(workspace_root, "diff", "HEAD")
+
+
+def _cycle_volatile_citations(workspace_root: Path) -> str:
+    if not _is_inside_git_repo(workspace_root):
+        return ""
+    baseline_sha = read_cycle_baseline(workspace_root)
+    if not baseline_sha:
+        return ""
+    diff = _git_output(workspace_root, "diff", "-U0", "--no-color", "--no-ext-diff", baseline_sha)
+    return "; ".join(volatile_citations_in_added_lines(diff))
 
 
 def _pending_diff(workspace_root: Path) -> str:

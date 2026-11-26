@@ -15,6 +15,7 @@ _STARTUP_DEFECT_RE = re.compile(
 
 LEGACY_TIME_BUDGET_FINDING_IDS: tuple[str, ...] = (
     f"{markers.ID_TIME_BUDGET}:testing-policy.md:fixed-cap",
+    f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-durable_evidence_rule",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-fast_path_time_budget",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-verification_budget_overage",
     f"{markers.ID_PLACEHOLDER}:verification-policy.md:fact-verification_cost_floor",
@@ -34,7 +35,8 @@ def correct_fixed_time_caps(workspace: Workspace) -> None:
             content += (
                 "\nRALPH-FACT: verification_cost_floor: verified-value"
                 "\nRALPH-FACT: fast_path_time_budget: verified-value"
-                "\nRALPH-FACT: verification_budget_overage: none\n"
+                "\nRALPH-FACT: verification_budget_overage: none"
+                "\nRALPH-FACT: durable_evidence_rule: verified-value\n"
             )
         workspace.write(path, content)
 

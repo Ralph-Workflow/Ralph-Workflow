@@ -29,6 +29,12 @@ Fan out read-only verification across independent criterion groups, one subagent
 Every subagent lead a verdict depends on — passing or failing — is a lead, never evidence by itself: before writing the verdict, reproduce the lead in the main session (re-run the command, or re-read the cited `path:line`) and cite the reproduced result. A lead you did not reproduce is not a verdict; reconcile the reproduced observation with the subagent's report and keep the disagreement if the conflict is real. Reconcile all group findings here in the main session before any verdict is written.
 {{ render_development_analysis_evidence_cue() }}
 
+A red check caused only by committed text citing worktree-local or append-only evidence (a `path:line`, row count, or excerpt of `tmp/`, `.agent/`, a log, or an `*.ndjson`/`*.jsonl`/`*.log` ledger) is not verification debt to re-cite: the actionable fix is to remove the citation and any check that compares committed text with such a record. Never request a change whose only effect is to re-point, recount, or re-date such evidence.
+{% if VOLATILE_EVIDENCE_CITATIONS is defined and VOLATILE_EVIDENCE_CITATIONS %}
+
+Volatile evidence added this cycle (objective, scanned from the cycle diff): {{ VOLATILE_EVIDENCE_CITATIONS }}. Each is a citation of a worktree-local or append-only record committed into the repository. Unless the request explicitly asks for that citation, choose `request_changes` and direct the developer to replace it with durable text (the stage name and a dated, durable source) and to derive any verdict from the local ledger at run time.
+{% endif %}
+
 Treat the unchanged request and its acceptance criteria as authoritative. A plan step is an implementation route, not a new product requirement unless its outcome is an explicit acceptance criterion.
 
 Choose the outcome from fresh evidence, not the developer's status:

@@ -100,6 +100,7 @@ _BRANCH_VALUES: dict[str, tuple[str, ...]] = {
         "- mass deletion: 42 tracked files deleted (count: 42)\n"
         "- protected path overwrite: src/secrets.env modified (path: src/secrets.env)",
     ),
+    "VOLATILE_EVIDENCE_CITATIONS": ("script/verify/profiles.ts: tmp/verify-stages.ndjson:23262",),
     "analysis_feedback_block": ("Analysis feedback block F-1.",),
     "auto_merged_block": ("- `crates/audio/src/lib.rs`",),
     "analysis_feedback_status": ("failed",),

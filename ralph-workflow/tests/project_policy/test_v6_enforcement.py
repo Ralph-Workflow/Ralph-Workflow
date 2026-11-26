@@ -15,8 +15,8 @@ from tests.project_policy.policy_corpus import seed_complete_corpus
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_v6_constants_pinned": (
-        "the policy contract version moved to 2026-11-24.1 so cached READY verdicts are "
-        "re-evaluated against the measured cost-floor time-budget contract"
+        "the policy contract version moved to 2026-11-25.1 so cached READY verdicts are "
+        "re-evaluated against the volatile-evidence citation contract"
     ),
 }
 
@@ -33,7 +33,7 @@ def _make_enforcement_workspace(enforcement_val: str) -> MemoryWorkspace:
 def test_v6_constants_pinned() -> None:
     assert markers.SCHEMA_VERSION == "v6"
     assert markers.POLICY_SCHEMA_MARKER == "<!-- ralph-policy-schema: v6 -->"
-    assert markers.POLICY_CONTRACT_VERSION == "2026-11-24.1"
+    assert markers.POLICY_CONTRACT_VERSION == "2026-11-25.1"
     assert markers.PORTFOLIO_SCHEMA_VERSION == "v3"
     assert markers.ENFORCEMENT_MISSING_FINDING_ID == "RWP-INVENTORY:ENFORCEMENT-MISSING"
     assert markers.ENFORCEMENT_UNKNOWN_ID_FINDING_ID == "RWP-INVENTORY:ENFORCEMENT-UNKNOWN-ID"

@@ -2,6 +2,8 @@
 
 Discover the project's narrowest relevant check and full gate. Run focused
 checks during work and the full gate before completion. Never weaken a gate.
+Never cite volatile evidence (`tmp/`, `.agent/`, logs, `*.ndjson` ledgers) by line, count, or excerpt in a committed file.
+A check red only because such a citation drifted: remove the citation and that check, never re-point or recount it.
 If verification cannot finish, keep diagnosing or repairing it. The rule on when a partial result is
 permitted lives in `shared/_no_exemption_for_failures.j2` — refer to it
 before reporting a partial.

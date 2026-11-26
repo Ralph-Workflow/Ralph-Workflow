@@ -395,3 +395,30 @@ class TestAutoIntegrateCatchup:
             assert worker.is_running
         finally:
             _stop_and_wait(worker)
+
+
+def test_stop_returns_only_after_an_in_flight_tick_has_finished(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def _tick() -> str:
+        entered.set()
+        release.wait(timeout=5.0)
+        finished.set()
+        return catchup.CATCHUP_UP_TO_DATE
+
+    worker = catchup.AutoIntegrateCatchupWorker(
+        _config(), tmp_path, interval_seconds=0.005, tick=_tick
+    )
+    worker.start()
+    assert entered.wait(timeout=2.0)
+    stopped = threading.Event()
+    stopper = threading.Thread(target=lambda: (worker.stop(), stopped.set()), daemon=True)
+    stopper.start()
+
+    assert not stopped.wait(timeout=0.2)
+    release.set()
+    assert stopped.wait(timeout=2.0)
+    assert finished.is_set()
+    assert not worker.is_running

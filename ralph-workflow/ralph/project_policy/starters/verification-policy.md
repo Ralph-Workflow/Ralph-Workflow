@@ -226,7 +226,8 @@ where they decay silently.
    DEVICE is itself the behaviour under test.
    A profile is legitimate only with all five declared here: its command,
    its OWNER, its TRIGGER or SCHEDULE, that it FAILS HARD when it runs, and
-   the DATE IT LAST RAN with the staleness horizon past which it is decayed.
+   the DATE IT LAST RAN, from a durable source (§High-churn evidence), with
+   the staleness horizon past which it is decayed.
    A profile past its horizon with no run evidence belongs in the DELETED
    lane — a check that never runs reports a safety it never verified.
    These categories are the single authoritative list; the testing policy
@@ -307,6 +308,7 @@ RALPH-FACT: required_verification_profiles: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_budget: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_cost_floor: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: fast_path_time_budget: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: durable_evidence_rule: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_budget_overage: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: verification_time_enforcement_mechanism: PROJECT-FACT-UNRESOLVED
 RALPH-FACT: gate_lane_review_cadence_and_owner: PROJECT-FACT-UNRESOLVED
@@ -354,8 +356,26 @@ dated evidence, and reviewable gate results. A reviewer who pulls the change
 must see a single small diff against a known baseline, not a thousand-line
 inventory of auto-generated noise.
 
+Committed files never cite the contents of a volatile record. A line
+number, row count, row excerpt, or `path:line` reference into `tmp/`,
+`.agent/`, a log, or an `*.ndjson`/`*.jsonl`/`*.log` ledger differs in every
+checkout and goes stale on the next run, so keeping it "accurate" is churn,
+not verification. Record a profile's last run as a calendar date with a
+durable source — a CI run id, a committed baseline, or the gate-lane review
+entry — and change it only when that profile actually runs again. When a
+check fails because committed text no longer matches a worktree-local
+record, REPLACE the citation with durable text (the stage or profile name
+and a dated, durable source) and derive any verdict from the local record at
+run time, instead of re-pointing or recounting it. A check whose oracle
+compares committed text with a worktree-local record exercises no product
+behaviour; replacing it with the run-time derivation is not a weakened gate
+(`testing-policy.md` rule 29 names this case).
+
 An agent MUST NOT:
 
+* Commit a change whose only effect is to re-cite, recount, or re-date
+  volatile evidence, or reconcile a committed citation with one checkout's
+  local records.
 * Add a "verification" command that does not exercise every default-gate
   check.
 * Lower the recorded `verification_time_budget` or `fast_path_time_budget`

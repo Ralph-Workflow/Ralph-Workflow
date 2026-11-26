@@ -36,6 +36,7 @@ from ralph.project_policy._scanners import (
     _headings,
 )
 from ralph.project_policy._time_budget_contract import check_fixed_time_caps
+from ralph.project_policy._volatile_evidence import check_volatile_evidence_citations
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import parse_portfolio_toml
 from ralph.workspace.memory import MemoryWorkspace
@@ -358,6 +359,7 @@ def _validate_existing_policy_file(
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     findings.extend(check_fixed_time_caps(content, path, filename))
+    findings.extend(check_volatile_evidence_citations(content, path, filename))
     findings.extend(instruction_surface.check_hidden_unicode(content, path))
     frozen_v = _frozen_schema_version(content)
     file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION

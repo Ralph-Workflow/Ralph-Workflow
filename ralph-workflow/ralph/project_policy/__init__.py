@@ -11,6 +11,7 @@ from ralph.project_policy import (
 )
 from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
 from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
+from ralph.project_policy._volatile_evidence import volatile_citations_in_added_lines
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
 from ralph.project_policy.preflight import (
@@ -45,6 +46,7 @@ __all__ = [
     "set_research_freshness_clock",
     "validate_readiness",
     "validators",
+    "volatile_citations_in_added_lines",
 ]
 
 

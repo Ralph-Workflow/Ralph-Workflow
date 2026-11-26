@@ -93,6 +93,19 @@ def _check_citation_freshness(
     return []
 
 
+_FACT_OUTCOMES: Final[dict[str, str]] = {
+    "durable_evidence_rule": (
+        "record exactly one `RALPH-FACT: durable_evidence_rule: <value>` line stating that "
+        "committed files never cite a worktree-local or append-only record (a `tmp/` or "
+        "`.agent/` file, a log, or an `*.ndjson` ledger) by line, row count, or excerpt, and "
+        "that a profile's last run is a calendar date with a durable source (a CI run id, a "
+        "committed baseline, or the gate-lane review entry); amend any rule in this file that "
+        "asks for a last-run date or receipt so it requires that durable source, and replace "
+        "existing volatile citations rather than re-pointing them"
+    ),
+}
+
+
 def _fact_key(line: str) -> str | None:
     match = re.fullmatch(r"RALPH-FACT:\s*([^:]+):\s*\S.*", line)
     return str(match.group(1)).strip() if match else None
@@ -117,7 +130,9 @@ def _check_required_fact_keys(content: str, path: str, filename: str) -> list[Po
                 missing_evidence=(
                     f"required RALPH-FACT key {key!r} occurs {count} times; expected once"
                 ),
-                required_outcome=(f"record exactly one verified `RALPH-FACT: {key}: <value>` line"),
+                required_outcome=_FACT_OUTCOMES.get(
+                    key, f"record exactly one verified `RALPH-FACT: {key}: <value>` line"
+                ),
             )
         )
     return findings

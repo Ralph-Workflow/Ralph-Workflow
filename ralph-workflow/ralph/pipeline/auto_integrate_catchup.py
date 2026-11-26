@@ -5,7 +5,7 @@ import threading
 from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from git import GitError, Repo
 from loguru import logger
@@ -980,6 +980,9 @@ class _CatchupStallState:
     window_seconds: float
 
 
+_STOP_JOIN_TIMEOUT_SECONDS: Final[float] = 30.0
+
+
 class AutoIntegrateCatchupWorker:
     def __init__(
         self,
@@ -1048,8 +1051,17 @@ class AutoIntegrateCatchupWorker:
         self._thread = thread
         thread.start()
 
-    def stop(self) -> None:
+    def stop(self, *, join_timeout_seconds: float = _STOP_JOIN_TIMEOUT_SECONDS) -> None:
         self._stop_event.set()
+        thread = self._thread
+        if thread is None or thread is threading.current_thread():
+            return
+        thread.join(timeout=join_timeout_seconds)
+        if thread.is_alive():
+            logger.warning(
+                "auto_integrate catch-up worker still finishing a tick {:.0f}s after stop",
+                join_timeout_seconds,
+            )
 
     @property
     def is_running(self) -> bool:
