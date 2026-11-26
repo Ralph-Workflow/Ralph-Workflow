@@ -4,9 +4,17 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogVerdict
 from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.timeout_clock import FakeClock
-from ralph.process.child_liveness import AliveBy
 
 _TICK_SECONDS = 5.0
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_a_tool_call_that_never_returns_is_bounded_by_the_child_wait_ceiling": (
+        "replaced by test_a_command_that_never_returns_is_cut_soon_after_the_longest_command_timeout, "
+        "which tightens the bound from the 30-minute child-wait ceiling to the idle deadline plus "
+        "the longest command timeout, because a command blocked forever on a named pipe kept an "
+        "agent alive for 30 minutes"
+    ),
+}
 
 
 def _run(*, result_at: float | None, horizon: float) -> float | None:
@@ -17,7 +25,7 @@ def _run(*, result_at: float | None, horizon: float) -> float | None:
         corroborator=lambda: CorroborationSnapshot(
             scoped_child_active=False,
             scoped_child_count=0,
-            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            alive_by=None,
         ),
     )
     watchdog.record_invocation_start()
@@ -44,10 +52,10 @@ def test_an_agent_that_goes_quiet_after_its_tool_returned_is_still_killed() -> N
     assert fired_at <= 60.0 + 300.0 + 60.0
 
 
-def test_a_tool_call_that_never_returns_is_bounded_by_the_child_wait_ceiling() -> None:
+def test_a_command_that_never_returns_is_cut_soon_after_the_longest_command_timeout() -> None:
     fired_at = _run(result_at=None, horizon=4000.0)
     assert fired_at is not None
-    assert fired_at <= 300.0 + 1800.0 + 60.0
+    assert fired_at <= 300.0 + 300.0 + 60.0
 
 
 def test_only_command_running_mcp_tools_count_as_an_open_wait() -> None:

@@ -12,3 +12,5 @@ under `.agent/` only when instructed; do not create status Markdown files.
 Other runs and tools share this machine. Stop only processes you started, by
 their process ID; never use `pkill`, `killall` or any kill that matches
 processes by name or pattern.
+Search with `git grep` or `rg`, which skip build output; a recursive
+`grep -r` over the tree can block forever on a named pipe.

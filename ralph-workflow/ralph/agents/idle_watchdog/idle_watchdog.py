@@ -16,7 +16,7 @@ from ralph.agents.idle_watchdog._evidence_tier import (
     EvidenceSummary,
 )
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-from ralph.agents.idle_watchdog.command_tools import runs_a_command
+from ralph.agents.idle_watchdog.command_tools import OPEN_COMMAND_GRACE_SECONDS, runs_a_command
 from ralph.process.child_liveness import AliveBy
 
 from ._active_branch import (
@@ -1047,9 +1047,16 @@ class IdleWatchdog:
         idle_elapsed: float,
         classify_quiet: Callable[[], AgentExecutionState],
     ) -> WatchdogVerdict:
+        idle_timeout = self._config.idle_timeout_seconds
+        open_command_counts = (
+            self._tool_call_open
+            and idle_timeout is not None
+            and idle_elapsed < idle_timeout + OPEN_COMMAND_GRACE_SECONDS
+        )
+
         def classify_with_open_tool_call() -> AgentExecutionState:
             state = classify_quiet()
-            if state is AgentExecutionState.ACTIVE and self._tool_call_open:
+            if state is AgentExecutionState.ACTIVE and open_command_counts:
                 return AgentExecutionState.WAITING_ON_CHILD
             return state
 
