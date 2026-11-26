@@ -79,6 +79,7 @@ from ralph.agents.invoke._tool_call_extraction import (
     extract_tool_call_from_activity_signal as _extract_tool_call_from_activity_signal_impl,
 )
 from ralph.agents.invoke._types import AgentRunCtx, ProcessReaderCtx
+from ralph.agents.invoke.agent_search_env import apply_safe_search_env
 from ralph.agents.invoke.attempt_supervision import (
     AttemptSupervisor,
     BrokenAgentTimeoutObserved,
@@ -606,6 +607,7 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
             env.pop(marker, None)
     env.pop(_BROKER_ENV_VAR_NAME, None)
     scrub_activity_relay_controls(env)
+    apply_safe_search_env(env)
     return env
 
 

@@ -2612,6 +2612,13 @@ ralph.agents.invoke._completion_verdicts
    :members:
    :show-inheritance:
 
+ralph.agents.invoke.agent_search_env
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.agent_search_env
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke.busy_descendants
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
