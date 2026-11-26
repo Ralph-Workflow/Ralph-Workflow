@@ -648,9 +648,13 @@ def audit_modules(
     return [v for v in violations if not _is_transitional_allowed(v)]
 
 
+def _is_skipped_dir(name: str) -> bool:
+    return name in _SKIP_DIR_NAMES or name.startswith(("wt-", "worktree-agent-"))
+
+
 def _iter_scannable_files(repo_root: Path) -> Iterator[tuple[str, Path]]:
     ws = FsWorkspace(repo_root)
-    for rel_str in sorted(ws.iter_files("")):
+    for rel_str in sorted(ws.walk_files("", skip_dir=_is_skipped_dir)):
         rel_path = PurePath(rel_str)
         if any(part in _SKIP_DIR_NAMES for part in rel_path.parts):
             continue

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 from collections import deque
 from pathlib import Path
@@ -365,3 +367,26 @@ def test_landing_a_new_tree_still_runs_the_gate(tmp_git_repo: Path, tmp_path: Pa
     _integrate(feature, target)
 
     assert runs.read_text(encoding="utf-8").count("run") == 1
+
+
+@pytest.mark.timeout_seconds(30)
+def test_a_process_the_gate_command_detaches_is_reaped_when_the_gate_ends(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    pid_file = tmp_path / "detached.pid"
+    fact = (
+        "RALPH-FACT: authoritative_verify_command: "
+        f"`setsid sleep 300 > /dev/null 2>&1 < /dev/null & echo $! > {pid_file}`\n"
+    )
+    target, feature, _bare = _feature(tmp_git_repo, tmp_path, fact=fact)
+    _commit(feature, "work.txt", "work\n", "this run's own commit")
+
+    _integrate(feature, target)
+
+    detached = int(pid_file.read_text(encoding="utf-8").strip())
+    alive = (
+        _run(feature, "rev-parse", "HEAD").returncode == 0 and Path(f"/proc/{detached}").exists()
+    )
+    if alive:
+        os.kill(detached, signal.SIGKILL)
+    assert not alive, "a process the gate command detached outlived the gate"

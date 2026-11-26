@@ -12,9 +12,11 @@ from loguru import logger
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-__all__ = ["reap_session_orphans"]
+__all__ = ["PROCESS_SCOPE_ENV", "reap_scope_orphans", "reap_session_orphans"]
 
 _SESSION_ENV = b"MCP_SESSION_ID="
+PROCESS_SCOPE_ENV = "RALPH_PROCESS_SCOPE"
+_SCOPE_ENV = PROCESS_SCOPE_ENV.encode() + b"="
 _OWNER_ENV = b"RALPH_MCP_OWNER_PID="
 _POLL_SECONDS = 0.1
 
@@ -57,7 +59,7 @@ def _parent_of(proc_root: Path, pid: int) -> int | None:
 
 
 def _psutil_process_table(
-    session_id: str, owner_pid: int
+    marker_name: str, session_id: str, owner_pid: int
 ) -> tuple[dict[int, int | None], list[int]]:
     parents: dict[int, int | None] = {}
     roots: list[int] = []
@@ -70,7 +72,7 @@ def _psutil_process_table(
         except (psutil.Error, OSError):
             continue
         if (
-            environment.get("MCP_SESSION_ID") == session_id
+            environment.get(marker_name) == session_id
             and environment.get("RALPH_MCP_OWNER_PID", wanted_owner) == wanted_owner
         ):
             roots.append(pid)
@@ -112,16 +114,63 @@ def reap_session_orphans(
     sleep: Callable[[float], None] = time.sleep,
     grace_seconds: float = 5.0,
 ) -> int:
+    return _reap(
+        _SESSION_ENV,
+        session_id,
+        owner_pid=owner_pid,
+        proc_root=proc_root,
+        signal_fn=signal_fn,
+        alive_fn=alive_fn,
+        sleep=sleep,
+        grace_seconds=grace_seconds,
+    )
+
+
+def reap_scope_orphans(
+    scope_id: str,
+    *,
+    owner_pid: int,
+    proc_root: Path = Path("/proc"),
+    signal_fn: Callable[[int, int], None] = os.kill,
+    alive_fn: Callable[[int], bool] = _default_alive,
+    sleep: Callable[[float], None] = time.sleep,
+    grace_seconds: float = 5.0,
+) -> int:
+    return _reap(
+        _SCOPE_ENV,
+        scope_id,
+        owner_pid=owner_pid,
+        proc_root=proc_root,
+        signal_fn=signal_fn,
+        alive_fn=alive_fn,
+        sleep=sleep,
+        grace_seconds=grace_seconds,
+    )
+
+
+def _reap(
+    marker: bytes,
+    session_id: str,
+    *,
+    owner_pid: int,
+    proc_root: Path = Path("/proc"),
+    signal_fn: Callable[[int, int], None] = os.kill,
+    alive_fn: Callable[[int], bool] = _default_alive,
+    sleep: Callable[[float], None] = time.sleep,
+    grace_seconds: float = 5.0,
+) -> int:
     if not session_id:
         return 0
     if proc_root.is_dir():
-        session = _SESSION_ENV + session_id.encode()
+        session = marker + session_id.encode()
         owner = _OWNER_ENV + str(owner_pid).encode()
         pids = _pids(proc_root)
         parents = {pid: _parent_of(proc_root, pid) for pid in pids}
         roots = [pid for pid in pids if _carries_session(proc_root, pid, session, owner)]
     else:
-        parents, roots = _psutil_process_table(session_id, owner_pid)
+        parents, roots = _psutil_process_table(
+            marker.decode().removesuffix("="), session_id, owner_pid
+        )
     targets = _with_descendants(roots, parents) - _protected(parents)
     if not targets:
         return 0

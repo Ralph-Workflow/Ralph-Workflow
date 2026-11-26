@@ -66,3 +66,26 @@ def test_iter_files_does_not_descend_into_other_filesystems(
     assert "src/kept.py" in files
     assert "tmp/rootfs/etc.conf" in files
     assert not any(f.startswith("tmp/rootfs/proc") for f in files)
+
+
+def test_walk_files_never_descends_into_a_skipped_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "kept.md").write_text("x")
+    (tmp_path / "wt-02-sibling" / "deep").mkdir(parents=True)
+    (tmp_path / "wt-02-sibling" / "deep" / "skipped.md").write_text("x")
+    visited: list[str] = []
+    real_walk = os.walk
+
+    def recording_walk(top: str) -> Iterator[tuple[str, list[str], list[str]]]:
+        for entry in real_walk(top):
+            visited.append(entry[0])
+            yield entry
+
+    monkeypatch.setattr(fs_module.os, "walk", recording_walk)
+
+    files = list(FsWorkspace(tmp_path).walk_files("", skip_dir=lambda name: name.startswith("wt-")))
+
+    assert files == ["src/kept.md"]
+    assert not [root for root in visited if "wt-02-sibling" in root]

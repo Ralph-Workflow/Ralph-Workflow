@@ -17,7 +17,7 @@ MAX_READ_BYTES: int = 5_000_000
 MAX_READ_LINES_BYTES: int = MAX_READ_BYTES
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
     from io import BufferedReader, TextIOWrapper
 
 
@@ -387,7 +387,9 @@ class FsWorkspace:
     def iter_files(self, base: str) -> tuple[str, ...]:
         return tuple(self.walk_files(base))
 
-    def walk_files(self, base: str) -> Iterator[str]:
+    def walk_files(
+        self, base: str, *, skip_dir: Callable[[str], bool] | None = None
+    ) -> Iterator[str]:
         base_abs = self._abs(base)
         if not base_abs.is_dir() or self._is_skipped_traversal_base(base_abs):
             return
@@ -399,6 +401,7 @@ class FsWorkspace:
                 d
                 for d in dirs
                 if d not in RECURSIVE_SKIP_DIRECTORY_NAMES
+                and (skip_dir is None or not skip_dir(d))
                 and _device_of(Path(root) / d) == root_dev
             ]
             rel_root = Path(root).relative_to(self._root)

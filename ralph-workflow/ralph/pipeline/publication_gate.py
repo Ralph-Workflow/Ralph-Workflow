@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
 import re
+import uuid
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -22,6 +25,7 @@ from ralph.pipeline.gate_declaration import GateDeclaration
 from ralph.pipeline.publication_block import PublicationBlock
 from ralph.pipeline.publication_gate_run import PublicationGateRun
 from ralph.pipeline.publication_gate_slots import publication_gate_slot
+from ralph.process.session_orphan_reaper import PROCESS_SCOPE_ENV, reap_scope_orphans
 from ralph.project_policy.markers import CANONICAL_DIR, FACT_MARKER
 
 if TYPE_CHECKING:
@@ -317,14 +321,21 @@ def _invocation_error(run: PublicationGateRun) -> str:
 
 
 def _run_gate_command(command: str, cwd: Path, timeout_seconds: float) -> PublicationGateRun:
+    scope = f"gate-{uuid.uuid4().hex[:12]}"
+    scope_env = {PROCESS_SCOPE_ENV: scope}
     try:
         result = run_process(
             "sh",
             ("-c", command),
-            options=ProcessRunOptions(cwd=cwd, timeout=timeout_seconds, label="publication-gate"),
+            options=ProcessRunOptions(
+                cwd=cwd, env=scope_env, timeout=timeout_seconds, label="publication-gate"
+            ),
         )
     except ProcessExecutionError as exc:
         return PublicationGateRun(exit_code=_TIMEOUT_EXIT_CODE, output=str(exc), timed_out=True)
+    finally:
+        with contextlib.suppress(OSError, RuntimeError, ValueError):
+            reap_scope_orphans(scope, owner_pid=os.getpid())
     return PublicationGateRun(
         exit_code=result.returncode,
         output=f"{result.stdout}{result.stderr}",

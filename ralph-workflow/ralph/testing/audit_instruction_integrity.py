@@ -204,10 +204,16 @@ def advisory_rules() -> tuple[tuple[str, str], ...]:
     )
 
 
+def _is_skipped_dir(name: str) -> bool:
+    return name in _SKIP_DIRS or name.startswith(("wt-", "worktree-agent-"))
+
+
 def _audited_relative_paths_uncached(root: Path) -> tuple[Path, ...]:
     return tuple(
         relative
-        for relative in sorted(Path(entry) for entry in FsWorkspace(root).iter_files(""))
+        for relative in sorted(
+            Path(entry) for entry in FsWorkspace(root).walk_files("", skip_dir=_is_skipped_dir)
+        )
         if not any(part in _SKIP_DIRS for part in relative.parts)
         and not any(part.startswith(("wt-", "worktree-agent-")) for part in relative.parts)
     )
