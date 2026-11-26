@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.project_policy import analysis, evidence, markers, remediation, validators
@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 EmitFn = Callable[[str], None]
+
+
+MAX_MISSING_ANALYSIS_ARTIFACTS: Final[int] = 2
 
 
 def _noop_emit(message: str) -> None:
@@ -69,6 +72,7 @@ def run_policy_pipeline(
     feedback: AnalysisDecision | None = None
     blessed = False
     stalled_attempts = 0
+    missing_artifacts = 0
 
     try:
         while phase != TERMINAL_DONE:
@@ -113,6 +117,23 @@ def run_policy_pipeline(
                 emit=emit,
                 assessment=current_assessment,
             )
+            if decision.artifact_missing:
+                missing_artifacts += 1
+                emit(
+                    "project-policy-readiness: the analysis agent submitted no usable decision "
+                    f"({decision.summary}); "
+                    + (
+                        "retrying the review"
+                        if missing_artifacts < MAX_MISSING_ANALYSIS_ARTIFACTS
+                        else "ending readiness without a remediation round"
+                    )
+                )
+                phase = (
+                    PHASE_ANALYSIS
+                    if missing_artifacts < MAX_MISSING_ANALYSIS_ARTIFACTS
+                    else TERMINAL_DONE
+                )
+                continue
             route = resolve_decision(decision.status)
             if route.reset_loop:
                 iteration = 0

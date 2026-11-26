@@ -11,6 +11,7 @@ class AnalysisDecision:
     summary: str = ""
     what_came_up_short: list[str] = field(default_factory=list[str])
     how_to_fix: list[str] = field(default_factory=list[str])
+    artifact_missing: bool = False
 
     def is_completed(self) -> bool:
         return self.status == DECISION_COMPLETED

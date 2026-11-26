@@ -137,6 +137,7 @@ def read_analysis_decision(workspace: Workspace) -> AnalysisDecision:
         return AnalysisDecision(
             status=DECISION_FAILED,
             summary="analysis agent submitted no decision artifact",
+            artifact_missing=True,
         )
     try:
         artifact = load_phase_artifact(workspace, ANALYSIS_ARTIFACT_REL_PATH)
@@ -145,6 +146,7 @@ def read_analysis_decision(workspace: Workspace) -> AnalysisDecision:
         return AnalysisDecision(
             status=DECISION_FAILED,
             summary=f"analysis decision artifact is unusable: {exc}",
+            artifact_missing=True,
         )
 
     status = str(content.get("status", "")).strip().lower()
