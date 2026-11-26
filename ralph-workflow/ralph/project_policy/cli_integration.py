@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from typing import TYPE_CHECKING
@@ -158,12 +157,7 @@ _SCHEMA_QUESTION: str = "What should Ralph Workflow do with these policy files?"
 
 
 def _default_is_tty() -> bool:
-    try:
-        stdin_tty: bool = sys.stdin.isatty()
-        stdout_tty: bool = sys.stdout.isatty()
-    except (OSError, ValueError, AttributeError):
-        return False
-    return stdin_tty and stdout_tty
+    return _prompt_ui.default_is_tty()
 
 
 def _ask(

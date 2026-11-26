@@ -62,8 +62,8 @@ def _maybe_resolve_schema_upgrade(
     workspace: Workspace,
     emit: EmitFn,
     *,
-    select: _prompt_ui.SelectFn | None,
-    is_tty: Callable[[], bool] | None,
+    select: _prompt_ui.SelectFn | None = None,
+    is_tty: Callable[[], bool] | None = None,
 ) -> bool:
     paths = [
         f"{policy_markers.CANONICAL_DIR}{name}"
@@ -120,7 +120,7 @@ def _maybe_resolve_schema_upgrade(
         return False
     if not outdated:
         return True
-    tty_check = is_tty if is_tty is not None else lambda: False
+    tty_check = is_tty if is_tty is not None else _prompt_ui.default_is_tty
     if not tty_check():
         emit(
             "Policy schema choice required; rerun interactively to upgrade "

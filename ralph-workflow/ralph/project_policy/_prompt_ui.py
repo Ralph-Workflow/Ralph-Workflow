@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib import import_module
@@ -69,4 +70,13 @@ def select(question: str, choices: Sequence[PromptChoice], default: str) -> str:
     return default
 
 
-__all__ = ["PromptChoice", "SelectFn", "select"]
+def default_is_tty() -> bool:
+    try:
+        stdin_tty: bool = sys.stdin.isatty()
+        stdout_tty: bool = sys.stdout.isatty()
+    except (OSError, ValueError, AttributeError):
+        return False
+    return stdin_tty and stdout_tty
+
+
+__all__ = ["PromptChoice", "SelectFn", "default_is_tty", "select"]
