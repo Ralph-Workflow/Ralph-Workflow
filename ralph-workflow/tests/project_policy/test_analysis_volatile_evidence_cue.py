@@ -132,3 +132,15 @@ def test_analysis_prompt_lists_a_budget_figure_the_cycle_re_recorded(tmp_git_rep
 
     assert "verification-policy.md: verification_budget_overage" in rendered
     assert "Budget measurements re-recorded this cycle" in rendered
+
+
+def test_the_developer_is_told_before_editing_not_to_re_record_one_runs_timing() -> None:
+    from ralph.prompts.template_registry import load_partial_templates, packaged_template_root
+
+    partials = load_partial_templates([packaged_template_root()])
+    source = next(
+        text for key, text in partials.items() if key.endswith("_verification_commitments")
+    )
+
+    assert "re-record one run's timing" in source
+    assert "replace the check's oracle" in source
