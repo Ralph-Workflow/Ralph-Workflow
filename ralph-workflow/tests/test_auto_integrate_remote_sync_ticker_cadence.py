@@ -30,6 +30,21 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_agent_phase_never_defers_the_run_checkout_or_the_target": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+    "test_the_checkout_move_lands_on_the_first_tick_inside_the_phase": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+    "test_trunk_layout_agent_phase_advances_the_target_and_defers_only_publication": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+    "test_target_owned_by_another_checkout_advances_during_the_phase": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+}
+
 _LOCAL = "a" * 40
 _REMOTE = "b" * 40
 _OTHER = "c" * 40
@@ -415,7 +430,7 @@ def _run(worker: AutoIntegrateCatchupWorker, ticks: _Ticks, count: int) -> None:
     worker.run()
 
 
-def test_agent_phase_defers_the_run_checkout_but_the_target_keeps_syncing(
+def test_agent_phase_never_defers_the_run_checkout_or_the_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     run_checkout = tmp_path / "wt-feature"
@@ -431,13 +446,13 @@ def test_agent_phase_defers_the_run_checkout_but_the_target_keeps_syncing(
             _config(), run_checkout, remote_client=remote, ledger=ledger, agent_phases=phases
         )
 
-    assert outcome == catchup.CATCHUP_DEFERRED_AGENT_PHASE
-    assert checkouts.checkout_moves == []
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert checkouts.checkout_moves == [(run_checkout, _REMOTE)]
     assert checkouts.target_moves == [_REMOTE]
     assert remote.fetches == 1
 
 
-def test_first_tick_after_the_phase_lands_the_deferred_checkout_move(
+def test_the_checkout_move_lands_on_the_first_tick_inside_the_phase(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     run_checkout = tmp_path / "wt-feature"
@@ -450,19 +465,13 @@ def test_first_tick_after_the_phase_lands_the_deferred_checkout_move(
     worker = _worker(run_checkout, phases, remote, tmp_path, ticks)
 
     with phases.agent_phase(run_checkout):
-        _run(worker, ticks, 3)
+        _run(worker, ticks, 1)
         assert worker.stall_state is None
-        assert checkouts.checkout_moves == []
+        assert checkouts.checkout_moves == [(run_checkout, _REMOTE)]
         assert checkouts.target_moves == [_REMOTE]
-        assert remote.fetches == 3
-
-    _run(worker, ticks, 1)
-
-    assert checkouts.checkout_moves == [(run_checkout, _REMOTE)]
-    assert worker.stall_state is None
 
 
-def test_trunk_layout_agent_phase_defers_the_target_and_its_publication(
+def test_trunk_layout_agent_phase_advances_the_target_and_defers_only_publication(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     run_checkout = tmp_path / "trunk"
@@ -480,7 +489,7 @@ def test_trunk_layout_agent_phase_defers_the_target_and_its_publication(
 
     with phases.agent_phase(run_checkout):
         _run(worker, ticks, 2)
-        assert checkouts.target_moves == []
+        assert checkouts.target_moves == [_REMOTE]
         assert checkouts.publications == 0
         assert remote.fetches == 2
         assert worker.stall_state is None
@@ -511,9 +520,9 @@ def test_target_owned_by_another_checkout_advances_during_the_phase(
             agent_phases=phases,
         )
 
-    assert outcome == catchup.CATCHUP_DEFERRED_AGENT_PHASE
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
     assert checkouts.target_moves == [_REMOTE]
-    assert checkouts.checkout_moves == []
+    assert checkouts.checkout_moves == [(run_checkout, _REMOTE)]
 
 
 @pytest.mark.parametrize("failure", [RuntimeError("agent crashed"), KeyboardInterrupt()])

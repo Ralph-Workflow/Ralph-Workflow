@@ -33,6 +33,12 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase and with uncommitted edits present, so agents always work on the newest code; only a git operation in progress defers it and git merge --ff-only protects the edits"
+    ),
+    "test_ticker_advances_a_dirty_target_owner_keeping_its_uncommitted_edits": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase and with uncommitted edits present, so agents always work on the newest code; only a git operation in progress defers it and git merge --ff-only protects the edits"
+    ),
     "session-scoped remote-sync topology templates": (
         "each real-git case still starts from the same bare origin, feature worktree, "
         "writer clone, and remote tip; only the immutable template is built once per "
@@ -525,13 +531,9 @@ def test_post_commit_on_target_branch_fast_forwards_reconciles_and_ticker_syncs(
         _run_ticks(_config(), topo.clone, agent_phases=phases)
 
         assert _git(topo.clone, "rev-parse", f"refs/remotes/origin/{_TARGET}") == first_remote
-        assert topo.ref(_TARGET) == before
-        assert not (topo.clone / "remote.txt").exists()
-
-    _run_ticks(_config(), topo.clone, agent_phases=phases)
-
-    assert topo.ref(_TARGET) == first_remote
-    assert (topo.clone / "remote.txt").exists()
+        assert topo.ref(_TARGET) == first_remote
+        assert topo.ref(_TARGET) != before
+        assert (topo.clone / "remote.txt").exists()
 
     second_remote = topo.push_remote_advance("remote2.txt")
     _post_commit(_config(), topo.clone)
@@ -626,7 +628,9 @@ def test_ticker_syncs_target_even_when_run_checkout_is_detached(tmp_path: Path) 
     assert topo.ref(_TARGET) == remote_sha
 
 
-def test_ticker_refuses_dirty_target_owner_then_retries_once_clean(tmp_path: Path) -> None:
+def test_ticker_advances_a_dirty_target_owner_keeping_its_uncommitted_edits(
+    tmp_path: Path,
+) -> None:
     topo = _build(tmp_path)
     before = topo.ref(_TARGET)
     remote_sha = topo.push_remote_advance()
@@ -640,13 +644,9 @@ def test_ticker_refuses_dirty_target_owner_then_retries_once_clean(tmp_path: Pat
 
     _run_ticks(_config(), topo.feature)
 
-    assert topo.ref(_TARGET) == before
-    assert (topo.clone / "seed.txt").read_text(encoding="utf-8") == "uncommitted edit\n"
-
-    (topo.clone / "seed.txt").write_text("seed\n", encoding="utf-8")
-    _run_ticks(_config(), topo.feature)
-
     assert topo.ref(_TARGET) == remote_sha
+    assert (topo.clone / "seed.txt").read_text(encoding="utf-8") == "uncommitted edit\n"
+    assert _git(topo.clone, "stash", "list") == ""
 
 
 def test_ticker_leaves_the_agent_checkout_alone_mid_phase_but_syncs_main(

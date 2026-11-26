@@ -10,6 +10,12 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_remote_ahead_advances_a_dirty_linked_target_owner_keeping_its_edits": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+}
+
 _TARGET = "main"
 _FEATURE = "feature"
 
@@ -160,8 +166,10 @@ def test_remote_ahead_advances_clean_linked_target_owner_by_strict_ff(tmp_path: 
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(20)
-def test_remote_ahead_leaves_dirty_linked_target_owner_unchanged(tmp_path: Path) -> None:
-    repo, _bare, _remote_sha = _repo_with_remote_ahead(tmp_path)
+def test_remote_ahead_advances_a_dirty_linked_target_owner_keeping_its_edits(
+    tmp_path: Path,
+) -> None:
+    repo, _bare, remote_sha = _repo_with_remote_ahead(tmp_path)
     feature_owner = tmp_path / "feature-owner"
     assert _run(repo, "branch", _FEATURE).returncode == 0
     assert _run(repo, "worktree", "add", str(feature_owner), _FEATURE).returncode == 0
@@ -174,10 +182,11 @@ def test_remote_ahead_leaves_dirty_linked_target_owner_unchanged(tmp_path: Path)
         _build_config(remote_enabled=True), feature_owner
     )
 
-    assert outcome == catchup.CATCHUP_REFUSED
-    assert _head_sha(repo) == target_before
-    assert _head_sha(feature_owner) == feature_before
-    assert _run(repo, "write-tree").stdout.strip() == index_before
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert _head_sha(repo) == remote_sha
+    assert _head_sha(repo) != target_before
+    assert index_before
+    assert _head_sha(feature_owner) in {feature_before, remote_sha}
     assert (repo / "seed.txt").read_text(encoding="utf-8") == "dirty\n"
 
 

@@ -18,6 +18,12 @@ from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dirty_worktree_still_attempts_the_fast_forward": (
+        "user requirement: catch-up fast-forwards whenever a fast-forward is possible, in any phase, so agents always work on the newest code; only a git operation already in progress defers it, and git merge --ff-only itself protects uncommitted edits"
+    ),
+}
+
 _TARGET_SHA = "b" * 40
 _FEATURE_SHA = "a" * 40
 
@@ -202,11 +208,13 @@ class TestAutoIntegrateCatchup:
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
         assert messages == ["auto_integrate catch-up: fast-forwarded the checkout onto the target"]
 
-    def test_dirty_worktree(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_dirty_worktree_still_attempts_the_fast_forward(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         ff_calls = _open_all_gates(monkeypatch, clean=False)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
-        assert outcome == catchup.CATCHUP_DIRTY
-        assert ff_calls == []
+        assert outcome == catchup.CATCHUP_FAST_FORWARDED
+        assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
     def test_target_unreadable(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _open_all_gates(monkeypatch, target_sha=None)

@@ -296,8 +296,8 @@ def attempt_catchup_fast_forward(
     remote_failed = remote_outcome not in (None, CATCHUP_FAST_FORWARDED)
     if remote_failed or current is None or current == resolved_target:
         return remote_outcome or (CATCHUP_NOT_ON_BRANCH if current is None else CATCHUP_ON_TARGET)
-    if phases.is_active(root):
-        return CATCHUP_DEFERRED_AGENT_PHASE
+    if _git_operation_in_progress(root):
+        return CATCHUP_DEFERRED_GIT_OPERATION
     seam_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     return _fast_forward_if_strictly_behind(
         root,
@@ -588,11 +588,9 @@ def _observe_remote_target(
     verdict, owner = worktree_lookup(primary_root, target)
     if verdict == WORKTREE_QUERY_FAILED:
         return None, f"{CATCHUP_UNKNOWN}; target={target}@{remote}"
-    if verdict == WORKTREE_FOUND and owner is not None:
-        if agent_phases.is_active(owner):
-            return None, CATCHUP_DEFERRED_AGENT_PHASE
-        if not _worktree_is_clean(owner):
-            return None, CATCHUP_REFUSED
+    del agent_phases
+    if verdict == WORKTREE_FOUND and owner is not None and _git_operation_in_progress(owner):
+        return None, CATCHUP_DEFERRED_GIT_OPERATION
     return remote_sha, ""
 
 
@@ -714,15 +712,14 @@ def _mutation_refusal(
     root: Path, target: str, current: str, *, remote: str | None, agent_active: bool
 ) -> str:
 
-    if agent_active:
-        return CATCHUP_DEFERRED_AGENT_PHASE
-    if not _worktree_is_clean(root):
-        return CATCHUP_DIRTY
+    del agent_active
+    if _git_operation_in_progress(root):
+        return CATCHUP_DEFERRED_GIT_OPERATION
     if not _still_safe_to_merge(root, current):
         return CATCHUP_REFUSED
     if (root / ".git").exists():
         action = decide_seam_action(
-            root, record=read_record(root), agent_active=agent_active, target=target, remote=remote
+            root, record=read_record(root), agent_active=False, target=target, remote=remote
         )
         if isinstance(action, RecordFactOutcome):
             return f"{CATCHUP_REFUSED}; owner escalated {action.value} through the cleanup ladder"

@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from git import Actor, Repo
+
+from ralph.config.models import UnifiedConfig
+from ralph.git.git_command_queue import route_git_method
+from ralph.pipeline.auto_integrate_catchup import (
+    CATCHUP_DEFERRED_GIT_OPERATION,
+    CATCHUP_FAST_FORWARDED,
+    AgentPhaseActivity,
+    attempt_catchup_fast_forward,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(15)]
+
+_ACTOR = Actor("Ralph Test", "test@ralph.internal")
+
+
+def _config() -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_remote_enabled": False,
+                "auto_integrate_target": "main",
+            }
+        }
+    )
+
+
+def _commit(repo: Repo, message: str) -> str:
+    route_git_method(repo, "add", ("-A",))
+    route_git_method(repo, "commit", ("-q", "-m", message))
+    return str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
+
+
+def _feature_behind_main(tmp_path: Path) -> tuple[Path, Repo, str]:
+    root = tmp_path / "project"
+    root.mkdir()
+    repo = Repo.init(root, initial_branch="main")
+    with repo.config_writer() as config:
+        config.set_value("user", "name", _ACTOR.name)
+        config.set_value("user", "email", _ACTOR.email)
+    (root / "app.txt").write_text("v1\n", encoding="utf-8")
+    (root / "notes.txt").write_text("notes\n", encoding="utf-8")
+    _commit(repo, "base")
+    feature = tmp_path / "wt-feature"
+    route_git_method(repo, "worktree", ("add", "-q", "-b", "feature", str(feature)))
+    (root / "app.txt").write_text("v2\n", encoding="utf-8")
+    newest = _commit(repo, "main moves ahead")
+    return feature, Repo(feature), newest
+
+
+def _head(repo: Repo) -> str:
+    return str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
+
+
+def test_a_behind_checkout_fast_forwards_while_an_agent_phase_is_active(
+    tmp_path: Path,
+) -> None:
+    feature, feature_repo, newest = _feature_behind_main(tmp_path)
+    phases = AgentPhaseActivity()
+
+    with phases.agent_phase(feature):
+        outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=phases)
+
+    assert outcome == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newest
+    assert (feature / "app.txt").read_text(encoding="utf-8") == "v2\n"
+
+
+def test_uncommitted_agent_edits_on_other_files_do_not_block_the_fast_forward(
+    tmp_path: Path,
+) -> None:
+    feature, feature_repo, newest = _feature_behind_main(tmp_path)
+    (feature / "notes.txt").write_text("agent is editing this\n", encoding="utf-8")
+    phases = AgentPhaseActivity()
+
+    with phases.agent_phase(feature):
+        outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=phases)
+
+    assert outcome == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newest
+    assert (feature / "notes.txt").read_text(encoding="utf-8") == "agent is editing this\n"
+
+
+def test_uncommitted_edits_the_fast_forward_would_overwrite_are_never_touched(
+    tmp_path: Path,
+) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    before = _head(feature_repo)
+    (feature / "app.txt").write_text("agent edit in progress\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome != CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == before
+    assert (feature / "app.txt").read_text(encoding="utf-8") == "agent edit in progress\n"
+
+
+def test_a_git_operation_in_progress_is_the_one_thing_that_defers_it(tmp_path: Path) -> None:
+    feature, feature_repo, _newest = _feature_behind_main(tmp_path)
+    before = _head(feature_repo)
+    git_dir = feature / ".git"
+    worktree_git_dir = (
+        git_dir.read_text(encoding="utf-8").split(":", 1)[1].strip()
+        if git_dir.is_file()
+        else str(git_dir)
+    )
+    from pathlib import Path as _Path
+
+    (_Path(worktree_git_dir) / "MERGE_HEAD").write_text(before + "\n", encoding="utf-8")
+
+    outcome = attempt_catchup_fast_forward(_config(), feature, agent_phases=AgentPhaseActivity())
+
+    assert outcome == CATCHUP_DEFERRED_GIT_OPERATION
+    assert _head(feature_repo) == before
