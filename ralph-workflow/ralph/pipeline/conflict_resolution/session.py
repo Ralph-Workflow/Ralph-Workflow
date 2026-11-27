@@ -41,12 +41,13 @@ from ralph.pipeline.effect_executor import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.resolution_outcome import ResolvedOutcome, RetryLaterOutcome
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, Cooldown
 from ralph.recovery.attempt_facts import AttemptFacts
 from ralph.recovery.attribution import _NO_RULE_FIRED_REASON
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.failure_classifier import typed_outcome_reason
+from ralph.recovery.unavailability_reason import PROVIDER_UNAVAILABILITY_REASONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -517,7 +518,7 @@ def invoke_resolution_agent(
     if attempt.event != PipelineEvent.AGENT_SUCCESS:
         failure_evidence = _failed_attempt_evidence(session, agent_name)
         _record_attempt_failure(session, failure_evidence)
-        _record_attempt_without_agent_work(session)
+        _record_attempt_without_agent_work(session, agent_name)
         return _failed_invocation_outcome(
             RuntimeError(failure_evidence),
             session,
@@ -614,8 +615,23 @@ def _candidate_cannot_be_launched(
     return False
 
 
-def _record_attempt_without_agent_work(session: ResolutionSession | None) -> None:
-    if session is None or session.last_attempt_saw_activity:
+def _refused_by_its_provider(session: ResolutionSession, agent_name: str) -> bool:
+    controller = session.recovery_controller
+    if controller is None:
+        return False
+    status = controller.agent_eligibility(PHASE_RESOLUTION, agent_name)
+    return isinstance(status, Cooldown) and status.reason in PROVIDER_UNAVAILABILITY_REASONS
+
+
+def _record_attempt_without_agent_work(session: ResolutionSession | None, agent_name: str) -> None:
+    if session is None:
+        return
+    if _refused_by_its_provider(session, agent_name):
+        session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        session.last_failure_cause = ResolutionFailureCause.NONE
+        session.charge_conflict_budget = False
+        return
+    if session.last_attempt_saw_activity:
         return
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     if session.terminal_reason is None:

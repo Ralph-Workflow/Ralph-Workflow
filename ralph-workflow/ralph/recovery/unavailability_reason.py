@@ -35,6 +35,15 @@ AGENT_EXIT_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
 )
 
 
+PROVIDER_UNAVAILABILITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
+    {
+        UnavailabilityReason.OUT_OF_CREDITS,
+        UnavailabilityReason.PROVIDER_UNAVAILABLE,
+        UnavailabilityReason.AUTH_CONFIG,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ReasonBackoffPolicy:
     base_backoff_ms: int
