@@ -2,6 +2,8 @@
 {% from 'shared/_skill_cues.j2' import render_policy_remediation_analysis_failures_cue, render_policy_remediation_analysis_gates_cue %}
 Judge the policy build system with fresh evidence and submit one decision artifact.
 
+The remediation agent is a build engineer: its job is guard rails that enforce the policy, not a passing build. Mark the pass `not met` when it edited product code or tests to turn a gate green, when a deterministic guard's Enforcement cell names a command without a demonstrated failure on a seeded violation, or when a guard's protected outcome is narrower than the bundled starter's. Product violations a working guard rail reports are the build working: record them, never require them fixed here.
+
 {% from 'shared/_skill_cues.j2' import render_policy_remediation_analysis_gates_cue, render_policy_remediation_analysis_failures_cue %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -18,10 +20,13 @@ approved bounded probes; forbid writes, commits, artifact submission, and
 product-code review. Request compact Expected/Observed/Evidence/Location
 findings with command output or file:line citations. Reproduce each decisive
 lead before a verdict, reconcile here, and submit only from the main session.
-Helpers run focused probes; serialize resource-contending checks. Run the
-discovered fast path, then the applicable full gate in this session. For a
-working gate's product-code failure: Record the attribution; do not request
-changes. Treat a green gate only as absence of a counterexample.
+Helpers run focused probes; serialize resource-contending checks. Judge each
+guard rail by its bounded proof: its command fails on a seeded violation and
+passes once the seed is removed. NEVER run the full project gate, the whole test
+suite, or any long-running job to see whether the project passes; the verdict
+is about whether the build's guard rails work, not about the build's results.
+For a working guard rail's product-code failure: Record the attribution; do not
+request changes.
 
 ## Criteria and verdicts
 
@@ -37,7 +42,7 @@ Compute the current policy-content hash exactly once, BEFORE running any
 gate, with:
 
 ```
-python -c "from ralph.workspace.fs import FsWorkspace; from ralph.language_detector import get_project_stack; from ralph.project_policy import evidence; ws = FsWorkspace('.'); print(evidence.evidence_signature(ws, get_project_stack(ws)))"
+{{ ralph_python | default('python') }} -c "from ralph.workspace.fs import FsWorkspace; from ralph.language_detector import get_project_stack; from ralph.project_policy import evidence; ws = FsWorkspace('.'); print(evidence.evidence_signature(ws, get_project_stack(ws)))"
 ```
 
 Then run every declared `RALPH-COMMAND` and append a `## Execution evidence`

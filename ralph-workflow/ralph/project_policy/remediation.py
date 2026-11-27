@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ralph.project_policy import markers, preflight, validators
+from ralph.project_policy.check import readiness_check_command
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.template_registry import (
@@ -13,6 +14,7 @@ from ralph.prompts.template_registry import (
 )
 
 PROMPT_TEMPLATE_NAME: str = "policy_remediation.jinja"
+
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
@@ -82,6 +84,7 @@ def _render_prompt(
         "canonical_dir": markers.CANONICAL_DIR,
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
         "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
+        "readiness_check_command": readiness_check_command(),
         "applicability_overrides_path": markers.APPLICABILITY_OVERRIDES_PATH,
         "migrated_marker": markers.MIGRATED_MARKER_TEMPLATE.format(target="<canonical-filename>"),
         "agents_block_begin": markers.AGENTS_BLOCK_BEGIN,

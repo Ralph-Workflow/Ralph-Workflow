@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_prompt_puts_role_first_and_limits_subagents_to_read_only_discovery": "user requirement: the policy remediation agent is the project's build engineer, whose job is guard rails that enforce the policy and who is done when they work, not a documentation agent or a developer making the build pass, so the role line the prompt leads with changed",
     "test_analysis_feedback_reaches_the_prompt": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
     "test_launch_failure_propagates_to_the_driver": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
     "test_prompt_carries_the_original_findings": "the policy agent invoker now takes progress_check, the shared attempt path's progress criterion for an attempt that needs no artifact; the fake invoker accepts it and every assertion is unchanged",
@@ -109,7 +110,9 @@ def test_prompt_puts_role_first_and_limits_subagents_to_read_only_discovery() ->
     prompt = remediation._render_prompt([_stub_finding()])
     normalized = " ".join(prompt.split())
 
-    assert prompt.index("You are a documentation agent") < prompt.index("*** UNATTENDED MODE")
+    assert prompt.index("You are the project's build engineer") < prompt.index(
+        "*** UNATTENDED MODE"
+    )
     assert "read-only subagents" in normalized
     assert "main session" in normalized
     assert "edit in the main session" in normalized

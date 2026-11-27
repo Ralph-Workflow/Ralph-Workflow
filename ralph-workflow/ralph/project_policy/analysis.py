@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -96,6 +97,7 @@ def _render_prompt(
         "canonical_dir": markers.CANONICAL_DIR,
         "portfolio_path": markers.PORTFOLIO_PATH,
         "gate_script_policy_path": f"{markers.CANONICAL_DIR}gate-script-policy.md",
+        "ralph_python": sys.executable,
         "artifact_type": ANALYSIS_ARTIFACT_TYPE,
         "policy_files": ", ".join(markers.CORE_POLICY_FILES),
         "approved_tools": ", ".join(sorted(markers.APPROVED_GATE_TOOLS)),
