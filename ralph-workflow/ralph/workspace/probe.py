@@ -326,12 +326,13 @@ def _tracked_paths_changed(
     workspace: Workspace,
     baseline: dict[str, str],
     *,
+    walked_before: dict[str, str],
     max_files: int,
 ) -> bool:
     current = _extract_tracked_dirty_paths(workspace) or []
     after = _tracked_fingerprints(workspace, [*baseline, *current], max_files=max_files)
     return any(
-        fingerprint != baseline.get(path, _DELETED_FINGERPRINT)
+        fingerprint != baseline.get(path, walked_before.get(path, _DELETED_FINGERPRINT))
         for path, fingerprint in after.items()
     )
 
@@ -380,4 +381,6 @@ class DefaultWorkspaceChangeProbe:
             return False
         if before != _walk_snapshot(workspace, max_files=self._max_files):
             return True
-        return _tracked_paths_changed(workspace, tracked_before, max_files=self._max_files)
+        return _tracked_paths_changed(
+            workspace, tracked_before, walked_before=before, max_files=self._max_files
+        )
