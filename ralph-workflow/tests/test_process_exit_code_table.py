@@ -155,10 +155,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "ba385c9801b1c542d6adcf7bc751d08b86cff9f9036b5bcee68f7e86e79a30c1"
+    "522227afb939af168c7df1c5148166786fdb90b6d8b17b8c9e68871df70d1308"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
-    "The reviewed inventory adds catchup-blob-of (rev-parse --verify --quiet of a path at a "
+    "The reviewed inventory adds integration-preservation:list-content (ls-files of the "
+    "tracked and unignored paths a preservation bundle archives; a failure is a real error), "
+    "catchup-blob-of (rev-parse --verify --quiet of a path at a "
     "commit while deciding whether an uncommitted copy already matches the incoming version; "
     "rc=1 is git's answer that the path does not exist there), catchup-hash-object, "
     "catchup-absorb-local-copy, catchup-restore-local-copy and catchup-unstage-local-copy (a "

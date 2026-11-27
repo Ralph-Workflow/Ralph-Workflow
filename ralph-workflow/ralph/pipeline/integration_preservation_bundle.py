@@ -37,6 +37,26 @@ def _lines(root: Path, args: tuple[str, ...], label: str) -> tuple[str, ...]:
     return tuple(line for line in result.stdout.splitlines() if line)
 
 
+def _worktree_content(root: Path) -> tuple[str, ...]:
+    listed = run_git(
+        ("ls-files", "-z", "--cached", "--others", "--exclude-standard"),
+        cwd=root,
+        label="integration-preservation:list-content",
+    )
+    if listed.returncode != 0:
+        return ()
+    names: list[str] = []
+    seen: set[str] = set()
+    for name in str(listed.stdout).split("\0"):
+        if not name or name in seen or name in {".git", ".agent"}:
+            continue
+        if name.startswith((".git/", ".agent/")):
+            continue
+        seen.add(name)
+        names.append(name)
+    return tuple(names)
+
+
 def preserve_integration_state(
     root: Path,
     *,
@@ -87,9 +107,10 @@ def preserve_integration_state(
 
         archive_path = bundle_dir / "worktree.tar"
         with tarfile.open(archive_path, "w") as archive:
-            for child in root.iterdir():
-                if child.name not in {".git", ".agent"}:
-                    archive.add(child, arcname=child.name, recursive=True)
+            for relative in _worktree_content(root):
+                path = root / relative
+                if path.is_file() or path.is_symlink():
+                    archive.add(path, arcname=relative, recursive=False)
 
         index_path = bundle_dir / "index"
         index_source = _lines(
