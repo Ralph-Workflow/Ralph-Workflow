@@ -109,7 +109,7 @@ def render_conflict_prompt(
         "stop_index": str(stop_index) if stop_index is not None else "",
         "stop_cap": str(stop_cap) if stop_cap is not None else "",
         "strategy_history": "\n".join(strategy_history),
-        "LAST_RETRY_ERROR": read_validation_retry_hint(root, _RESOLUTION_DRAIN),
+        "LAST_RETRY_ERROR": read_validation_retry_hint(root, PHASE_RESOLUTION),
         **_session_preamble_variables(),
     }
     template_root = packaged_template_root()

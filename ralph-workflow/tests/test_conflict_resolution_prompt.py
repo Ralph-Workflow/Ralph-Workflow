@@ -8,6 +8,11 @@ from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
 from ralph.pipeline.conflict_resolution.sight import ConflictKind
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_prompt_leads_with_a_persisted_validation_hint_without_consuming_it": (
+        "the resolver's MCP session writes its validation hints under its own "
+        "rebase_conflict_resolution drain, so the prompt reads that file; the development "
+        "drain's file belongs to development and carries publication-gate feedback"
+    ),
     "test_the_rebase_variant_states_the_unlisted_path_enforcement": (
         "the rebase loop reverts an unrequested edit and keeps the in-scope resolution "
         "(it rejects only when the revert itself fails), so the prompt now states that "
@@ -74,7 +79,7 @@ def _render_rebase_stop(tmp_path: Path) -> str:
 def test_conflict_prompt_leads_with_a_persisted_validation_hint_without_consuming_it(
     tmp_path: Path,
 ) -> None:
-    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_development.txt"
+    hint_path = tmp_path / ".agent" / "tmp" / "last_retry_error_rebase_conflict_resolution.txt"
     hint_path.parent.mkdir(parents=True)
     hint = "VALIDATION FAILURE\nCONFLICT001: unresolved marker"
     hint_path.write_text(hint, encoding="utf-8")
