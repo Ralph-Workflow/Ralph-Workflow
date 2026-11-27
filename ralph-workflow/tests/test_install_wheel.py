@@ -59,20 +59,17 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _build_wheel(repo_root: Path) -> Path:
-    wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
-    if wheels:
-        return wheels[-1]
-    build = _run_subprocess(("uv", "build", "--wheel"), cwd=repo_root)
+def _build_wheel(repo_root: Path, out_dir: Path) -> Path:
+    build = _run_subprocess(("uv", "build", "--wheel", "--out-dir", str(out_dir)), cwd=repo_root)
     assert build.returncode == 0, build.stderr or build.stdout
-    wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
+    wheels = sorted(out_dir.glob("ralph_workflow-*.whl"))
     assert wheels
     return wheels[-1]
 
 
 @pytest.fixture(scope="session")
-def built_wheel_path() -> Path:
-    return _build_wheel(_repo_root())
+def built_wheel_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return _build_wheel(_repo_root(), tmp_path_factory.mktemp("wheel"))
 
 
 @pytest.fixture(scope="session")

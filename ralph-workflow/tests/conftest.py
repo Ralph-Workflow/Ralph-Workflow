@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -473,6 +475,12 @@ def _reset_rich_style_color_caches() -> None:
         rich_style.Style._add.cache_clear()
 
 
+def _path_safe_node_name(nodeid: str) -> str:
+    readable = re.sub(r"[^A-Za-z0-9._-]+", "_", nodeid).strip("_")[-80:]
+    digest = hashlib.sha256(nodeid.encode("utf-8")).hexdigest()[:10]
+    return f"{readable}-{digest}"
+
+
 def _apply_isolate_process_home(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
@@ -480,7 +488,7 @@ def _apply_isolate_process_home(
 ) -> None:
 
     worker_root: str = _autouse_home_base(tmp_path_factory)
-    unique_suffix: str = request.node.nodeid
+    unique_suffix: str = _path_safe_node_name(request.node.nodeid)
     fake_home: str = worker_root + "/" + unique_suffix + "/home"
     os.environ["HOME"] = fake_home
     os.environ["XDG_CONFIG_HOME"] = fake_home + "/.config"
