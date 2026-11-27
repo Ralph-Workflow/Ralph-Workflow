@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.agents.invoke.agent_temp_dir import private_agent_tmpdir
 from ralph.checked_accessors import as_bool, as_int, as_mapping, as_str
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.failure_digest import failure_line_digest
@@ -337,13 +338,17 @@ def _run_gate_command(command: str, cwd: Path, timeout_seconds: float) -> Public
 
 
 def _run_gate_process(command: str, cwd: Path, timeout_seconds: float) -> PublicationGateRun:
-    with reaped_process_scope("gate", owner_pid=os.getpid()) as scope_env:
+    with (
+        private_agent_tmpdir() as tmpdir,
+        reaped_process_scope("gate", owner_pid=os.getpid()) as scope_env,
+    ):
+        env = {**scope_env, "TMPDIR": str(tmpdir), "TMP": str(tmpdir), "TEMP": str(tmpdir)}
         try:
             result = run_process(
                 "sh",
                 ("-c", command),
                 options=ProcessRunOptions(
-                    cwd=cwd, env=scope_env, timeout=timeout_seconds, label="publication-gate"
+                    cwd=cwd, env=env, timeout=timeout_seconds, label="publication-gate"
                 ),
             )
         except ProcessExecutionError as exc:
