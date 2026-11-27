@@ -20,6 +20,7 @@ class _FakeObserver:
     def __init__(self, created: list[_FakeObserver]) -> None:
         self.alive = False
         self.stopped = False
+        self.joined = False
         self.scheduled: list[tuple[object, str, dict[str, object]]] = []
         created.append(self)
 
@@ -35,6 +36,7 @@ class _FakeObserver:
 
     def join(self, timeout: float | None = None) -> None:
         del timeout
+        self.joined = True
 
     def is_alive(self) -> bool:
         return self.alive
@@ -173,6 +175,29 @@ def test_a_watcher_over_its_inotify_budget_is_stopped_for_live_reads(tmp_path: P
         assert created[0].stopped
         assert monitor.awareness_status["mode"] == "live_fallback"
         assert len(created) == 1
+    finally:
+        monitor.stop()
+        release_workspace_awareness(tmp_path)
+
+
+def test_a_watcher_stopped_over_its_inotify_budget_is_joined_so_its_watches_are_freed(
+    tmp_path: Path,
+) -> None:
+    created: list[_FakeObserver] = []
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        seams=WorkspaceWatchSeams(
+            observer_factory=lambda: _FakeObserver(created),
+            supervise_in_background=False,
+            watch_count_probe=lambda: 10**6,
+        ),
+    )
+    monitor.start()
+    try:
+        WorkspaceMonitor.supervise_observers_once()
+
+        assert created[0].stopped
+        assert created[0].joined
     finally:
         monitor.stop()
         release_workspace_awareness(tmp_path)

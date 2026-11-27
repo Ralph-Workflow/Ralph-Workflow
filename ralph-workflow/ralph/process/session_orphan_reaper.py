@@ -46,11 +46,30 @@ def _pids(proc_root: Path) -> list[int]:
         return []
 
 
-def _carries_session(proc_root: Path, pid: int, session: bytes, owner: bytes) -> bool:
+_PROC_READ_CHUNK = 65536
+
+
+def _read_proc_file(proc_root: Path, pid: int, name: str) -> bytes | None:
     try:
-        variables = (proc_root / str(pid) / "environ").read_bytes().split(b"\0")
+        descriptor = os.open(f"{proc_root}/{pid}/{name}", os.O_RDONLY)
     except OSError:
+        return None
+    chunks: list[bytes] = []
+    try:
+        while chunk := os.read(descriptor, _PROC_READ_CHUNK):
+            chunks.append(chunk)
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+    return b"".join(chunks)
+
+
+def _carries_session(proc_root: Path, pid: int, session: bytes, owner: bytes) -> bool:
+    raw = _read_proc_file(proc_root, pid, "environ")
+    if raw is None or session not in raw:
         return False
+    variables = raw.split(b"\0")
     if session not in variables:
         return False
     owners = [variable for variable in variables if variable.startswith(_OWNER_ENV)]
@@ -58,11 +77,10 @@ def _carries_session(proc_root: Path, pid: int, session: bytes, owner: bytes) ->
 
 
 def _stat_fields(proc_root: Path, pid: int) -> list[str]:
-    try:
-        stat = (proc_root / str(pid) / "stat").read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    raw = _read_proc_file(proc_root, pid, "stat")
+    if raw is None:
         return []
-    return stat.rpartition(")")[2].split()
+    return raw.decode("utf-8", errors="replace").rpartition(")")[2].split()
 
 
 def _parent_of(proc_root: Path, pid: int) -> int | None:

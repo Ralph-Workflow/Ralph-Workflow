@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.merge import is_ancestor
+from ralph.git.operations import get_head_sha
 from ralph.pipeline._integration_diagnostic_handoff import ladder_terminal_state
 from ralph.pipeline._terminal_emitter import critical
 from ralph.pipeline.auto_integrate_backup_refs import qualified_backup_ref
@@ -32,6 +34,17 @@ def _ladder_is_terminal(root: Path, record: IntegrationRecord) -> bool:
     return ladder_terminal_state(root, record) is not None
 
 
+def _superseded_by_feature_commits(root: Path, record: IntegrationRecord) -> bool:
+    if record.is_integrated or record.integrated_feature_sha is not None:
+        return False
+    if record.owning_worktree is not None and record.owning_worktree != str(root):
+        return False
+    head = get_head_sha(root)
+    if not head or head == record.pre_feature_sha:
+        return False
+    return is_ancestor(root, record.pre_feature_sha, head)
+
+
 def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
     try:
         record = read_record(root)
@@ -49,6 +62,17 @@ def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
             "retained integration made no progress for {} checks, and the target already "
             "contains the recorded work; the stale integration record is released",
             checks,
+        )
+        return True
+    if _superseded_by_feature_commits(root, record):
+        release_stalled_record(root)
+        logger.warning(
+            "retained integration made no progress for {} checks and never landed, and the "
+            "feature branch has moved on from its recorded tip {} to {}; the superseded "
+            "integration record is released so the current tip integrates",
+            checks,
+            record.pre_feature_sha,
+            get_head_sha(root),
         )
         return True
     if not _ladder_is_terminal(root, record):

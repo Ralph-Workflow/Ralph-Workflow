@@ -11,7 +11,7 @@ POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v7 -->"
 FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
 )
-POLICY_CONTRACT_VERSION: Final[str] = "2026-11-26.1"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-27.1"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 

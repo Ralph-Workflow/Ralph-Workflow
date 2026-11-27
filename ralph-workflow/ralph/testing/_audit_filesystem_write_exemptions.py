@@ -257,6 +257,7 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ("ralph/pipeline/plumbing/smoke_plumbing.py", "run_smoke_plumbing", "raw_write_text"),
         ("ralph/pipeline/runner.py", "_write_rejection_hint", "raw_write_text"),
         ("ralph/pipeline/watchdog_fire_record.py", "record_watchdog_fire", "raw_open_write"),
+        ("ralph/process/session_orphan_reaper.py", "_read_proc_file", "raw_open"),
         ("ralph/skills/_installer.py", "_materialize_project_sibling_dir", "raw_copytree"),
         ("ralph/skills/_installer.py", "_materialize_project_sibling_dir", "raw_rmtree"),
         ("ralph/skills/_installer.py", "_mirror_baseline_skills_to_siblings", "raw_copy2"),

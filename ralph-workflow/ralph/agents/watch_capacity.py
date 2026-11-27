@@ -89,6 +89,8 @@ def _count_watchable_directories(
 
 CAPACITY_PROBE_BUDGET_SECONDS = 10.0
 
+PROCESS_WATCH_BUDGET = 50_000
+
 _PROBE_THREAD_NAME = "ralph-watch-capacity-probe"
 
 
@@ -167,9 +169,11 @@ def _predict_watch_capacity(
         else (_read_inotify_watch_user_total() or 0)
     )
     counter = directory_counter or _count_watchable_directories
-    counted_directories = counter(workspace, cap=budget + 1)
-    workspace_dir_count = budget + 1 if counted_directories is None else counted_directories
-    return wd_total + workspace_dir_count >= budget
+    walk_cap = min(budget, PROCESS_WATCH_BUDGET) + 1
+    counted_directories = counter(workspace, cap=walk_cap)
+    if counted_directories is None or counted_directories > PROCESS_WATCH_BUDGET:
+        return True
+    return wd_total + counted_directories >= budget
 
 
 def process_inotify_watch_count(proc_self: Path = _PROC_PATH / "self") -> int | None:

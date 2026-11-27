@@ -186,7 +186,15 @@ Criterion 8 verdict authority: a capture-backed criterion 8 verdict is agent-pro
 
 The capture path applies to web UI only. A missing declared renderer or a non-web UI is a recorded visual-review blocker; it never silently falls back to a partial capture.
 
+<!-- REPLACE-ME: set design_target to the URL or route the capture command renders
+(for example the local dev server's root URL), keep or adjust the viewports, themes and
+states to the ones the UI actually supports, and delete this comment. -->
 RALPH-FACT: design_capture_command: <declared capture command that renders the managed repo UI to PNG>
+RALPH-FACT: design_target: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: narrow_viewport: 375x812
+RALPH-FACT: wide_viewport: 1440x900
+RALPH-FACT: themes: light, dark
+RALPH-FACT: states: default, empty, loading, error, overflow
 RALPH-FACT: visual_verdict_artifact: design_verdict
 RALPH-FACT: visual_capture_handle: ralph://media/{artifact_id}
 

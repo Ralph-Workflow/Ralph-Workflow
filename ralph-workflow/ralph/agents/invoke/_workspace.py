@@ -38,6 +38,7 @@ from ralph.agents.invoke.watchdog_observer import (
 )
 from ralph.agents.watch_capacity import (
     CAPACITY_PROBE_BUDGET_SECONDS,
+    PROCESS_WATCH_BUDGET,
     DirectoryCounter,
     call_within_budget,
     process_inotify_watch_count,
@@ -70,9 +71,9 @@ _MAX_WORKSPACE_CHANGED_FILES = 512
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
 
 
-PROCESS_WATCH_BUDGET = 50_000
-
 WATCH_BUDGET_CHECK_SECONDS = 10.0
+
+STOPPED_OBSERVER_JOIN_SECONDS = 5.0
 
 
 class WorkspaceMonitor:
@@ -693,6 +694,7 @@ class WorkspaceMonitor:
                 cls._shared_watches.pop(key, None)
             with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
                 shared.observer.stop()
+                shared.observer.join(STOPPED_OBSERVER_JOIN_SECONDS)
             monitors = tuple(shared.monitors)
             if monitors:
                 monitors[0]._release_cross_process_watch_lock()
@@ -741,6 +743,7 @@ class WorkspaceMonitor:
             cls._shared_watches.pop(key, None)
         with suppress(OSError, RuntimeError, ValueError, TypeError, AttributeError):
             shared.observer.stop()
+            shared.observer.join(STOPPED_OBSERVER_JOIN_SECONDS)
         owner._release_cross_process_watch_lock()
         for monitor in monitors:
             monitor._started = False
