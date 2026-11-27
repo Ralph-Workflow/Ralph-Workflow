@@ -1093,6 +1093,24 @@ def _resolve_bridge_and_run_id(
     return bridge, effective_run_id, own_bridge
 
 
+def _bridge_start_failed(
+    exc: McpServerError,
+    agent_invocation_error_sink: Callable[[Exception], object] | None,
+) -> PipelineEvent | AgentFailureEvent:
+    _mark_next_attempt_gets_fresh_bridge(exc)
+    logger.warning(
+        "MCP server could not start for this attempt (retryable): last_stage={} "
+        "elapsed_s={} failure_kind={} error={}",
+        exc.last_stage,
+        exc.elapsed_s,
+        exc.failure_kind,
+        exc,
+    )
+    return _handle_terminal_agent_invocation_error(
+        exc, agent_invocation_error_sink=agent_invocation_error_sink
+    )
+
+
 def _invoke_agent_with_recovery(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
@@ -1112,9 +1130,14 @@ def _invoke_agent_with_recovery(
     recovery_controller: RecoveryController | None = None,
     workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> PipelineEvent | AgentFailureEvent | AttemptEnded:
-    bridge, effective_run_id, own_bridge = _resolve_bridge_and_run_id(
-        ctx, pipeline_deps, bridge, run_id
-    )
+    try:
+        bridge, effective_run_id, own_bridge = _resolve_bridge_and_run_id(
+            ctx, pipeline_deps, bridge, run_id
+        )
+    except McpServerError as exc:
+        if surfaces_supervision_error(ctx.effect, exc):
+            raise
+        return _bridge_start_failed(exc, agent_invocation_error_sink)
     resolved_required_artifact = _resolve_required_artifact(
         ctx,
         pipeline_deps,

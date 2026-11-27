@@ -160,7 +160,7 @@ B11_ALLOWLIST: Final[tuple[tuple[str, str, int, str], ...]] = (
     (
         "ralph/pipeline/effect_executor.py",
         "_consume_attempt_output",
-        1744,
+        1767,
         "effect executor dispatch owned by the registered effect route",
     ),
 )

@@ -18,6 +18,7 @@ from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.mcp.server.lifecycle import McpServerError
 from ralph.pipeline import _runner_session as runner_session_module
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
@@ -182,6 +183,36 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
+
+    def test_an_mcp_server_that_cannot_start_fails_the_attempt_not_the_run(self) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        def bridge_that_never_boots(**_kwargs: object) -> object:
+            raise McpServerError(
+                "MCP server child did not begin startup within the boot allowance of 90.000s",
+                restart_count=0,
+                last_stage="spawn",
+            )
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=bridge_that_never_boots,
+            registry_factory=registry.from_config,
+        )
+
+        result = effect_executor_module.execute_agent_effect(
+            effect,
+            self._config(),
+            pipeline_deps,
+            WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
+            attempt_finalizer=None,
+        )
+
+        assert result == PipelineEvent.AGENT_FAILURE
 
     def test_invoke_start_records_visible_activity_on_display_subscriber(
         self, tmp_path: Path
