@@ -465,6 +465,49 @@ def _restore_worktree_to_ref(repo: Repo, target_ref: str) -> None:
             raise ProposalSealError(f"Failed to restore worktree to {target_ref}: {exc}") from exc
 
 
+def _changed_paths(repo: Repo, base: str, target: str) -> set[str]:
+    listing = as_str(
+        route_git_method(repo, "diff", ("--no-renames", "--name-only", "-z", base, target)),
+        field=f"paths changed between {base} and {target}",
+    )
+    return {path for path in listing.split("\0") if path}
+
+
+def _baseline_rebased_onto_head(repo: Repo, baseline_ref: str) -> str | None:
+    head = _resolve_full_object_name(repo, "HEAD")
+    parent = _resolve_full_object_name(repo, f"{baseline_ref}^")
+    if parent == head:
+        return None
+    landed = _changed_paths(repo, parent, head)
+    pre_run = sorted(_changed_paths(repo, parent, baseline_ref) - landed)
+    with (
+        tempfile.TemporaryDirectory() as tmp_dir,
+        repo.git.custom_environment(GIT_INDEX_FILE=str(Path(tmp_dir) / "rebased_index")),
+    ):
+        route_git_method(repo, "read_tree", (head,))
+        for path in pre_run:
+            entry = as_str(
+                route_git_method(repo, "ls_tree", (baseline_ref, "--", path)),
+                field=f"baseline entry for {path}",
+            ).strip()
+            if entry:
+                mode, _kind, rest = entry.split(" ", 2)
+                sha = rest.split("\t", 1)[0]
+                route_git_method(
+                    repo, "update_index", ("--add", "--cacheinfo", f"{mode},{sha},{path}")
+                )
+            else:
+                route_git_method(repo, "update_index", ("--force-remove", "--", path))
+        tree = as_str(route_git_method(repo, "write_tree"), field="rebased baseline tree").strip()
+    logger.info(
+        "HEAD moved past the rollback baseline {}; restoring to HEAD plus the {} pre-run "
+        "path(s) the landed commits did not change, so landed work is kept",
+        baseline_ref,
+        len(pre_run),
+    )
+    return tree
+
+
 def rollback(
     repo_root: Path | str,
     ref: str,
@@ -482,6 +525,10 @@ def rollback(
         worktree_ref = baseline_ref if baseline_ref is not None else "HEAD"
         _require_resolved_ref(repo, worktree_ref, "Baseline")
         index_ref = _restorable_index_ref(repo, baseline_ref)
+        if baseline_ref is not None:
+            rebased = _baseline_rebased_onto_head(repo, baseline_ref)
+            if rebased is not None:
+                worktree_ref, index_ref = rebased, "HEAD"
         diff_entries = diff_tree(repo_root, ref=ref, base=worktree_ref)
 
         if step_hook is not None:

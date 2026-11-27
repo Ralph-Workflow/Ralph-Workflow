@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph import verify as verify_module
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult
 from ralph.verify import main
@@ -15,6 +17,11 @@ from ralph.verify_timeout import (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_main_runs_all_verify_steps_when_successful pins a quiet host": (
+        "non-test step timeouts now stretch with host load so a contended host cannot fail "
+        "an audit that is merely slow; the declared-timeout assertion pins host_load_share "
+        "to 0.0 so it keeps proving each step's declared timeout on any host"
+    ),
     "run_verify cumulative-budget oracles plant overruns above the raised 75 s wall budget": (
         "the operator raised _TOTAL_TEST_BUDGET_SECONDS from 60 to 75 s; the planted single-step, two-step, boundary and policy-message runs now end at 80, 80, 75 and 85 s, so each still reaches or passes the budget and still asserts the cumulative budget-exhausted failure"
     ),
@@ -29,8 +36,6 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    import pytest
 
 
 _DEAD_CODE_AUDIT_STEP_LABEL = "dead code audit (vulture)"
@@ -118,6 +123,7 @@ def test_main_runs_all_verify_steps_when_successful(
 ) -> None:
     runner = StubRunner(_all_steps_success_responses())
     monkeypatch.setattr(verify_module.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(verify_module, "host_load_share", lambda: 0.0)
 
     exit_code = main([], runner=runner, cwd=tmp_path)
 
@@ -520,3 +526,33 @@ def test_run_verify_policy_message_correctness(
     assert exit_code == TIMEOUT_EXIT_CODE
     assert "budget exhausted — cumulative test time exceeded" in captured.err
     assert captured.err.count("budget exhausted") >= 1
+
+
+def _audit_step_timeout(runner: StubRunner) -> float | None:
+    return next(
+        timeout
+        for command, args, _cwd, timeout, _capture in runner.calls
+        if "ralph.testing.audit_integration_invariants" in args
+    )
+
+
+def test_a_non_test_step_gets_more_time_on_a_saturated_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(verify_module, "host_load_share", lambda: 5.7)
+    runner = StubRunner(_all_steps_success_responses())
+
+    assert verify_module.run_verify(cwd=tmp_path, runner=runner) == 0
+
+    assert _audit_step_timeout(runner) == pytest.approx(120.0)
+
+
+def test_a_non_test_step_keeps_its_budget_on_a_quiet_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(verify_module, "host_load_share", lambda: 0.0)
+    runner = StubRunner(_all_steps_success_responses())
+
+    assert verify_module.run_verify(cwd=tmp_path, runner=runner) == 0
+
+    assert _audit_step_timeout(runner) == pytest.approx(30.0)

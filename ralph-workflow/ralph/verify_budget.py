@@ -319,6 +319,20 @@ __all__ = [
     "CAPACITY_SATURATION",
     "SuiteBudgetOutcome",
     "SuiteBudgetReport",
+    "contended_step_timeout",
+    "host_load_share",
     "orphaned_cpu_tracker",
     "sample_suite_resources",
 ]
+
+
+_MAX_CONTENDED_STEP_STRETCH = 4.0
+
+
+def host_load_share() -> float:
+    return os.getloadavg()[0] / max(1, os.cpu_count() or 1)
+
+
+def contended_step_timeout(base_seconds: float, load_share: float) -> float:
+    free_share = max(1.0 / _MAX_CONTENDED_STEP_STRETCH, 1.0 - min(max(load_share, 0.0), 1.0))
+    return base_seconds / free_share

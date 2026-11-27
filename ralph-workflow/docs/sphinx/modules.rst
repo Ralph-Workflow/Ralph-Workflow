@@ -2129,6 +2129,13 @@ ralph.phases.commit_review
    :members:
    :show-inheritance:
 
+ralph.phases.policy_churn_review
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.policy_churn_review
+   :members:
+   :show-inheritance:
+
 ralph.phases.commit_logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -55,3 +55,25 @@ def test_a_baseline_already_at_head_is_kept(tmp_path: Path) -> None:
     state = PipelineState(phase="development", rollback_baseline_ref=run_start.ref)
 
     assert refresh_rollback_baseline_after_landing(state, tmp_path) is state
+
+
+def test_a_rollback_to_a_baseline_head_has_moved_past_keeps_the_landed_commits(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (tmp_path / "notes.txt").write_text("operator work in progress\n", encoding="utf-8")
+    run_start = seal_baseline(tmp_path, "run-start")
+    assert run_start is not None
+
+    (tmp_path / "policy.md").write_text("design_target: /\n", encoding="utf-8")
+    repo.index.add(["policy.md"])
+    repo.index.commit("fix(policy): declare the design target", author=_ACTOR, committer=_ACTOR)
+    (tmp_path / "policy.md").write_text("design_target: rejected edit\n", encoding="utf-8")
+    (tmp_path / "added_by_rejected.txt").write_text("rejected\n", encoding="utf-8")
+    rejected = seal_pending(tmp_path, "run-start", 1)
+
+    rollback(tmp_path, rejected.ref, baseline_ref=run_start.ref)
+
+    assert (tmp_path / "policy.md").read_text(encoding="utf-8") == "design_target: /\n"
+    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "operator work in progress\n"
+    assert not (tmp_path / "added_by_rejected.txt").exists()

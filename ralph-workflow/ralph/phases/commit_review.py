@@ -87,6 +87,7 @@ from ralph.phases._commit_review_verdict import (
     maybe_succeed_after_identity_bound,
     persist_unapplied_hint,
 )
+from ralph.phases.policy_churn_review import proposal_policy_churn, render_policy_churn_reason
 from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
@@ -748,12 +749,15 @@ def _engine_rejection_reason(
     phase_name: str,
     ctx: PhaseContext,
     bypasses: tuple[str, ...],
+    churn: tuple[str, ...] = (),
 ) -> str | None:
     surviving = _surviving_unsafe_findings(diff_entries, phase_name, ctx)
     if surviving:
         return _render_surviving_unsafe_reason(surviving)
     if bypasses:
         return _render_lint_bypass_reason(bypasses)
+    if churn:
+        return render_policy_churn_reason(churn)
     return None
 
 
@@ -765,6 +769,7 @@ def _evaluate_verdict(
     ctx: PhaseContext,
     *,
     bypasses: tuple[str, ...] = (),
+    churn: tuple[str, ...] = (),
 ) -> list[Event | CommitReviewEvent]:
     verdict_failure = _verdict_failure(artifact)
     if verdict_failure is not None:
@@ -796,7 +801,7 @@ def _evaluate_verdict(
             ]
         return [CommitReviewRejected(reason=artifact.reason or "", ref=seal.ref, hard=False)]
 
-    engine_reason = _engine_rejection_reason(diff_entries, phase_name, ctx, bypasses)
+    engine_reason = _engine_rejection_reason(diff_entries, phase_name, ctx, bypasses, churn)
     if engine_reason is not None:
         logger.warning("{}: {}", phase_name, engine_reason)
         return [CommitReviewRejected(reason=engine_reason, ref=seal.ref, hard=True)]
@@ -843,7 +848,10 @@ def _stage2_process_artifact(
     _consume_commit_review_artifact(ctx)
     rebound = _rebind_verdict_to_sealed_tree(artifact, seal)
     bypasses = _proposal_lint_bypasses(repo_root, base, seal)
-    return _evaluate_verdict(rebound, seal, diff_entries, phase_name, ctx, bypasses=bypasses)
+    churn = proposal_policy_churn(repo_root, base, seal.tree_sha)
+    return _evaluate_verdict(
+        rebound, seal, diff_entries, phase_name, ctx, bypasses=bypasses, churn=churn
+    )
 
 
 def handle_commit_review_phase(

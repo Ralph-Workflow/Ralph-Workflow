@@ -15,7 +15,13 @@ from ralph.executor.process import (
     run_process,
 )
 from ralph.process._spawn_env import sanitize_process_environment
-from ralph.verify_budget import SuiteBudgetReport, orphaned_cpu_tracker, sample_suite_resources
+from ralph.verify_budget import (
+    SuiteBudgetReport,
+    contended_step_timeout,
+    host_load_share,
+    orphaned_cpu_tracker,
+    sample_suite_resources,
+)
 from ralph.verify_steps import _VERIFY_STEPS
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
@@ -357,8 +363,13 @@ def run_verify(
                 min(step_timeout, remaining_budget) if step_timeout > 0 else step_timeout
             )
         else:
-            effective_timeout = (
+            base_timeout = (
                 step_timeout if step_timeout is not None else _VERIFY_STEP_TIMEOUT_SECONDS
+            )
+            effective_timeout = (
+                contended_step_timeout(base_timeout, host_load_share())
+                if base_timeout > 0
+                else base_timeout
             )
 
         suite_cpu_start, host_busy_start = sample_suite_resources()
