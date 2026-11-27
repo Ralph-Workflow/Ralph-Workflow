@@ -290,3 +290,23 @@ def test_on_remediation_attempt_callback_defaults_to_noop() -> None:
     result = pipeline_driver.run_policy_pipeline(ws, stack(), [_finding()], invoke_agent=agent)
 
     assert result.status is ReadinessStatus.READY
+
+
+def test_every_remediation_round_is_landed_when_it_ends() -> None:
+    ws = MemoryWorkspace()
+    agent = _Recorder(ws, decisions=["request_changes", "completed"])
+    events: list[str] = []
+
+    result = pipeline_driver.run_policy_pipeline(
+        ws,
+        stack(),
+        [_finding()],
+        invoke_agent=agent,
+        on_remediation_attempt=lambda attempt: events.append(f"start {attempt}"),
+        on_remediation_round_end=lambda attempt: events.append(f"land {attempt}"),
+    )
+
+    assert result.status is ReadinessStatus.READY
+    rounds = agent.phases.count(PHASE_REMEDIATION)
+    assert rounds >= 2
+    assert events == [entry for n in range(1, rounds + 1) for entry in (f"start {n}", f"land {n}")]

@@ -65,6 +65,7 @@ def run_policy_pipeline(
     analysis_cap: int = DEFAULT_ANALYSIS_CAP,
     emit: EmitFn = _noop_emit,
     on_remediation_attempt: AttemptCallback = _noop_attempt_callback,
+    on_remediation_round_end: AttemptCallback = _noop_attempt_callback,
 ) -> ReadinessResult:
     phase = entry_phase
     iteration = 0
@@ -91,6 +92,7 @@ def run_policy_pipeline(
                     emit=emit,
                     assessment=current_assessment,
                 )
+                on_remediation_round_end(iteration + 1)
                 progressed = remediation.made_progress(before, current)
                 stalled_attempts = 0 if progressed else stalled_attempts + 1
                 feedback = None

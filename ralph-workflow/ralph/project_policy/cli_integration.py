@@ -13,7 +13,9 @@ from ralph.agents.timeout_clock import SystemClock
 from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.executor.process import ProcessRunOptions, run_process
-from ralph.git.scoped_auto_commit import list_dirty_paths
+from ralph.git._dirty_paths import list_dirty_paths
+from ralph.git.operations import create_commit, stage_files
+from ralph.git.scoped_auto_commit import commit_scoped_updates
 from ralph.language_detector import get_project_stack
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
@@ -35,6 +37,7 @@ from ralph.pipeline.attempt_runner_deps import (
     AttemptRunnerDeps,
     current_effect_runner,
 )
+from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
@@ -478,6 +481,7 @@ def _dispatch_preflight_result(
     pre_run_dirty: frozenset[str],
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
+    land_policy_round: PolicyRoundLanding,
 ) -> int:
     chain_agents = _resolve_chain_agents(load_result, PHASE_REMEDIATION)
     if not chain_agents and invoke_remediation_agent_factory is None:
@@ -518,6 +522,11 @@ def _dispatch_preflight_result(
         anchor_value: object = getattr(active_display, "run_started_monotonic", None)
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
 
+        def _on_remediation_round_end(attempt: int) -> None:
+            del attempt
+            remediation_writes.record_remediation_writes(workspace, pre_run_dirty)
+            land_policy_round(workspace_scope, load_result.config, pre_run_dirty)
+
         def _on_remediation_attempt(attempt: int) -> None:
             remediation_writes.record_remediation_writes(workspace, pre_run_dirty)
             push_remediation_status_bar(
@@ -544,6 +553,7 @@ def _dispatch_preflight_result(
                 analysis_cap=DEFAULT_ANALYSIS_CAP,
                 emit=emit,
                 on_remediation_attempt=_on_remediation_attempt,
+                on_remediation_round_end=_on_remediation_round_end,
             )
     remediation_writes.record_remediation_writes(workspace, pre_run_dirty)
     if final.is_ready():
@@ -598,6 +608,7 @@ def run_project_policy_readiness(
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
     catchup_factory: CatchupFactory | None = None,
     recover_integration: IntegrationRecovery | None = None,
+    land_policy_round: PolicyRoundLanding | None = None,
 ) -> int:
     if load_result.workspace_scope is not None:
         _recover_pending_integration(
@@ -616,6 +627,7 @@ def run_project_policy_readiness(
             is_tty=is_tty,
             working_tree_snapshot=working_tree_snapshot,
             commit_policy_updates=commit_policy_updates,
+            land_policy_round=land_policy_round or _land_policy_round,
         )
 
 
@@ -636,6 +648,44 @@ def _recover_pending_integration(
         (recover or _default_integration_recovery)(scope, config)
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
         logger.warning("integration recovery before policy readiness failed: {}", exc)
+
+
+PolicyRoundLanding = Callable[["WorkspaceScope", "UnifiedConfig", frozenset[str] | None], None]
+
+_GUARD_RAIL_COMMIT_SUBJECT = "build(policy): set up guard rails"
+_AGENT_STATE_PREFIX = ".agent/"
+
+
+def _commit_guard_rail_changes(scope: WorkspaceScope, pre_run_dirty: frozenset[str] | None) -> None:
+    root = Path(scope.root)
+    changed = sorted(
+        path
+        for path in list_dirty_paths(root) - (pre_run_dirty or frozenset())
+        if not path.startswith(_AGENT_STATE_PREFIX)
+    )
+    if not changed:
+        return
+    commit_scoped_updates(
+        root,
+        scopes=tuple(changed),
+        subject=_GUARD_RAIL_COMMIT_SUBJECT,
+        body_builder=lambda paths: (
+            "Guard rails set up by policy remediation:\n" + "\n".join(f"- {path}" for path in paths)
+        ),
+        create_commit_fn=create_commit,
+        stage_fn=stage_files,
+    )
+
+
+def _land_policy_round(
+    scope: WorkspaceScope, config: UnifiedConfig, pre_run_dirty: frozenset[str] | None
+) -> None:
+    try:
+        _commit_policy_changes(scope, pre_run_dirty)
+        _commit_guard_rail_changes(scope, pre_run_dirty)
+        auto_integrate_after_commit(config, scope, RebaseState())
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+        logger.warning("landing the policy remediation round failed: {}", exc)
 
 
 def _working_tree_diff(root: Path) -> str:
@@ -660,6 +710,7 @@ def _guarded_policy_readiness(
     is_tty: Callable[[], bool] | None,
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
+    land_policy_round: PolicyRoundLanding,
 ) -> int:
     scope = load_result.workspace_scope
     if scope is not None:
@@ -678,6 +729,7 @@ def _guarded_policy_readiness(
             is_tty=is_tty,
             working_tree_snapshot=working_tree_snapshot,
             commit_policy_updates=commit_policy_updates,
+            land_policy_round=land_policy_round,
         )
     except (OSError, RuntimeError, ValueError, KeyError, AttributeError, TypeError) as exc:
         logger.opt(exception=True).warning(
@@ -769,6 +821,7 @@ def _run_policy_readiness(
     is_tty: Callable[[], bool] | None,
     working_tree_snapshot: WorkingTreeSnapshot,
     commit_policy_updates: PolicyCommit,
+    land_policy_round: PolicyRoundLanding,
 ) -> int:
     workspace_scope = load_result.workspace_scope
     if workspace_scope is None:
@@ -833,6 +886,7 @@ def _run_policy_readiness(
         pre_run_dirty=pre_run_dirty,
         working_tree_snapshot=working_tree_snapshot,
         commit_policy_updates=commit_policy_updates,
+        land_policy_round=land_policy_round,
     )
 
 
