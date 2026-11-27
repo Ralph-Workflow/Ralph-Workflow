@@ -160,3 +160,22 @@ def test_agent_failure_is_not_chained_onto_the_policy_problem(tmp_path: Path) ->
         )
 
     assert excinfo.value.__context__ is None
+
+
+def test_a_viewport_the_visual_capture_cannot_parse_fails_readiness() -> None:
+    annotated = (
+        "# Design system\n\n"
+        "RALPH-FACT: design_capture_command: make visual-capture\n"
+        "RALPH-FACT: design_target: /\n"
+        "RALPH-FACT: narrow_viewport: 375 — the narrowest width the responsive matrix checks\n"
+        "RALPH-FACT: wide_viewport: 1440x900\n"
+        "RALPH-FACT: themes: light, dark\n"
+        "RALPH-FACT: states: default, empty, loading, error, overflow\n"
+    )
+    with pytest.raises(ValueError, match="narrow_viewport") as runtime:
+        parse_policy_facts(annotated)
+
+    findings = check_capture_command_fact(annotated, DESIGN_SYSTEM_POLICY_RELPATH, _DESIGN_FILE)
+
+    assert len(findings) == 1
+    assert str(runtime.value) in findings[0].missing_evidence

@@ -148,11 +148,12 @@ def _check_capture_command_fact(content: str, path: str, filename: str) -> list[
         PolicyFinding(
             requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:fact-design_capture_command",
             path=path,
-            missing_evidence=f"RALPH-FACT design_capture_command is unusable: {problem}",
+            missing_evidence=f"the visual capture cannot use this policy's facts: {problem}",
             required_outcome=(
-                "set `RALPH-FACT: design_capture_command:` to ONLY the bare capture command "
-                "(executable plus arguments, e.g. `make visual-capture`); move any description "
-                "of its arguments into the surrounding prose"
+                "give each visual fact ONLY its bare value: `design_capture_command:` the bare "
+                "capture command (e.g. `make visual-capture`), each viewport as WxH "
+                "(e.g. `375x812`), themes and states as comma-separated names; move every "
+                "explanation into the surrounding prose"
             ),
         )
     ]

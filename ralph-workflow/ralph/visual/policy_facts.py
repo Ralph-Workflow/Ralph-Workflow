@@ -198,6 +198,7 @@ def capture_command_problem(policy_markdown: str) -> str | None:
         return None
     try:
         validate_capture_command(command)
+        parse_policy_facts(policy_markdown)
     except ValueError as exc:
         return str(exc)
     return None

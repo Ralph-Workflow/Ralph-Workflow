@@ -28,6 +28,7 @@ extensions = [
 ]
 
 autodoc_typehints = "description"
+autodoc_inherit_docstrings = False
 autodoc_type_aliases = {
     "Capability": "ralph.mcp.protocol.capability_mapping.Capability",
     "SessionLike": "ralph.mcp.protocol.startup.SessionLike",
