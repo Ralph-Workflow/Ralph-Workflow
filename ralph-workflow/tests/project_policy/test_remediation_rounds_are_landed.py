@@ -48,3 +48,32 @@ def test_each_remediation_round_is_committed_and_landed_as_it_ends() -> None:
     remediation_rounds = rounds.count("policy_remediation")
     assert remediation_rounds >= 1
     assert landed == [_ROOT] * remediation_rounds
+
+
+def test_the_readiness_commit_is_landed_when_readiness_ends() -> None:
+    events: list[str] = []
+
+    run_project_policy_readiness(
+        load_result=LoadResult(
+            config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(root=_ROOT, allowed_roots=[_ROOT]),
+            initial_state=PipelineState(phase="planning", policy_entry_phase="planning"),
+            policy_bundle=None,
+            run_id="readiness-commit-is-landed",
+        ),
+        display_context=make_display_context(),
+        workspace_factory=MemoryWorkspace,
+        emit_factory=lambda _m: None,
+        is_tty=lambda: False,
+        invoke_remediation_agent_factory=lambda _ws: lambda **_kw: True,
+        catchup_factory=lambda _c, _r: None,
+        recover_integration=lambda _s, _c: None,
+        working_tree_snapshot=lambda _s: frozenset(),
+        commit_policy_updates=lambda _s, _d: events.append("commit"),
+        land_policy_round=lambda _s, _c, _d: events.append("round"),
+        land_readiness_commits=lambda scope, _c: events.append(f"land {scope.root}"),
+    )
+
+    assert events, "readiness must commit its policy updates"
+    assert events[-1] == f"land {_ROOT}", "the readiness commit must be landed last"
+    assert events.count(f"land {_ROOT}") == 1

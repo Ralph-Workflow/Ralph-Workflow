@@ -609,13 +609,14 @@ def run_project_policy_readiness(
     catchup_factory: CatchupFactory | None = None,
     recover_integration: IntegrationRecovery | None = None,
     land_policy_round: PolicyRoundLanding | None = None,
+    land_readiness_commits: ReadinessLanding | None = None,
 ) -> int:
     if load_result.workspace_scope is not None:
         _recover_pending_integration(
             load_result.workspace_scope, load_result.config, recover_integration
         )
     with catchup_during_readiness(load_result.config, load_result.workspace_scope, catchup_factory):
-        return _guarded_policy_readiness(
+        exit_code = _guarded_policy_readiness(
             load_result=load_result,
             display_context=display_context,
             display=display,
@@ -629,6 +630,11 @@ def run_project_policy_readiness(
             commit_policy_updates=commit_policy_updates,
             land_policy_round=land_policy_round or _land_policy_round,
         )
+    if load_result.workspace_scope is not None:
+        (land_readiness_commits or _land_readiness_commits)(
+            load_result.workspace_scope, load_result.config
+        )
+    return exit_code
 
 
 IntegrationRecovery = Callable[["WorkspaceScope", "UnifiedConfig"], object]
@@ -675,6 +681,16 @@ def _commit_guard_rail_changes(scope: WorkspaceScope, pre_run_dirty: frozenset[s
         create_commit_fn=create_commit,
         stage_fn=stage_files,
     )
+
+
+ReadinessLanding = Callable[["WorkspaceScope", "UnifiedConfig"], None]
+
+
+def _land_readiness_commits(scope: WorkspaceScope, config: UnifiedConfig) -> None:
+    try:
+        auto_integrate_after_commit(config, scope, RebaseState())
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+        logger.warning("landing the readiness commits failed: {}", exc)
 
 
 def _land_policy_round(
