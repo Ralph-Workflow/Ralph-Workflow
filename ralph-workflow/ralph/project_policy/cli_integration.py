@@ -38,6 +38,7 @@ from ralph.pipeline.attempt_runner_deps import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import _remediation_writes as remediation_writes
@@ -595,7 +596,12 @@ def run_project_policy_readiness(
     working_tree_snapshot: WorkingTreeSnapshot = _snapshot_working_tree,
     commit_policy_updates: PolicyCommit = _commit_policy_changes,
     catchup_factory: CatchupFactory | None = None,
+    recover_integration: IntegrationRecovery | None = None,
 ) -> int:
+    if load_result.workspace_scope is not None:
+        _recover_pending_integration(
+            load_result.workspace_scope, load_result.config, recover_integration
+        )
     with catchup_during_readiness(load_result.config, load_result.workspace_scope, catchup_factory):
         return _guarded_policy_readiness(
             load_result=load_result,
@@ -610,6 +616,24 @@ def run_project_policy_readiness(
             working_tree_snapshot=working_tree_snapshot,
             commit_policy_updates=commit_policy_updates,
         )
+
+
+IntegrationRecovery = Callable[["WorkspaceScope", "UnifiedConfig"], object]
+
+
+def _default_integration_recovery(scope: WorkspaceScope, config: UnifiedConfig) -> object:
+    return run_auto_integrate_recovery_preamble(scope, config)
+
+
+def _recover_pending_integration(
+    scope: WorkspaceScope,
+    config: UnifiedConfig,
+    recover: IntegrationRecovery | None,
+) -> None:
+    try:
+        (recover or _default_integration_recovery)(scope, config)
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+        logger.warning("integration recovery before policy readiness failed: {}", exc)
 
 
 def _working_tree_diff(root: Path) -> str:
