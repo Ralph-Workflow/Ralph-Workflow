@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import contextlib
+import os
 import sqlite3
+import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Final, cast
 
 from ralph.checked_accessors import as_object_list, as_sequence
@@ -58,13 +62,57 @@ def _coerce_hmac(row: object) -> str | None:
     return None
 
 
+_THREAD_CONNECTIONS = threading.local()
+_MAX_CONNECTIONS_PER_THREAD = 8
+
+
+def _file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino
+
+
+def _thread_connection(db_path: Path) -> tuple[sqlite3.Connection, bool]:
+    cache: OrderedDict[str, tuple[sqlite3.Connection, tuple[int, int] | None, int]] | None = (
+        getattr(_THREAD_CONNECTIONS, "cache", None)
+    )
+    if cache is None:
+        cache = OrderedDict()
+        _THREAD_CONNECTIONS.cache = cache
+    key = str(db_path)
+    cached = cache.pop(key, None)
+    if cached is not None:
+        connection, identity, owner_pid = cached
+        if (
+            owner_pid == os.getpid()
+            and identity is not None
+            and identity == _file_identity(db_path)
+        ):
+            cache[key] = cached
+            return connection, False
+        with contextlib.suppress(sqlite3.Error):
+            connection.close()
+    connection = sqlite3.connect(key, timeout=5.0)
+    cache[key] = (connection, _file_identity(db_path), os.getpid())
+    while len(cache) > _MAX_CONNECTIONS_PER_THREAD:
+        _evicted_key, (evicted, _identity, _pid) = cache.popitem(last=False)
+        with contextlib.suppress(sqlite3.Error):
+            evicted.close()
+    return connection, True
+
+
 class RunStateDB:
     __slots__ = ("_closed", "_conn")
 
     def __init__(self, workspace_root: Path) -> None:
         db_path = workspace_root / DB_RELPATH
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path), timeout=5.0)
+        self._closed: bool = False
+        self._conn, fresh = _thread_connection(db_path)
+        if not fresh:
+            return
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         version_row: object = self._conn.execute("PRAGMA user_version").fetchone()
@@ -102,7 +150,6 @@ class RunStateDB:
         if version_value < _SCHEMA_VERSION:
             self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
             self._conn.commit()
-        self._closed: bool = False
 
     @classmethod
     def _raise_upsert_fail(cls, run_id: str, artifact_type: str, hmac_hex: str | None) -> None:
@@ -284,7 +331,7 @@ class RunStateDB:
         return int(receipt_rows) + int(sentinel_rows)
 
     def close(self) -> None:
-        self._conn.close()
+        self._closed = True
 
 
 __all__ = [
