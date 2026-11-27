@@ -29,7 +29,11 @@ _INFRASTRUCTURE_DAEMONS = (
     "gnome-",
     "xdg-",
     "at-spi",
+    "fusermount",
+    "qemu-system",
 )
+_RALPH_ENGINE_CMDLINE_MARKERS = (b"ralph._launcher_environment", b"\x00-m\x00ralph.")
+_RALPH_ENGINE_LOCK_HOLD_BOUND_S = 120.0
 
 
 def _is_git_process(proc_root: Path, pid_str: str) -> bool:
@@ -411,7 +415,21 @@ def _rule_out_unreadable(
         return "dead"
     if lock_age_s is not None and lock_age_s > _UNPROVABLE_LOCK_CEILING_S:
         return "dead"
+    if (
+        lock_age_s is not None
+        and lock_age_s > _RALPH_ENGINE_LOCK_HOLD_BOUND_S
+        and _is_ralph_engine(proc_root, pid_str)
+    ):
+        return "dead"
     return "unknown"
+
+
+def _is_ralph_engine(proc_root: Path, pid_str: str) -> bool:
+    try:
+        cmdline = (proc_root / pid_str / "cmdline").read_bytes()
+    except OSError:
+        return False
+    return any(marker in cmdline for marker in _RALPH_ENGINE_CMDLINE_MARKERS)
 
 
 def _non_git_touches_repo(

@@ -8,23 +8,12 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.pipeline.status_bar_operation import OperationStatus
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
     from ralph.display.status_bar import StatusBarModel
-
-
-class OperationStatus:
-    __slots__ = ("_authority", "is_agent", "model")
-
-    def __init__(self, authority: StatusBarAuthority) -> None:
-        self._authority = authority
-        self.model: StatusBarModel | None = None
-        self.is_agent = False
-
-    def show(self, model: StatusBarModel) -> None:
-        self.model = model
-        self._authority.render()
 
 
 class StatusBarAuthority:

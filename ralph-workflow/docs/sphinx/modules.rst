@@ -6020,6 +6020,13 @@ ralph.pipeline.status_bar_authority
    :members:
    :show-inheritance:
 
+ralph.pipeline.status_bar_operation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.status_bar_operation
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.stop_resolution_blocked
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

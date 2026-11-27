@@ -686,3 +686,65 @@ def test_relative_gitdir_resolution_failure_fails_closed_unknown(tmp_path: Path)
     assert pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "unknown"
     res = lock_has_no_live_holder(gitdir / "index.lock", gitdir, proc_root=tmp_path / "proc")
     assert res == "unknown"
+
+
+@pytest.mark.parametrize(
+    "cmdline",
+    [
+        b"/venv/bin/python3\x00-I\x00-c\x00from ralph._launcher_environment import launch; launch()\x00",
+        b"/venv/bin/python3\x00-P\x00-m\x00ralph.mcp.server\x00--workspace\x00/repo\x00",
+    ],
+)
+def test_a_ralph_engine_hidden_by_its_own_secrecy_cannot_hold_an_old_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cmdline: bytes,
+) -> None:
+    gitdir = tmp_path / "repo" / ".git"
+    gitdir.mkdir(parents=True)
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    fake_proc, fd_dir = _fake_proc_with_unreadable_fd(
+        tmp_path,
+        "python3",
+        cmdline,
+    )
+    monkeypatch.setattr(
+        "ralph.git._lock_recovery.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
+    )
+    try:
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "unknown"
+        three_minutes_ago = time.time() - 180
+        os.utime(lock_path, (three_minutes_ago, three_minutes_ago))
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "dead"
+    finally:
+        fd_dir.chmod(0o755)
+
+
+@pytest.mark.parametrize(
+    ("comm", "cmdline"),
+    [
+        ("fusermount3", b"fusermount3\x00-o\x00rw\x00--\x00/run/user/1000/doc\x00"),
+        ("qemu-system-x86", b"qemu-system-x86_64\x00-machine\x00q35\x00"),
+    ],
+)
+def test_a_fuse_helper_or_hypervisor_never_vetoes_lock_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    comm: str,
+    cmdline: bytes,
+) -> None:
+    gitdir = tmp_path / "repo" / ".git"
+    gitdir.mkdir(parents=True)
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    fake_proc, fd_dir = _fake_proc_with_unreadable_fd(tmp_path, comm, cmdline)
+    monkeypatch.setattr(
+        "ralph.git._lock_recovery.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
+    )
+    try:
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "dead"
+    finally:
+        fd_dir.chmod(0o755)
