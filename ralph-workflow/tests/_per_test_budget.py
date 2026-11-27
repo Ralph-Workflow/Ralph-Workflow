@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import signal
 import threading
 from contextlib import contextmanager
@@ -24,6 +25,7 @@ class TestExecutionTimeoutError(BaseException):
 
 _WALL_HANG_FACTOR = 5.0
 _WALL_HANG_MAX_EXTRA_SECONDS = 60.0
+_MAX_CONTENTION_FACTOR = 8.0
 _MIN_CHECK_SECONDS = 0.01
 _RETRY_SECONDS = 0.25
 _IDLE_WAKE_SECONDS = 60.0
@@ -36,6 +38,19 @@ _signal_mask = signal.pthread_sigmask
 
 def wall_hang_cap(budget_seconds: float) -> float:
     return min(budget_seconds * _WALL_HANG_FACTOR, budget_seconds + _WALL_HANG_MAX_EXTRA_SECONDS)
+
+
+def contended_wall_cap(wall_cap: float, *, load: float, cpus: int) -> float:
+    factor = min(max(load / max(cpus, 1), 1.0), _MAX_CONTENTION_FACTOR)
+    return wall_cap * factor
+
+
+def _host_wall_cap(wall_cap: float) -> float:
+    try:
+        load = os.getloadavg()[0]
+    except OSError:
+        return wall_cap
+    return contended_wall_cap(wall_cap, load=load, cpus=os.cpu_count() or 1)
 
 
 def validated_budget(value: object, *, source: str) -> float:
@@ -79,16 +94,18 @@ class _Phase:
         if self.overrun is None:
             if cpu_used > self.budget:
                 self.overrun = f"test {self.label} used more than {self.budget} CPU seconds"
-            elif now - self.wall_start > self.wall_cap:
+            elif now - self.wall_start > self.wall_cap and now - self.wall_start > (
+                effective := _host_wall_cap(self.wall_cap)
+            ):
                 self.overrun = (
-                    f"test {self.label} exceeded the {self.wall_cap} s wall-clock hang cap "
-                    f"({self.budget} s budget)"
+                    f"test {self.label} exceeded the {effective:.1f} s wall-clock hang cap "
+                    f"({self.wall_cap} s scaled for host load; {self.budget} s budget)"
                 )
         if self.overrun is not None:
             self.next_check = now + _RETRY_SECONDS
         else:
             cpu_left = self.budget - cpu_used
-            wall_left = self.wall_start + self.wall_cap - now
+            wall_left = self.wall_start + _host_wall_cap(self.wall_cap) - now
             self.next_check = now + max(_MIN_CHECK_SECONDS, min(cpu_left, wall_left))
         return self.overrun
 
