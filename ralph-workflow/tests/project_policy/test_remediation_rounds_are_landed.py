@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.state import PipelineState
+from ralph.project_policy import cli_integration
 from ralph.project_policy.cli_integration import LoadResult, run_project_policy_readiness
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
 _ROOT = "/test/remediation-rounds-are-landed"
 
@@ -77,3 +88,34 @@ def test_the_readiness_commit_is_landed_when_readiness_ends() -> None:
     assert events, "readiness must commit its policy updates"
     assert events[-1] == f"land {_ROOT}", "the readiness commit must be landed last"
     assert events.count(f"land {_ROOT}") == 1
+
+
+def _conflict_resolver(_root: Path, _branch: str) -> StopResolutionOutcome:
+    raise AssertionError("only passed through, never called")
+
+
+def _rebase_stop_resolver(_root: Path, _branch: str, _stop: RebaseStop) -> bool:
+    raise AssertionError("only passed through, never called")
+
+
+def test_a_round_landing_resolves_conflicts_with_the_given_resolvers(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    integrated: list[dict[str, object]] = []
+
+    def _integrate(
+        _config: UnifiedConfig, _scope: WorkspaceScope, _state: RebaseState, **kw: object
+    ) -> None:
+        integrated.append(kw)
+
+    monkeypatch.setattr(cli_integration, "auto_integrate_after_commit", _integrate)
+    scope = WorkspaceScope(root=str(tmp_git_repo), allowed_roots=[str(tmp_git_repo)])
+
+    landing = cli_integration.round_landing(
+        conflict_resolver=_conflict_resolver, rebase_stop_resolver=_rebase_stop_resolver
+    )
+    landing(scope, UnifiedConfig(), None)
+
+    assert integrated == [
+        {"conflict_resolver": _conflict_resolver, "rebase_stop_resolver": _rebase_stop_resolver}
+    ]

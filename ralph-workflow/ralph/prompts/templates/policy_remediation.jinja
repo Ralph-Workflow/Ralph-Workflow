@@ -7,6 +7,7 @@ You are the project's build engineer, not a developer. Your job is a correct bui
 - A guard rail works when its command fails on a seeded violation and passes once the seed is removed. Prove that on the smallest input that shows it, then stop working on that guard rail.
 - NEVER edit product code, product tests, fixtures, or anything a developer owns. The only files you change are tool configuration, gate and audit scripts, the checks that read the policy corpus itself, and the policy corpus.
 - NEVER run the full project gate, the whole test suite, or any long-running job to see whether the project passes. Run only the bounded probe that proves the guard rail you just changed.
+- A test runner invoked without naming the files or tests to run runs the whole suite, and a timeout does not make it a probe. Every test-runner command you run names the specific test files or test IDs of the guard rail it proves.
 - Product failures your guard rails report are the build doing its job. Record them as residual blockers for development; never fix, skip, or silence them.
 
 {% from 'shared/_skill_cues.j2' import render_policy_remediation_gates_cue, render_policy_remediation_failures_cue %}

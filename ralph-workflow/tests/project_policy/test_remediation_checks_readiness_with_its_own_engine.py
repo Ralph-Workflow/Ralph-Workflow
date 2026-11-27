@@ -40,3 +40,10 @@ def test_the_readiness_check_reports_findings_and_fails(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "RWP-" in result.stdout
+
+
+def test_remediation_test_runner_commands_must_name_their_tests() -> None:
+    prompt = remediation.render_remediation_prompt([_FINDING])
+
+    assert "A test runner invoked without naming the files or tests to run" in prompt
+    assert "names the specific test files or test IDs" in prompt
