@@ -224,3 +224,30 @@ def test_a_staged_version_different_from_both_sides_is_never_absorbed(tmp_path: 
     assert _head(feature_repo) == before
     staged = str(route_git_method(feature_repo, "show", (":app.txt",)))
     assert staged.strip() == "staged agent work"
+
+
+def test_a_sibling_checkouts_catchup_never_blocks_this_checkouts_fast_forward(
+    tmp_path: Path,
+) -> None:
+    from ralph.git.git_command_queue import (
+        WorktreeLeaseHolder,
+        end_agent_lease,
+        try_acquire_lease,
+    )
+
+    feature, feature_repo, newest = _feature_behind_main(tmp_path)
+    sibling = tmp_path / "wt-sibling"
+    route_git_method(
+        Repo(tmp_path / "project"), "worktree", ("add", "-q", "-b", "sib", str(sibling))
+    )
+    held = try_acquire_lease(sibling, holder=WorktreeLeaseHolder(name="auto-integrate-catchup"))
+    assert held is not None
+    try:
+        outcome = attempt_catchup_fast_forward(
+            _config(), feature, agent_phases=AgentPhaseActivity()
+        )
+    finally:
+        end_agent_lease(held)
+
+    assert outcome == CATCHUP_FAST_FORWARDED
+    assert _head(feature_repo) == newest

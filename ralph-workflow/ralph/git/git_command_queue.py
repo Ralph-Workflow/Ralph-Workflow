@@ -266,6 +266,13 @@ def _normalize_git_dir(path: Path) -> Path:
     return resolved
 
 
+def _worktree_git_dir(repo: RepoPath) -> Path:
+    try:
+        return Path(repo.git_dir).resolve(strict=False)
+    except ValueError as exc:
+        raise OSError("embedded null byte in path") from exc
+
+
 def get_queue_for_repo(repo_or_path: RepoPath | Path | str) -> GitCommandQueue:
     common = _resolve_common_dir(repo_or_path)
     return _REGISTRY.get_or_create(common)
@@ -508,7 +515,7 @@ def begin_agent_lease(
     holder: WorktreeLeaseHolder | None = None,
 ) -> WorktreeLease:
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(_resolve_common_dir(repo))
+    lock_path = _lease_lock_path(_worktree_git_dir(repo))
     effective_holder = holder or WorktreeLeaseHolder(name="agent-phase")
     return _acquire_lease(
         lock_path,
@@ -536,7 +543,7 @@ def end_agent_lease(lease: WorktreeLease) -> None:
 
 def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(_resolve_common_dir(repo))
+    lock_path = _lease_lock_path(_worktree_git_dir(repo))
     return _lease_is_held(
         lock_path,
         probe=_lease_holder_liveness_probe,

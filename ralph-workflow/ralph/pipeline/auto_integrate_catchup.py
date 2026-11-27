@@ -95,7 +95,7 @@ CATCHUP_DEFERRED_GIT_OPERATION = (
     "deferred: a git operation in this checkout belongs to the run, not to catch-up"
 )
 
-CATCHUP_REFUSED_AGENT_ACTIVE = "refused: agent is currently active"
+CATCHUP_REFUSED_AGENT_ACTIVE = "deferred: another mutation of this checkout holds its lease"
 CATCHUP_LEASE_UNKNOWN = "failed: agent lease state is unknown"
 CATCHUP_LEDGER_UNAVAILABLE = "failed: repository attempt ledger is unavailable"
 CATCHUP_TIMEOUT = "failed: fast-forward timed out"
@@ -1153,8 +1153,18 @@ class AutoIntegrateCatchupWorker:
             return self._agent_phases.mutation_window()
         return nullcontext()
 
+    def _target_checkout(self, target: str) -> Path:
+        try:
+            verdict, owner = worktree_lookup(find_main_worktree_root(self._root), target)
+        except (GitError, OSError, RuntimeError, ValueError, KeyError):
+            return self._root
+        return owner if verdict == WORKTREE_FOUND and owner is not None else self._root
+
     def _publish_after_tick(self) -> None:
-        with _mutation_lease(self._root) as lease_verdict:
+        target = resolve_integration_target(self._config, self._root)
+        if target is None:
+            return
+        with _mutation_lease(self._target_checkout(target)) as lease_verdict:
             if lease_verdict != "acquired":
                 logger.warning(
                     "auto_integrate catch-up publication deferred: {}",
@@ -1165,9 +1175,6 @@ class AutoIntegrateCatchupWorker:
                 reconcile_remote_publication,
             )
 
-            target = resolve_integration_target(self._config, self._root)
-            if target is None:
-                return
             if _git_operation_in_progress(self._root):
                 logger.debug(
                     "auto_integrate catch-up publication {}", CATCHUP_DEFERRED_GIT_OPERATION

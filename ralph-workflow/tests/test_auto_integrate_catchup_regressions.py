@@ -17,6 +17,14 @@ from ralph.process.manager import ProcessTerminationError
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_catchup_regression_agent_lease_refuses_merge_without_charge": (
+        "same assertion against the named outcome constant: the outcome's text changed from "
+        "'refused: agent is currently active' to say what actually holds the lease, another "
+        "mutation of the same checkout, because no agent ever takes it"
+    ),
+}
+
 
 @dataclass
 class _RecordingClock:
@@ -124,7 +132,7 @@ def test_catchup_regression_agent_lease_refuses_merge_without_charge(
         clock=_RecordingClock(),
     )
 
-    assert outcome == "refused: agent is currently active"
+    assert outcome == catchup.CATCHUP_REFUSED_AGENT_ACTIVE
     assert calls == []
     assert ledger.read().repeat_counts == {}
     assert not ledger_path.exists()

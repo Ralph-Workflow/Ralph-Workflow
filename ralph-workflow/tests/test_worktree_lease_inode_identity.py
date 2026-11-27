@@ -14,6 +14,17 @@ from ralph.git.git_command_queue import (
     try_acquire_lease,
 )
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_main_checkout_and_linked_worktree_share_one_lease": (
+        "replaced by test_each_checkout_owns_its_own_lease_so_siblings_never_block_each_other: "
+        "a repository-wide lease let four sessions' catch-up workers refuse each other's "
+        "fast-forwards and publications as 'agent is currently active' although no agent held "
+        "it; each checkout now owns its lease, and publishing the target leases the checkout "
+        "that owns the target, so two mutators of one checkout still exclude each other"
+    ),
+}
+
+
 _VANISHED_PID = 4194303
 
 
@@ -95,7 +106,9 @@ def test_takeover_refuses_a_lock_on_an_inode_no_longer_at_the_path(
             end_agent_lease(lease)
 
 
-def test_main_checkout_and_linked_worktree_share_one_lease(tmp_path: Path) -> None:
+def test_each_checkout_owns_its_own_lease_so_siblings_never_block_each_other(
+    tmp_path: Path,
+) -> None:
     common = tmp_path / "main" / ".git"
     private = common / "worktrees" / "wt"
     private.mkdir(parents=True)
@@ -103,9 +116,13 @@ def test_main_checkout_and_linked_worktree_share_one_lease(tmp_path: Path) -> No
 
     lease = begin_agent_lease(_FakeRepo(private), holder=WorktreeLeaseHolder(name="bg"))
     try:
-        assert lease.lock_path.resolve() == _lease_path(common).resolve()
-        assert not _lease_path(private).exists()
-        main = WorktreeLeaseHolder(name="main-agent")
-        assert try_acquire_lease(_FakeRepo(common), holder=main) is None
+        assert lease.lock_path.resolve() == _lease_path(private).resolve()
+        main = try_acquire_lease(_FakeRepo(common), holder=WorktreeLeaseHolder(name="main"))
+        assert main is not None
+        try:
+            again = WorktreeLeaseHolder(name="second-mutator")
+            assert try_acquire_lease(_FakeRepo(common), holder=again) is None
+        finally:
+            end_agent_lease(main)
     finally:
         end_agent_lease(lease)
