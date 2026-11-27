@@ -2675,6 +2675,13 @@ ralph.agents.invoke.opencode_subagent_sessions
    :members:
    :show-inheritance:
 
+ralph.agents.invoke.raw_transcript_attempt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.invoke.raw_transcript_attempt
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke.watchdog_event_queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -13,6 +13,7 @@ from ralph.agents._broker_secret import parent_broker_secret
 from ralph.agents.chain import ChainManager
 from ralph.agents.completion_signals import evaluate_completion, graded_phase_verdict
 from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke.raw_transcript_attempt import raw_transcript_attempt_start
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
 from ralph.display.line_sanitizer import strip_terminal_control
@@ -278,7 +279,12 @@ def _raw_transcript_break_detail(
     if not unit_id:
         return None
     raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
-    breaks = detect_raw_log_breaks(raw_path, transport=agent_config.transport)
+    attempt_start = raw_transcript_attempt_start(raw_path)
+    breaks = [
+        found
+        for found in detect_raw_log_breaks(raw_path, transport=agent_config.transport)
+        if found.offset >= attempt_start
+    ]
     if not breaks:
         return None
     return f"raw transcript corrupted: {breaks[0].detail}"

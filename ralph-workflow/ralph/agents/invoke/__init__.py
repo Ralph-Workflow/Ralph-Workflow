@@ -119,6 +119,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
 from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.agents.invoke.agent_temp_dir import private_agent_tmpdir
 from ralph.agents.invoke.attempt_supervision import AttemptSupervisor
+from ralph.agents.invoke.raw_transcript_attempt import mark_raw_transcript_attempt_start
 from ralph.agents.invoke.termination_recorder import TerminationRecorder
 from ralph.agents.spec import AgentSpec
 from ralph.agents.watchdog_fire_reason import WatchdogFireReason
@@ -529,6 +530,7 @@ def invoke_agent(
         master_prompt_file=base_opts.master_prompt_file,
         unsafe_mode=base_opts.unsafe_mode,
     )
+    mark_raw_transcript_attempt_start(base_opts.workspace_path, config)
     monitor: WorkspaceMonitor | None = None
     process_scope = reaped_process_scope("agent", owner_pid=os.getpid())
     scope_env = process_scope.__enter__()
