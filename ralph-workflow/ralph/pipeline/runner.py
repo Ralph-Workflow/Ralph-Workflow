@@ -170,6 +170,7 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
     retained_integration_reason,
 )
+from ralph.pipeline.landed_rebase_reconciler import reconcile_landed_rebase
 from ralph.pipeline.no_progress_reroute import (
     OVERRIDDEN_SUCCESS_LIMIT,
     success_overrides_exhausted,
@@ -2196,6 +2197,11 @@ def _with_phase_step_timing(result: PipelineState | int, timer: PhaseTimer) -> P
     return result.with_phase_timing(timer.finish()) if isinstance(result, PipelineState) else result
 
 
+def _with_landed_rebase(state: PipelineState, root: Path) -> PipelineState:
+    reconciled = reconcile_landed_rebase(state.rebase, root)
+    return state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -2405,7 +2411,7 @@ def _run_pipeline_step(
             _reduce_routing_timing, _reduce_development_timing
         )
         reduced_state, _ = reducer_reduce(
-            state,
+            _with_landed_rebase(state, workspace_scope.root),
             event,
             policy_bundle.pipeline,
             recovery=recovery_controller,

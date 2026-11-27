@@ -16,6 +16,13 @@ development phase writes files and only commits at the commit seam, so
 treating any dirty worktree as unresolved integration would block every
 run.
 
+ralph.pipeline.landed_rebase_reconciler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.landed_rebase_reconciler
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.integration_resolution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
