@@ -5082,6 +5082,13 @@ ralph.project_policy.remediation
    :members:
    :show-inheritance:
 
+ralph.project_policy.round_landing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.round_landing
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.finalization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

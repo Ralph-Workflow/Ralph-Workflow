@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -10,14 +9,11 @@ from loguru import logger
 
 from ralph.agents.chain import ChainManager, DrainNotBoundError
 from ralph.agents.invoke import AgentInvocationError, _clear_session_completion_sentinel
-from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import SystemClock
 from ralph.cli.commands._load_result import LoadResult
 from ralph.display.parallel_display import resolve_active_display
 from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.git._dirty_paths import list_dirty_paths
-from ralph.git.operations import create_commit, stage_files
-from ralph.git.scoped_auto_commit import commit_scoped_updates
 from ralph.language_detector import get_project_stack
 from ralph.pipeline._runner_session import (
     pop_last_captured_session_id,
@@ -38,11 +34,6 @@ from ralph.pipeline.attempt_runner import (
 from ralph.pipeline.attempt_runner_deps import (
     AttemptRunnerDeps,
     current_effect_runner,
-)
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_agent import (
-    build_agent_conflict_resolver,
-    build_agent_rebase_stop_resolver,
 )
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
@@ -71,6 +62,14 @@ from ralph.project_policy.policy_mode import PolicyMode
 from ralph.project_policy.preflight import run_policy_readiness_preflight
 from ralph.project_policy.readiness_catchup import CatchupFactory, catchup_during_readiness
 from ralph.project_policy.reset import reset_policy_state
+from ralph.project_policy.round_landing import (
+    PolicyRoundLanding,
+    ReadinessLanding,
+    agent_round_landing,
+)
+from ralph.project_policy.round_landing import (
+    land_readiness_commits as default_land_readiness_commits,
+)
 from ralph.project_policy.status_bar import (
     push_readiness_assessment_status_bar,
     push_remediation_status_bar,
@@ -87,8 +86,6 @@ if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
     from ralph.pipeline.attempt_result import AttemptResult
-    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
-    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
     from ralph.project_policy.analysis import InvokePolicyAgent
     from ralph.project_policy.models import ReadinessResult
     from ralph.recovery.controller import RecoveryController
@@ -530,7 +527,7 @@ def _dispatch_preflight_result(
         anchor_value: object = getattr(active_display, "run_started_monotonic", None)
         run_started_monotonic = anchor_value if isinstance(anchor_value, float) else None
 
-        landing = land_policy_round or _agent_round_landing(
+        landing = land_policy_round or agent_round_landing(
             load_result=load_result,
             display=active_display,
             display_context=display_context,
@@ -646,7 +643,7 @@ def run_project_policy_readiness(
             land_policy_round=land_policy_round,
         )
     if load_result.workspace_scope is not None:
-        (land_readiness_commits or _land_readiness_commits)(
+        (land_readiness_commits or default_land_readiness_commits)(
             load_result.workspace_scope, load_result.config
         )
     return exit_code
@@ -669,111 +666,6 @@ def _recover_pending_integration(
         (recover or _default_integration_recovery)(scope, config)
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
         logger.warning("integration recovery before policy readiness failed: {}", exc)
-
-
-PolicyRoundLanding = Callable[["WorkspaceScope", "UnifiedConfig", frozenset[str] | None], None]
-
-_GUARD_RAIL_COMMIT_SUBJECT = "build(policy): set up guard rails"
-_AGENT_STATE_PREFIX = ".agent/"
-
-
-def _commit_guard_rail_changes(scope: WorkspaceScope, pre_run_dirty: frozenset[str] | None) -> None:
-    root = Path(scope.root)
-    changed = sorted(
-        path
-        for path in list_dirty_paths(root) - (pre_run_dirty or frozenset())
-        if not path.startswith(_AGENT_STATE_PREFIX)
-    )
-    if not changed:
-        return
-    commit_scoped_updates(
-        root,
-        scopes=tuple(changed),
-        subject=_GUARD_RAIL_COMMIT_SUBJECT,
-        body_builder=lambda paths: (
-            "Guard rails set up by policy remediation:\n" + "\n".join(f"- {path}" for path in paths)
-        ),
-        create_commit_fn=create_commit,
-        stage_fn=stage_files,
-    )
-
-
-def round_landing(
-    *,
-    conflict_resolver: ConflictResolver | None,
-    rebase_stop_resolver: RebaseStopResolver | None,
-) -> PolicyRoundLanding:
-    return functools.partial(
-        _land_policy_round,
-        conflict_resolver=conflict_resolver,
-        rebase_stop_resolver=rebase_stop_resolver,
-    )
-
-
-def _agent_round_landing(
-    *,
-    load_result: _LoadResult,
-    display: ParallelDisplay,
-    display_context: DisplayContext,
-    pipeline_deps: PipelineDeps | None,
-) -> PolicyRoundLanding:
-    policy_bundle = load_result.policy_bundle
-    if policy_bundle is None or pipeline_deps is None:
-        return _land_policy_round
-    registry = AgentRegistry.from_config(load_result.config)
-    scope = load_result.workspace_scope
-    return round_landing(
-        conflict_resolver=build_agent_conflict_resolver(
-            policy_bundle=policy_bundle,
-            registry=registry,
-            display=display,
-            config=load_result.config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=scope,
-            display_context=display_context,
-        ),
-        rebase_stop_resolver=build_agent_rebase_stop_resolver(
-            policy_bundle=policy_bundle,
-            registry=registry,
-            display=display,
-            config=load_result.config,
-            pipeline_deps=pipeline_deps,
-            workspace_scope=scope,
-            display_context=display_context,
-        ),
-    )
-
-
-ReadinessLanding = Callable[["WorkspaceScope", "UnifiedConfig"], None]
-
-
-def _land_readiness_commits(scope: WorkspaceScope, config: UnifiedConfig) -> None:
-    try:
-        auto_integrate_after_commit(config, scope, RebaseState())
-    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
-        logger.warning("landing the readiness commits failed: {}", exc)
-
-
-def _land_policy_round(
-    scope: WorkspaceScope,
-    config: UnifiedConfig,
-    pre_run_dirty: frozenset[str] | None,
-    *,
-    conflict_resolver: ConflictResolver | None = None,
-    rebase_stop_resolver: RebaseStopResolver | None = None,
-) -> None:
-    try:
-        _commit_policy_changes(scope, pre_run_dirty)
-        _commit_guard_rail_changes(scope, pre_run_dirty)
-        auto_integrate_after_commit(
-            config,
-            scope,
-            RebaseState(),
-            conflict_resolver=conflict_resolver,
-            rebase_stop_resolver=rebase_stop_resolver,
-        )
-    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
-        logger.warning("landing the policy remediation round failed: {}", exc)
 
 
 def _working_tree_diff(root: Path) -> str:

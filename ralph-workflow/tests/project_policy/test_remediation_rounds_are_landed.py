@@ -7,8 +7,9 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.git.scoped_auto_commit import list_dirty_paths
 from ralph.pipeline.state import PipelineState
-from ralph.project_policy import cli_integration
+from ralph.project_policy import round_landing
 from ralph.project_policy.cli_integration import LoadResult, run_project_policy_readiness
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -108,10 +109,10 @@ def test_a_round_landing_resolves_conflicts_with_the_given_resolvers(
     ) -> None:
         integrated.append(kw)
 
-    monkeypatch.setattr(cli_integration, "auto_integrate_after_commit", _integrate)
+    monkeypatch.setattr(round_landing, "auto_integrate_after_commit", _integrate)
     scope = WorkspaceScope(root=str(tmp_git_repo), allowed_roots=[str(tmp_git_repo)])
 
-    landing = cli_integration.round_landing(
+    landing = round_landing.round_landing(
         conflict_resolver=_conflict_resolver, rebase_stop_resolver=_rebase_stop_resolver
     )
     landing(scope, UnifiedConfig(), None)
@@ -119,3 +120,25 @@ def test_a_round_landing_resolves_conflicts_with_the_given_resolvers(
     assert integrated == [
         {"conflict_resolver": _conflict_resolver, "rebase_stop_resolver": _rebase_stop_resolver}
     ]
+
+
+def test_a_round_lands_on_a_clean_tree_and_gives_development_its_work_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    unfinished = tmp_git_repo / "app.rb"
+    unfinished.write_text("development work in progress\n", encoding="utf-8")
+    dirty_while_landing: list[frozenset[str]] = []
+
+    def _integrate(
+        _config: UnifiedConfig, scope: WorkspaceScope, _state: RebaseState, **_kw: object
+    ) -> None:
+        dirty_while_landing.append(list_dirty_paths(scope.root))
+
+    monkeypatch.setattr(round_landing, "auto_integrate_after_commit", _integrate)
+    scope = WorkspaceScope(root=str(tmp_git_repo), allowed_roots=[str(tmp_git_repo)])
+
+    landing = round_landing.round_landing(conflict_resolver=None, rebase_stop_resolver=None)
+    landing(scope, UnifiedConfig(), frozenset({"app.rb"}))
+
+    assert dirty_while_landing == [frozenset()]
+    assert unfinished.read_text(encoding="utf-8") == "development work in progress\n"
