@@ -28,6 +28,7 @@ from ralph.project_policy._content_checks import (
     set_research_freshness_clock,
 )
 from ralph.project_policy._guard_inventory import _check_guard_inventory
+from ralph.project_policy._protected_rules import check_protected_rules
 from ralph.project_policy._scanners import (
     _HEADING_LINE_RE,
     _check_pending_facts,
@@ -367,6 +368,7 @@ def _validate_existing_policy_file(
     findings.extend(check_fixed_time_caps(content, path, filename))
     findings.extend(check_volatile_evidence_citations(content, path, filename))
     findings.extend(check_retired_schema_wording(content, path, filename))
+    findings.extend(check_protected_rules(content, path, filename))
     findings.extend(instruction_surface.check_hidden_unicode(content, path))
     frozen_v = _frozen_schema_version(content)
     file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION

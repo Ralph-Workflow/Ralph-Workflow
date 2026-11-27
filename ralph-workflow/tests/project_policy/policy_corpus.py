@@ -88,6 +88,7 @@ def complete_policy_body(filename: str) -> str:
             )
         else:
             lines.extend(("Real content.", ""))
+    lines.extend(markers.PROTECTED_RULES.get(filename, ()))
     lines.extend(facts)
     lines.append(f"RALPH-FACT: {filename}: path = {markers.CANONICAL_DIR}{filename}")
     if filename in _LANG_POLICIES:

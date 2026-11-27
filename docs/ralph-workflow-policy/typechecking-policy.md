@@ -19,6 +19,26 @@ or inapplicable (with a reason and the stack change that would re-open it).
 
 ## Default requirements
 
+* Inline suppressions are forbidden. The underlying diagnostic is fixed in
+  code, or suppressed in the type checker's configuration, never inline.
+* A suppression is a last resort after fixing the type, narrowing the dynamic
+  boundary, adding validation, or improving a local adapter/stub has been tried.
+  A suppression that remains is a configuration-level entry in the type
+  checker's configuration that names the tool limitation or external boundary,
+  owner, and removal/review trigger. Suppression count MUST NOT increase,
+  and an existing suppression outside the three permitted reasons below is
+  removed by fixing the code it covers. <!-- ralph-control: suppression-count-baseline -->
+* A lint or type-check rule is disabled, narrowed, or suppressed only for
+  one of three reasons: the code is owned by another party and the project
+  cannot change it, the code is generated, or the code is the narrow
+  boundary that calls a foreign API with no type information (FFI). Every
+  other disable, suppression, threshold increase, or strictness reduction is
+  forbidden, whatever reason accompanies it.
+* Rule strength only increases. An agent never disables, downgrades,
+  deletes, or narrows a lint or type-check rule, raises a threshold, or adds
+  an exclusion so that a check passes; a failing rule is fixed in the code
+  it reports.
+
 * The agent MUST declare a `RALPH-LANG:` block for EVERY language
   detected in the project stack, followed by a `RALPH-COMMAND:` or an
   explicit `RALPH-INAPPLICABLE:` line with a reason.

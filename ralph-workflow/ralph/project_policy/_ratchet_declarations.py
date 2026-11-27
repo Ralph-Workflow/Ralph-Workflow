@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import re
 from typing import Final
 
@@ -61,6 +62,10 @@ def _split_visible_into_sentences(visible_text: str) -> list[str]:
 
 
 def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
+    return list(_cached_ratchet_declarations(content))
+
+
+def _cached_ratchet_declarations_uncached(content: str) -> tuple[tuple[str, str], ...]:
     out: list[tuple[str, str]] = []
     in_excluded = False
     in_table = False
@@ -113,7 +118,12 @@ def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
             out=out,
         )
     flush()
-    return out
+    return tuple(out)
+
+
+_cached_ratchet_declarations = functools.lru_cache(maxsize=256)(
+    _cached_ratchet_declarations_uncached
+)
 
 
 def _scan_body_line(

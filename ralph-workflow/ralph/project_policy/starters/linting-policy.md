@@ -41,10 +41,20 @@ the project maintains and can lint them.
 * The authoritative configuration MUST identify file-level disables and broad
   exclusions with their reason; duplicating every entry in this policy is not
   required.
-* The lint configuration starts by enabling every rule and disables only a
-  rule that fires on common safe use. It contains no per-file ignore of a
-  banned rule, no `extend-ignore` that re-enables a banned rule, and no inline
-  suppression marker.
+* The lint configuration starts by enabling every rule. It contains no
+  per-file ignore of a banned rule, no `extend-ignore` that re-enables a
+  banned rule, and no inline suppression marker. Choosing between two enabled
+  rules that contradict each other is configuration, not a bypass.
+* A lint or type-check rule is disabled, narrowed, or suppressed only for
+  one of three reasons: the code is owned by another party and the project
+  cannot change it, the code is generated, or the code is the narrow
+  boundary that calls a foreign API with no type information (FFI). Every
+  other disable, suppression, threshold increase, or strictness reduction is
+  forbidden, whatever reason accompanies it.
+* Rule strength only increases. An agent never disables, downgrades,
+  deletes, or narrows a lint or type-check rule, raises a threshold, or adds
+  an exclusion so that a check passes; a failing rule is fixed in the code
+  it reports.
 
 ## Dead code — zero tolerance
 

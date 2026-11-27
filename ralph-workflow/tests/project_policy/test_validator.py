@@ -79,6 +79,7 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
         else:
             lines.extend(("Real content.", ""))
     lines.append("")
+    lines.extend(markers.PROTECTED_RULES.get(filename, ()))
     lines.extend(facts)
     lines.append(f"RALPH-FACT: {filename}: path = docs/ralph-workflow-policy/{filename}")
     lines.append("RALPH-FACT: owner = test-owner")

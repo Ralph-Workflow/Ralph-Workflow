@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import re
 from typing import Final
 
@@ -51,7 +52,18 @@ _REQUIRED_OUTCOME: Final[str] = (
 )
 
 
+_VOLATILE_TOKENS: Final[tuple[str, ...]] = ("tmp/", ".agent/", ".ndjson", ".jsonl", ".log")
+
+_RECORD_TOKENS: Final[tuple[str, ...]] = ("tmp/", ".agent/", ".ndjson", ".jsonl")
+
+
 def _citations(content: str) -> list[str]:
+    return list(_cached_citations(content))
+
+
+def _cached_citations_uncached(content: str) -> tuple[str, ...]:
+    if not any(token in content for token in _VOLATILE_TOKENS):
+        return ()
     spans: list[tuple[int, int, str]] = []
     for pattern in (_LINE_CITATION_RE, _RUN_RECEIPT_RE):
         for match in pattern.finditer(content):
@@ -59,6 +71,8 @@ def _citations(content: str) -> list[str]:
                 continue
             spans.append((match.start(), match.end(), match.group(0).strip("`")))
     for line in content.splitlines():
+        if not any(token in line for token in _RECORD_TOKENS):
+            continue
         record = _VOLATILE_RECORD_RE.search(line)
         count = _RECORD_COUNT_RE.search(line)
         if record is None or count is None:
@@ -68,7 +82,10 @@ def _citations(content: str) -> list[str]:
         spans.append(
             (len(content), len(content), f"{count.group(0)} of {record.group(0).strip('`')}")
         )
-    return [text for _, _, text in sorted(spans)]
+    return tuple(text for _, _, text in sorted(spans))
+
+
+_cached_citations = functools.lru_cache(maxsize=256)(_cached_citations_uncached)
 
 
 def check_volatile_evidence_citations(

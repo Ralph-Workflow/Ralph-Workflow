@@ -107,9 +107,19 @@ the project maintains and can statically check them.
   boundary, adding validation, or improving a local adapter/stub has been tried.
   A suppression that remains is a configuration-level entry in the type
   checker's configuration that names the tool limitation or external boundary,
-  owner, and removal/review trigger. Suppression count MUST NOT increase
-  without a documented exception; legacy debt uses a ratcheted checked
-  baseline that rejects new unchecked scope. <!-- ralph-control: suppression-count-baseline -->
+  owner, and removal/review trigger. Suppression count MUST NOT increase,
+  and an existing suppression outside the three permitted reasons below is
+  removed by fixing the code it covers. <!-- ralph-control: suppression-count-baseline -->
+* A lint or type-check rule is disabled, narrowed, or suppressed only for
+  one of three reasons: the code is owned by another party and the project
+  cannot change it, the code is generated, or the code is the narrow
+  boundary that calls a foreign API with no type information (FFI). Every
+  other disable, suppression, threshold increase, or strictness reduction is
+  forbidden, whatever reason accompanies it.
+* Rule strength only increases. An agent never disables, downgrades,
+  deletes, or narrows a lint or type-check rule, raises a threshold, or adds
+  an exclusion so that a check passes; a failing rule is fixed in the code
+  it reports.
 * Unused, unreachable, impossible, or obsolete-path diagnostics MUST be
   investigated under the linting policy's zero-tolerance section. Verified
   dead code MUST be removed. A proven live reflection/plugin/FFI/platform or

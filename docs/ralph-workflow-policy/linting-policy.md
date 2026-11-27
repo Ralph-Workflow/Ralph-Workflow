@@ -19,6 +19,17 @@ inapplicable.
 
 ## Default requirements
 
+* A lint or type-check rule is disabled, narrowed, or suppressed only for
+  one of three reasons: the code is owned by another party and the project
+  cannot change it, the code is generated, or the code is the narrow
+  boundary that calls a foreign API with no type information (FFI). Every
+  other disable, suppression, threshold increase, or strictness reduction is
+  forbidden, whatever reason accompanies it.
+* Rule strength only increases. An agent never disables, downgrades,
+  deletes, or narrows a lint or type-check rule, raises a threshold, or adds
+  an exclusion so that a check passes; a failing rule is fixed in the code
+  it reports.
+
 * The selected linter MUST match the language ecosystem best practice
   (ruff for Python, eslint for JavaScript/TypeScript, clippy for Rust,
   golangci-lint for Go, etc.). A minimal configuration chosen only to
@@ -33,13 +44,10 @@ inapplicable.
 * File-level disables and per-file-ignores MUST be listed in this
   policy with the affected path and the reason. Weakening
   per-file-ignores is detected by `ralph/testing/audit_lint_bypass.py`.
-* The lint configuration starts by enabling every rule and disables only a
-  rule that fires on common safe use. It contains no per-file ignore of a
-  banned rule, no `extend-ignore` that re-enables a banned rule, and no inline
-  suppression marker. Explicit `decision` under the criteria's "common safe use" clause:
-  * `TRY003`: per-file ignore on `ralph/**/*.py` and `tests/**/*.py` because descriptive exception strings at raise sites are standard safe practice and custom exception classes for every site would introduce unnecessary complexity.
-  * `TRY300`: per-file ignore on `ralph/**/*.py` because direct returns within try blocks preserve local flow control without unnecessary else-nesting.
-  * `FBT001`, `FBT002`, `FBT003`: per-file ignore on `ralph/**/*.py` (FBT001, FBT002) and `tests/**/*.py` (FBT001, FBT002, FBT003) because boolean positional arguments and fixtures in tests and established API contracts represent common safe usage where keyword-only migration would break caller compatibility.
+* The lint configuration starts by enabling every rule. It contains no
+  per-file ignore of a banned rule, no `extend-ignore` that re-enables a
+  banned rule, and no inline suppression marker. Choosing between two enabled
+  rules that contradict each other is configuration, not a bypass.
 
 ## Dead code — zero tolerance
 

@@ -15,10 +15,9 @@ from tests.project_policy.policy_corpus import seed_complete_corpus
 
 RALPH_TEST_CHANGE_REASONS = {
     "test_v6_constants_pinned": (
-        "schema v7 ships the time-budget model where the gate fails only past its cap "
-        "above the measured floor, so pinned v6 markers move to v7; the policy contract "
-        "version moved to 2026-11-25.2 so cached READY verdicts are re-evaluated against "
-        "it after the 2026-11-25.1 volatile-evidence citation contract"
+        "the policy contract version moved to 2026-11-26.1 so cached READY verdicts are "
+        "re-evaluated against the protected comment, size-limit and lint/type-check bypass "
+        "rules; schema v7 and its time-budget markers are unchanged"
     ),
 }
 
@@ -35,7 +34,7 @@ def _make_enforcement_workspace(enforcement_val: str) -> MemoryWorkspace:
 def test_v6_constants_pinned() -> None:
     assert markers.SCHEMA_VERSION == "v7"
     assert markers.POLICY_SCHEMA_MARKER == "<!-- ralph-policy-schema: v7 -->"
-    assert markers.POLICY_CONTRACT_VERSION == "2026-11-25.2"
+    assert markers.POLICY_CONTRACT_VERSION == "2026-11-26.1"
     assert markers.PORTFOLIO_SCHEMA_VERSION == "v3"
     assert markers.ENFORCEMENT_MISSING_FINDING_ID == "RWP-INVENTORY:ENFORCEMENT-MISSING"
     assert markers.ENFORCEMENT_UNKNOWN_ID_FINDING_ID == "RWP-INVENTORY:ENFORCEMENT-UNKNOWN-ID"

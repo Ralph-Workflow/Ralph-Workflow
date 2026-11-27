@@ -32,6 +32,13 @@ code.
   reason does not override the no-dead-code rule.
 * Functions, classes, modules, and files MUST remain cohesive, expose
   understandable interfaces, and have bounded reasons to change.
+* No first-party source file exceeds 500 lines, no function or method
+  exceeds 50 lines, and no function exceeds a cyclomatic complexity of 10.
+  Tests are first-party source. The project's linter enforces each limit
+  (for example ESLint `max-lines`, `max-lines-per-function` and
+  `complexity`; RuboCop `Metrics/ClassLength`, `Metrics/MethodLength` and
+  `Metrics/CyclomaticComplexity`; Ruff `C901` and `PLR0915`). These limits
+  are maximums: a project may lower them, never raise them.
 * Error handling MUST surface actionable context. Bare `except: pass` is
   forbidden. Handle or propagate errors according to project convention;
   log once at the owning handling boundary and redact sensitive context.

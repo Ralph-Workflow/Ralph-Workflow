@@ -11,7 +11,7 @@ POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v7 -->"
 FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
 )
-POLICY_CONTRACT_VERSION: Final[str] = "2026-11-25.2"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-26.1"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
@@ -307,6 +307,45 @@ ID_INVENTORY: Final[str] = "RWP-INVENTORY"
 ID_TIME_BUDGET: Final[str] = "RWP-TIME-BUDGET"
 ID_VOLATILE_EVIDENCE: Final[str] = "RWP-VOLATILE-EVIDENCE"
 ID_SCHEMA_CONTENT: Final[str] = "RWP-SCHEMA-CONTENT"
+ID_PROTECTED_RULE: Final[str] = "RWP-PROTECTED-RULE"
+
+_BYPASS_RULES: Final[tuple[str, ...]] = (
+    "a lint or type-check rule is disabled, narrowed, or suppressed only for one of three "
+    "reasons: the code is owned by another party and the project cannot change it, the code "
+    "is generated, or the code is the narrow boundary that calls a foreign api with no type "
+    "information (ffi).",
+    "every other disable, suppression, threshold increase, or strictness reduction is "
+    "forbidden, whatever reason accompanies it.",
+    "rule strength only increases.",
+    "an agent never disables, downgrades, deletes, or narrows a lint or type-check rule, "
+    "raises a threshold, or adds an exclusion so that a check passes;",
+)
+
+PROTECTED_RULES: Final[dict[str, tuple[str, ...]]] = {
+    "clean-code-policy.md": (
+        "source code contains no comments.",
+        "editing code means deleting any comment found in the touched region.",
+        "docstrings are banned the same way as comments",
+        "there is no inline bypass marker and no baseline.",
+        "no first-party source file exceeds 500 lines, no function or method exceeds 50 lines, "
+        "and no function exceeds a cyclomatic complexity of 10.",
+        "tests are first-party source.",
+        "the project's linter enforces each limit",
+        "these limits are maximums: a project may lower them, never raise them.",
+    ),
+    "documentation-policy.md": ("docstrings are banned.",),
+    "linting-policy.md": (
+        "inline suppressions are forbidden.",
+        "the lint configuration starts by enabling every rule.",
+        *_BYPASS_RULES,
+    ),
+    "typechecking-policy.md": (
+        "inline suppressions are forbidden.",
+        "an existing suppression outside the three permitted reasons below is removed by "
+        "fixing the code it covers.",
+        *_BYPASS_RULES,
+    ),
+}
 RETIRED_SCHEMA_WORDING: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "v7": {
         "verification-policy.md": (
@@ -540,6 +579,7 @@ __all__ = [
     "ID_PENDING",
     "ID_PLACEHOLDER",
     "ID_PORTFOLIO",
+    "ID_PROTECTED_RULE",
     "ID_SCHEMA_CONTENT",
     "ID_TIME_BUDGET",
     "ID_VOLATILE_EVIDENCE",
@@ -568,6 +608,7 @@ __all__ = [
     "PORTFOLIO_SCHEMA_VERSION",
     "PROJECT_AGENTS_MD_LINE_BUDGET",
     "PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID",
+    "PROTECTED_RULES",
     "RATCHET_DECLARATION_PHRASES",
     "RATCHET_UNCOVERED_FINDING_ID",
     "REQUIRED_HEADINGS",
