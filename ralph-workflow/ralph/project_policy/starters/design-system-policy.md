@@ -186,6 +186,8 @@ Criterion 8 verdict authority: a capture-backed criterion 8 verdict is agent-pro
 
 The capture path applies to web UI only. A missing declared renderer or a non-web UI is a recorded visual-review blocker; it never silently falls back to a partial capture.
 
+Ralph Workflow runs `design_capture_command` once per viewport, theme and state. It appends the design target as the last argument, or substitutes it for a literal `{target}` placeholder when the command contains one, and passes each cell's settings in the environment: `RALPH_CAPTURE_OUTPUT` (the PNG path to write), `RALPH_CAPTURE_TARGET`, `RALPH_CAPTURE_VIEWPORT_WIDTH`, `RALPH_CAPTURE_VIEWPORT_HEIGHT`, `RALPH_CAPTURE_THEME` and `RALPH_CAPTURE_STATE`. Declare a command that accepts that invocation; a command that rejects the appended target fails every capture.
+
 <!-- REPLACE-ME: set design_target to the URL or route the capture command renders
 (for example the local dev server's root URL), keep or adjust the viewports, themes and
 states to the ones the UI actually supports, and delete this comment. -->

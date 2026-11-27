@@ -221,3 +221,11 @@ def test_clean_code_and_architecture_agree_on_abstraction_justification() -> Non
         assert "demonstrated boundary, volatility, testing, or reuse" in line_lower, (
             "clean-code abstraction guard row must justify abstraction by demonstrated value"
         )
+
+
+def test_the_design_starter_states_how_the_capture_command_is_invoked() -> None:
+    starter = starters.read_starter("design-system-policy.md")
+
+    assert "appends the design target as the last argument" in starter
+    assert "`{target}`" in starter
+    assert "RALPH_CAPTURE_OUTPUT" in starter
