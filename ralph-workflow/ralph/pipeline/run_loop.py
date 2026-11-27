@@ -109,7 +109,10 @@ from ralph.pipeline.rebase_state import (
 )
 from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
-from ralph.pipeline.stalled_retained_hold import end_stalled_retained_hold
+from ralph.pipeline.stalled_retained_hold import (
+    end_stalled_retained_hold,
+    release_superseded_record,
+)
 from ralph.pipeline.state_init import with_configured_phase_chains
 from ralph.process.manager import get_process_manager
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
@@ -3090,6 +3093,9 @@ def _back_off_unchanged_retained_hold(
     record = read_record(root)
     feature = (record.integrated_feature_sha or record.pre_feature_sha) if record else ""
     target_tip = (branch_sha(root, record.target) or "") if record else ""
+    if release_superseded_record(root):
+        backoff.reset()
+        return True
     wait_seconds = backoff.observe((remaining, last_reason or "", feature, target_tip))
     if backoff.repeats >= NO_PROGRESS_RELEASE_REPEATS and _end_stalled_hold(root, backoff.repeats):
         backoff.reset()

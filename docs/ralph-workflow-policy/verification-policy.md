@@ -84,6 +84,25 @@ so changing an effective composition input invalidates READY.
 
 ## Default requirements
 
+* **Shared hosts:** Time limits are judged on contention-adjusted time:
+  measured time minus the share of the host that other processes kept busy
+  during the run, which the gate records alongside its timing. A run whose
+  checks all pass but whose time crosses a limit on a contended host is
+  inconclusive, not a defect: it is never re-recorded in this policy, never
+  optimized, and never re-run to wait for a quiet host, and the work proceeds
+  on its correctness result. Only an overrun on an uncontended run is a
+  defect to optimize.
+* **One full gate at a time:** iterate on the narrowest check that covers the
+  change and run the full gate once, before the commit. Never start a second
+  full gate while one is running for the same worktree. Full gates on one host
+  share host-wide slots, so a gate may wait for its turn before it starts;
+  that wait is not gate time.
+* **Gates leave nothing running:** every check runs in its own process group
+  and is reaped when it ends. No process, temporary directory, browser
+  profile, container, or file watch survives a gate run, and the gate fails
+  when one does: a leak slows every other run on the host, so it is a
+  correctness defect, not a performance one.
+
 The verification budget is a ratchet; the budget MUST NOT grow absent a reviewed change. <!-- ralph-control: verification-budget-ratchet -->
 
 A run is judged on **time to a correct, verified change**; speed never permits partial proof.

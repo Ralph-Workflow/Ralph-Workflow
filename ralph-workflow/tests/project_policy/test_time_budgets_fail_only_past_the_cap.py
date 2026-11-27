@@ -4,6 +4,15 @@ import re
 
 from ralph.project_policy import markers, starters
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_contended_overrun_is_inconclusive_never_a_wait_for_a_quiet_host": (
+        "user requirement: work must get done under host contention, so a time-only overrun "
+        "on a contended host is inconclusive instead of getting one re-run and then counting "
+        "as a defect; the test now asserts the contention-adjusted rule and that the old "
+        "single re-run rule is gone"
+    ),
+}
+
 
 def _flat(name: str) -> str:
     return re.sub(r"\s+", " ", starters.read_starter(name))
@@ -25,10 +34,13 @@ def test_fast_path_fails_only_past_its_cap() -> None:
     assert "held to 10 and 30 seconds outright" not in text
 
 
-def test_contended_overrun_gets_exactly_one_rerun_never_a_wait_for_a_quiet_host() -> None:
+def test_contended_overrun_is_inconclusive_never_a_wait_for_a_quiet_host() -> None:
     verification = _flat("verification-policy.md")
     testing = _flat("testing-policy.md")
-    assert "gets exactly ONE re-run" in verification
+    assert "Time limits are judged on contention-adjusted time" in verification
+    assert "on a contended host is inconclusive, not a defect" in verification
+    assert "Only an overrun on an uncontended run is a defect to optimize" in verification
+    assert "gets exactly ONE re-run" not in verification
     assert "NEVER re-run repeatedly waiting for a quiet host" in verification
     assert "Never re-run repeatedly waiting for a quiet host" in testing
 

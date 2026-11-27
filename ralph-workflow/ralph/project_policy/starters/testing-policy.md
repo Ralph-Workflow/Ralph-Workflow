@@ -114,10 +114,10 @@ Suite admission, and fixing the production seam.
     which is the signature of tests bound to internals instead of driving
     the system as a black box. Add the seam. Do NOT raise the timeout,
     split the suite to dodge the budget, or skip/xfail to get green. A
-    performance failure is one that reproduces: a suite that crosses its
-    limit only while other work shares the host gets the single re-run of
-    the verification policy's rule 9 and is not a performance failure when
-    that re-run passes. Never re-run repeatedly waiting for a quiet host.
+    performance failure is one that reproduces on an uncontended run: a
+    suite that crosses its limit only while other work shares the host is
+    inconclusive under the verification policy's rule 9, not a performance
+    failure. Never re-run repeatedly waiting for a quiet host.
 12. Every bug fix to behaviour in the automated lane MUST add a regression
     test that fails on the bug and passes on the fix; the name SHOULD encode
     the regression. A fix routed to another lane records its regression

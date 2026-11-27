@@ -99,11 +99,25 @@ differently.
      run slowed by other work on the same host (parallel agent runs, a busy
      CI runner) stays inside it. A gate that only passes on a quiet host
      enforces the wrong number and breaks rule 12's "checks answer
-     consistently". A run whose checks all pass but whose time crosses a
-     limit gets exactly ONE re-run: inside the limit on that re-run, the gate
-     passed; past it again, the slowness is real and is a defect to optimize.
-     NEVER re-run repeatedly waiting for a quiet host, and never treat a
-     single contended overrun as an architecture failure.
+     consistently". Time limits are judged on contention-adjusted time:
+     measured time minus the share of the host that other processes kept
+     busy during the run, which the gate records alongside its timing. A run
+     whose checks all pass but whose time crosses a limit on a contended host
+     is inconclusive, not a defect: it is never re-recorded in this policy,
+     never optimized, and never re-run to wait for a quiet host, and the work
+     proceeds on its correctness result. Only an overrun on an uncontended
+     run is a defect to optimize. NEVER re-run repeatedly waiting for a quiet
+     host, and never treat a contended overrun as an architecture failure.
+   - **One full gate at a time:** iterate on the narrowest check that covers
+     the change and run the full gate once, before the commit. Never start a
+     second full gate while one is running for the same worktree. Full gates
+     on one host share host-wide slots, so a gate may wait for its turn
+     before it starts; that wait is not gate time.
+   - **Gates leave nothing running:** every check runs in its own process
+     group and is reaped when it ends. No process, temporary directory,
+     browser profile, container, or file watch survives a gate run, and the
+     gate fails when one does: a leak slows every other run on the host, so
+     it is a correctness defect, not a performance one.
      Moving a gate's enforced limit from its recorded measurement to the cap
      is not budget growth: the recorded measurement does not change.
    - **Nesting:** the suite is ONE STEP inside this budget, not a parallel

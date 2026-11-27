@@ -51,6 +51,8 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.pipeline.gate_slot_runner import gate_slot_command
+from ralph.pipeline.publication_gate import declared_publication_gate
 from ralph.process.manager import (
     DeadlineTimeoutExpired,
     ProcessTerminationIssuer,
@@ -608,7 +610,7 @@ def handle_exec_command(
             else Path.cwd
         )
         cwd = _workspace_root(workspace, cwd_provider=cwd_prov)
-        full_cmd = [run_argv0, *run_args]
+        full_cmd = gate_slot_command([run_argv0, *run_args], declared_publication_gate(cwd))
         current_sub = get_current_progress_subscription()
         try:
             job_id = effective_registry.start(

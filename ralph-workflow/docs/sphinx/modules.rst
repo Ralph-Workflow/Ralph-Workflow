@@ -16,6 +16,13 @@ development phase writes files and only commits at the commit seam, so
 treating any dirty worktree as unresolved integration would block every
 run.
 
+ralph.pipeline.gate_slot_runner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.gate_slot_runner
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.landed_rebase_reconciler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

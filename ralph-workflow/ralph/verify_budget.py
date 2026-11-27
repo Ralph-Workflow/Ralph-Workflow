@@ -5,7 +5,7 @@ import resource
 import sys
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 import psutil
 
@@ -218,6 +218,10 @@ def orphaned_cpu_tracker(
     )
 
 
+SMT_CONTENTION_CPU_CREDIT: Final[float] = 0.5
+CONTENDED_FOREIGN_CORE_SHARE: Final[float] = 0.25
+
+
 @dataclass(frozen=True, slots=True)
 class SuiteBudgetReport:
     wall_seconds: float
@@ -247,9 +251,25 @@ class SuiteBudgetReport:
         return min(1.0, self.suite_cpu_seconds / free_core_seconds)
 
     @property
+    def foreign_core_share(self) -> float:
+        capacity = self.wall_seconds * max(1, self.cpu_count)
+        if capacity <= 0.0:
+            return 0.0
+        return min(1.0, self.foreign_cpu_seconds / capacity)
+
+    @property
+    def contended_cpu_budget_seconds(self) -> float:
+        share = self.foreign_core_share
+        if share < CONTENDED_FOREIGN_CORE_SHARE:
+            return self.cpu_budget_seconds
+        return self.cpu_budget_seconds * (1.0 + SMT_CONTENTION_CPU_CREDIT * share)
+
+    @property
     def outcome(self) -> SuiteBudgetOutcome:
-        if self.suite_cpu_seconds > self.cpu_budget_seconds:
+        if self.suite_cpu_seconds > self.contended_cpu_budget_seconds:
             return "over_cpu_budget"
+        if self.suite_cpu_seconds > self.cpu_budget_seconds:
+            return "host_contention"
         if self.wall_seconds <= self.wall_budget_seconds:
             return "within_budget"
         if self.adjusted_wall_seconds <= self.wall_budget_seconds:
@@ -262,7 +282,7 @@ class SuiteBudgetReport:
         outcome = self.outcome
         if outcome == "host_contention":
             sys.stderr.write(
-                "WARNING: the tests took longer than the wall-clock budget only "
+                "WARNING: the suite went over its wall-clock or CPU budget only "
                 "because other processes were using this host's CPUs; net of that "
                 "contention the suite is within budget. Re-run on a quieter host "
                 "to measure it alone.\n"

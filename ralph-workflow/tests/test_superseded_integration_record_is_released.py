@@ -64,3 +64,26 @@ def test_a_record_whose_feature_tip_was_rewritten_away_is_kept(tmp_path: Path) -
 
     assert end_stalled_retained_hold(root, checks=5) is False
     assert read_record(root) is not None
+
+
+def test_a_superseded_record_is_released_on_the_first_check_without_waiting(
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline.stalled_retained_hold import release_superseded_record
+
+    root, base, recorded = _repo(tmp_path)
+    _integrating(root, base, recorded)
+    _commit(root, "feature.txt", "second\n")
+
+    assert release_superseded_record(root) is True
+    assert read_record(root) is None
+
+
+def test_releasing_leaves_a_current_record_alone(tmp_path: Path) -> None:
+    from ralph.pipeline.stalled_retained_hold import release_superseded_record
+
+    root, base, recorded = _repo(tmp_path)
+    _integrating(root, base, recorded)
+
+    assert release_superseded_record(root) is False
+    assert read_record(root) is not None

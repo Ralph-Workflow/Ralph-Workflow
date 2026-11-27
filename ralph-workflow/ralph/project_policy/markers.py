@@ -11,7 +11,7 @@ POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v7 -->"
 FREEZE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
     r"<!-- ralph-policy-schema: freeze v([0-9]+) -->"
 )
-POLICY_CONTRACT_VERSION: Final[str] = "2026-11-27.1"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-27.2"
 
 OPT_OUT_MARKER: Final[str] = "<!-- ralph-workflow-policy: skip -->"
 
@@ -334,6 +334,14 @@ PROTECTED_RULES: Final[dict[str, tuple[str, ...]]] = {
         "these limits are maximums: a project may lower them, never raise them.",
     ),
     "documentation-policy.md": ("docstrings are banned.",),
+    "verification-policy.md": (
+        "time limits are judged on contention-adjusted time:",
+        "is inconclusive, not a defect:",
+        "only an overrun on an uncontended run is a defect to optimize.",
+        "never start a second full gate while one is running for the same worktree.",
+        "no process, temporary directory, browser profile, container, or file watch survives "
+        "a gate run, and the gate fails when one does:",
+    ),
     "linting-policy.md": (
         "inline suppressions are forbidden.",
         "the lint configuration starts by enabling every rule.",

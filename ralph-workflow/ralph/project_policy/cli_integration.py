@@ -39,6 +39,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.run_loop import run_auto_integrate_recovery_preamble
+from ralph.pipeline.stalled_retained_hold import release_superseded_record
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import _prompt_ui
 from ralph.project_policy import _remediation_writes as remediation_writes
@@ -622,6 +623,7 @@ IntegrationRecovery = Callable[["WorkspaceScope", "UnifiedConfig"], object]
 
 
 def _default_integration_recovery(scope: WorkspaceScope, config: UnifiedConfig) -> object:
+    release_superseded_record(Path(scope.root))
     return run_auto_integrate_recovery_preamble(scope, config)
 
 

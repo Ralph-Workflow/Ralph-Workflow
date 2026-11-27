@@ -45,6 +45,33 @@ def _superseded_by_feature_commits(root: Path, record: IntegrationRecord) -> boo
     return is_ancestor(root, record.pre_feature_sha, head)
 
 
+def _release_if_superseded(root: Path, record: IntegrationRecord) -> bool:
+    if not _superseded_by_feature_commits(root, record):
+        return False
+    release_stalled_record(root)
+    logger.warning(
+        "retained integration never landed and the feature branch has moved on from its "
+        "recorded tip {} to {}; the superseded integration record is released so the "
+        "current tip integrates",
+        record.pre_feature_sha,
+        get_head_sha(root),
+    )
+    return True
+
+
+def release_superseded_record(root: Path) -> bool:
+    try:
+        record = read_record(root)
+    except _RECORD_ERRORS:
+        return False
+    if record is None or not git_operation_is_settled(root):
+        return False
+    try:
+        return _release_if_superseded(root, record)
+    except _RECORD_ERRORS:
+        return False
+
+
 def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
     try:
         record = read_record(root)
@@ -64,16 +91,7 @@ def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
             checks,
         )
         return True
-    if _superseded_by_feature_commits(root, record):
-        release_stalled_record(root)
-        logger.warning(
-            "retained integration made no progress for {} checks and never landed, and the "
-            "feature branch has moved on from its recorded tip {} to {}; the superseded "
-            "integration record is released so the current tip integrates",
-            checks,
-            record.pre_feature_sha,
-            get_head_sha(root),
-        )
+    if _release_if_superseded(root, record):
         return True
     if not _ladder_is_terminal(root, record):
         return False
@@ -89,4 +107,4 @@ def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
     return True
 
 
-__all__ = ["end_stalled_retained_hold"]
+__all__ = ["end_stalled_retained_hold", "release_superseded_record"]

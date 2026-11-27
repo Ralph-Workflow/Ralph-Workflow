@@ -54,15 +54,14 @@ def _try_slots(directory: Path, slots: int) -> IO[str] | None:
     return None
 
 
-@contextmanager
-def publication_gate_slot(
+def acquire_gate_slot(
     *,
     slots: int | None = None,
     directory: Path | None = None,
     wait_seconds: float = GATE_SLOT_WAIT_SECONDS,
     monotonic: Callable[[], float] = time.monotonic,
     wait: Callable[[float], bool] | None = None,
-) -> Iterator[bool]:
+) -> IO[str] | None:
     slot_count = slots if slots is not None else configured_gate_slots()
     slot_dir = directory if directory is not None else gate_slot_directory()
     pause = wait if wait is not None else threading.Event().wait
@@ -79,6 +78,21 @@ def publication_gate_slot(
     while handle is None and monotonic() < deadline:
         pause(min(_RETRY_SECONDS, max(0.0, deadline - monotonic())))
         handle = _try_slots(slot_dir, slot_count)
+    return handle
+
+
+@contextmanager
+def publication_gate_slot(
+    *,
+    slots: int | None = None,
+    directory: Path | None = None,
+    wait_seconds: float = GATE_SLOT_WAIT_SECONDS,
+    monotonic: Callable[[], float] = time.monotonic,
+    wait: Callable[[float], bool] | None = None,
+) -> Iterator[bool]:
+    handle = acquire_gate_slot(
+        slots=slots, directory=directory, wait_seconds=wait_seconds, monotonic=monotonic, wait=wait
+    )
     try:
         yield handle is not None
     finally:
@@ -92,6 +106,7 @@ __all__ = [
     "GATE_SLOTS_ENV",
     "GATE_SLOT_DIR_ENV",
     "GATE_SLOT_WAIT_SECONDS",
+    "acquire_gate_slot",
     "configured_gate_slots",
     "gate_slot_directory",
     "publication_gate_slot",

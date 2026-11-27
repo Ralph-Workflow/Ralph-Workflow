@@ -12,8 +12,10 @@ RALPH_ROOT = PACKAGE_ROOT / "ralph"
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_spawn_capable_entry_points_sanitize_before_work": (
-        "the new make verify step ralph/testing/audit_agent_attempt_path.py has a __main__ guard "
-        "and spawns nothing, so it joins the audit entries of the guard allowlist"
+        "ralph.pipeline.gate_slot_runner is a new spawn-capable entry point that runs an "
+        "agent's declared gate inside a host-wide slot and sanitizes the process environment "
+        "first; earlier, the make verify step ralph/testing/audit_agent_attempt_path.py joined "
+        "the audit entries of the guard allowlist because it spawns nothing"
     ),
 }
 
@@ -312,6 +314,7 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         "ralph.install.main",
         "ralph.mcp.explore._bench_r6_metrics.main",
         "ralph.mcp.server.runtime.main",
+        "ralph.pipeline.gate_slot_runner.main",
         "ralph.testing.audit_sast.main",
         "ralph.process.manager._supervisor.main",
         "ralph.test_suites.main",
