@@ -35,6 +35,7 @@ class _Prctl(Protocol):
 
 _libc = ctypes.CDLL(None, use_errno=True)
 _prctl_raw: object = getattr(_libc, "prctl", None)
+_HAS_PDEATHSIG: Final[bool] = callable(_prctl_raw)
 if callable(_prctl_raw):
     _prctl: _Prctl = cast("_Prctl", _prctl_raw)
 else:
@@ -120,7 +121,7 @@ def run(argv: list[str]) -> int:
     signal.signal(signal.SIGINT, on_termination)
     signal.signal(signal.SIGHUP, on_termination)
 
-    if not _set_pdeathsig(_SIGTERM):
+    if _HAS_PDEATHSIG and not _set_pdeathsig(_SIGTERM):
         return 126
 
     pid = os.fork()
