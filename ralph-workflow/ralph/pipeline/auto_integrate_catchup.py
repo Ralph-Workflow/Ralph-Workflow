@@ -61,6 +61,7 @@ from ralph.pipeline.integration_actions import default_clock
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
 from ralph.pipeline.integration_owner import RecordFactOutcome
+from ralph.pipeline.integration_preservation_bundle import prune_expired_preservation_bundles
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -1219,6 +1220,12 @@ def start_catchup_worker_if_enabled(
         remote_client=remote_client,
         rebase_stop_resolver=rebase_stop_resolver,
     )
+    threading.Thread(
+        target=prune_expired_preservation_bundles,
+        args=(Path(root) / ".agent",),
+        name="ralph-preservation-prune",
+        daemon=True,
+    ).start()
     worker.start()
     return worker
 

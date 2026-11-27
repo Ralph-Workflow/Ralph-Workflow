@@ -6,15 +6,22 @@ import tarfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
+
+from loguru import logger
 
 from ralph.git.subprocess_runner import run_git
 
 __all__ = [
+    "PRESERVATION_BUNDLE_RETENTION_SECONDS",
     "IntegrationPreservationBundle",
     "carry_preserved_commits",
     "preserve_integration_state",
+    "prune_expired_preservation_bundles",
     "reapply_preserved_progress",
 ]
+
+PRESERVATION_BUNDLE_RETENTION_SECONDS: Final[float] = 24 * 60 * 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,12 +64,43 @@ def _worktree_content(root: Path) -> tuple[str, ...]:
     return tuple(names)
 
 
+def prune_expired_preservation_bundles(
+    state_dir: Path, *, now: float | None = None
+) -> tuple[Path, ...]:
+    bundles_root = state_dir / "integration-preservation"
+    try:
+        children = tuple(bundles_root.iterdir())
+    except OSError:
+        return ()
+    cutoff = (time.time() if now is None else now) - PRESERVATION_BUNDLE_RETENTION_SECONDS
+    removed: list[Path] = []
+    for child in children:
+        try:
+            expired = child.is_dir() and child.stat().st_mtime < cutoff
+        except OSError:
+            continue
+        if not expired:
+            continue
+        shutil.rmtree(child, ignore_errors=True)
+        if not child.exists():
+            removed.append(child)
+    if removed:
+        logger.info(
+            "integration preservation: removed {} bundle(s) older than {}h from {}",
+            len(removed),
+            int(PRESERVATION_BUNDLE_RETENTION_SECONDS // 3600),
+            bundles_root,
+        )
+    return tuple(removed)
+
+
 def preserve_integration_state(
     root: Path,
     *,
     state_dir: Path,
     target: str,
 ) -> IntegrationPreservationBundle | None:
+    prune_expired_preservation_bundles(state_dir)
     token_source = f"{root.resolve()}:{time.time_ns()}".encode()
     token = hashlib.sha256(token_source).hexdigest()[:16]
     bundle_dir = state_dir / "integration-preservation" / token

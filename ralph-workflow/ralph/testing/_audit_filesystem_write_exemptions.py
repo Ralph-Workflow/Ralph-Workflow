@@ -236,6 +236,11 @@ EXEMPT_CALL_SITES: frozenset[tuple[str, str, str]] = frozenset(
         ),
         (
             "ralph/pipeline/integration_preservation_bundle.py",
+            "prune_expired_preservation_bundles",
+            "raw_rmtree",
+        ),
+        (
+            "ralph/pipeline/integration_preservation_bundle.py",
             "reapply_preserved_progress",
             "raw_copy2",
         ),
