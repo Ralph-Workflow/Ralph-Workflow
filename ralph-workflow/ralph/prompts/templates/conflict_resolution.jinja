@@ -87,6 +87,10 @@ These earlier strategies did not resolve this conflict. Use their outcomes to av
 - DO NOT run any git command. Ralph Workflow stages the resolved files and
   {% if replaying_commit_sha %}continues the rebase{% else %}creates the merge commit{% endif %} itself. You only edit file contents. Git is
   denied to this session by the exec policy, so attempting it wastes the round.
+- DO NOT run the project's full gate or whole test suite, and do not let a
+  subagent run it. Ralph Workflow runs the project's gate on the resolved
+  result before it lands. Check a resolution only with a bounded probe of the
+  listed files, such as a syntax check or the tests that cover them.
 - Do not modify ANY file that is not listed under "Conflicted files"{% if auto_merged_block|default('') %} or
   "Auto-merged files"{% endif %} above.
   Not a neighbouring module, not a test, not an import, not a formatting nit.

@@ -301,3 +301,11 @@ def test_the_skills_block_does_not_widen_the_conflict_only_context(
         "ANALYSIS FEEDBACK",
     ):
         assert forbidden not in rendered
+
+
+def test_conflict_resolution_leaves_the_full_gate_to_ralph_workflow(tmp_path: Path) -> None:
+    rendered = _render(tmp_path)
+
+    assert "DO NOT run the project's full gate or whole test suite" in rendered
+    assert "do not let a\n  subagent run it" in rendered
+    assert "bounded probe of the\n  listed files" in rendered
