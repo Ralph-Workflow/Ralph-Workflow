@@ -23,6 +23,14 @@ from ralph.process.manager import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_sigterm_shutdown_kills_worker_and_descendant": (
+        "the child signalled readiness before registering its cause-report hook, so a "
+        "SIGTERM landing in that window (host load) killed the job with nothing printed; "
+        "the hook is now registered before the sentinel and a slow-after-ready case pins it"
+    ),
+}
+
 pytestmark = [
     pytest.mark.subprocess_e2e,
     pytest.mark.required_auto_integrate_e2e,
@@ -60,7 +68,7 @@ def _wait_for_sentinel(path: str, timeout_s: float = 15.0) -> int:
     raise AssertionError(f"sentinel {path!r} never written within {timeout_s}s")
 
 
-def _spawn_tree_script() -> str:
+def _spawn_tree_script(pause_after_ready_s: float = 0.0) -> str:
     return (
         "import os, subprocess, sys, time\n"
         "worker_file = os.environ['WORKER_FILE']\n"
@@ -84,7 +92,6 @@ def _spawn_tree_script() -> str:
         "job_id = registry.start(cmd, capability='ProcessExecBounded')\n"
         "job = registry._running_jobs[job_id]\n"
         "worker_pid = job.handle.pid\n"
-        "open(worker_file, 'w').write(str(worker_pid))\n"
         "\n"
         "def _report_final_cause() -> None:\n"
         "    res = registry.wait(job_id, wait_ms=0, capability='ProcessExecBounded')\n"
@@ -92,13 +99,17 @@ def _spawn_tree_script() -> str:
         "        print(f'CAUSE {res.kill_cause}', flush=True)\n"
         "\n"
         "register_shutdown_hook(_report_final_cause)\n"
+        "open(worker_file, 'w').write(str(worker_pid))\n"
+        f"time.sleep({pause_after_ready_s})\n"
         "while True:\n"
         "    time.sleep(0.1)\n"
     )
 
 
+@pytest.mark.parametrize("pause_after_ready_s", [0.0, 1.0], ids=["prompt", "slow-after-ready"])
 def test_sigterm_shutdown_kills_worker_and_descendant(
     tmp_path: object,
+    pause_after_ready_s: float,
 ) -> None:
     worker_file = f"{tmp_path}/worker.pid"
     descendant_file = f"{tmp_path}/descendant.pid"
@@ -106,7 +117,7 @@ def test_sigterm_shutdown_kills_worker_and_descendant(
     env["WORKER_FILE"] = worker_file
     env["DESCENDANT_FILE"] = descendant_file
     child = subprocess.Popen(
-        [sys.executable, "-u", "-c", _spawn_tree_script()],
+        [sys.executable, "-u", "-c", _spawn_tree_script(pause_after_ready_s)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
