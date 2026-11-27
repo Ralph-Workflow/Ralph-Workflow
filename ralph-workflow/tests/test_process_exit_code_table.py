@@ -121,6 +121,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the reviewed process-label inventory now includes the publication gate's command "
         "label and its tree probe, so the pinned digest of emitted labels changes"
     ),
+    "test_every_emitted_label_has_an_exit_code_decision.rollback_baseline_rev_parse": (
+        "the reviewed process-label inventory now includes the rollback baseline refresh's "
+        "rev-parse --verify --quiet of HEAD and the baseline's parent; rc=1 is git's answer "
+        "that the revision does not exist, so the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.policy_round_set_aside": (
         "the reviewed process-label inventory now includes the policy round landing's "
         "stash push and pop, which set development work aside while a remediation round "
@@ -155,7 +160,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "522227afb939af168c7df1c5148166786fdb90b6d8b17b8c9e68871df70d1308"
+    "9074d5255b8097762a20fa316cdc7126e271c0d5e77f726097cd3f7fa066c1c8"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds integration-preservation:list-content (ls-files of the "

@@ -97,6 +97,7 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "operation_evidence:rebase_object_resolvable": frozenset({1}),
     "pending-merge:identity": frozenset({128}),
     "planning-residue:head": frozenset({128}),
+    "rollback-baseline:rev-parse": frozenset({1}),
     "planning-residue:incoming-overwrite": frozenset({128}),
     "planning-residue:preserve-tree": frozenset({128}),
     "planning-residue:ref-exists": frozenset({1}),

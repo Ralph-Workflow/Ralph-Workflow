@@ -211,6 +211,7 @@ from ralph.pipeline.rebase_state import (
 )
 from ralph.pipeline.reducer import redirect_expired_cycle_in_place
 from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.rollback_baseline import refresh_rollback_baseline_after_landing
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import (
@@ -232,6 +233,7 @@ from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 execute_agent_effect = PRODUCTION_INVOKE
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -2197,6 +2199,13 @@ def _with_phase_step_timing(result: PipelineState | int, timer: PhaseTimer) -> P
     return result.with_phase_timing(timer.finish()) if isinstance(result, PipelineState) else result
 
 
+def _landed_state(state: PipelineState, event: object, root: Path) -> PipelineState:
+    landed = _with_landed_rebase(state, root)
+    if event != PipelineEvent.COMMIT_SUCCESS:
+        return landed
+    return refresh_rollback_baseline_after_landing(landed, root)
+
+
 def _with_landed_rebase(state: PipelineState, root: Path) -> PipelineState:
     reconciled = reconcile_landed_rebase(state.rebase, root)
     return state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
@@ -2411,7 +2420,7 @@ def _run_pipeline_step(
             _reduce_routing_timing, _reduce_development_timing
         )
         reduced_state, _ = reducer_reduce(
-            _with_landed_rebase(state, workspace_scope.root),
+            _landed_state(state, event, workspace_scope.root),
             event,
             policy_bundle.pipeline,
             recovery=recovery_controller,

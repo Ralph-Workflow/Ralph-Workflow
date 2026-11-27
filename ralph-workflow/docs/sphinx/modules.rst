@@ -1217,6 +1217,13 @@ ralph.pipeline.reducer
    :members:
    :show-inheritance:
 
+ralph.pipeline.rollback_baseline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.rollback_baseline
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.retry_diagnostic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
