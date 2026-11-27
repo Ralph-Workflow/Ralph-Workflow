@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import subprocess
 from collections.abc import Mapping
@@ -9,10 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph._typed_attrs import read_attr
-from ralph.agents.invoke.agent_search_env import apply_safe_search_env
 from ralph.agents.invoke.agent_temp_dir import private_agent_tmpdir
 from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
+from ralph.mcp.tools._exec_child_env import exec_child_env
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_job_tools import get_exec_job_registry
@@ -52,7 +51,6 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.process._spawn_env import scrub_activity_relay_controls
 from ralph.process.manager import (
     DeadlineTimeoutExpired,
     ProcessTerminationIssuer,
@@ -402,15 +400,7 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
 
 
 def _child_env(cwd: Path, tmpdir: Path | None = None) -> dict[str, str]:
-    env = scrub_activity_relay_controls(dict(os.environ))
-    env.pop("RALPH_BROKER_SECRET", None)
-    env["PWD"] = str(cwd)
-    env.pop("OLDPWD", None)
-    if tmpdir is not None:
-        env.update({"TMPDIR": str(tmpdir), "TMP": str(tmpdir), "TEMP": str(tmpdir)})
-    apply_safe_search_env(env)
-    scrub_activity_relay_controls(env)
-    return env
+    return exec_child_env(cwd, tmpdir)
 
 
 def run_command(

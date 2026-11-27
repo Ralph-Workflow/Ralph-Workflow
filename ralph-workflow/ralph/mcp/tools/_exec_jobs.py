@@ -14,11 +14,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 from typing import IO, TYPE_CHECKING, Final, Literal, TypeGuard
 
 import psutil
 
 import ralph.timeout_defaults as td
+from ralph.agents.invoke.agent_temp_dir import create_private_tmpdir, remove_private_tmpdir
+from ralph.mcp.tools._exec_child_env import exec_child_env
 from ralph.mcp.tools._exec_job_output import (
     _append_tail_buffer,
     _format_job_output,
@@ -48,7 +51,6 @@ from ralph.process.manager._liveness_sampler import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from ralph.process.manager._managed_process import ManagedProcess
 
@@ -217,6 +219,7 @@ class _ActiveJob:
         "suspicion_clock",
         "suspicious_started_at",
         "timeout_ms",
+        "tmpdir",
         "total_stderr_bytes",
         "total_stdout_bytes",
         "tree_sampler",
@@ -237,6 +240,7 @@ class _ActiveJob:
         spill_dir: Path | None = None,
     ) -> None:
         self.job_id = job_id
+        self.tmpdir: Path | None = None
         self.command = tuple(command)
         self.capability = capability
         self.cwd = cwd
@@ -468,6 +472,9 @@ class ExecJobRegistry:
         )
 
     def _publish_finished_result(self, job: _ActiveJob, result: JobResult) -> None:
+        if job.tmpdir is not None:
+            remove_private_tmpdir(job.tmpdir)
+            job.tmpdir = None
         with self._lock:
             self._running_jobs.pop(job.job_id, None)
             self._finished_results.append(result)
@@ -672,10 +679,12 @@ class ExecJobRegistry:
             self.subscribe_progress(progress)
 
         try:
+            active.tmpdir = create_private_tmpdir()
             handle = self._pm.spawn(
                 command,
                 SpawnOptions(
                     cwd=cwd,
+                    env=exec_child_env(Path(cwd) if cwd else Path.cwd(), active.tmpdir),
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -686,6 +695,8 @@ class ExecJobRegistry:
         except Exception as exc:
             with self._lock:
                 self._running_jobs.pop(job_id, None)
+            if active.tmpdir is not None:
+                remove_private_tmpdir(active.tmpdir)
             self._teardown_progress_for_job(job_id)
             raise ExecJobError(job_id, f"Failed to spawn job: {exc}") from exc
 

@@ -31,15 +31,23 @@ def _default_root() -> Path:
     return system_root
 
 
+def create_private_tmpdir(root: Path | None = None) -> Path:
+    return Path(tempfile.mkdtemp(prefix=_PREFIX, dir=root or _default_root()))
+
+
+def remove_private_tmpdir(tmpdir: Path) -> None:
+    shutil.rmtree(tmpdir, ignore_errors=True)
+    if DEFAULT_FILE_BACKEND.exists(tmpdir):
+        logger.warning("agent temp dir {} could not be fully removed", tmpdir)
+
+
 @contextmanager
 def private_agent_tmpdir(root: Path | None = None) -> Iterator[Path]:
-    tmpdir = Path(tempfile.mkdtemp(prefix=_PREFIX, dir=root or _default_root()))
+    tmpdir = create_private_tmpdir(root)
     try:
         yield tmpdir
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
-        if DEFAULT_FILE_BACKEND.exists(tmpdir):
-            logger.warning("agent temp dir {} could not be fully removed", tmpdir)
+        remove_private_tmpdir(tmpdir)
 
 
-__all__ = ["private_agent_tmpdir"]
+__all__ = ["create_private_tmpdir", "private_agent_tmpdir", "remove_private_tmpdir"]
