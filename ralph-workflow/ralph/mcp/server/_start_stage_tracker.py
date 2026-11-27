@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.protocol.env import MCP_STAGE_ID_ENV
 
 if TYPE_CHECKING:
@@ -179,12 +180,47 @@ def read_overruns(root: Path, *, spawn_id: str | None = None) -> list[dict[str, 
     return records
 
 
+STALE_STAGE_FILE_AGE_S: float = 3600.0
+
+
+def discard_stage_files(root: Path, *, spawn_id: str) -> None:
+    path = stage_file_path(root, spawn_id=spawn_id)
+    for candidate in (path, Path(str(path) + ".overruns")):
+        with contextlib.suppress(OSError):
+            DEFAULT_FILE_BACKEND.unlink(candidate, missing_ok=True)
+
+
+def sweep_stale_stage_files(
+    root: Path,
+    *,
+    max_age_s: float = STALE_STAGE_FILE_AGE_S,
+    now: Callable[[], float] = time.time,
+) -> int:
+    stage_file = stage_file_path(root, spawn_id="")
+    prefix = stage_file.name
+    cutoff = now() - max_age_s
+    try:
+        candidates = DEFAULT_FILE_BACKEND.glob(stage_file.parent, f"{prefix}*")
+    except OSError:
+        return 0
+    removed = 0
+    for candidate in candidates:
+        with contextlib.suppress(OSError):
+            if candidate.lstat().st_mtime < cutoff:
+                DEFAULT_FILE_BACKEND.unlink(candidate, missing_ok=True)
+                removed += 1
+    return removed
+
+
 __all__ = [
     "RUNTIME_STAGES",
+    "STALE_STAGE_FILE_AGE_S",
+    "discard_stage_files",
     "read_last_stage",
     "read_overruns",
     "record",
     "record_overrun",
     "reset_spawn_id",
     "stage_file_path",
+    "sweep_stale_stage_files",
 ]

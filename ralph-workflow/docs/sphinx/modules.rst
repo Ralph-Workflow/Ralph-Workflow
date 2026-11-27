@@ -3164,6 +3164,13 @@ ralph.mcp.server.session_workspace_root
    :members:
    :show-inheritance:
 
+ralph.mcp.server.start_stage_files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.server.start_stage_files
+   :members:
+   :show-inheritance:
+
 ralph.mcp.server.exec_sse_streaming
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

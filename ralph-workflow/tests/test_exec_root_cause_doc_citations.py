@@ -103,7 +103,7 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources, and again when the banned-construct sweep reshaped exec.py, _exec_jobs.py, lifecycle.py, runtime.py and _managed_process.py, and again when the MCP broker-fingerprint baseline resolution reshaped lifecycle.py, and again when the broker-identity pinning at the initial spawn reshaped lifecycle.py, and again when exec.py gained the per-command private temp directory and moved its child-environment builder into _exec_child_env.py, and when _exec_jobs.py gave each background job a private temp directory; each entry names the verified current line of its token",
+    "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources, and again when the banned-construct sweep reshaped exec.py, _exec_jobs.py, lifecycle.py, runtime.py and _managed_process.py, and again when the MCP broker-fingerprint baseline resolution reshaped lifecycle.py, and again when the broker-identity pinning at the initial spawn reshaped lifecycle.py, and again when exec.py gained the per-command private temp directory and moved its child-environment builder into _exec_child_env.py, and when _exec_jobs.py gave each background job a private temp directory; each entry names the verified current line of its token, and again when MCP start-stage cleanup was wired into the lifecycle.py spawn path",
     "test_every_backticked_citation_line_exists": "line numbers in cited document shifted following removal of comments and docstrings across python sources",
     "test_progress_token_handling_is_cited_as_current": "the citation refresh re-pointed the progress-token citations at the verified current lines of exec_sse_streaming.py",
     "test_historical_evidence_is_labelled_historical": "the historical output-only inactivity subsection was removed from the doc; the gate now forbids a (HISTORICAL) label and still requires the (CURRENT) labels the gate protects",
@@ -123,7 +123,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/mcp/tools/_exec_jobs.py", 258, "EXEC_JOB_CEILING_MAX_S"),
     ("ralph/mcp/tools/_exec_jobs.py", 534, "job.ceiling_ms / 1000.0"),
     ("ralph/mcp/transport/pi.py", 58, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
-    ("ralph/mcp/server/lifecycle.py", 2306, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 2311, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
         61,

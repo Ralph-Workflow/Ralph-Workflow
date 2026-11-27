@@ -50,6 +50,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_authority_audit_scenario_1_2_worktree_target.py",
     "tests/mcp/test_reserved_socket_held_across_respawn.py",
     "tests/mcp/test_mcp_endpoint_never_refuses.py",
+    "tests/mcp/test_mcp_start_leaves_bounded_stage_files.py",
     "tests/mcp/test_mcp_slow_startup_served_from_backlog.py",
     "tests/mcp/test_respawn_no_discovery.py",
     "tests/mcp/test_mcp_server_startup_stages_observable.py",

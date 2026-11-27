@@ -114,7 +114,11 @@ from ralph.mcp.server._standalone_mcp_process import (
     SHUTDOWN_TERMINATE_GRACE_S,
     StandaloneMcpProcess,
 )
+from ralph.mcp.server._start_stage_tracker import discard_stage_files as _discard_start_stage
 from ralph.mcp.server._start_stage_tracker import read_last_stage as _read_start_stage
+from ralph.mcp.server._start_stage_tracker import (
+    sweep_stale_stage_files as _sweep_stale_start_stages,
+)
 from ralph.mcp.server._startup_watch import StartupVerdict, StartupWatch
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
@@ -2284,6 +2288,7 @@ def _spawn_mcp_process(
             respawn=respawn,
             make_before_break=make_before_break,
         )
+        _sweep_stale_start_stages(root)
         if report_broker_identity is not None:
             report_broker_identity(_effective_broker_fingerprint(session, env))
         if make_before_break:
@@ -2350,6 +2355,7 @@ def _spawn_mcp_process(
             log_offset=log_offset,
             stage_id=stage_id,
         )
+        _discard_start_stage(root, spawn_id=stage_id)
 
     return bridge
 

@@ -227,6 +227,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/mcp/test_inherited_fd_invalid_fails_closed.py": 46,
     "tests/mcp/test_mcp_activity_relay_sequence_anomaly.py": 11,
     "tests/mcp/test_mcp_endpoint_never_refuses.py": 78,
+    "tests/mcp/test_mcp_start_leaves_bounded_stage_files.py": 22,
     "tests/mcp/test_mcp_server_ignores_workspace_ralph_package.py": 32,
     "tests/mcp/test_mcp_server_last_stage_when_stage_file_missing.py": 14,
     "tests/mcp/test_mcp_server_startup_stages_observable.py": 18,
