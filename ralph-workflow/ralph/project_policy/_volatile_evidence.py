@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import functools
 import re
 from typing import Final
@@ -166,6 +167,58 @@ def check_added_volatile_citations(diff_text: str) -> list[PolicyFinding]:
 _MEASUREMENT_FACT_RE: Final[re.Pattern[str]] = re.compile(
     r"^RALPH-FACT:\s*(?P<key>[a-z0-9_]*(?:budget|cost_floor|overage|breach)[a-z0-9_]*)\s*:"
 )
+
+
+_RUN_MEASUREMENT_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w.])\d+(?:\.\d+)?\s?(?:ms|s|%)(?![\w])"
+)
+
+_SAME_LINE_RATIO: Final[float] = 0.6
+
+
+def _run_measurements(line: str) -> list[str]:
+    return sorted(match.group(0).replace(" ", "") for match in _RUN_MEASUREMENT_RE.finditer(line))
+
+
+def _is_measurement_refresh(old: str, new: str) -> bool:
+    if measurement_fact_key(old) is not None or measurement_fact_key(new) is not None:
+        return False
+    old_figures, new_figures = _run_measurements(old), _run_measurements(new)
+    if not old_figures or not new_figures or old_figures == new_figures:
+        return False
+    ratio = difflib.SequenceMatcher(a=old.split(), b=new.split(), autojunk=False).ratio()
+    return ratio >= _SAME_LINE_RATIO
+
+
+def refreshed_measurement_lines(diff_text: str) -> list[tuple[str, str, str]]:
+    refreshed: list[tuple[str, str, str]] = []
+    current_file = ""
+    removed: list[str] = []
+    added: list[str] = []
+
+    def flush() -> None:
+        if current_file.startswith(markers.CANONICAL_DIR):
+            refreshed.extend(
+                (current_file, old, new)
+                for old, new in zip(removed, added, strict=False)
+                if _is_measurement_refresh(old, new)
+            )
+        removed.clear()
+        added.clear()
+
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            flush()
+            target = line[4:].strip()
+            current_file = target[2:] if target.startswith("b/") else target
+        elif line.startswith(("--- ", "diff ", "@@")):
+            flush()
+        elif line.startswith("-"):
+            removed.append(line[1:])
+        elif line.startswith("+"):
+            added.append(line[1:])
+    flush()
+    return refreshed
 
 
 def measurement_fact_key(line: str) -> str | None:

@@ -20,6 +20,15 @@ class _Pipe(io.StringIO):
         return False
 
 
+RALPH_TEST_CHANGE_REASONS = {
+    "test_a_pipe_upgrades_without_asking": (
+        "user requirement: no run may sit at or skip past the policy schema question; with "
+        "no terminal attached the start upgrades, because only the operator may freeze a "
+        "policy, so the old refusal is now an asserted upgrade"
+    ),
+}
+
+
 def _outdated_pack() -> MemoryWorkspace:
     ws = MemoryWorkspace()
     for name in markers.CORE_POLICY_FILES:
@@ -49,12 +58,14 @@ def test_a_real_terminal_is_offered_the_upgrade_without_an_injected_tty_check(
     assert not any("rerun interactively" in m for m in messages)
 
 
-def test_a_pipe_still_refuses_to_guess(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_pipe_upgrades_without_asking(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "stdin", _Pipe())
     monkeypatch.setattr(sys, "stdout", _Pipe())
     messages: list[str] = []
+    pack = _outdated_pack()
 
-    resolved = maybe_resolve_schema_upgrade(_outdated_pack(), messages.append)
+    resolved = maybe_resolve_schema_upgrade(pack, messages.append)
 
-    assert resolved is False
-    assert any("rerun interactively" in m for m in messages)
+    assert resolved is True
+    assert pack.exists(markers.SCHEMA_CHOICE_REL_PATH)
+    assert any("no operator is attached" in m for m in messages)

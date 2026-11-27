@@ -3,13 +3,25 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ralph.language_detector.models import ProjectStack
-from ralph.project_policy import _prompt_ui, _schema_upgrade, markers, validators
+from ralph.project_policy import (
+    _prompt_ui,
+    _schema_upgrade,
+    markers,
+    maybe_resolve_schema_upgrade,
+    validators,
+)
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
 from tests.project_policy.measured_budget_correction import LEGACY_TIME_BUDGET_FINDING_IDS
 from tests.project_policy.policy_corpus import fill_unresolved_facts
 
 RALPH_TEST_CHANGE_REASONS = {
+    "test_an_unattended_start_upgrades_outdated_v4_files_instead_of_skipping_readiness": (
+        "user requirement: no run may sit at or skip past the policy schema question; an "
+        "unattended start (no terminal, or no answer before the prompt expires) upgrades, "
+        "because only the operator may freeze a policy, so the old refusal test now asserts "
+        "the upgrade is recorded and readiness continues"
+    ),
     "test_interactive_v4_freeze_rewrite_pins_first_line": (
         "freezing keeps the v4 text byte-identical, including its fixed 30 s / 60 s / 2 min "
         "caps, which the measured cost-floor contract now flags in frozen packs too, so a "
@@ -73,30 +85,41 @@ def _build_unmodified_v4_pack() -> MemoryWorkspace:
     return ws
 
 
-def test_unmodified_v4_refuses_unattended_continuation() -> None:
+def test_an_unattended_start_upgrades_outdated_v4_files_instead_of_skipping_readiness() -> None:
     ws = _build_unmodified_v4_pack()
     messages: list[str] = []
 
-    resolved = _schema_upgrade._maybe_resolve_schema_upgrade(
+    resolved = maybe_resolve_schema_upgrade(
         ws,
         messages.append,
-        select=_Selector("upgrade"),
+        select=_Selector("freeze"),
         is_tty=lambda: False,
     )
 
-    assert resolved is False, "Non-TTY must refuse continuation with outdated v4 files"
-
-    refusal = " ".join(messages)
-    assert "Policy schema choice required" in refusal, (
-        f"Expected refusal message about schema choice; got: {messages}"
-    )
-
+    assert resolved is True
+    assert ws.exists(markers.SCHEMA_CHOICE_REL_PATH)
+    assert any("upgrad" in m for m in messages)
     for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
-        first_line = ws.read(path).splitlines()[0]
-        assert first_line == "<!-- ralph-policy-schema: v4 -->", (
-            f"Marker must not change when is_tty=False; {path}: {first_line!r}"
-        )
+        assert ws.read(path).splitlines()[0] == "<!-- ralph-policy-schema: v4 -->"
+
+
+def test_an_unanswered_schema_prompt_upgrades_instead_of_skipping_readiness() -> None:
+    ws = _build_unmodified_v4_pack()
+    messages: list[str] = []
+
+    resolved = maybe_resolve_schema_upgrade(
+        ws,
+        messages.append,
+        select=_Selector(_prompt_ui.NO_ANSWER),
+        is_tty=lambda: True,
+    )
+
+    assert resolved is True
+    assert ws.exists(markers.SCHEMA_CHOICE_REL_PATH)
+    for name in V4_CORE_FILES:
+        path = f"{markers.CANONICAL_DIR}{name}"
+        assert "freeze" not in ws.read(path).splitlines()[0]
 
 
 def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:

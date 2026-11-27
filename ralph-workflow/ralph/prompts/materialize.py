@@ -46,6 +46,7 @@ from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.project_policy._volatile_evidence import (
     refreshed_measurement_facts,
+    refreshed_measurement_lines,
     volatile_citations_in_added_lines,
 )
 from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
@@ -752,7 +753,15 @@ def _render_template_based_prompt(
         variables["VOLATILE_EVIDENCE_CITATIONS"] = "; ".join(
             volatile_citations_in_added_lines(cycle_diff)
         )
-        variables["REFRESHED_MEASUREMENTS"] = "; ".join(refreshed_measurement_facts(cycle_diff))
+        variables["REFRESHED_MEASUREMENTS"] = "; ".join(
+            [
+                *refreshed_measurement_facts(cycle_diff),
+                *(
+                    f"{path}: {new[:80]}"
+                    for path, _old, new in refreshed_measurement_lines(cycle_diff)
+                ),
+            ]
+        )
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))

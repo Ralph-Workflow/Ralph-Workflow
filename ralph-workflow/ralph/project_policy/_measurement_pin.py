@@ -11,6 +11,7 @@ from ralph.project_policy import markers
 from ralph.project_policy._volatile_evidence import (
     measurement_fact_key,
     refreshed_measurement_facts,
+    refreshed_measurement_lines,
 )
 
 if TYPE_CHECKING:
@@ -55,6 +56,22 @@ def _pin_file(repo_root: Path, rel_path: str, keys: set[str]) -> bool:
     return changed
 
 
+def _pin_lines(repo_root: Path, rel_path: str, pairs: list[tuple[str, str]]) -> int:
+    path = repo_root / rel_path
+    current = path.read_text(encoding="utf-8")
+    restored = 0
+    lines = current.splitlines(keepends=True)
+    for old, new in pairs:
+        for index, line in enumerate(lines):
+            if line.rstrip("\n") == new:
+                lines[index] = old + ("\n" if line.endswith("\n") else "")
+                restored += 1
+                break
+    if restored:
+        write_text_if_changed(DEFAULT_FILE_BACKEND, path, "".join(lines), encoding="utf-8")
+    return restored
+
+
 def pin_measurement_facts(repo_root: Path) -> list[str]:
     diff = _git_text(
         repo_root,
@@ -75,6 +92,16 @@ def pin_measurement_facts(repo_root: Path) -> list[str]:
                 pinned.extend(f"{rel_path}: {key}" for key in sorted(keys))
         except (OSError, UnicodeDecodeError) as exc:
             logger.warning("measurement pin skipped {}: {}", rel_path, exc)
+    line_pairs: dict[str, list[tuple[str, str]]] = {}
+    for rel_path, old_line, new_line in refreshed_measurement_lines(diff):
+        line_pairs.setdefault(rel_path, []).append((old_line, new_line))
+    for rel_path, pairs in sorted(line_pairs.items()):
+        try:
+            restored = _pin_lines(repo_root, rel_path, pairs)
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.warning("measurement pin skipped {}: {}", rel_path, exc)
+            continue
+        pinned.extend(f"{rel_path}: re-recorded run timing" for _ in range(restored))
     if pinned:
         logger.info(
             "restored {} measured-figure fact(s) a development commit re-recorded: {}",

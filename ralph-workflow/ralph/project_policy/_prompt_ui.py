@@ -63,7 +63,7 @@ def _load_questionary() -> _Questionary:
 
 
 NO_ANSWER: Final[str] = ""
-UNANSWERED_PROMPT_SECONDS: Final[float] = 600.0
+UNANSWERED_PROMPT_SECONDS: Final[float] = 120.0
 
 
 def _expire_unanswered(prompt: _Question, timed_out: list[bool]) -> None:

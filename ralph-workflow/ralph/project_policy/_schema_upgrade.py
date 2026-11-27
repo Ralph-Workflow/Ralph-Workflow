@@ -140,11 +140,13 @@ def _resolve_outdated(
         return True
     tty_check = is_tty if is_tty is not None else _prompt_ui.default_is_tty
     if not tty_check():
+        _record_upgrade(workspace)
         emit(
-            "Policy schema choice required; rerun interactively to upgrade "
-            "or freeze the customized policy file(s)."
+            f"Policy schema {policy_markers.SCHEMA_VERSION} is available and no operator is "
+            f"attached; upgrading {len(outdated)} policy file(s), which lands in the working "
+            "tree for review. Only an operator choice freezes a policy."
         )
-        return False
+        return True
     file_list = "\n".join(
         f"  \u2022 {path}  (currently v{version})" for path, _marker, version in outdated
     )
@@ -171,7 +173,8 @@ def _resolve_outdated(
             choices,
             _CHOICE_UPGRADE,
             fallback_notice=(
-                "Policy schema choice could not be completed; no implicit upgrade was applied."
+                "Policy schema choice could not be shown; upgrading the policy file(s), "
+                "which lands in the working tree for review."
             ),
         )
         if choice == _CHOICE_EXPLAIN:
@@ -191,11 +194,13 @@ def _apply_choice(
         _record_upgrade(workspace)
         return True
     if choice == _prompt_ui.NO_ANSWER:
+        _record_upgrade(workspace)
         emit(
-            "No answer to the policy schema choice in time; this run continues "
-            "without upgrading or freezing, and the next start asks again."
+            "No answer to the policy schema choice in time; upgrading the policy file(s), "
+            "which lands in the working tree for review. Only an operator choice freezes a "
+            "policy."
         )
-        return False
+        return True
     _freeze_policy_files(workspace, emit, outdated)
     return True
 
