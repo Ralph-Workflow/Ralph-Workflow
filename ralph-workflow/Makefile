@@ -226,7 +226,7 @@ dead-code:
 	uv run --with vulture python -m vulture --config pyproject.toml
 
 docs:
-	uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
+	uv run --extra docs sphinx-build -E -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
 
 docs-linkcheck:
 	uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck

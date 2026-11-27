@@ -389,3 +389,20 @@ def test_every_audit_module_is_wired_into_verify_steps() -> None:
     assert wired - on_disk == set(), (
         f"_VERIFY_STEPS runs audit modules that no longer exist on disk: {sorted(wired - on_disk)}"
     )
+
+
+def test_the_docs_gate_never_passes_on_a_stale_cached_environment() -> None:
+    match = re.search(
+        r"^docs:\n((?:\t.*\n)+)", MAKEFILE_PATH.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    assert match is not None, "Makefile has no docs target"
+    recipe = match.group(1)
+
+    assert re.search(r"\s-E\s", recipe), recipe
+    assert "-W" in recipe
+
+
+def test_inherited_library_docstrings_are_not_rendered() -> None:
+    conf = (REPO_ROOT / "docs" / "sphinx" / "conf.py").read_text(encoding="utf-8")
+
+    assert re.search(r"^autodoc_inherit_docstrings = False$", conf, re.MULTILINE)
