@@ -637,7 +637,7 @@ _TYPED_OUTCOME_CLASSIFICATION: dict[
     ConflictAttemptOutcome.STALLED_NO_PROGRESS: (
         FailureCategory.AGENT,
         True,
-        UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+        UnavailabilityReason.INCOMPLETE_RESOLUTION,
     ),
     ConflictAttemptOutcome.UNRESOLVED_REMAINING: (FailureCategory.AGENT, False, None),
     ConflictAttemptOutcome.ATTEMPT_FAILED: (FailureCategory.AGENT, True, None),

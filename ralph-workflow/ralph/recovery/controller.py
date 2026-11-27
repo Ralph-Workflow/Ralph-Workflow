@@ -106,6 +106,7 @@ _TYPED_NO_ACTIVITY_REASONS: frozenset[UnavailabilityReason] = frozenset(
     {
         UnavailabilityReason.NO_OUTPUT_AT_START,
         UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY,
+        UnavailabilityReason.INCOMPLETE_RESOLUTION,
     }
 )
 

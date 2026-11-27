@@ -13,6 +13,7 @@ class UnavailabilityReason(StrEnum):
     BROKEN_AGENT = "broken_agent"
     NO_OUTPUT_AT_START = "no_output_at_start"
     NO_OUTPUT_AFTER_ACTIVITY = "no_output_after_activity"
+    INCOMPLETE_RESOLUTION = "incomplete_resolution"
     SUSPICIOUS_TIMEOUT_NO_OUTPUT = "suspicious_timeout_no_output"
     STALE_CHILD_QUIET = "stale_child_quiet"
     STRICTLY_STUCK = "strictly_stuck"
@@ -90,6 +91,10 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {
         max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
     UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY: ReasonBackoffPolicy(
+        base_backoff_ms=10_000,
+        max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
+    ),
+    UnavailabilityReason.INCOMPLETE_RESOLUTION: ReasonBackoffPolicy(
         base_backoff_ms=10_000,
         max_backoff_ms=_UNIVERSAL_COOLDOWN_CAP_MS,
     ),
