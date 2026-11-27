@@ -16,6 +16,7 @@ from ralph.pipeline._dirty_landing import lands_without_worktree, log_rebase_wai
 from ralph.pipeline._planning_obstruction import (
     planning_obstruction_from_readiness,
 )
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_context import record_refresh, record_when_stale
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
@@ -52,6 +53,7 @@ __all__ = [
     "boundary_freshness_outcome",
     "defer_dirty_boundary",
     "phase_boundary_outcome",
+    "record_already_landed",
     "target_is_ahead",
 ]
 
@@ -86,6 +88,16 @@ def phase_boundary_outcome(
         get_head_sha_fn=get_head_sha_fn,
     )
     return outcome is not None, outcome
+
+
+def record_already_landed(record: RebaseState) -> RebaseState:
+    return record.model_copy(
+        update={
+            "last_outcome": RebaseOutcomeKind.SKIPPED,
+            "last_reason": "no commits beyond target",
+            "last_action": "skipped",
+        }
+    )
 
 
 def boundary_freshness_outcome(
@@ -125,12 +137,7 @@ def boundary_freshness_outcome(
         return pending
     if already_current:
         if remote_record is not None:
-            return remote_record.model_copy(
-                update={
-                    "last_reason": "no commits beyond target",
-                    "last_action": "skipped",
-                }
-            )
+            return record_already_landed(remote_record)
         return record_when_stale(
             _record_skip(reason="no commits beyond target", target=target), refresh
         )
