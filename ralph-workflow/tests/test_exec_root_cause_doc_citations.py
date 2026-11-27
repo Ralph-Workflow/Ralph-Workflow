@@ -103,7 +103,7 @@ FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
-    "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources, and again when the banned-construct sweep reshaped exec.py, _exec_jobs.py, lifecycle.py, runtime.py and _managed_process.py, and again when the MCP broker-fingerprint baseline resolution reshaped lifecycle.py, and again when the broker-identity pinning at the initial spawn reshaped lifecycle.py; each entry names the verified current line of its token",
+    "test_repaired_citation_points_at_named_token": "line numbers shifted following removal of comments and docstrings across python sources, and again when the banned-construct sweep reshaped exec.py, _exec_jobs.py, lifecycle.py, runtime.py and _managed_process.py, and again when the MCP broker-fingerprint baseline resolution reshaped lifecycle.py, and again when the broker-identity pinning at the initial spawn reshaped lifecycle.py, and again when exec.py gained the per-command private temp directory; each entry names the verified current line of its token",
     "test_every_backticked_citation_line_exists": "line numbers in cited document shifted following removal of comments and docstrings across python sources",
     "test_progress_token_handling_is_cited_as_current": "the citation refresh re-pointed the progress-token citations at the verified current lines of exec_sse_streaming.py",
     "test_historical_evidence_is_labelled_historical": "the historical output-only inactivity subsection was removed from the doc; the gate now forbids a (HISTORICAL) label and still requires the (CURRENT) labels the gate protects",
@@ -117,9 +117,9 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/mcp/server/exec_sse_streaming.py", 157, '"method": "notifications/message"'),
     ("ralph/process/manager/_managed_process.py", 287, "last_output_at_ref[0] = _time.monotonic()"),
     ("ralph/process/manager/_managed_process.py", 366, 'timeout_cause = "inactivity"'),
-    ("ralph/mcp/tools/exec.py", 607, "job_id = effective_registry.start("),
-    ("ralph/mcp/tools/exec.py", 617, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
-    ("ralph/mcp/tools/exec.py", 492, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
+    ("ralph/mcp/tools/exec.py", 624, "job_id = effective_registry.start("),
+    ("ralph/mcp/tools/exec.py", 634, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
+    ("ralph/mcp/tools/exec.py", 509, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
     ("ralph/mcp/tools/_exec_jobs.py", 254, "EXEC_JOB_CEILING_MAX_S"),
     ("ralph/mcp/tools/_exec_jobs.py", 527, "job.ceiling_ms / 1000.0"),
     ("ralph/mcp/transport/pi.py", 58, "MCP_STARTUP_TIMEOUT_MS = 10_000"),

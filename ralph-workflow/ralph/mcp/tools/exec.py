@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph._typed_attrs import read_attr
+from ralph.agents.invoke.agent_search_env import apply_safe_search_env
+from ralph.agents.invoke.agent_temp_dir import private_agent_tmpdir
 from ralph.mcp.explore._narrowing import is_int_or_float
 from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
@@ -399,11 +401,14 @@ def resolve_spill_dir(workspace: object, deps: ExecRunDeps | None) -> Path:
     return _workspace_root(workspace) / ".agent" / "tmp"
 
 
-def _child_env(cwd: Path) -> dict[str, str]:
+def _child_env(cwd: Path, tmpdir: Path | None = None) -> dict[str, str]:
     env = scrub_activity_relay_controls(dict(os.environ))
     env.pop("RALPH_BROKER_SECRET", None)
     env["PWD"] = str(cwd)
     env.pop("OLDPWD", None)
+    if tmpdir is not None:
+        env.update({"TMPDIR": str(tmpdir), "TMP": str(tmpdir), "TEMP": str(tmpdir)})
+    apply_safe_search_env(env)
     scrub_activity_relay_controls(env)
     return env
 
@@ -464,12 +469,24 @@ def _run_subprocess(
     pm: ProcessManager | None = None,
     on_output_chunk: Callable[[str], None] | None = None,
 ) -> _CompletedProcessAdapter:
+    with private_agent_tmpdir() as tmpdir:
+        return _run_subprocess_in(command, cwd, timeout_seconds, pm, on_output_chunk, tmpdir)
+
+
+def _run_subprocess_in(
+    command: list[str],
+    cwd: Path,
+    timeout_seconds: float,
+    pm: ProcessManager | None,
+    on_output_chunk: Callable[[str], None] | None,
+    tmpdir: Path,
+) -> _CompletedProcessAdapter:
     effective_pm = pm if pm is not None else get_process_manager()
     handle = effective_pm.spawn(
         command,
         SpawnOptions(
             cwd=str(cwd),
-            env=_child_env(cwd),
+            env=_child_env(cwd, tmpdir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             label=f"mcp-exec:{command[0]}",
