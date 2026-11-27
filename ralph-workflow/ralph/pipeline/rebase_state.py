@@ -40,6 +40,20 @@ _StartupRetentionReason.__qualname__ = "StartupRetentionReason"
 StartupRetentionReason = _StartupRetentionReason
 
 
+_DISPLAY_STATE_FACTS: frozenset[str] = frozenset(
+    {
+        "last_outcome",
+        "fast_forwarded",
+        "last_decision",
+        "last_publication_decision",
+        "last_action",
+        "integration_unresolved",
+        "recovery_record_retained",
+        "diagnostic_ownership",
+    }
+)
+
+
 class RebaseState(RalphBaseModel):
     model_config = _FROZEN
 
@@ -207,6 +221,20 @@ class RebaseState(RalphBaseModel):
     last_fan_out_decision: str | None = None
 
     operation_display_state: str | None = None
+
+    def model_copy(self, *, update: dict[str, object] | None = None) -> Self:
+        if (
+            update
+            and "operation_display_state" not in update
+            and _DISPLAY_STATE_FACTS.intersection(update)
+        ):
+            update = {**update, "operation_display_state": None}
+        copied = super().model_copy(update=update)
+        if copied.operation_display_state is None:
+            derived = _resolve_operation_display_state(copied)
+            if derived is not None:
+                object.__setattr__(copied, "operation_display_state", derived)
+        return copied
 
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
@@ -469,14 +497,4 @@ def _is_landing(rebase: RebaseState) -> bool:
     return (
         rebase.last_outcome in (RebaseOutcomeKind.REBASED, RebaseOutcomeKind.MERGED)
         and not rebase.fast_forwarded
-    ) or (
-        rebase.last_outcome
-        in (
-            RebaseOutcomeKind.REBASED,
-            RebaseOutcomeKind.MERGED,
-            RebaseOutcomeKind.FAST_FORWARDED,
-            RebaseOutcomeKind.SKIPPED,
-            RebaseOutcomeKind.REMOTE_PUSHED,
-        )
-        and rebase.fast_forwarded
     )

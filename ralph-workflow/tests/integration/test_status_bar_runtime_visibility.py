@@ -9,6 +9,14 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rebase_state_produces_all_eight_display_states": (
+        "the landing case now uses work that is rebased but not yet fast-forwarded: a record "
+        "that already fast-forwarded has landed, and showing it as LANDING kept a spinner on "
+        "the status bar for hours while HEAD, main and origin/main were identical"
+    ),
+}
+
 pytestmark = pytest.mark.integration
 
 
@@ -312,7 +320,7 @@ def test_rebase_state_produces_all_eight_display_states() -> None:
     st_integrating = RebaseState(last_action="integrating")
     assert st_integrating.operation_display_state == OperationDisplayState.INTEGRATING.value
 
-    st_landing = RebaseState(last_action="rebased", fast_forwarded=True)
+    st_landing = RebaseState(last_action="rebased", fast_forwarded=False)
     assert st_landing.operation_display_state == OperationDisplayState.LANDING.value
 
     st_publishing = RebaseState(last_publication_decision="publish_now")

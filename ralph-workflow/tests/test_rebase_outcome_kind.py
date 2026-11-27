@@ -7,6 +7,14 @@ from ralph.display.auto_integrate_message import (
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.rebase_state import RebaseState
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_rebase_state_typed_predicates": (
+        "a merge that already fast-forwarded the target has landed, so it is no longer "
+        "landing; only rebased or merged work not yet fast-forwarded is landing (the old rule "
+        "kept LANDING on the status bar for hours after HEAD, main and origin/main converged)"
+    ),
+}
+
 ALL_19_LEGACY_VERBS = [
     "rebased",
     "merged",
@@ -185,7 +193,7 @@ def test_rebase_state_typed_predicates() -> None:
 
     merged = RebaseState(last_outcome=RebaseOutcomeKind.MERGED, fast_forwarded=True)
     assert merged.is_rebasing_or_merging() is True
-    assert merged.is_landing() is True
+    assert merged.is_landing() is False
     assert merged.is_skipped() is False
 
     skipped = RebaseState(last_outcome=RebaseOutcomeKind.SKIPPED)
