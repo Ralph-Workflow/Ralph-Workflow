@@ -183,9 +183,16 @@ class PublicationGateResult:
         )
 
 
+_PASSING_REPORT = re.compile(r"^\s*(?:PASS(?:ED)?\b|ok\b|✓|\[PASS\])", re.IGNORECASE)
+
+
+def _without_passing_reports(output: str) -> str:
+    return "\n".join(line for line in output.splitlines() if not _PASSING_REPORT.search(line))
+
+
 def _failure_digest(output: str) -> str:
     return failure_line_digest(
-        output,
+        _without_passing_reports(output),
         _DIGEST_LINE,
         half_lines=_DIGEST_HALF_LINES,
         half_chars=_DIGEST_HALF_CHARS,
@@ -196,7 +203,7 @@ def _failure_digest(output: str) -> str:
 def _shows_correctness_failure(output: str) -> bool:
     return any(
         _CORRECTNESS_FAILURE.search(line) and not _TIME_BUDGET_MARKER.search(line)
-        for line in output.splitlines()
+        for line in _without_passing_reports(output).splitlines()
     )
 
 
