@@ -65,7 +65,6 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.effect_executor import clear_agent_effect_dependencies
 from ralph.pipeline.integration_actions import clear_executors
-from ralph.pipeline.publication_gate_slots import GATE_SLOT_DIR_ENV
 from ralph.process import reset_process_manager
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 
@@ -396,7 +395,6 @@ def _is_xdist_session(config: pytest.Config) -> bool:
 
 def pytest_configure(config: pytest.Config) -> None:
     drop_inherited_git_dir_env(os.environ)
-    os.environ[GATE_SLOT_DIR_ENV] = tempfile.mkdtemp(prefix="ralph-gate-slots-")
     nested_session = _is_nested_session(config)
     _OUTER_SESSION_CONFIG_HOLDER[0] = config
     if nested_session or not _is_xdist_session(config):
