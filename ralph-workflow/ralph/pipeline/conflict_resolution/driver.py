@@ -63,10 +63,10 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 )
 from ralph.pipeline.conflict_resolution.resolver_cooldown_text import resolver_cooldown_summary
 from ralph.pipeline.conflict_resolution.round_status import (
-    push_round_status as _push_round_status,
+    close_status_bar_scope as _restore_status_bar,
 )
 from ralph.pipeline.conflict_resolution.round_status import (
-    restore_previous_status_bar as _restore_status_bar,
+    push_round_status as _push_round_status,
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
     reset_round_reporting as _reset_round_reporting,
@@ -97,7 +97,7 @@ from ralph.pipeline.conflict_resolution.sight import (
     stage_mechanical_conflicts,
 )
 from ralph.pipeline.conflict_resolution.status import (
-    capture_status_bar_model,
+    conflict_status_bar_session,
 )
 from ralph.pipeline.conflict_resolution.status import (
     emit_conflict_phase_line as _status_emit_conflict_phase_line,
@@ -369,7 +369,8 @@ def run_conflict_resolution_outcome(
     prompt_materializer: PromptMaterializer | None = None,
 ) -> StopResolutionOutcome:
     active_session = session or _new_resolution_session(config)
-    previous_model = capture_status_bar_model(display)
+    status_scope = conflict_status_bar_session(display, root)
+    status_scope.__enter__()
     clock_candidate: object = _extract_clock_candidate(active_session, pipeline_deps)
     token = None
     if clock_candidate is not None and hasattr(clock_candidate, "sleep"):
@@ -420,7 +421,7 @@ def run_conflict_resolution_outcome(
             from ralph.pipeline.integration_actions import reset_executors
 
             reset_executors(token)
-        _restore_status_bar(display, root, previous_model)
+        _restore_status_bar(status_scope)
 
 
 def run_rebase_conflict_resolution_outcome(

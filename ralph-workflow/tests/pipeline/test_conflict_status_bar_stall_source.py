@@ -3,7 +3,28 @@ from __future__ import annotations
 from pathlib import Path
 
 from ralph.display.status_bar import StatusBarModel
-from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
+from ralph.pipeline.conflict_resolution.status import (
+    conflict_status_bar_session,
+    push_conflict_status_bar,
+)
+
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_conflict_footer_regression_keeps_watchdog_attention_live": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
+    "test_push_conflict_status_bar_evidence_diagnosis_never_shown_as_conflict": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
+    "test_push_conflict_status_bar_conflict_resolution_label": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
+}
 
 
 class _Display:
@@ -18,32 +39,36 @@ class _Display:
 def test_conflict_footer_regression_keeps_watchdog_attention_live() -> None:
     display = _Display()
 
-    push_conflict_status_bar(
-        display,
-        Path("/workspace"),
-        target="main",
-        round_index=1,
-        round_cap=3,
-    )
+    with conflict_status_bar_session(display, Path("/workspace")):
+        push_conflict_status_bar(
+            display,
+            Path("/workspace"),
+            target="main",
+            round_index=1,
+            round_cap=3,
+        )
+        models = list(display.models)
 
-    assert display.models[-1].attention is None
+    assert models[-1].attention is None
 
 
 def test_push_conflict_status_bar_evidence_diagnosis_never_shown_as_conflict() -> None:
     display = _Display()
 
-    push_conflict_status_bar(
-        display,
-        Path("/workspace"),
-        target="main",
-        round_index=1,
-        round_cap=3,
-        stop_index=1,
-        stop_cap=2,
-        is_diagnosis=True,
-    )
+    with conflict_status_bar_session(display, Path("/workspace")):
+        push_conflict_status_bar(
+            display,
+            Path("/workspace"),
+            target="main",
+            round_index=1,
+            round_cap=3,
+            stop_index=1,
+            stop_cap=2,
+            is_diagnosis=True,
+        )
+        models = list(display.models)
 
-    last_model = display.models[-1]
+    last_model = models[-1]
     assert last_model.phase_label.startswith("Evidence Diagnosis")
     assert "conflict" not in last_model.phase_label.lower()
     assert last_model.outer_label == "Diagnosis"
@@ -53,17 +78,19 @@ def test_push_conflict_status_bar_evidence_diagnosis_never_shown_as_conflict() -
 def test_push_conflict_status_bar_conflict_resolution_label() -> None:
     display = _Display()
 
-    push_conflict_status_bar(
-        display,
-        Path("/workspace"),
-        target="main",
-        round_index=1,
-        round_cap=3,
-        stop_index=1,
-        stop_cap=2,
-    )
+    with conflict_status_bar_session(display, Path("/workspace")):
+        push_conflict_status_bar(
+            display,
+            Path("/workspace"),
+            target="main",
+            round_index=1,
+            round_cap=3,
+            stop_index=1,
+            stop_cap=2,
+        )
+        models = list(display.models)
 
-    last_model = display.models[-1]
+    last_model = models[-1]
     assert last_model.phase_label.startswith("Rebase Conflict Resolution")
     assert "evidence" not in last_model.phase_label.lower()
     assert last_model.outer_label == "Round"

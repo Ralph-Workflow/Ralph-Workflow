@@ -114,6 +114,11 @@ from ralph.pipeline.stalled_retained_hold import (
     release_superseded_record,
 )
 from ralph.pipeline.state_init import with_configured_phase_chains
+from ralph.pipeline.status_bar_authority import (
+    phase_signature,
+    show_phase_status,
+    status_bar_authority,
+)
 from ralph.process.manager import get_process_manager
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import RecoveryController
@@ -803,8 +808,13 @@ def _push_status_bar_if_changed(
             model.agent_name,
             model.attention,
         )
-        if signature != last_sig and hasattr(active_display, "update_status_bar"):
-            active_display.update_status_bar(model)
+        authority = status_bar_authority(active_display)
+        if authority is not None and phase_signature(authority.phase_model) != phase_signature(
+            model
+        ):
+            show_phase_status(active_display, model, phase_name=str(state.phase))
+            return signature
+        if authority is not None:
             return signature
     return last_sig
 
@@ -4757,3 +4767,4 @@ def _start_pro_heartbeat_if_active(
 resolve_initial_state = _resolve_initial_state
 build_status_bar_model = _build_status_bar_model
 block_unresolved_integration = _block_unresolved_integration
+push_status_bar_if_changed = _push_status_bar_if_changed

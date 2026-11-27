@@ -10,6 +10,7 @@ from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel
 from ralph.pipeline._integration_status import build_integration_status
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.status_bar_authority import operation_status, show_operation_status
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -98,27 +99,23 @@ __all__ = [
     "NEUTRAL_PHASE_LABEL",
     "PHASE_LABEL",
     "ResolutionStatusReporter",
-    "capture_status_bar_model",
-    "clear_conflict_status_bar",
     "conflict_status_bar_session",
     "emit_conflict_phase_line",
     "phase_label",
     "push_conflict_status_bar",
-    "restore_status_bar",
 ]
 
 
 @contextlib.contextmanager
 def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterator[None]:
-    previous = capture_status_bar_model(display)
-    try:
+    idle = StatusBarModel(
+        workspace_root=str(workspace_root),
+        phase_label=NEUTRAL_PHASE_LABEL,
+        phase_style=phase_style_for_phase(""),
+        run_started_monotonic=_display_run_started_monotonic(display),
+    )
+    with operation_status(display, idle=idle):
         yield
-    finally:
-        if previous is None:
-            run_started = _display_run_started_monotonic(display)
-            clear_conflict_status_bar(display, workspace_root, run_started_monotonic=run_started)
-        else:
-            restore_status_bar(display, previous)
 
 
 def push_conflict_status_bar(
@@ -170,7 +167,7 @@ def push_conflict_status_bar(
             operation_display_state=display_state,
             integration_status=integration_status,
         )
-        _update_status_bar(display, model)
+        show_operation_status(display, model)
     except (OSError, RuntimeError, ValueError, KeyError) as exc:
         logger.debug("conflict_resolution: status-bar push for '{}' failed: {}", target, exc)
 
@@ -201,61 +198,6 @@ def _phase_label(
 
 
 phase_label = _phase_label
-
-
-def capture_status_bar_model(display: object) -> object | None:
-    try:
-        try:
-            status_bar: object = object.__getattribute__(display, "status_bar")
-        except AttributeError:
-            status_bar = None
-        if status_bar is None:
-            return None
-        try:
-            model: object = object.__getattribute__(status_bar, "last_model")
-        except AttributeError:
-            model = None
-        return model
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("conflict_resolution: status-bar capture failed: {}", exc)
-        return None
-
-
-def clear_conflict_status_bar(
-    display: object,
-    workspace_root: Path,
-    *,
-    elapsed_seconds: float | None = None,
-    run_started_monotonic: float | None = None,
-) -> None:
-    try:
-        _update_status_bar(
-            display,
-            StatusBarModel(
-                workspace_root=str(workspace_root),
-                phase_label=NEUTRAL_PHASE_LABEL,
-                phase_style=phase_style_for_phase(""),
-                elapsed_seconds=elapsed_seconds,
-                run_started_monotonic=run_started_monotonic,
-            ),
-        )
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("conflict_resolution: status-bar clear failed: {}", exc)
-
-
-def restore_status_bar(display: object, model: object | None) -> None:
-    if model is None:
-        return
-    try:
-        _update_status_bar(display, model)
-    except (OSError, RuntimeError, ValueError, KeyError) as exc:
-        logger.debug("conflict_resolution: status-bar restore failed: {}", exc)
-
-
-def _update_status_bar(display: object, model: object) -> None:
-    update = cast("Callable[[object], None] | None", getattr(display, "update_status_bar", None))
-    if update is not None:
-        update(model)
 
 
 def _display_run_started_monotonic(display: object) -> float | None:

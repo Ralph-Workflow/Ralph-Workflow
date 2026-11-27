@@ -12,6 +12,7 @@ from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_ou
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import (
     ResolutionStatusReporter,
+    conflict_status_bar_session,
     phase_label,
     push_conflict_status_bar,
 )
@@ -103,6 +104,21 @@ def test_round_cap_regression_session_cap_cannot_override_configured_cap(
 
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_push_conflict_status_bar_never_renders_round_index_above_cap": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
+    "test_render_round_index_equal_to_cap_renders_normally": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
+    "test_render_layer_never_shows_round_numerator_greater_than_denominator": (
+        "same assertions, now on the bar shown inside a resolution scope: a resolver bar is "
+        "a scoped overlay owned by the status bar authority, so a push outside any "
+        "resolution is ignored and can never outlive the resolution"
+    ),
     "test_round_cap_regression_unresolved_success_never_exceeds_cap": (
         "unresolved attempts fall over to the next candidate within each round, "
         "so invoked_rounds records each candidate's invocation per round up to the round cap"
@@ -214,18 +230,20 @@ def test_push_conflict_status_bar_never_renders_round_index_above_cap() -> None:
     cap = 3
     display = _StatusDisplay()
 
-    push_conflict_status_bar(
-        display,
-        Path("/tmp/ws"),
-        target="main",
-        round_index=cap + 1,
-        round_cap=cap,
-        stop_index=cap + 2,
-        stop_cap=cap,
-    )
+    with conflict_status_bar_session(display, Path("/tmp/ws")):
+        push_conflict_status_bar(
+            display,
+            Path("/tmp/ws"),
+            target="main",
+            round_index=cap + 1,
+            round_cap=cap,
+            stop_index=cap + 2,
+            stop_cap=cap,
+        )
+        models = list(display.models)
 
-    assert display.models
-    for model in display.models:
+    assert models
+    for model in models:
         assert f"round {cap + 1}/{cap}" not in model.phase_label
         assert f"round {cap}/{cap}" in model.phase_label
         assert f"commit {cap + 2}/{cap}" not in model.phase_label
@@ -236,18 +254,20 @@ def test_render_round_index_equal_to_cap_renders_normally() -> None:
     cap = 3
     display = _StatusDisplay()
 
-    push_conflict_status_bar(
-        display,
-        Path("/tmp/ws"),
-        target="main",
-        round_index=cap,
-        round_cap=cap,
-        stop_index=cap,
-        stop_cap=cap,
-    )
+    with conflict_status_bar_session(display, Path("/tmp/ws")):
+        push_conflict_status_bar(
+            display,
+            Path("/tmp/ws"),
+            target="main",
+            round_index=cap,
+            round_cap=cap,
+            stop_index=cap,
+            stop_cap=cap,
+        )
+        models = list(display.models)
 
-    assert display.models
-    for model in display.models:
+    assert models
+    for model in models:
         assert f"round {cap}/{cap}" in model.phase_label
         assert model.outer_dev_iteration == cap
         assert model.outer_dev_cap == cap
@@ -296,17 +316,19 @@ def test_render_layer_never_shows_round_numerator_greater_than_denominator() -> 
     cap = 3
     display = _StatusDisplay()
 
-    push_conflict_status_bar(
-        display,
-        Path("/tmp/ws"),
-        target="main",
-        round_index=cap + 1,
-        round_cap=cap,
-        stop_index=cap + 2,
-        stop_cap=cap,
-        replay_index=cap + 5,
-        replay_total=cap,
-    )
+    with conflict_status_bar_session(display, Path("/tmp/ws")):
+        push_conflict_status_bar(
+            display,
+            Path("/tmp/ws"),
+            target="main",
+            round_index=cap + 1,
+            round_cap=cap,
+            stop_index=cap + 2,
+            stop_cap=cap,
+            replay_index=cap + 5,
+            replay_total=cap,
+        )
+        models = list(display.models)
 
     reporter = ResolutionStatusReporter(
         display=display,
@@ -331,7 +353,7 @@ def test_render_layer_never_shows_round_numerator_greater_than_denominator() -> 
 
     reporter.observe(_Event())
 
-    rendered_texts = [model.phase_label for model in display.models] + display.lines
+    rendered_texts = [model.phase_label for model in models] + display.lines
     assert rendered_texts
     for text in rendered_texts:
         for numerator, denominator in _parse_round_pairs(text):

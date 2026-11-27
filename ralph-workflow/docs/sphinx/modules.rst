@@ -6006,6 +6006,13 @@ ralph.pipeline.resolution_outcome_type
    :members:
    :show-inheritance:
 
+ralph.pipeline.status_bar_authority
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.status_bar_authority
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.stop_resolution_blocked
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

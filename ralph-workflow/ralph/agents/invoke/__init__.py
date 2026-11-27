@@ -167,6 +167,7 @@ from ralph.mcp.transport.nanocoder import (
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
 from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
+from ralph.pipeline.status_bar_authority import running_agent_status
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
@@ -460,6 +461,14 @@ def _capture_failure_observation(
     return observation
 
 
+def _transport_requires_pty(config: AgentConfig, transport: AgentTransport) -> bool:
+    support = default_catalog().get(config.cmd)
+    requires_pty = transport == AgentTransport.AGY
+    if support is not None and isinstance(support.spec, AgentSpec):
+        requires_pty = requires_pty or support.spec.requires_pty
+    return requires_pty
+
+
 def _run_pty_execution(
     cmd: list[str],
     ctx: AgentRunCtx,
@@ -626,20 +635,19 @@ def invoke_agent(
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
         transport = _agent_transport(config)
-        support = default_catalog().get(config.cmd)
-        requires_pty = transport == AgentTransport.AGY
-        if support is not None and isinstance(support.spec, AgentSpec):
-            requires_pty = requires_pty or support.spec.requires_pty
+        requires_pty = _transport_requires_pty(config, transport)
 
         probe, probe_workspace, probe_phase = _observe_probe_before(opts)
-        attempt_ended: AttemptEnded | None = None
         try:
-            if requires_pty:
-                attempt_ended = yield from _run_pty_execution(
-                    cmd, ctx, opts, transport, prompt_file
-                )
-            else:
-                attempt_ended = yield from run_subprocess_and_read_lines(cmd, ctx)
+            with running_agent_status(
+                opts.phase, opts.agent_name or config.display_name or config.cmd.split()[0]
+            ):
+                if requires_pty:
+                    attempt_ended = yield from _run_pty_execution(
+                        cmd, ctx, opts, transport, prompt_file
+                    )
+                else:
+                    attempt_ended = yield from run_subprocess_and_read_lines(cmd, ctx)
         except BaseException as exc:
             _capture_failure_observation(probe, probe_workspace, probe_phase, opts, exc)
             raise

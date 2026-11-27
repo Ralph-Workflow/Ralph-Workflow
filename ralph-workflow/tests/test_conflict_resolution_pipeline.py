@@ -12,6 +12,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import phase_style_for_phase
+from ralph.display.status_bar import StatusBarModel
 from ralph.git.conflict_stage_entries import ConflictStageEntries
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -31,6 +32,7 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
     PHASE_LABEL,
+    conflict_status_bar_session,
     push_conflict_status_bar,
 )
 from ralph.pipeline.integration_resolution import (
@@ -39,12 +41,23 @@ from ralph.pipeline.integration_resolution import (
     inspect_integration_resolution,
 )
 from ralph.pipeline.resolution_outcome import ResolvedOutcome
+from ralph.pipeline.status_bar_authority import show_phase_status
 from ralph.policy.loader import load_policy
 from ralph.recovery import dead_agent_probe
 from ralph.recovery.canary_probe import CANARY_PROMPT_FILENAME, ProbeOutcome, ProbeResult
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_previous_status_bar_model_is_restored_on_exit": (
+        "replaced by test_the_owners_phase_is_shown_again_on_exit: restoring a snapshot taken at "
+        "entry kept a second copy of the status bar that went stale while the pipeline moved on "
+        "(an analysis agent ran for 35 minutes under a Rebase Conflict Resolution bar); the bar "
+        "now has one owner, and on exit it shows the phase the owner currently holds"
+    ),
+    "test_the_pushed_footer_carries_that_non_muted_style": (
+        "same assertion, now made inside a resolution scope: a resolver bar is a scoped overlay "
+        "and a push outside any resolution is ignored, so it can never outlive the resolution"
+    ),
     "test_surviving_markers_loop_and_feed_the_paths_back": (
         "the render seam gained the auto_merged_paths keyword for files both sides changed "
         "that git merged cleanly; the spy accepts and ignores it, and every assertion about "
@@ -519,17 +532,17 @@ def test_status_bar_is_pushed_with_the_conflict_resolution_label(
     assert PHASE_LABEL in labels
 
 
-def test_previous_status_bar_model_is_restored_on_exit(
+def test_the_owners_phase_is_shown_again_on_exit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
     monkeypatch.setattr(driver_module, "_restore_status_bar", _RESTORE_STATUS_BAR)
     display = _FakeDisplay()
-    sentinel = object()
-    display.status_bar.last_model = sentinel
+    phase = StatusBarModel(workspace_root=str(tmp_path), phase_label="Development", phase_style="")
+    show_phase_status(display, phase)
 
     assert _run(tmp_path, invoke=lambda name, path, index: True, display=display) is True
-    assert display.models[-1] is sentinel
+    assert display.models[-1] is phase
 
 
 def test_status_bar_is_not_left_on_the_resolution_label_without_a_prior_model(
@@ -628,15 +641,15 @@ def test_the_resolution_phase_has_its_own_non_muted_display_style() -> None:
 def test_the_pushed_footer_carries_that_non_muted_style(tmp_path: Path) -> None:
     display = _FakeDisplay()
 
-    push_conflict_status_bar(
-        display,
-        tmp_path,
-        target="main",
-        round_index=1,
-        round_cap=3,
-    )
-
-    pushed = display.models[-1]
+    with conflict_status_bar_session(display, tmp_path):
+        push_conflict_status_bar(
+            display,
+            tmp_path,
+            target="main",
+            round_index=1,
+            round_cap=3,
+        )
+        pushed = display.models[-1]
     assert pushed.phase_style == phase_style_for_phase(PHASE_RESOLUTION)
     assert pushed.phase_style != "theme.text.muted"
 

@@ -7,9 +7,14 @@ from loguru import logger
 
 from ralph.display.parallel_display import phase_style_for_phase
 from ralph.display.status_bar import StatusBarModel
+from ralph.pipeline.status_bar_authority import (
+    operation_status,
+    show_operation_status,
+    show_phase_status,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from ralph.workspace.scope import WorkspaceScope
 
@@ -54,12 +59,7 @@ def push_readiness_assessment_status_bar(
             phase_style=phase_style_for_phase("policy_remediation"),
             run_started_monotonic=run_started_monotonic,
         )
-        update = cast(
-            "Callable[[object], None] | None",
-            getattr(display, "update_status_bar", None),
-        )
-        if update is not None:
-            update(model)
+        show_phase_status(display, model)
     except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("readiness assessment status-bar push failed (non-fatal): {}", exc)
 
@@ -86,10 +86,7 @@ def push_remediation_status_bar(
             agent_name=agent_name,
             run_started_monotonic=run_started_monotonic,
         )
-        update_raw: object = getattr(display, "update_status_bar", None)
-        update = cast("Callable[[object], None] | None", update_raw)
-        if update is not None:
-            update(model)
+        show_operation_status(display, model)
     except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("remediation status-bar push failed (non-fatal): {}", exc)
 
@@ -108,65 +105,9 @@ def push_resumed_pipeline_status_bar(
             phase_style=phase_style_for_phase(phase),
             run_started_monotonic=run_started_monotonic,
         )
-        update = cast(
-            "Callable[[object], None] | None", getattr(display, "update_status_bar", None)
-        )
-        if update is not None:
-            update(model)
+        show_phase_status(display, model)
     except (OSError, RuntimeError, ValueError, AttributeError) as exc:
         logger.debug("resumed pipeline status-bar push failed (non-fatal): {}", exc)
-
-
-def capture_status_bar_model(display: object) -> object | None:
-    status_bar = _attr_or(display, "status_bar", None)
-    if status_bar is None:
-        return None
-    try:
-        model = _attr_or(status_bar, "last_model", None)
-    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
-        logger.debug("remediation status-bar capture failed (non-fatal): {}", exc)
-        return None
-    else:
-        return model
-
-
-def restore_status_bar(display: object, model: object | None) -> None:
-    if model is None:
-        return
-    try:
-        update = cast(
-            "Callable[[object], None] | None",
-            getattr(display, "update_status_bar", None),
-        )
-        if update is not None:
-            update(model)
-    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
-        logger.debug("remediation status-bar restore failed (non-fatal): {}", exc)
-
-
-def clear_remediation_status_bar(
-    display: object,
-    workspace_scope: WorkspaceScope,
-    *,
-    elapsed_seconds: float | None = None,
-    run_started_monotonic: float | None = None,
-) -> None:
-    try:
-        model = StatusBarModel(
-            workspace_root=str(workspace_scope.root),
-            phase_label=NEUTRAL_PHASE_LABEL,
-            phase_style=phase_style_for_phase(""),
-            elapsed_seconds=elapsed_seconds,
-            run_started_monotonic=run_started_monotonic,
-        )
-        update = cast(
-            "Callable[[object], None] | None",
-            getattr(display, "update_status_bar", None),
-        )
-        if update is not None:
-            update(model)
-    except (OSError, RuntimeError, ValueError, AttributeError) as exc:
-        logger.debug("remediation status-bar clear failed (non-fatal): {}", exc)
 
 
 @contextlib.contextmanager
@@ -176,21 +117,19 @@ def remediation_status_bar_session(
     *,
     resumed_phase: str | None = None,
 ) -> Iterator[None]:
-    previous = capture_status_bar_model(display)
+    run_started: object | None = cast(
+        "object | None", getattr(display, "run_started_monotonic", None)
+    )
+    idle = StatusBarModel(
+        workspace_root=str(workspace_scope.root),
+        phase_label=NEUTRAL_PHASE_LABEL,
+        phase_style=phase_style_for_phase(""),
+        run_started_monotonic=run_started if isinstance(run_started, float) else None,
+    )
     try:
-        yield
+        with operation_status(display, idle=idle):
+            yield
     finally:
-        if previous is None:
-            run_started: object | None = cast(
-                "object | None", getattr(display, "run_started_monotonic", None)
-            )
-            clear_remediation_status_bar(
-                display,
-                workspace_scope,
-                run_started_monotonic=(run_started if isinstance(run_started, float) else None),
-            )
-        else:
-            restore_status_bar(display, previous)
         if resumed_phase is not None:
             resumed_run_started = cast(
                 "object | None", getattr(display, "run_started_monotonic", None)
@@ -207,10 +146,7 @@ def remediation_status_bar_session(
 
 __all__ = [
     "NEUTRAL_PHASE_LABEL",
-    "capture_status_bar_model",
-    "clear_remediation_status_bar",
     "push_remediation_status_bar",
     "push_resumed_pipeline_status_bar",
     "remediation_status_bar_session",
-    "restore_status_bar",
 ]

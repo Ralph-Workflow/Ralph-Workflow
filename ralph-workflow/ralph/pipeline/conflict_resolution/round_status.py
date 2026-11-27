@@ -2,36 +2,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.conflict_resolution.status import (
-    clear_conflict_status_bar,
-    push_conflict_status_bar,
-    restore_status_bar,
-)
+from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
     from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 
 __all__ = [
+    "close_status_bar_scope",
     "display_run_started_monotonic",
     "push_round_status",
-    "restore_previous_status_bar",
 ]
 
 
-def restore_previous_status_bar(
-    display: ParallelDisplay | None, root: Path, previous_model: object | None
-) -> None:
-    if previous_model is None:
-        clear_conflict_status_bar(
-            display,
-            root,
-            run_started_monotonic=display_run_started_monotonic(display),
-        )
-    else:
-        restore_status_bar(display, previous_model)
+def close_status_bar_scope(scope: AbstractContextManager[None]) -> None:
+    scope.__exit__(None, None, None)
 
 
 def push_round_status(

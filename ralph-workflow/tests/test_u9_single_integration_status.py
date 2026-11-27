@@ -9,11 +9,17 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.status_bar import StatusBar, StatusBarModel, render_status_bar
 from ralph.pipeline import build_integration_status
-from ralph.pipeline.conflict_resolution.status import push_conflict_status_bar
+from ralph.pipeline.conflict_resolution.status import (
+    conflict_status_bar_session,
+    push_conflict_status_bar,
+)
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
     "test_partial_out_of_reach_status_is_present_on_conflict_entry": (
-        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown')"
+        "operator rule: agent availability is cooldown-only and the cooldown system is its only name; the check is unchanged and now reads the renamed cooldown vocabulary (benches_agent -> starts_cooldown, verdict_benches_agent -> verdict_starts_cooldown, false_bench_* -> false_cooldown_*, CANDIDATE_EXHAUSTED -> NO_RUNNABLE_CANDIDATE, exhaustion_reason -> halt_reason, 'spent/unavailable' -> 'on cooldown'); "
+        "the same assertions now read the bar shown inside a resolution scope, because a "
+        "resolver bar is a scoped overlay owned by the status bar authority and a push outside "
+        "any resolution is ignored, so it can never outlive the resolution"
     ),
 }
 
@@ -113,17 +119,19 @@ def test_partial_out_of_reach_status_is_present_on_conflict_entry() -> None:
     display = Display()
     status = _status()
 
-    push_conflict_status_bar(
-        display,
-        Path("/workspace"),
-        target="main",
-        round_index=1,
-        round_cap=3,
-        integration_status=status,
-    )
+    with conflict_status_bar_session(display, Path("/workspace")):
+        push_conflict_status_bar(
+            display,
+            Path("/workspace"),
+            target="main",
+            round_index=1,
+            round_cap=3,
+            integration_status=status,
+        )
+        shown = display.models[-1]
 
-    assert display.models[-1].integration_status is status
-    rendered_status = display.models[-1].integration_status
+    assert shown.integration_status is status
+    rendered_status = shown.integration_status
     assert rendered_status is not None
     assert "vendor/Ralph-Workflow" in rendered_status.summary
     assert "agents cannot finish" not in rendered_status.summary

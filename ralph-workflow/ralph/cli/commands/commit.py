@@ -43,6 +43,7 @@ from ralph.pipeline.plumbing.commit_plumbing import (
     run_commit_plumbing,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.pipeline.status_bar_authority import show_phase_status
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.prompts._commit_diff import commit_generation_diff
 from ralph.prompts.master_prompt import materialize_master_prompt
@@ -119,12 +120,13 @@ def commit_plumbing(
         return 0
 
     if opts.generate_commit_msg or opts.generate_commit:
-        display.update_status_bar(
+        show_phase_status(
+            display,
             StatusBarModel(
                 workspace_root=str(repo_root),
                 phase_label="Commit Generation",
                 phase_style=phase_style_for_phase("commit"),
-            )
+            ),
         )
         with display:
             return _handle_agent_commit_generation(
