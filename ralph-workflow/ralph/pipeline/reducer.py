@@ -1229,6 +1229,9 @@ def _reduce_publication_gate_failure(
     )
 
 
+_COMMIT_HOOK_REJECTION_SOURCE = "commit"
+
+
 def _reduce_commit_hook_rejection(
     state: PipelineState,
     event: CommitHookRejected,
@@ -1241,7 +1244,9 @@ def _reduce_commit_hook_rejection(
         return _advance_to_failed(state, "No policy loaded for commit hook rejection", policy)
     loop_phase = publication_gate_loop_phase(policy, state.phase)
     signature = reroute_signature(
-        state.phase, loop_phase or "", f"commit hook rejected tree {event.tree_sha}"
+        _COMMIT_HOOK_REJECTION_SOURCE,
+        loop_phase or "",
+        f"commit hook rejected tree {event.tree_sha}",
     )
     action, count = next_reroute(
         state.commit_hook_rejection_signature, state.commit_hook_rejection_count, signature
