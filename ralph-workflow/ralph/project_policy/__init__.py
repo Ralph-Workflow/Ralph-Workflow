@@ -9,6 +9,7 @@ from ralph.project_policy import (
     remediation,
     validators,
 )
+from ralph.project_policy._lint_bypass import added_lint_bypasses
 from ralph.project_policy._measurement_pin import pin_measurement_facts
 from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
 from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
@@ -35,6 +36,7 @@ __all__ = [
     "PortfolioError",
     "PromptChoice",
     "SelectFn",
+    "added_lint_bypasses",
     "agents_md",
     "check_capture_command_fact",
     "check_policy_citations",

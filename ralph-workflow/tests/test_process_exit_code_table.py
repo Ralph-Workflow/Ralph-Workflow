@@ -121,6 +121,11 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the reviewed process-label inventory now includes the publication gate's command "
         "label and its tree probe, so the pinned digest of emitted labels changes"
     ),
+    "test_every_emitted_label_has_an_exit_code_decision.lint_bypass_diff": (
+        "the reviewed process-label inventory now includes commit review's lint-bypass diff, "
+        "a git diff without --exit-code whose only answer is rc=0, so the pinned digest of "
+        "emitted labels changes"
+    ),
     "_git_probe_answer_codes skips modules that never name run_git before parsing": (
         "the scan only records run_git calls, and a module whose source does not contain run_git cannot hold one, so skipping it before ast.parse yields the same answer-code table while cutting about 3 s of collection"
     ),
@@ -144,7 +149,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "b061805d58693963713df5dcc6550b6307a13d8249db144ae559eac77d019c8a"
+    "690da6e320c861f22d94b0bd725d4cf3bb9135ad1d08fcaf618483b5eaa3cb3d"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds catchup-blob-of (rev-parse --verify --quiet of a path at a "

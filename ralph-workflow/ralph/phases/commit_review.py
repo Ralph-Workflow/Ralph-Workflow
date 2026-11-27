@@ -18,6 +18,7 @@ from ralph.git.commit_review import (
 )
 from ralph.git.operations import append_to_gitignore
 from ralph.git.proposal_seal import DiffEntry, Seal, diff_tree, seal_pending
+from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
 from ralph.mcp.artifacts.citation_verifier import verify_reject_citations
 from ralph.mcp.artifacts.markdown import parse_markdown_document
@@ -90,6 +91,7 @@ from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.policy.models._pipeline_policy import PipelinePolicy
+from ralph.project_policy import added_lint_bypasses
 from ralph.recovery.classifier import FailureCategory
 
 if TYPE_CHECKING:
@@ -713,12 +715,56 @@ def _render_surviving_unsafe_reason(findings: tuple[Finding, ...]) -> str:
     )
 
 
+def _proposal_lint_bypasses(repo_root: Path, base: str, seal: Seal) -> tuple[str, ...]:
+    result = run_git(
+        ("diff", "-U0", "--no-color", "--no-ext-diff", base, seal.tree_sha),
+        cwd=repo_root,
+        label="commit-review:lint-bypass-diff",
+    )
+    if result.returncode != 0:
+        return ()
+    return tuple(added_lint_bypasses(result.stdout))
+
+
+_SHOWN_BYPASSES = 10
+
+
+def _render_lint_bypass_reason(bypasses: tuple[str, ...]) -> str:
+    shown = "; ".join(bypasses[:_SHOWN_BYPASSES])
+    more = len(bypasses) - _SHOWN_BYPASSES
+    suffix = f"; and {more} more" if more > 0 else ""
+    return (
+        f"The proposal adds {len(bypasses)} lint or type-check bypass(es): {shown}{suffix}. "
+        "Inline suppressions are forbidden, and a lint or type-check rule is disabled, "
+        "narrowed, or suppressed only for code the project does not own and cannot change, "
+        "generated code, or the narrow boundary to a foreign API with no type information "
+        "(FFI). Remove each bypass and fix the code the rule reports; never lower a rule, "
+        "raise a threshold, or add an exclusion to make a check pass."
+    )
+
+
+def _engine_rejection_reason(
+    diff_entries: list[DiffEntry],
+    phase_name: str,
+    ctx: PhaseContext,
+    bypasses: tuple[str, ...],
+) -> str | None:
+    surviving = _surviving_unsafe_findings(diff_entries, phase_name, ctx)
+    if surviving:
+        return _render_surviving_unsafe_reason(surviving)
+    if bypasses:
+        return _render_lint_bypass_reason(bypasses)
+    return None
+
+
 def _evaluate_verdict(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
     diff_entries: list[DiffEntry],
     phase_name: str,
     ctx: PhaseContext,
+    *,
+    bypasses: tuple[str, ...] = (),
 ) -> list[Event | CommitReviewEvent]:
     verdict_failure = _verdict_failure(artifact)
     if verdict_failure is not None:
@@ -750,11 +796,10 @@ def _evaluate_verdict(
             ]
         return [CommitReviewRejected(reason=artifact.reason or "", ref=seal.ref, hard=False)]
 
-    surviving = _surviving_unsafe_findings(diff_entries, phase_name, ctx)
-    if surviving:
-        reason = _render_surviving_unsafe_reason(surviving)
-        logger.warning("{}: {}", phase_name, reason)
-        return [CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)]
+    engine_reason = _engine_rejection_reason(diff_entries, phase_name, ctx, bypasses)
+    if engine_reason is not None:
+        logger.warning("{}: {}", phase_name, engine_reason)
+        return [CommitReviewRejected(reason=engine_reason, ref=seal.ref, hard=True)]
 
     clear_validation_retry_hint(ctx.workspace, phase_name, pipeline_policy=ctx.pipeline_policy)
     return [CommitReviewApproved(tree_sha=seal.tree_sha)]
@@ -797,7 +842,8 @@ def _stage2_process_artifact(
 
     _consume_commit_review_artifact(ctx)
     rebound = _rebind_verdict_to_sealed_tree(artifact, seal)
-    return _evaluate_verdict(rebound, seal, diff_entries, phase_name, ctx)
+    bypasses = _proposal_lint_bypasses(repo_root, base, seal)
+    return _evaluate_verdict(rebound, seal, diff_entries, phase_name, ctx, bypasses=bypasses)
 
 
 def handle_commit_review_phase(
