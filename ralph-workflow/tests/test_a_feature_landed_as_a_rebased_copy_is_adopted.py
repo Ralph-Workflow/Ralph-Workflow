@@ -71,3 +71,18 @@ def test_a_feature_without_a_copy_on_the_target_keeps_its_commit(tmp_path: Path)
 
     assert read_record(root) is not None
     assert _head(root) == feature
+
+
+def test_a_landed_copy_is_adopted_on_the_first_check_before_any_diagnosis(
+    tmp_path: Path,
+) -> None:
+    from ralph.pipeline.stalled_retained_hold import release_superseded_record
+
+    root, feature, landed = _landed_elsewhere(tmp_path)
+    _record(root, feature, landed)
+
+    assert release_superseded_record(root) is True
+
+    assert read_record(root) is None
+    assert _head(root) == landed
+    assert (root / "notes.txt").read_text(encoding="utf-8") == "uncommitted edit\n"

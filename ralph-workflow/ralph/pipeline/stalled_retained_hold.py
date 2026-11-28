@@ -47,17 +47,14 @@ def _superseded_by_feature_commits(root: Path, record: IntegrationRecord) -> boo
     return is_ancestor(root, record.pre_feature_sha, head)
 
 
-def _release_after_moving_to_target_copy(
-    root: Path, record: IntegrationRecord, checks: int
-) -> bool:
+def _release_after_moving_to_target_copy(root: Path, record: IntegrationRecord) -> bool:
     if not _move_feature_to_target_copy(root, record):
         return False
     release_stalled_record(root)
     logger.warning(
-        "retained integration made no progress for {} checks, and the target already holds "
-        "{}, a rebased copy of every commit on the recorded feature tip {}; the feature "
-        "branch moves to that copy, keeping uncommitted edits, and the record is released",
-        checks,
+        "retained integration is already on the target: {} holds a rebased copy of every "
+        "commit on the recorded feature tip {}; the feature branch moves to that copy, keeping "
+        "uncommitted edits, and the record is released",
         record.integrated_feature_sha,
         record.pre_feature_sha,
     )
@@ -90,6 +87,12 @@ def _release_if_superseded(root: Path, record: IntegrationRecord) -> bool:
     return True
 
 
+def _release_if_already_settled(root: Path, record: IntegrationRecord) -> bool:
+    return _release_if_superseded(root, record) or _release_after_moving_to_target_copy(
+        root, record
+    )
+
+
 def release_superseded_record(root: Path) -> bool:
     try:
         record = read_record(root)
@@ -98,7 +101,7 @@ def release_superseded_record(root: Path) -> bool:
     if record is None or not git_operation_is_settled(root):
         return False
     try:
-        return _release_if_superseded(root, record)
+        return _release_if_already_settled(root, record)
     except _RECORD_ERRORS:
         return False
 
@@ -122,9 +125,7 @@ def end_stalled_retained_hold(root: Path, *, checks: int) -> bool:
             checks,
         )
         return True
-    if _release_if_superseded(root, record) or _release_after_moving_to_target_copy(
-        root, record, checks
-    ):
+    if _release_if_already_settled(root, record):
         return True
     if not _ladder_is_terminal(root, record):
         return False

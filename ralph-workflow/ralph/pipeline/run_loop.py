@@ -3103,9 +3103,6 @@ def _back_off_unchanged_retained_hold(
     record = read_record(root)
     feature = (record.integrated_feature_sha or record.pre_feature_sha) if record else ""
     target_tip = (branch_sha(root, record.target) or "") if record else ""
-    if release_superseded_record(root):
-        backoff.reset()
-        return True
     wait_seconds = backoff.observe((remaining, last_reason or "", feature, target_tip))
     if backoff.repeats >= NO_PROGRESS_RELEASE_REPEATS and _end_stalled_hold(root, backoff.repeats):
         backoff.reset()
@@ -3140,6 +3137,12 @@ def _handle_retained_integration(
     if retained_integration_reason(ctx.workspace_scope.root) is None:
         if isinstance(backoff, NoProgressHoldBackoff):
             backoff.reset()
+        return state, None
+    if release_superseded_record(Path(ctx.workspace_scope.root)):
+        if isinstance(backoff, NoProgressHoldBackoff):
+            backoff.reset()
+        state = state.copy_with(rebase=state.rebase.clear_recovery_record_retained())
+        _save_recovered_rebase_checkpoint(state, ctx)
         return state, None
     continued = _run_startup_integration(ctx, state.rebase)
     if continued is not None:
@@ -4767,4 +4770,5 @@ def _start_pro_heartbeat_if_active(
 resolve_initial_state = _resolve_initial_state
 build_status_bar_model = _build_status_bar_model
 block_unresolved_integration = _block_unresolved_integration
+handle_retained_integration = _handle_retained_integration
 push_status_bar_if_changed = _push_status_bar_if_changed
