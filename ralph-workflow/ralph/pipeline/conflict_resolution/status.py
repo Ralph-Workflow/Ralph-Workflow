@@ -100,6 +100,7 @@ __all__ = [
     "PHASE_LABEL",
     "ResolutionStatusReporter",
     "conflict_status_bar_session",
+    "diagnostic_status_bar_session",
     "emit_conflict_phase_line",
     "phase_label",
     "push_conflict_status_bar",
@@ -115,6 +116,30 @@ def conflict_status_bar_session(display: object, workspace_root: Path) -> Iterat
         run_started_monotonic=_display_run_started_monotonic(display),
     )
     with operation_status(display, idle=idle):
+        yield
+
+
+@contextlib.contextmanager
+def diagnostic_status_bar_session(
+    display: object,
+    workspace_root: Path,
+    *,
+    target: str,
+    attempt: int,
+    attempt_cap: int,
+    agent_name: str | None,
+) -> Iterator[None]:
+    with conflict_status_bar_session(display, workspace_root):
+        push_conflict_status_bar(
+            display,
+            workspace_root,
+            target=target,
+            round_index=attempt,
+            round_cap=attempt_cap,
+            agent_name=agent_name,
+            run_started_monotonic=_display_run_started_monotonic(display),
+            is_diagnosis=True,
+        )
         yield
 
 

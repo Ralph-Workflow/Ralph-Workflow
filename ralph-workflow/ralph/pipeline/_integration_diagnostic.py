@@ -275,6 +275,7 @@ def diagnose_retained_integration(
         invoke_resolution_agent,
         resolution_chain_agents,
     )
+    from ralph.pipeline.conflict_resolution.status import diagnostic_status_bar_session
     from ralph.pipeline.resolution_outcome import ResolvedOutcome
     from ralph.workspace.scope import WorkspaceScope
 
@@ -309,12 +310,28 @@ def diagnose_retained_integration(
 
         effective_invoke: Callable[[str, Path], bool]
         attempt_session = ResolutionSession()
+        diagnostic_target = record.target if record is not None else ""
+        diagnostic_attempt = (
+            min(record.merge_commit_repair_attempts + 1, DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
+            if record is not None
+            else 1
+        )
         if invoke is None:
 
             def _default_invoke(agent: str, prompt: Path) -> bool:
                 attempt_session.last_attempt_failure = None
                 try:
-                    with workspace_context(operation_root):
+                    with (
+                        workspace_context(operation_root),
+                        diagnostic_status_bar_session(
+                            ctx.active_display,
+                            operation_root,
+                            target=diagnostic_target,
+                            attempt=diagnostic_attempt,
+                            attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+                            agent_name=agent,
+                        ),
+                    ):
                         return isinstance(
                             invoke_resolution_agent(
                                 agent_name=agent,
