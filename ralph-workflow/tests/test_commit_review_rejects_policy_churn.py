@@ -116,3 +116,57 @@ def test_an_approved_proposal_that_downgrades_a_guard_to_advisory_is_rejected(
     assert isinstance(event, CommitReviewRejected)
     assert event.hard is True
     assert "Run every gate: deterministic enforcement replaced by advisory" in event.reason
+
+
+_DEFERRAL = (
+    "RALPH-FACT: profile_currentness_deferral: RALPH-PENDING make profiles-status "
+    "(assumed 2026-11-27); review trigger: when the {count} non-current profiles are "
+    "current{status}\n"
+)
+
+
+def test_an_approved_proposal_that_records_a_run_timestamp_in_the_policy_is_rejected(
+    tmp_git_repo: Path,
+) -> None:
+    policy = _tracked(tmp_git_repo, _POLICY, _DEFERRAL.format(count=10, status=""))
+    policy.write_text(
+        _DEFERRAL.format(count=9, status="; gate-behaviour-proofs OK at 2026-11-28T01:19:21.697Z"),
+        encoding="utf-8",
+    )
+    _approve(tmp_git_repo)
+
+    events = _run_phase(tmp_git_repo)
+
+    assert len(events) == 1
+    event = events[0]
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is True
+    assert "2026-11-28T01:19:21.697Z" in event.reason
+
+
+def test_a_calendar_review_date_added_to_the_policy_is_still_approved(
+    tmp_git_repo: Path,
+) -> None:
+    policy = _tracked(tmp_git_repo, _POLICY, "# Verification policy\n")
+    policy.write_text(
+        "# Verification policy\n\nDated gate-lane review (2026-11-27): every profile is current.\n",
+        encoding="utf-8",
+    )
+    _approve(tmp_git_repo)
+
+    events = _run_phase(tmp_git_repo)
+
+    assert [type(event) for event in events] == [CommitReviewApproved]
+
+
+def test_rewording_a_line_that_keeps_its_existing_run_timestamp_is_still_approved(
+    tmp_git_repo: Path,
+) -> None:
+    line = "The profile last passed at 2026-11-27T12:01:43.753Z{}.\n"
+    policy = _tracked(tmp_git_repo, _POLICY, line.format(" and is BLOCKED by tooling"))
+    policy.write_text(line.format(""), encoding="utf-8")
+    _approve(tmp_git_repo)
+
+    events = _run_phase(tmp_git_repo)
+
+    assert [type(event) for event in events] == [CommitReviewApproved]

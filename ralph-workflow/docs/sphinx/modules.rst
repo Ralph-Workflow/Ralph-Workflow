@@ -5110,6 +5110,13 @@ ralph.project_policy.guard_downgrades
    :members:
    :show-inheritance:
 
+ralph.project_policy.run_timestamps
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.run_timestamps
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.remediation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

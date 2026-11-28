@@ -25,8 +25,6 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 class _SlowToDiePsutil(FakePsutil):
-    """Reports every process as still running when the kill follow-up wait times out."""
-
     def wait_procs(
         self,
         procs: Sequence[object],
@@ -37,8 +35,6 @@ class _SlowToDiePsutil(FakePsutil):
 
 
 class _AliveUntilRechecked:
-    """The process is alive when termination starts and gone by the post-kill re-check."""
-
     def __init__(self) -> None:
         self.calls = 0
 
