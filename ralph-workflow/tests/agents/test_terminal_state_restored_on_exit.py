@@ -17,6 +17,7 @@ from ralph.process.manager import SpawnOptions
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
+from tests._per_test_budget import contended_wall_cap
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 _TEST_CEILING_SECONDS = 12.0
@@ -66,6 +67,20 @@ sys.stderr.buffer.flush()
 pytestmark = pytest.mark.timeout_seconds(_TEST_CEILING_SECONDS)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "_under_host_load": (
+        "the child-readiness, drain and exit waits were fixed 5 s wall-clock windows while the "
+        "per-test ceiling already scales with host load, so at load 50-80 on 12 cores the cold "
+        "child start missed its window and the test failed with an empty capture; the waits "
+        "now scale the same way the per-test ceiling does and every assertion is unchanged"
+    ),
+}
+
+
+def _under_host_load(seconds: float) -> float:
+    return contended_wall_cap(seconds, load=os.getloadavg()[0], cpus=os.cpu_count() or 1)
+
+
 @dataclass(frozen=True, slots=True)
 class _ExitObservation:
     return_code: int
@@ -112,7 +127,7 @@ def _observe_exit(script: str, *, redirect_stdout: bool = False) -> _ExitObserva
         output = _read_until(master_fd, expected=_READY)
         modes_before = _parse_modes_snapshot(output)
         os.write(master_fd, _TRIGGER + _QUEUED_INPUT)
-        return_code = handle.wait(timeout=_CHILD_EXIT_CEILING_SECONDS)
+        return_code = handle.wait(timeout=_under_host_load(_CHILD_EXIT_CEILING_SECONDS))
         output += _drain_pty(master_fd, expected=(_CURSOR_SHOW,))
         modes_after = termios.tcgetattr(slave_fd)
         queued_input = _read_queued_input(slave_fd)
@@ -136,7 +151,7 @@ def _observe_exit(script: str, *, redirect_stdout: bool = False) -> _ExitObserva
 
 def _read_until(master_fd: int, *, expected: bytes) -> bytes:
     chunks: list[bytes] = []
-    deadline = time.monotonic() + _DRAIN_CEILING_SECONDS
+    deadline = time.monotonic() + _under_host_load(_DRAIN_CEILING_SECONDS)
     while expected not in b"".join(chunks) and time.monotonic() < deadline:
         if wait_for_master_readable(master_fd, timeout_seconds=_DRAIN_POLL_SECONDS):
             chunk = read_master_chunk(master_fd, max_bytes=_READ_CHUNK_BYTES)
@@ -169,7 +184,7 @@ def _parse_modes_snapshot(output: bytes) -> list[int | list[bytes | int]]:
 
 def _drain_pty(master_fd: int, *, expected: tuple[bytes, ...]) -> bytes:
     chunks: list[bytes] = []
-    deadline = time.monotonic() + _DRAIN_CEILING_SECONDS
+    deadline = time.monotonic() + _under_host_load(_DRAIN_CEILING_SECONDS)
     while True:
         if wait_for_master_readable(master_fd, timeout_seconds=_DRAIN_POLL_SECONDS):
             chunk = read_master_chunk(master_fd, max_bytes=_READ_CHUNK_BYTES)
