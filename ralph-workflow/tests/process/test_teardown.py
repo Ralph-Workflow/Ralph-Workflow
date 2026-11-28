@@ -35,6 +35,15 @@ def _wait_for_descendants(
     return last
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_teardown_subtree_reaps_nested_children": (
+        "the test shrinks the kill window to 5 ms, and SIGKILL delivery is asynchronous, so under "
+        "host load a killed descendant can still be visible for a moment after teardown returns; "
+        "the assertion now gives killed descendants a bounded time to disappear"
+    ),
+}
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_teardown_subtree_reaps_nested_children() -> None:
     grandchild_script = "import time; time.sleep(600)"
@@ -67,8 +76,17 @@ def test_teardown_subtree_reaps_nested_children() -> None:
         host.wait(timeout=0.5)
     assert host.poll() is not None
 
-    survivors = {pid for pid in child_pids if _is_live_process(pid)}
+    survivors = _survivors_after_kill_delivery(child_pids)
     assert not survivors, f"some descendants survived teardown: {survivors}"
+
+
+def _survivors_after_kill_delivery(pids: set[int], *, grace_s: float = 3.0) -> set[int]:
+    deadline = time.monotonic() + grace_s
+    survivors = {pid for pid in pids if _is_live_process(pid)}
+    while survivors and time.monotonic() < deadline:
+        time.sleep(0.02)
+        survivors = {pid for pid in survivors if _is_live_process(pid)}
+    return survivors
 
 
 def _is_live_process(pid: int) -> bool:
