@@ -422,3 +422,30 @@ def test_stop_returns_only_after_an_in_flight_tick_has_finished(tmp_path: Path) 
     assert stopped.wait(timeout=2.0)
     assert finished.is_set()
     assert not worker.is_running
+
+
+def test_a_repeated_failing_outcome_warns_once_until_it_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    outcomes = iter(
+        [
+            catchup.CATCHUP_LADDER_ESCALATED,
+            catchup.CATCHUP_LADDER_ESCALATED,
+            catchup.CATCHUP_LADDER_ESCALATED,
+            catchup.CATCHUP_FAST_FORWARDED,
+            catchup.CATCHUP_LADDER_ESCALATED,
+        ]
+    )
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        logger, "warning", lambda message, *args: warnings.append(message.format(*args))
+    )
+    worker = catchup.AutoIntegrateCatchupWorker(_config(), tmp_path, tick=lambda: next(outcomes))
+
+    for _ in range(5):
+        worker._tick_once()
+
+    failures = [w for w in warnings if w.startswith("auto_integrate catch-up tick failed")]
+    assert (
+        failures == [f"auto_integrate catch-up tick failed: {catchup.CATCHUP_LADDER_ESCALATED}"] * 2
+    )

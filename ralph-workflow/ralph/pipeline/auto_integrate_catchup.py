@@ -1018,6 +1018,7 @@ class AutoIntegrateCatchupWorker:
         self._agent_phases = agent_phases if agent_phases is not None else process_agent_phases()
         self._stall_window = float(stall_window_seconds)
         self._last_progress_at = self._effective_clock.now()
+        self._last_warned_failure: str | None = None
         self._stall_state: _CatchupStallState | None = None
         self._tick: Callable[[], str] = tick if tick is not None else self._default_tick
         self._stop_event = threading.Event()
@@ -1131,12 +1132,16 @@ class AutoIntegrateCatchupWorker:
                 self._publish_after_tick()
             except _TICK_FAILURES as exc:
                 self._record_tick_failure("publication tick", exc)
+        failing = outcome.startswith(("failed:", "ladder:")) or outcome == CATCHUP_REFUSED
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info("auto_integrate catch-up: fast-forwarded the checkout onto the target")
         elif outcome == CATCHUP_REFUSED_AGENT_ACTIVE:
             logger.debug("auto_integrate catch-up tick deferred: {}", outcome)
-        elif outcome.startswith(("failed:", "ladder:")) or outcome == CATCHUP_REFUSED:
+        elif failing and outcome != self._last_warned_failure:
             logger.warning("auto_integrate catch-up tick failed: {}", outcome)
+        elif failing:
+            logger.debug("auto_integrate catch-up tick still failing: {}", outcome)
+        self._last_warned_failure = outcome if failing else None
 
     def _publication_window(self, target: str) -> AbstractContextManager[None] | None:
         try:
