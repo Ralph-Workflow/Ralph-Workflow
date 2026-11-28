@@ -1448,7 +1448,7 @@ class ProcessManager:
             elif pid_liveness != LivenessResult.GONE:
                 all_resolved = False
 
-        if any_zombies and all_resolved:
+        if all_resolved:
             root_rc = harvested_rc
             if root_rc is None:
                 root_rc = record.returncode
@@ -1457,7 +1457,8 @@ class ProcessManager:
                     root_rc = proc.poll()
             if record.status not in _TERMINAL_STATUSES:
                 self._terminate_registered_descendants(record, grace_period_s=0.0)
-                self._mark_killed(record, root_rc, cause="zombie_after_kill")
+                cause = "zombie_after_kill" if any_zombies else "gone_after_kill"
+                self._mark_killed(record, root_rc, cause=cause)
             return True
         return False
 
