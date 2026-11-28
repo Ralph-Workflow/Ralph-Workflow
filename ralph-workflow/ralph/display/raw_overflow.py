@@ -81,6 +81,29 @@ def _another_process_is_writing(path: Path) -> bool:
         return False
 
 
+_STALE_CAPTURE_SECONDS: Final = 15 * 60
+
+
+def _left_by_an_earlier_run(path: Path) -> bool:
+    try:
+        modified = path.stat().st_mtime
+    except OSError:
+        return False
+    return modified < _PROCESS_STARTED_AT and time.time() - modified > _STALE_CAPTURE_SECONDS
+
+
+def _retire_earlier_run(path: Path) -> None:
+    with contextlib.suppress(OSError):
+        path.replace(path.with_name(f"{path.stem}.previous.log"))
+
+
+def _current_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
 def _is_live_foreign_capture(path: Path, key: str) -> bool:
     if _claim_path_for_this_process(key):
         return False
@@ -337,6 +360,15 @@ class RawOverflowLog:
             if self._disabled:
                 return False
             try:
+                if self._fh is None and self._needs_live_claim:
+                    foreign = _is_live_foreign_capture(self.path, self._path_key)
+                    if foreign and _left_by_an_earlier_run(self.path):
+                        _retire_earlier_run(self.path)
+                        foreign = False
+                    self._first_write = not foreign
+                    self._needs_live_claim = False
+                    if foreign:
+                        self._file_bytes = max(self._file_bytes, _current_size(self.path))
                 if self._file_bytes + len(encoded) > self._max_bytes:
                     self._close_locked()
                     self._disabled = True
@@ -350,9 +382,6 @@ class RawOverflowLog:
                         )
                     return False
                 if self._fh is None:
-                    if self._needs_live_claim:
-                        self._first_write = not _is_live_foreign_capture(self.path, self._path_key)
-                        self._needs_live_claim = False
                     self.path.parent.mkdir(parents=True, exist_ok=True)
                     if not self._first_write and not self.path.exists():
                         self._file_bytes = 0
