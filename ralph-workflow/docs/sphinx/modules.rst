@@ -2136,6 +2136,13 @@ ralph.phases.commit_review
    :members:
    :show-inheritance:
 
+ralph.phases.landed_revert_review
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.landed_revert_review
+   :members:
+   :show-inheritance:
+
 ralph.phases.policy_churn_review
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

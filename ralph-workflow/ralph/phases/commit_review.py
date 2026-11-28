@@ -87,6 +87,10 @@ from ralph.phases._commit_review_verdict import (
     maybe_succeed_after_identity_bound,
     persist_unapplied_hint,
 )
+from ralph.phases.landed_revert_review import (
+    proposal_reverted_landings,
+    render_landed_revert_reason,
+)
 from ralph.phases.policy_churn_review import proposal_policy_churn, render_policy_churn_reason
 from ralph.phases.required_artifacts import clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -750,6 +754,7 @@ def _engine_rejection_reason(
     ctx: PhaseContext,
     bypasses: tuple[str, ...],
     churn: tuple[str, ...] = (),
+    reverts: tuple[str, ...] = (),
 ) -> str | None:
     surviving = _surviving_unsafe_findings(diff_entries, phase_name, ctx)
     if surviving:
@@ -758,6 +763,8 @@ def _engine_rejection_reason(
         return _render_lint_bypass_reason(bypasses)
     if churn:
         return render_policy_churn_reason(churn)
+    if reverts:
+        return render_landed_revert_reason(reverts)
     return None
 
 
@@ -770,6 +777,7 @@ def _evaluate_verdict(
     *,
     bypasses: tuple[str, ...] = (),
     churn: tuple[str, ...] = (),
+    reverts: tuple[str, ...] = (),
 ) -> list[Event | CommitReviewEvent]:
     verdict_failure = _verdict_failure(artifact)
     if verdict_failure is not None:
@@ -801,7 +809,9 @@ def _evaluate_verdict(
             ]
         return [CommitReviewRejected(reason=artifact.reason or "", ref=seal.ref, hard=False)]
 
-    engine_reason = _engine_rejection_reason(diff_entries, phase_name, ctx, bypasses, churn)
+    engine_reason = _engine_rejection_reason(
+        diff_entries, phase_name, ctx, bypasses, churn, reverts
+    )
     if engine_reason is not None:
         logger.warning("{}: {}", phase_name, engine_reason)
         return [CommitReviewRejected(reason=engine_reason, ref=seal.ref, hard=True)]
@@ -849,8 +859,18 @@ def _stage2_process_artifact(
     rebound = _rebind_verdict_to_sealed_tree(artifact, seal)
     bypasses = _proposal_lint_bypasses(repo_root, base, seal)
     churn = proposal_policy_churn(repo_root, base, seal.tree_sha)
+    reverts = proposal_reverted_landings(
+        repo_root, base, seal.tree_sha, [entry.path for entry in diff_entries]
+    )
     return _evaluate_verdict(
-        rebound, seal, diff_entries, phase_name, ctx, bypasses=bypasses, churn=churn
+        rebound,
+        seal,
+        diff_entries,
+        phase_name,
+        ctx,
+        bypasses=bypasses,
+        churn=churn,
+        reverts=reverts,
     )
 
 

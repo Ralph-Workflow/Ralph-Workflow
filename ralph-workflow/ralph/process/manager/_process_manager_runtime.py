@@ -98,6 +98,8 @@ EXPECTED_EXIT_CODES: Final[Mapping[str, frozenset[int]]] = {
     "pending-merge:identity": frozenset({128}),
     "planning-residue:head": frozenset({128}),
     "policy-round:guard-downgrade-diff": frozenset({128}),
+    "commit-review:landed-revert-log": frozenset({128}),
+    "commit-review:landed-revert-reflog": frozenset({128}),
     "rollback-baseline:rev-parse": frozenset({1}),
     "planning-residue:incoming-overwrite": frozenset({128}),
     "planning-residue:preserve-tree": frozenset({128}),

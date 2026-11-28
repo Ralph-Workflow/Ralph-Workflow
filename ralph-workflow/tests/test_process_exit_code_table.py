@@ -141,6 +141,12 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "a git diff of the policy corpus without --exit-code whose only answer is rc=0, so the "
         "pinned digest of emitted labels changes"
     ),
+    "test_every_emitted_label_has_an_exit_code_decision.landed_revert_review": (
+        "the reviewed process-label inventory now includes commit review's landed-revert "
+        "check: a first-parent git log of recent mainline commits and a reflog read of the "
+        "worktree's own commits (rc=128 is git's answer that the revision does not exist), "
+        "and a cat-file batch-check whose only answer is rc=0, so the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.rollback_baseline_rev_parse": (
         "the reviewed process-label inventory now includes the rollback baseline refresh's "
         "rev-parse --verify --quiet of HEAD and the baseline's parent; rc=1 is git's answer "
@@ -180,7 +186,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "e1aecfb5971768fc01cfed3a17c234619c5e055bec1437681998e319d0ef541b"
+    "49c4e317dd92349643e15f1b6adc4b217dc38777f18d7fe796b412c7afa53a48"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds integration-preservation:list-content (ls-files of the "
