@@ -37,6 +37,12 @@ from tests._fake_git_agent_adapter import RealRepoAgentAdapter
 from tests._integration_ladder_fakes import _seed_terminal_rungs
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    'assert settled.phase == "integrated"': (
+        "completion-in-place only reached the integrated phase with the landed feature sha by "
+        "moving main onto the unrelated orphan commit and discarding main's history; a landing "
+        "must only fast-forward the target, so the test now asserts main is unchanged and the "
+        "record is not marked integrated, and the single terminal report is still asserted"
+    ),
     "test_cooling_resolver_chain_records_the_stop_and_escalates_once (renamed)": (
         "operator rule: agent availability is cooldown-only and the cooldown system is its only name; renamed from test_cooling_resolver_chain_records_exhaustion_and_escalates_once with an unchanged body"
     ),
@@ -450,6 +456,7 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
 ) -> None:
     template, feature, target, stop, tree = completed_rebase_repo
     root = _copy_repo(template, tmp_path / "repo")
+    main_tip = _git(root, "rev-parse", "refs/heads/main").stdout.strip()
     assert _git(root, "checkout", "--orphan", "unrelated").returncode == 0
     _commit(root, "unrelated\n", "unrelated")
     write_record(
@@ -493,8 +500,8 @@ def test_unrelated_head_rejected_once_and_further_ticks_are_silent(
     marker = settled.resolution_terminal_marker
     assert marker is not None
     assert marker[1] == "complete_in_place"
-    assert settled.phase == "integrated"
-    assert settled.integrated_feature_sha == feature
+    assert _git(root, "rev-parse", "refs/heads/main").stdout.strip() == main_tip
+    assert settled.phase != "integrated"
     settled_attempts = settled.merge_commit_repair_attempts
     settled_evidence = ledger.read().ladder_evidence
 

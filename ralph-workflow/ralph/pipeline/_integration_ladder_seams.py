@@ -34,6 +34,7 @@ type LandResult = Literal[
     "tip-unreadable",
     "target-unreadable",
     "target-moved",
+    "not-fast-forward",
     "update-failed",
 ]
 

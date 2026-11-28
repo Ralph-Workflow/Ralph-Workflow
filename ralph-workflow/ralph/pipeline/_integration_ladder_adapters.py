@@ -105,6 +105,19 @@ def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
     return tuple(removed)
 
 
+def _landing_refusal(path: Path, current: str, expected_sha: str, sha: str) -> LandResult | None:
+    if current != expected_sha:
+        return "target-moved"
+    from ralph.git.subprocess_runner import run_git
+
+    descends = run_git(
+        ("merge-base", "--is-ancestor", current, sha),
+        cwd=path,
+        label="git-is-ancestor",
+    )
+    return None if descends.returncode == 0 else "not-fast-forward"
+
+
 class _ProductionGitPlumbing:
     def changed_paths(self, root: Path) -> tuple[str, ...] | None:
         from ralph.git.hardening import parse_porcelain_z
@@ -385,8 +398,9 @@ class _ProductionGitPlumbing:
         current = self.target_sha(root, target)
         if current is None:
             return "target-unreadable"
-        if current != expected_sha:
-            return "target-moved"
+        refusal = _landing_refusal(path, current, expected_sha, sha)
+        if refusal is not None:
+            return refusal
         landed = run_git(
             ("update-ref", "--no-deref", f"refs/heads/{target}", sha, current),
             cwd=path,

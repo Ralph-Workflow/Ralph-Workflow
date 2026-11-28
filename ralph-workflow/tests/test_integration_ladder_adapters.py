@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.timeout_seconds(30)
 
 
+RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_adapter_land_uses_old_value_update_ref_and_races_issue_none": (
+        "landing now checks that the new tip descends from the target before the compare-and-swap, "
+        "so the scripted git answers that ancestry query; the landing assertions are unchanged"
+    ),
+}
+
+
 def _install_run_git_recorder(
     monkeypatch: pytest.MonkeyPatch,
     script: Callable[[Sequence[str], Path | None, str], GitRunResult],
@@ -76,6 +84,8 @@ def test_adapter_land_uses_old_value_update_ref_and_races_issue_none(
             return GitRunResult(args=full, returncode=0, stdout=f"{tip}\n", stderr="")
         if tuple(args) == ("rev-parse", "--verify", "refs/heads/main"):
             return GitRunResult(args=full, returncode=0, stdout=f"{state['current']}\n", stderr="")
+        if tuple(args) == ("merge-base", "--is-ancestor", expected, tip):
+            return GitRunResult(args=full, returncode=0, stdout="", stderr="")
         if args[:1] == ("update-ref",):
             state["current"] = tip
             return GitRunResult(args=full, returncode=0, stdout="", stderr="")

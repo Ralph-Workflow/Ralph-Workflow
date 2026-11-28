@@ -80,6 +80,11 @@ _NEW_ANSWER_LABELS = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_every_emitted_label_has_an_exit_code_decision.land_fast_forward_check": (
+        "the integration ladder's landing now asks git-is-ancestor whether the new tip descends "
+        "from the target before it moves the target; the label is already reviewed (rc=1 is "
+        "git's answer that it does not), so only the pinned per-file digest changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.absorbed_local_copies": (
         "user requirement: agents always work on the newest code; catch-up absorbs uncommitted "
         "copies that already match the incoming commit instead of staying behind forever, and "
@@ -175,7 +180,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "ffc1fe1ada860430d92c085f461f304257ad14104c86360f40fbabb766b42d4c"
+    "e1aecfb5971768fc01cfed3a17c234619c5e055bec1437681998e319d0ef541b"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds integration-preservation:list-content (ls-files of the "
