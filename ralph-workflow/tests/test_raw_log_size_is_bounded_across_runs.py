@@ -73,3 +73,16 @@ def test_appending_to_a_live_log_counts_the_bytes_already_there(tmp_path: Path) 
     log.disable()
 
     assert path.stat().st_size <= _CAP
+
+
+def test_a_recently_written_log_already_over_its_cap_is_rotated_and_capture_continues(
+    tmp_path: Path,
+) -> None:
+    path = _seed(tmp_path, _CAP * 3, age_seconds=-60)
+
+    log = _log(tmp_path)
+    assert log.append(_LINE)
+    log.disable()
+
+    assert 0 < path.stat().st_size <= _CAP
+    assert path.with_name(path.stem + ".previous.log").stat().st_size == _CAP * 3

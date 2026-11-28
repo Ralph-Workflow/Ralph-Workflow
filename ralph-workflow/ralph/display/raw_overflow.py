@@ -270,11 +270,23 @@ def _forget_raw_overflow_log(key_path: str) -> None:
         _REGISTRY.pop(key_path, None)
 
 
-def _finalize_close_raw_overflow_log(handle_box: list[BinaryIO | None]) -> None:
+def _write_whole_lines(handle: BinaryIO, pending: bytearray) -> None:
+    if not pending:
+        return
+    view = memoryview(bytes(pending))
+    pending.clear()
+    while view:
+        written = handle.write(view)
+        view = view[written:]
+
+
+def _finalize_close_raw_overflow_log(handle_box: list[BinaryIO | None], pending: bytearray) -> None:
     handle = handle_box[0]
     if handle is None:
         return
     handle_box[0] = None
+    with contextlib.suppress(OSError, ValueError):
+        _write_whole_lines(handle, pending)
     with contextlib.suppress(OSError, ValueError):
         handle.close()
 
@@ -318,11 +330,13 @@ class RawOverflowLog:
         self._flush_interval = max(flush_interval_seconds, 0.0)
         self._now = now
         self._handle_box: list[BinaryIO | None] = [None]
+        self._pending = bytearray()
         self._last_flush = now()
         weakref.finalize(
             self,
             _finalize_close_raw_overflow_log,
             self._handle_box,
+            self._pending,
         )
 
     @property
@@ -361,11 +375,16 @@ class RawOverflowLog:
                 return False
             try:
                 if self._fh is None and self._needs_live_claim:
+                    existed = self.path.exists()
                     foreign = _is_live_foreign_capture(self.path, self._path_key)
-                    if foreign and _left_by_an_earlier_run(self.path):
+                    if foreign and (
+                        _left_by_an_earlier_run(self.path)
+                        or _current_size(self.path) >= self._max_bytes
+                    ):
                         _retire_earlier_run(self.path)
                         foreign = False
-                    self._first_write = not foreign
+                        existed = False
+                    self._first_write = existed and not foreign
                     self._needs_live_claim = False
                     if foreign:
                         self._file_bytes = max(self._file_bytes, _current_size(self.path))
@@ -386,18 +405,20 @@ class RawOverflowLog:
                     if not self._first_write and not self.path.exists():
                         self._file_bytes = 0
                     mode = "wb" if self._first_write else "ab"
-                    self._fh = cast("BinaryIO", self.path.open(mode, buffering=_BUFFER_BYTES))
+                    self._fh = cast("BinaryIO", self.path.open(mode, buffering=0))
                     self._first_write = False
                 fh: BinaryIO | None = self._fh
                 if fh is None:
                     return False
-                fh.write(encoded)
+                self._pending += encoded
+                if len(self._pending) >= _BUFFER_BYTES:
+                    _write_whole_lines(fh, self._pending)
                 if counts_as_liveness:
                     self._bytes_written += len(encoded)
                 self._file_bytes += len(encoded)
                 _record_path_bytes(self._path_key, self._file_bytes)
                 if self._now() - self._last_flush >= self._flush_interval:
-                    fh.flush()
+                    _write_whole_lines(fh, self._pending)
                     self._last_flush = self._now()
             except (OSError, PermissionError):
                 self._close_locked()
@@ -411,7 +432,7 @@ class RawOverflowLog:
             handle = self._fh
             if handle is not None and self.is_open:
                 try:
-                    handle.flush()
+                    _write_whole_lines(handle, self._pending)
                     self._last_flush = self._now()
                 except (OSError, PermissionError):
                     self._close_locked()
@@ -423,9 +444,12 @@ class RawOverflowLog:
 
     def _close_locked(self) -> None:
         if self._fh is not None:
+            with contextlib.suppress(OSError, PermissionError, ValueError):
+                _write_whole_lines(self._fh, self._pending)
             with contextlib.suppress(OSError, PermissionError):
                 self._fh.close()
             self._fh = None
+        self._pending.clear()
 
     def relative_reference(self, workspace_root: Path) -> str:
         try:
