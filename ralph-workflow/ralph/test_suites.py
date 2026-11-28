@@ -25,6 +25,7 @@ from ralph.process.manager import (
 )
 from ralph.process.unmanaged_terminate import terminate_unmanaged
 from ralph.test_suite_registry import REQUIRED_AUTO_INTEGRATE_E2E_FILES
+from ralph.verify_budget import contended_step_timeout, host_load_share
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -1616,10 +1617,15 @@ def _run_durations_profile(cwd: Path) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     sanitize_process_environment()
     arguments = tuple(argv or ())
+    deadline = contended_step_timeout(DEFAULT_SUITE_TIMEOUT_SECONDS, host_load_share())
     if arguments == ("--auto-integrate-e2e",):
-        return run_test_suites(cwd=Path.cwd(), auto_integrate_e2e_only=True)
+        return run_test_suites(
+            cwd=Path.cwd(), suite_timeout_seconds=deadline, auto_integrate_e2e_only=True
+        )
     if arguments == ("--subprocess-e2e",):
-        return run_test_suites(cwd=Path.cwd(), subprocess_e2e_only=True)
+        return run_test_suites(
+            cwd=Path.cwd(), suite_timeout_seconds=deadline, subprocess_e2e_only=True
+        )
     if arguments == ("--profile", _DURATIONS_PROFILE):
         return _run_durations_profile(cwd=Path.cwd())
     if (
@@ -1627,13 +1633,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         and arguments[0] == "--profile"
         and arguments[1] in _FOCUSED_PROFILES
     ):
-        return run_test_suites(cwd=Path.cwd(), profile=arguments[1])
+        return run_test_suites(cwd=Path.cwd(), suite_timeout_seconds=deadline, profile=arguments[1])
     if arguments:
         raise SystemExit(
             "ralph.test_suites accepts --profile unit, --profile integration, --profile fast, or --profile durations, "
             "--auto-integrate-e2e, or --subprocess-e2e"
         )
-    return run_test_suites(cwd=Path.cwd())
+    return run_test_suites(cwd=Path.cwd(), suite_timeout_seconds=deadline)
 
 
 if __name__ == "__main__":
