@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING, Final
 
 from ralph.config.agent_transport import AgentTransport
@@ -43,14 +44,26 @@ def is_interactive_pty_transport(transport: AgentTransport | None) -> bool:
     return transport in _INTERACTIVE_PTY_TRANSPORTS
 
 
+def _read_from_line_boundary(raw_path: Path, start_offset: int) -> tuple[int, bytes]:
+    if start_offset <= 0:
+        return 0, raw_path.read_bytes()
+    with raw_path.open("rb") as handle:
+        handle.seek(start_offset - 1)
+        previous = handle.read(1)
+        if previous in (b"", b"\n"):
+            return start_offset, handle.read()
+        partial = handle.readline()
+        return start_offset + len(partial), handle.read()
+
+
 def detect_raw_log_breaks(
-    raw_path: Path, *, transport: AgentTransport | None = None
+    raw_path: Path, *, transport: AgentTransport | None = None, start_offset: int = 0
 ) -> list[RawLogBreak]:
     breaks: list[RawLogBreak] = []
     if not raw_path.exists():
         return breaks
     try:
-        payload = raw_path.read_bytes()
+        base, payload = _read_from_line_boundary(raw_path, start_offset)
     except OSError as exc:
         return [
             RawLogBreak(
@@ -71,9 +84,11 @@ def detect_raw_log_breaks(
                 ),
             )
         )
-    if is_interactive_pty_transport(transport):
+    if not is_interactive_pty_transport(transport):
+        breaks.extend(_detect_non_jsonl_breaks(payload))
+    if not base:
         return breaks
-    return breaks + _detect_non_jsonl_breaks(payload)
+    return [replace(found, offset=found.offset + base) for found in breaks]
 
 
 MAX_REPORTED_BREAKS: Final = 32

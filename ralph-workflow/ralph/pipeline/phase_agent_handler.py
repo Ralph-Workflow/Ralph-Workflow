@@ -279,12 +279,11 @@ def _raw_transcript_break_detail(
     if not unit_id:
         return None
     raw_path = raw_log_path_for(workspace_root, unit_id, model=agent_config.model)
-    attempt_start = raw_transcript_attempt_start(raw_path)
-    breaks = [
-        found
-        for found in detect_raw_log_breaks(raw_path, transport=agent_config.transport)
-        if found.offset >= attempt_start
-    ]
+    breaks = detect_raw_log_breaks(
+        raw_path,
+        transport=agent_config.transport,
+        start_offset=raw_transcript_attempt_start(raw_path),
+    )
     if not breaks:
         return None
     return f"raw transcript corrupted: {breaks[0].detail}"
