@@ -5096,6 +5096,13 @@ ralph.project_policy.readiness_catchup
    :members:
    :show-inheritance:
 
+ralph.project_policy.guard_downgrades
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.guard_downgrades
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.remediation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

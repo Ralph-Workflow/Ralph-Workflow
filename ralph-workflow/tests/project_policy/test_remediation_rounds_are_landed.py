@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.pipeline.resolution_outcome import StopResolutionOutcome
 
+
 _ROOT = "/test/remediation-rounds-are-landed"
 
 

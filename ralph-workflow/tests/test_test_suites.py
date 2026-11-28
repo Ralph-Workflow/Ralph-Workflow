@@ -23,6 +23,11 @@ POLICY_WHITE_BOX_EXCEPTION = (
 )
 
 RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
+    "test_dynamic_test_file_weight_overrides_map_to_existing_test_files cooldown weight": (
+        "the shard weights were re-measured from per-file durations because the slowest "
+        "main-suite shard ran 85 s against the 75 s budget on a quiet host; the cooldown "
+        "recovery file measured 51 s, so its override rose from 300 to 446"
+    ),
     "test_required_auto_integrate_e2e_registry_matches_discovery_contract": (
         "tests/pipeline/test_planning_gate_refusal_advances.py drives a real-git planning "
         "pass past a gate-refused tree and joins the required real-git lane, and the five "
@@ -411,7 +416,7 @@ def test_dynamic_test_file_weight_overrides_map_to_existing_test_files() -> None
     )
     assert missing == []
     assert overrides["tests/scenarios/test_run_soak_resume_recovery.py"] == 425
-    assert overrides["tests/recovery/test_no_agent_runs_four_times_without_a_cooldown.py"] == 300
+    assert overrides["tests/recovery/test_no_agent_runs_four_times_without_a_cooldown.py"] == 446
 
 
 def test_static_discovery_populates_weight_cache_for_retained_files(

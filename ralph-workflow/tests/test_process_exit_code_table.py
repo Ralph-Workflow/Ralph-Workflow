@@ -121,6 +121,16 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
         "the reviewed process-label inventory now includes the publication gate's command "
         "label and its tree probe, so the pinned digest of emitted labels changes"
     ),
+    "test_every_emitted_label_has_an_exit_code_decision.policy_round_guard_downgrade_diff": (
+        "the reviewed process-label inventory now includes the policy round landing's diff of "
+        "the policy corpus against HEAD, a git diff without --exit-code whose only answer is "
+        "rc=0, so the pinned digest of emitted labels changes"
+    ),
+    "test_every_emitted_label_has_an_exit_code_decision.policy_round_drop_restored": (
+        "the reviewed process-label inventory now includes the policy round landing's stash "
+        "drop after a conflicted restore is resolved in place; a failure is a real error, so "
+        "the pinned digest of emitted labels changes"
+    ),
     "test_every_emitted_label_has_an_exit_code_decision.policy_churn_diff": (
         "the reviewed process-label inventory now includes commit review's policy-churn diff, "
         "a git diff of the policy corpus without --exit-code whose only answer is rc=0, so the "
@@ -165,7 +175,7 @@ RALPH_TEST_CHANGE_REASONS: dict[str, str] = {
 }
 
 _NON_BENIGN_LABEL_INVENTORY_DIGEST = (
-    "2fee40a2d8bf6b44a09cc7b91dc993c7d83ef67a3e314b8a6312fb50c7480845"
+    "ffc1fe1ada860430d92c085f461f304257ad14104c86360f40fbabb766b42d4c"
 )
 _NON_BENIGN_LABEL_INVENTORY_REVIEW = (
     "The reviewed inventory adds integration-preservation:list-content (ls-files of the "

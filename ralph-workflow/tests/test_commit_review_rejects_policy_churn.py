@@ -99,3 +99,20 @@ def test_the_same_text_outside_the_policy_corpus_is_still_approved(tmp_git_repo:
     events = _run_phase(tmp_git_repo)
 
     assert [type(event) for event in events] == [CommitReviewApproved]
+
+
+def test_an_approved_proposal_that_downgrades_a_guard_to_advisory_is_rejected(
+    tmp_git_repo: Path,
+) -> None:
+    row = "| Run every gate | Gate-script owner | a check that cannot run blocks the run | {} |\n"
+    policy = _tracked(tmp_git_repo, _POLICY, row.format("deterministic: make verify"))
+    policy.write_text(row.format("advisory: make verify is slow; review: weekly"), encoding="utf-8")
+    _approve(tmp_git_repo)
+
+    events = _run_phase(tmp_git_repo)
+
+    assert len(events) == 1
+    event = events[0]
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is True
+    assert "Run every gate: deterministic enforcement replaced by advisory" in event.reason
