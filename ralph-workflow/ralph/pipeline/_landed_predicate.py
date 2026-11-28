@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 __all__ = [
     "LandedDecision",
     "expected_landed_facts",
+    "landed_copy_on_target",
     "landed_status",
     "operation_landed",
 ]
@@ -557,3 +558,28 @@ def _read(root: Path, *args: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def landed_copy_on_target(root: Path, record: IntegrationRecord) -> str | None:
+    landed = record.integrated_feature_sha
+    head = _read(root, "rev-parse", "--verify", "HEAD")
+    if not landed or not head or head != record.pre_feature_sha or head == landed:
+        return None
+    if record.owning_worktree is not None and record.owning_worktree != str(root):
+        return None
+    target_tip = _target_tip(root, record.target)
+    if not target_tip or not is_ancestor(root, landed, target_tip):
+        return None
+    if not _feature_commits_replayed_in(root, head, landed):
+        return None
+    return landed
+
+
+def _feature_commits_replayed_in(root: Path, feature_tip: str, landed: str) -> bool:
+    originals = _read(root, "rev-list", "--reverse", f"{landed}..{feature_tip}")
+    replays = _read(root, "rev-list", f"{feature_tip}..{landed}")
+    if not originals or not replays:
+        return False
+    replayed = {_commit_identity(root, sha) for sha in replays.split()}
+    replayed.discard(None)
+    return all(_commit_identity(root, sha) in replayed for sha in originals.split())
