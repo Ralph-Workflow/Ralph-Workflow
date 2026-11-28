@@ -518,7 +518,9 @@ def invoke_resolution_agent(
     if attempt.event != PipelineEvent.AGENT_SUCCESS:
         failure_evidence = _failed_attempt_evidence(session, agent_name)
         _record_attempt_failure(session, failure_evidence)
-        _record_attempt_without_agent_work(session, agent_name)
+        _record_attempt_without_agent_work(
+            session, agent_name, not_installed=failure_evidence == AGENT_NOT_FOUND_REASON
+        )
         return _failed_invocation_outcome(
             RuntimeError(failure_evidence),
             session,
@@ -623,10 +625,12 @@ def _refused_by_its_provider(session: ResolutionSession, agent_name: str) -> boo
     return isinstance(status, Cooldown) and status.reason in PROVIDER_UNAVAILABILITY_REASONS
 
 
-def _record_attempt_without_agent_work(session: ResolutionSession | None, agent_name: str) -> None:
+def _record_attempt_without_agent_work(
+    session: ResolutionSession | None, agent_name: str, *, not_installed: bool = False
+) -> None:
     if session is None:
         return
-    if _refused_by_its_provider(session, agent_name):
+    if not_installed or _refused_by_its_provider(session, agent_name):
         session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
         session.last_failure_cause = ResolutionFailureCause.NONE
         session.charge_conflict_budget = False
