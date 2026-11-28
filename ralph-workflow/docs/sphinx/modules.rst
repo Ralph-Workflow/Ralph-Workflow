@@ -164,6 +164,13 @@ ralph.install
    :members:
    :show-inheritance:
 
+ralph.install_timeouts
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.install_timeouts
+   :members:
+   :show-inheritance:
+
 ralph.platform
 ~~~~~~~~~~~~~~
 

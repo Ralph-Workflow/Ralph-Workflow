@@ -13,9 +13,11 @@ from ralph._install_errors import InstallError
 from ralph._install_render import dev_launcher_command
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
+from ralph.install_timeouts import snapshot_version_timeout
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.process._spawn_env import INSTALLER_PYTHON_INJECTION_VARS
+from ralph.verify_budget import host_load_share
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -96,7 +98,7 @@ def run_snapshot_version(uv_executable: str, snapshot: Path) -> str:
         (*launcher_args, "--version"),
         options=ProcessRunOptions(
             cwd=snapshot,
-            timeout=_INSTALL_COMMAND_TIMEOUT_SECONDS,
+            timeout=snapshot_version_timeout(host_load_share()),
             capture_output=True,
             env_remove=INSTALLER_PYTHON_INJECTION_VARS,
         ),
